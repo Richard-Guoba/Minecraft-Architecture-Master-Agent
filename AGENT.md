@@ -1,56 +1,56 @@
-# Agent Collaboration Notes
+# 智能体协作说明
 
-## Project Overview
+## 项目概览
 
-- Project name: Minecraft Constructing Agents.
-- Course context: a course project for building an intelligent agent system related to large language model agents.
-- Goal: turn a Chinese natural-language Minecraft house request into a Minecraft Java 1.21 datapack that can build the requested structure in a single-player creative superflat world.
-- Current v1 focus: a command-line multi-agent prototype, not a live Mineflayer bot.
-- Main demo flow: user prompt -> requirement parsing -> house design -> blueprint generation -> validation -> Minecraft datapack export.
+- 项目名称：Minecraft Constructing Agents。
+- 课程背景：本项目是“大语言模型与信息决策”课程项目，主题围绕大语言模型智能体系统构建。
+- 项目目标：把中文自然语言建房需求转换为 Minecraft Java 1.21 可执行的数据包，使其能在单人创造超平坦世界中自动生成建筑。
+- 当前 v1 重点：命令行多智能体原型，不是实时 Mineflayer 游戏机器人。
+- 核心演示流程：用户输入需求 -> 需求解析 -> 房屋设计 -> 蓝图生成 -> 自动校验 -> Minecraft 数据包导出。
 
-## Project Requirements
+## 项目要求
 
-- Target game version: Minecraft Java 1.21 / 1.21.1.
-- Datapack format: `pack_format: 48`.
-- Datapack function path: `data/architect/function/`, using the singular `function` directory required by Minecraft 1.21.
-- User command:
-  - Run locally with `npm start -- "建一个欧式大房子"`.
-  - In Minecraft, run `/reload`, `/function architect:clear`, then `/function architect:build`.
-- Required generated artifacts under `out/<timestamp>/`:
+- 目标游戏版本：Minecraft Java 1.21 / 1.21.1。
+- 数据包格式：`pack_format: 48`。
+- 数据包函数路径：`data/architect/function/`，使用 Minecraft 1.21 要求的单数 `function` 目录。
+- 用户命令：
+  - 本地运行：`npm start -- "建一个欧式大房子"`。
+  - 游戏内运行：先执行 `/reload`，再执行 `/function architect:clear` 和 `/function architect:build`。
+- `out/<timestamp>/` 目录下必须生成以下产物：
   - `blueprint.json`
   - `architect_datapack/`
   - `raw_build.mcfunction`
   - `preview.html`
   - `run_report.md`
-- The default pipeline must work without an API key by using fallback rules.
-- When a Zhipu API key is available in local `.env`, the project may use LLM parsing through the OpenAI-compatible chat completions endpoint.
-- Never commit `.env` or any API key. Keep API keys local only.
-- Do not commit generated `out/` artifacts, local temp files, or the course PDF.
-- Before finishing meaningful code changes, run `npm test`.
+- 默认流水线必须在没有 API key 的情况下可运行，并使用规则兜底。
+- 如果本地 `.env` 中配置了智谱 API key，项目可以通过 OpenAI 兼容的 chat completions 接口调用大模型做需求解析。
+- 严禁提交 `.env` 或任何 API key。密钥只能保存在本地。
+- 不要提交生成的 `out/` 产物、本地临时文件或课程 PDF。
+- 完成有意义的代码改动前，运行 `npm test`。
 
-## Current Scope
+## 当前范围
 
-- Implemented: Node.js ESM CLI, requirement agent, design agent, blueprint agent, validator agent, exporter, 1.21 datapack output, local HTML preview, and tests.
-- Implemented build style: generic European/two-story house works as the strongest v1 demo.
-- Partially implemented: LLM can parse other styles such as Jiangnan/Chinese, but the design and blueprint agents still need style-specific architecture modules for faithful results.
-- Out of scope for v1: Mineflayer server control, survival-mode resource gathering, real player-like block placement, and downloading or launching Minecraft locally.
+- 已实现：Node.js ESM 命令行入口、需求解析 Agent、设计 Agent、蓝图生成 Agent、校验 Agent、导出 Agent、Minecraft 1.21 数据包输出、本地 HTML 预览和测试。
+- 已实现的主要演示风格：通用欧式两层住宅，这是当前 v1 最稳定的演示案例。
+- 部分实现：LLM 可以解析江南水乡、中式等其他风格，但设计 Agent 和蓝图 Agent 还需要补充对应的风格化建筑模块，才能生成足够贴合风格的结果。
+- v1 暂不包含：Mineflayer 连服控制、生存模式资源采集、模拟玩家逐块放置、自动下载或启动 Minecraft。
 
-## Development Commands
+## 开发命令
 
-- Run tests: `npm test`
-- Generate demo output: `npm start -- "建一个欧式大房子"`
-- Force fallback mode: `npm start -- --mode mock "建一个欧式大房子"`
-- Force LLM mode: `npm start -- --mode llm "请建一个有江南水乡风格的中式小两层"`
+- 运行测试：`npm test`
+- 生成演示输出：`npm start -- "建一个欧式大房子"`
+- 强制使用规则兜底模式：`npm start -- --mode mock "建一个欧式大房子"`
+- 强制使用 LLM 模式：`npm start -- --mode llm "请建一个有江南水乡风格的中式小两层"`
 
-## Repository
+## 仓库信息
 
-- GitHub: https://github.com/CityC196/Minecraft-Constructing-Agents.git
-- Primary branch: `main`
+- GitHub 地址：https://github.com/CityC196/Minecraft-Constructing-Agents.git
+- 主分支：`main`
 
-## Sync Policy
+## 同步规则
 
-- Before making code changes, always check whether the local repository is synchronized with GitHub.
-- Run `git fetch origin`, then compare `HEAD` with `origin/main`.
-- If the local repository and GitHub are not synchronized, treat GitHub as the source of truth.
-- Prefer updating local code from `origin/main` before editing. Do not overwrite uncommitted local work silently; first report the difference and preserve or resolve it deliberately.
-- Do not commit or push unrelated generated files, local secrets, course PDFs, or `out/` artifacts.
+- 每次修改代码前，都必须检查本地仓库是否与 GitHub 同步。
+- 先运行 `git fetch origin`，再比较 `HEAD` 与 `origin/main`。
+- 如果本地仓库与 GitHub 不同步，以 GitHub 为准。
+- 编辑前优先把本地代码更新到 `origin/main`。不要静默覆盖未提交的本地改动；必须先说明差异，并有意识地保留或解决。
+- 不要提交或推送无关的生成文件、本地密钥、课程 PDF 或 `out/` 产物。
