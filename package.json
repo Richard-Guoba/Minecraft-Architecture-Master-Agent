@@ -1,0 +1,14 @@
+{
+  "name": "minecraft-architect-agent",
+  "version": "0.1.0",
+  "description": "A CLI multi-agent prototype that turns Chinese Minecraft house requests into Java 1.21 datapacks.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
