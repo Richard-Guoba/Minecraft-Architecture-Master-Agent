@@ -13,7 +13,10 @@ export async function runPipeline({
   mcVersion = '1.21',
   outRoot,
   seed,
-  cwd = process.cwd()
+  cwd = process.cwd(),
+  minecraftDir,
+  world,
+  autoBuild = false
 }) {
   if (!prompt || !prompt.trim()) {
     throw new Error('Prompt is required.');
@@ -32,7 +35,7 @@ export async function runPipeline({
   const designerAgent = new DesignerAgent({ seed });
   const blueprintAgent = new BlueprintAgent();
   const validatorAgent = new ValidatorAgent();
-  const exportAgent = new ExportAgent({ outputDir, mcVersion });
+  const exportAgent = new ExportAgent({ outputDir, mcVersion, minecraftDir, world, autoBuild });
 
   const requirement = await requirementAgent.run(prompt);
   const design = designerAgent.run(requirement);

@@ -1,7 +1,23 @@
-export function renderReport({ prompt, requirement, design, blueprint, validation, artifacts, mcVersion }) {
+export function renderReport({ prompt, requirement, design, blueprint, validation, artifacts, mcVersion, autoBuild }) {
   const warnings = validation.warnings.length
     ? validation.warnings.map((item) => `- ${item}`).join('\n')
     : '- 无';
+  const installLine = artifacts.installedDatapackDir
+    ? `- 已安装到世界：${artifacts.installedDatapackDir}\n`
+    : '';
+  const usageSteps = autoBuild && artifacts.installedDatapackDir
+    ? [
+      '1. 打开对应的 Minecraft Java 1.21 世界。',
+      '2. 数据包会在第一个玩家当前位置自动执行 clear + build。',
+      '3. 如果游戏已经打开，退出并重新进入世界；必要时可手动运行 /reload 触发自动流程。'
+    ].join('\n')
+    : [
+      '1. 创建单人创造超平坦世界，并开启作弊。',
+      '2. 把 architect_datapack 复制到 .minecraft/saves/<世界名>/datapacks/。',
+      '3. 进入世界后运行 /reload。',
+      '4. 站在建筑起点运行 /function architect:clear。',
+      '5. 运行 /function architect:build。'
+    ].join('\n');
 
   return `# Minecraft 建筑智能体运行报告
 
@@ -40,14 +56,11 @@ ${warnings}
 - 清理函数：${artifacts.clearPath}
 - 原始 mcfunction：${artifacts.rawPath}
 - 预览 HTML：${artifacts.previewPath}
+${installLine}
 
 ## Minecraft Java 1.21 使用步骤
 
-1. 创建单人创造超平坦世界，并开启作弊。
-2. 把 architect_datapack 复制到 .minecraft/saves/<世界名>/datapacks/。
-3. 进入世界后运行 /reload。
-4. 站在建筑起点运行 /function architect:clear。
-5. 运行 /function architect:build。
+${usageSteps}
 
 说明：mcfunction 文件内部命令不带斜杠，这是 Minecraft 数据包函数的正常格式。
 `;

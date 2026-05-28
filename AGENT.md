@@ -15,6 +15,9 @@
 - 数据包函数路径：`data/architect/function/`，使用 Minecraft 1.21 要求的单数 `function` 目录。
 - 用户命令：
   - 本地运行：`npm start -- "建一个欧式大房子"`。
+  - 自动安装到世界并在进入世界后建造：`npm start -- --world "世界名" --auto-build "建一个欧式大房子"`。
+  - 查看可识别世界：`npm start -- --list-worlds`。
+  - 如需打开 Minecraft/启动器，配置 `MINECRAFT_LAUNCH_COMMAND` 后使用 `--launch`。
   - 游戏内运行：先执行 `/reload`，再执行 `/function architect:clear` 和 `/function architect:build`。
 - `out/<timestamp>/` 目录下必须生成以下产物：
   - `blueprint.json`
@@ -24,21 +27,23 @@
   - `run_report.md`
 - 默认流水线必须在没有 API key 的情况下可运行，并使用规则兜底。
 - 如果本地 `.env` 中配置了智谱 API key，项目可以通过 OpenAI 兼容的 chat completions 接口调用大模型做需求解析。
+- 自动建造模式使用数据包 `load` / `tick` 函数，在世界加载后于第一个玩家当前位置执行清理和建造。
 - 严禁提交 `.env` 或任何 API key。密钥只能保存在本地。
 - 不要提交生成的 `out/` 产物、本地临时文件或课程 PDF。
 - 完成有意义的代码改动前，运行 `npm test`。
 
 ## 当前范围
 
-- 已实现：Node.js ESM 命令行入口、需求解析 Agent、设计 Agent、蓝图生成 Agent、校验 Agent、导出 Agent、Minecraft 1.21 数据包输出、本地 HTML 预览和测试。
+- 已实现：Node.js ESM 命令行入口、需求解析 Agent、设计 Agent、蓝图生成 Agent、校验 Agent、导出 Agent、Minecraft 1.21 数据包输出、自动安装到本地世界、数据包自动建造、本地 HTML 预览和测试。
 - 已实现的主要演示风格：通用欧式两层住宅，这是当前 v1 最稳定的演示案例。
 - 部分实现：LLM 可以解析江南水乡、中式等其他风格，但设计 Agent 和蓝图 Agent 还需要补充对应的风格化建筑模块，才能生成足够贴合风格的结果。
-- v1 暂不包含：Mineflayer 连服控制、生存模式资源采集、模拟玩家逐块放置、自动下载或启动 Minecraft。
+- v1 暂不包含：Mineflayer 连服控制、生存模式资源采集、模拟玩家逐块放置、自动下载 Minecraft。启动 Minecraft 仅支持通过 `MINECRAFT_LAUNCH_COMMAND` 调用用户已配置的启动器命令。
 
 ## 开发命令
 
 - 运行测试：`npm test`
 - 生成演示输出：`npm start -- "建一个欧式大房子"`
+- 自动安装并建造：`npm start -- --world "世界名" --auto-build "建一个欧式大房子"`
 - 强制使用规则兜底模式：`npm start -- --mode mock "建一个欧式大房子"`
 - 强制使用 LLM 模式：`npm start -- --mode llm "请建一个有江南水乡风格的中式小两层"`
 

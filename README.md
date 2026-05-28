@@ -16,7 +16,46 @@ npm start -- "建一个欧式大房子"
 - `preview.html`：本地 3D 预览。
 - `run_report.md`：运行报告和游戏内使用步骤。
 
-## 在 Minecraft Java 1.21 中使用
+## 自动安装并建造
+
+如果本机或组员电脑已经有 Minecraft Java 1.21 世界，可以让 CLI 直接把数据包装进世界，并在进入世界后自动建造：
+
+```powershell
+npm start -- --world "世界名" --auto-build "建一个欧式大房子"
+```
+
+也可以使用最近修改过的世界：
+
+```powershell
+npm start -- --world latest --auto-build "建一个欧式大房子"
+```
+
+查看本机可识别的世界：
+
+```powershell
+npm start -- --list-worlds
+```
+
+自动模式会做两件事：
+
+1. 把 `architect_datapack` 自动复制到 `.minecraft/saves/<世界名>/datapacks/architect_datapack`。
+2. 在数据包里生成 `load` / `tick` 函数。打开世界后，数据包会在第一个玩家当前位置自动执行清理和建造。
+
+如果希望生成后同时打开 Minecraft 或启动器，请在 `.env` 中配置启动命令：
+
+```text
+MINECRAFT_LAUNCH_COMMAND="D:\path\to\launcher.exe"
+```
+
+然后运行：
+
+```powershell
+npm start -- --world "世界名" --auto-build --launch "建一个欧式大房子"
+```
+
+不同启动器的命令行参数不完全相同，所以 `--launch` 只负责打开你配置的启动器或 Minecraft 启动命令；进入哪个世界仍取决于启动器和游戏本身。
+
+## 手动使用数据包
 
 1. 创建单人创造超平坦世界，并开启作弊。
 2. 把 `out/<timestamp>/architect_datapack` 复制到：
