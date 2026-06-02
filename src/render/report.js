@@ -2,6 +2,8 @@ export function renderReport({ prompt, requirement, design, blueprint, validatio
   const warnings = validation.warnings.length
     ? validation.warnings.map((item) => `- ${item}`).join('\n')
     : '- 无';
+  const elementLines = renderElementLines(design);
+  const agentLines = renderBlueprintAgentLines(blueprint);
   const installLine = artifacts.installedDatapackDir
     ? `- 已安装到世界：${artifacts.installedDatapackDir}\n`
     : '';
@@ -43,6 +45,14 @@ ${prompt}
 - setblock 命令数：${validation.stats.setblockCount}
 - 模块：${Object.keys(blueprint.modules).join('、')}
 
+## 可配置建筑元素
+
+${elementLines}
+
+## 蓝图子 Agent 交付
+
+${agentLines}
+
 ## 校验结果
 
 - 状态：${validation.ok ? '通过' : '未通过'}
@@ -64,4 +74,52 @@ ${usageSteps}
 
 说明：mcfunction 文件内部命令不带斜杠，这是 Minecraft 数据包函数的正常格式。
 `;
+}
+
+function renderElementLines(design) {
+  const elements = design.elements || {};
+  const lines = [
+    ['墙壁', [
+      `材质 ${elements.wall?.material || design.palette.wall}`,
+      `厚度 ${elements.wall?.thickness || 1}`
+    ]],
+    ['地板', [
+      `材质 ${elements.floor?.material || design.palette.floor}`,
+      `层数 ${design.floors}`
+    ]],
+    ['门', [
+      `材质 ${elements.door?.material || design.palette.doorBase}`,
+      `位置 ${elements.door?.position || `${elements.door?.side || 'south'}-center`}`,
+      `尺寸 ${elements.door?.width || 1} x ${elements.door?.height || 2}`
+    ]],
+    ['屋顶', [
+      `材质 ${elements.roof?.material || design.palette.roof}`,
+      `样式 ${elements.roof?.style || 'gabled'}`,
+      `高度 ${elements.roof?.height || design.dimensions.roofHeight}`
+    ]],
+    ['窗户', [
+      `材质 ${elements.window?.material || design.palette.glass}`,
+      `尺寸 ${elements.window?.width || 2} x ${elements.window?.height || 2}`,
+      `间距 ${elements.window?.spacing || 6}`
+    ]]
+  ];
+
+  return lines
+    .map(([name, parts]) => `- ${name}：${parts.join('，')}`)
+    .join('\n');
+}
+
+function renderBlueprintAgentLines(blueprint) {
+  const agents = blueprint.agents || {};
+  return [
+    `- ShellAgent：内部空间 ${agents.shell?.interiorSpaces?.length || 0} 层，主门 ${agents.shell?.openings?.mainDoor?.side || 'south'}`,
+    `- LayoutAgent：房间 ${agents.layout?.rooms?.length || 0} 个，室内门 ${agents.layout?.interiorDoors?.length || 0} 个，楼板开洞 ${agents.layout?.floorOpenings?.length || 0} 个`,
+    `- FurnishingAgent：家具/装饰 ${agents.furnishing?.placed || 0} 处，照明 ${agents.furnishing?.lighting || 0} 处`,
+    `- GardenAgent：${agents.garden?.enabled ? `庭院地块 ${formatParcel(agents.garden.parcel)}，元素 ${agents.garden.features.join('、')}` : '未启用庭院'}`
+  ].join('\n');
+}
+
+function formatParcel(parcel) {
+  if (!parcel) return '无';
+  return `(${parcel.minX},${parcel.minZ})-(${parcel.maxX},${parcel.maxZ})`;
 }
