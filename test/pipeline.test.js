@@ -32,7 +32,10 @@ test('generates a Minecraft Java 1.21 datapack in fallback mode', async () => {
     );
 
     assert.equal(result.validation.ok, true);
+    assert.equal(result.skill.skillId, 'european-manor');
     assert.equal(result.plan.footprint.type, 'winged');
+    assert.ok(result.critique.score > 0);
+    assert.equal(result.repair.applied, false);
     for (const module of ['foundation', 'walls', 'floors', 'roof', 'windows', 'door', 'chimney', 'garden']) {
       assert.ok(result.blueprint.modules[module], `missing module ${module}`);
     }
@@ -54,6 +57,8 @@ test('generates a Minecraft Java 1.21 datapack in fallback mode', async () => {
     const report = await fs.readFile(result.artifacts.report, 'utf8');
     assert.match(report, /Minecraft Java 1\.21/);
     assert.match(report, /\/function architect:build/);
+    assert.match(report, /SkillRouterAgent 来源/);
+    assert.match(report, /CriticAgent 来源/);
     assert.match(report, /PlannerAgent 来源/);
     assert.match(report, /footprint：winged/);
   } finally {
@@ -74,7 +79,9 @@ test('honors configurable element size, position, and material hints', async () 
     });
 
     assert.equal(result.validation.ok, true);
+    assert.equal(result.skill.skillId, 'modern-villa');
     assert.equal(result.plan.footprint.type, 'l-shape');
+    assert.ok(result.critique.score > 0);
     assert.equal(result.design.dimensions.width, 31);
     assert.equal(result.design.dimensions.depth, 17);
     assert.equal(result.design.elements.wall.material, 'minecraft:white_concrete');

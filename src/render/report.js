@@ -1,9 +1,25 @@
-export function renderReport({ prompt, requirement, design, blueprint, validation, artifacts, mcVersion, autoBuild }) {
+export function renderReport({
+  prompt,
+  requirement,
+  originalRequirement,
+  skill,
+  plan,
+  critique,
+  repair,
+  design,
+  blueprint,
+  validation,
+  artifacts,
+  mcVersion,
+  autoBuild
+}) {
   const warnings = validation.warnings.length
     ? validation.warnings.map((item) => `- ${item}`).join('\n')
     : '- 无';
   const elementLines = renderElementLines(design);
-  const planLines = renderPlanLines(design.plan);
+  const planLines = renderPlanLines(plan || design.plan);
+  const skillLines = renderSkillLines(skill);
+  const critiqueLines = renderCritiqueLines(critique, repair);
   const agentLines = renderBlueprintAgentLines(blueprint);
   const installLine = artifacts.installedDatapackDir
     ? `- 已安装到世界：${artifacts.installedDatapackDir}\n`
@@ -30,16 +46,25 @@ ${prompt}
 
 ## Agent 流水线结果
 
-- RequirementAgent 来源：${requirement.source}
+- RequirementAgent 来源：${originalRequirement?.source || requirement.source}
+- SkillRouterAgent 来源：${skill?.source || '未启用'}
 - PlannerAgent 来源：${design.plan?.source || '未启用'}
 - 风格：${requirement.style}
 - 规模：${requirement.scale}
 - 层数：${requirement.floors}
 - 关键元素：${requirement.features.join('、') || '默认欧式住宅元素'}
 
+## 建筑 Skill
+
+${skillLines}
+
 ## 建筑语义规划
 
 ${planLines}
+
+## 评审与修正
+
+${critiqueLines}
 
 ## 建筑设计
 
@@ -130,6 +155,37 @@ function renderPlanLines(plan) {
     `- zones：${zones}`,
     `- adjacency：${adjacency}`,
     `- styleMotifs：${motifs}`
+  ].join('\n');
+}
+
+function renderSkillLines(skill) {
+  if (!skill) return '- 未选择建筑 skill';
+  return [
+    `- skill：${skill.name || skill.skillId} (${skill.skillId})`,
+    `- confidence：${Math.round((skill.confidence || 0) * 100)}%`,
+    `- preferredFootprint：${skill.preferredFootprint || 'rectangle'}`,
+    `- requiredModules：${(skill.requiredModules || []).join('、') || '无'}`,
+    `- rationale：${skill.rationale || '无'}`
+  ].join('\n');
+}
+
+function renderCritiqueLines(critique, repair) {
+  if (!critique) return '- 未执行 CriticAgent';
+  const strengths = (critique.strengths || []).map((item) => `  - ${item}`).join('\n') || '  - 无';
+  const issues = (critique.issues || []).map((item) => `  - ${item}`).join('\n') || '  - 无';
+  const actions = repair?.actions?.length
+    ? repair.actions.map((item) => `  - ${item}`).join('\n')
+    : '  - 未触发修正';
+  return [
+    `- CriticAgent 来源：${critique.source || 'unknown'}`,
+    `- 软质量评分：${critique.score}/100`,
+    `- 是否触发修正：${repair?.applied ? '是' : '否'}`,
+    '- 优点：',
+    strengths,
+    '- 问题：',
+    issues,
+    '- RepairAgent 操作：',
+    actions
   ].join('\n');
 }
 

@@ -1,11 +1,12 @@
 # Minecraft 1.21 建房子多智能体 v3
 
-这是一个课程项目原型：输入中文建房需求，系统会经过多智能体流水线，把自然语言转成 Minecraft Java 1.21 可执行的数据包。当前版本在 v2 的墙壁、地板、门窗、屋顶、室内布局、家具、照明、庭院和水景基础上，初步加入 `PlannerAgent` 语义规划层，让 LLM/规则先生成 footprint、房间区、邻接关系和风格母题，再由确定性几何算法落成方块。
+这是一个课程项目原型：输入中文建房需求，系统会经过多智能体流水线，把自然语言转成 Minecraft Java 1.21 可执行的数据包。当前版本把项目定位为“面向 Minecraft 的 LLM 建筑智能体”：LLM/规则负责理解、选择建筑 skill、规划、评审和一次轻量修正，程序化工具负责可靠地把建筑落成 Minecraft 数据包。
 
 ## 当前流水线
 
 ```text
 RequirementAgent
+  -> SkillRouterAgent
   -> PlannerAgent
   -> DesignerAgent
   -> BlueprintAgent
@@ -14,20 +15,25 @@ RequirementAgent
        -> FurnishingAgent
        -> GardenAgent
   -> ValidatorAgent
+  -> CriticAgent
+  -> RepairAgent
   -> ExportAgent
 ```
 
 各 Agent 的职责：
 
 - `RequirementAgent`：解析中文需求，提取风格、规模、层数、尺寸、材质和元素偏好。
-- `PlannerAgent`：把需求转成语义建筑规划，包括 `footprint`、`zones`、`adjacency`、`circulation` 和 `styleMotifs`；有 API key 时可由 LLM 生成，失败时规则兜底。
-- `DesignerAgent`：把抽象需求和语义规划转成 Minecraft 方块 ID、建筑尺寸、风格预设、元素规格和模块开关。
+- `SkillRouterAgent`：根据需求选择建筑 skill，例如欧式庄园、江南水乡小院、现代玻璃别墅、森林木屋；有 API key 时可由 LLM 路由，失败时规则兜底。
+- `PlannerAgent`：把需求和 skill 转成语义建筑规划，包括 `footprint`、`zones`、`adjacency`、`circulation` 和 `styleMotifs`；有 API key 时可由 LLM 生成，失败时规则兜底。
+- `DesignerAgent`：把抽象需求、skill 和语义规划转成 Minecraft 方块 ID、建筑尺寸、风格预设、元素规格和模块开关。
 - `BlueprintAgent`：调度蓝图阶段的四个确定性子 Agent。
 - `ShellAgent`：生成地基、墙体、楼板、屋顶、门窗、阳台和烟囱；现在会读取规划 footprint，初步支持欧式/现代侧翼体块和江南/中式庭院入口轴线。
 - `LayoutAgent`：根据内部空间和规划 zones 切分房间、打房间标签、放置楼梯并在楼板上开洞。
 - `FurnishingAgent`：根据房间标签放置床、箱子、工作台、熔炉、书房家具、餐区家具、地毯和室内照明。
 - `GardenAgent`：生成院路、绿篱、花坛、庭院灯和水景，并与庭院/水景规划配合。
 - `ValidatorAgent`：检查模块是否完整、方块 ID 是否合法、坐标是否可执行、子 Agent 是否交付关键结果。
+- `CriticAgent`：评价建筑是否满足需求、skill 风格、空间功能和视觉辨识度；有 API key 时可由 LLM 评审，失败时规则兜底。
+- `RepairAgent`：根据 Critic 的 `repairHints` 做一次轻量修正，例如强制庭院 footprint、启用水景、放大现代窗户或补烟囱。
 - `ExportAgent`：导出 `blueprint.json`、数据包、原始函数、预览页面和运行报告。
 
 ## 快速运行
@@ -68,17 +74,19 @@ npm start -- --mode mock "建一个江南两层小院，白墙黑瓦，窗户宽
 - 窗户：`大玻璃窗`、`落地窗`、`窗户宽3高2`。
 - 附加元素：`阳台`、`庭院`、`花园`、`水池`、`喷泉`、`室内楼梯`、`卧室客厅厨房`。
 
-没有配置 API key 时，项目会使用规则模板兜底；配置大模型后，`RequirementAgent` 会优先尝试调用 LLM 做需求解析，`PlannerAgent` 会继续调用 LLM 生成语义建筑规划，并在失败时自动回退。
+没有配置 API key 时，项目会使用规则模板兜底；配置大模型后，`RequirementAgent`、`SkillRouterAgent`、`PlannerAgent` 和 `CriticAgent` 会优先尝试调用 LLM，并在失败时自动回退。
 
 ## v3 生成算法概览
 
-当前系统不让 LLM 直接输出 Minecraft 命令，而是采用“语义规划 + 程序化几何”的分层生成：
+当前系统不让 LLM 直接输出 Minecraft 命令，而是采用“skill + 语义规划 + 程序化几何 + 评审核修”的分层生成：
 
 1. `RequirementAgent` 把自然语言压成结构化需求，例如风格、规模、层数、尺寸、材质和元素偏好。
-2. `PlannerAgent` 生成建筑语义蓝图：`footprint` 描述总体外形，`zones` 描述房间/庭院/水景等功能区，`adjacency` 描述空间连通关系，`styleMotifs` 描述风格特征。
-3. `DesignerAgent` 将需求和规划合并成可执行设计规格，决定方块调色板、尺寸、门窗参数、室内/庭院/侧翼模块开关。
-4. `BlueprintAgent` 的子 Agent 只做确定性几何落地：用 `fill` 生成大体块，用 `setblock` 放置单个细节方块。
-5. `ValidatorAgent` 检查模块、方块 ID、坐标和 Minecraft `fill` 体积限制，确保导出的数据包可执行。
+2. `SkillRouterAgent` 从 `src/skills/buildingSkills.js` 选择建筑 skill，skill 定义推荐 footprint、风格母题、可用模块和评审规则。
+3. `PlannerAgent` 生成建筑语义蓝图：`footprint` 描述总体外形，`zones` 描述房间/庭院/水景等功能区，`adjacency` 描述空间连通关系，`styleMotifs` 描述风格特征。
+4. `DesignerAgent` 将需求、skill 和规划合并成可执行设计规格，决定方块调色板、尺寸、门窗参数、室内/庭院/侧翼模块开关。
+5. `BlueprintAgent` 的子 Agent 只做确定性几何落地：用 `fill` 生成大体块，用 `setblock` 放置单个细节方块。
+6. `ValidatorAgent` 检查模块、方块 ID、坐标和 Minecraft `fill` 体积限制，确保导出的数据包可执行。
+7. `CriticAgent` 输出软质量评分、优点、问题和 `repairHints`；`RepairAgent` 最多应用一次修正并重新生成蓝图。
 
 初版规划增强已经支持：
 
@@ -86,6 +94,7 @@ npm start -- --mode mock "建一个江南两层小院，白墙黑瓦，窗户宽
 - 现代两层/大玻璃：规划为 `l-shape` footprint，`ShellAgent` 会生成偏移侧翼体块。
 - 江南/中式/水景：规划为 `courtyard` footprint，`ShellAgent` 会生成庭院入口轴线，`GardenAgent` 会生成水景/庭院元素。
 - 室内布局：`LayoutAgent` 会读取 `zones`，把房间标签扩展到 living、bedroom、kitchen、study、dining、utility 等。
+- 评审核修：`run_report.md` 会展示 skill 选择、Critic 评分、问题列表和 RepairAgent 操作。
 
 ## 自动安装并建造
 
@@ -168,5 +177,6 @@ npm test
 - Minecraft Java 1.21 数据包导出。
 - 自动安装到本地 Minecraft save。
 - 配置化尺寸、门位置、墙/地板/窗/门/屋顶材质。
-- `PlannerAgent` 语义规划、侧翼 footprint、规划写入 `blueprint.json`。
+- `SkillRouterAgent` 建筑 skill、`PlannerAgent` 语义规划、侧翼 footprint、规划写入 `blueprint.json`。
+- `CriticAgent` 软质量评价和 `RepairAgent` 一次轻量修正。
 - `ShellAgent`、`LayoutAgent`、`FurnishingAgent`、`GardenAgent` 的关键交付物。

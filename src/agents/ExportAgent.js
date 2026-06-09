@@ -15,7 +15,7 @@ export class ExportAgent {
     this.autoBuild = autoBuild;
   }
 
-  async run({ prompt, requirement, design, blueprint, validation }) {
+  async run({ prompt, requirement, originalRequirement, skill, plan, critique, repair, design, blueprint, validation }) {
     if (!validation.ok) {
       throw new Error(`Blueprint validation failed: ${validation.errors.join('; ')}`);
     }
@@ -95,6 +95,11 @@ export class ExportAgent {
     await fs.writeFile(reportPath, renderReport({
       prompt,
       requirement,
+      originalRequirement,
+      skill,
+      plan,
+      critique,
+      repair,
       design,
       blueprint,
       validation,
