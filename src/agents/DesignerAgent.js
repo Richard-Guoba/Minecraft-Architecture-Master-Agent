@@ -133,13 +133,13 @@ export class DesignerAgent {
     this.seed = seed ?? 2026;
   }
 
-  run(requirement, plan = {}) {
+  run(requirement, plan = {}, skill) {
     const preset = pickPreset(requirement.style);
     const floors = Math.max(1, Math.min(3, requirement.floors || 2));
     const dimensions = buildDimensions(requirement, preset, floors);
-    const elements = buildElements(requirement, preset, dimensions, plan);
+    const elements = buildElements(requirement, preset, dimensions, plan, skill);
     const palette = buildPalette(preset.palette, elements);
-    const modules = buildModules(requirement, elements, floors, plan);
+    const modules = buildModules(requirement, elements, floors, plan, skill);
 
     return {
       id: `${preset.id}-${requirement.scale}`,
@@ -151,6 +151,7 @@ export class DesignerAgent {
       elements,
       modules,
       plan,
+      skill,
       notes: [
         '建筑以玩家当前位置作为西北角附近起点，向东和向南展开。',
         'v2 为墙壁、地板、门、屋顶、窗户建立独立元素规格，支持尺寸、位置和材质覆盖。',
@@ -183,7 +184,7 @@ function buildDimensions(requirement, preset, floors) {
   };
 }
 
-function buildElements(requirement, preset, dimensions, plan) {
+function buildElements(requirement, preset, dimensions, plan, skill) {
   const prefs = requirement.elementPreferences || {};
   const plannedRoomCount = countPlannedInteriorZones(plan);
   const defaultRooms = Math.max(requirement.scale === 'large' ? 4 : 2, plannedRoomCount || 0);
@@ -228,13 +229,15 @@ function buildElements(requirement, preset, dimensions, plan) {
       requirement.features.includes('水景') ||
       requirement.scale === 'large' ||
       hasPlanZone(plan, ['garden', 'water']) ||
-      planFootprintType(plan) === 'courtyard'
+      planFootprintType(plan) === 'courtyard' ||
+      (skill?.requiredModules || []).includes('garden')
     ),
     waterFeature: prefs.landscape?.waterFeature === true ||
       requirement.features.includes('水景') ||
       requirement.style === '江南' ||
       hasPlanZone(plan, ['water']) ||
-      hasPlanMotif(plan, 'water-courtyard')
+      hasPlanMotif(plan, 'water-courtyard') ||
+      (skill?.requiredModules || []).includes('water_feature')
   };
   const balcony = {
     enabled: prefs.balcony?.enabled === true || requirement.features.includes('阳台') || hasPlanZone(plan, ['balcony'])
@@ -243,7 +246,8 @@ function buildElements(requirement, preset, dimensions, plan) {
     enabled: prefs.chimney?.enabled === true ||
       requirement.features.includes('烟囱') ||
       requirement.style === '欧式' ||
-      hasPlanMotif(plan, 'chimney')
+      hasPlanMotif(plan, 'chimney') ||
+      (skill?.requiredModules || []).includes('chimney')
   };
 
   return { wall, floor, door, roof, window, interior, landscape, balcony, chimney };
@@ -263,7 +267,7 @@ function buildPalette(base, elements) {
   };
 }
 
-function buildModules(requirement, elements, floors, plan) {
+function buildModules(requirement, elements, floors, plan, skill) {
   const modules = ['foundation', 'walls', 'floors', 'roof', 'windows', 'door'];
   if (elements.interior.enabled) modules.push('interior');
   if (elements.interior.stairs && floors > 1) modules.push('stairs');
@@ -278,6 +282,7 @@ function buildModules(requirement, elements, floors, plan) {
   if (['pagoda', 'hipped'].includes(elements.roof.style) || requirement.features.includes('飞檐')) {
     modules.push('roof_detail');
   }
+  for (const module of skill?.requiredModules || []) modules.push(module);
   return [...new Set(modules)];
 }
 

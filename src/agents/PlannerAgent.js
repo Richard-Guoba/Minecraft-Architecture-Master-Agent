@@ -7,8 +7,8 @@ export class PlannerAgent {
     this.mode = SUPPORTED_MODES.has(mode) ? mode : 'auto';
   }
 
-  async run(requirement) {
-    const fallback = this.fallback(requirement);
+  async run(requirement, skill) {
+    const fallback = this.fallback(requirement, skill);
     if (this.mode === 'mock') return fallback;
 
     if (this.mode === 'llm' || (this.mode === 'auto' && this.llmClient?.isConfigured())) {
@@ -23,7 +23,7 @@ export class PlannerAgent {
             'zones 必须是数组，每项包含 id, label, type, level, priority，可选 areaHint, needsWindow。',
             'adjacency 必须是二维字符串数组，例如 [["living","kitchen"]]。'
           ].join('\n'),
-          user: `把这个 Minecraft 建房需求规划成语义蓝图：${JSON.stringify(requirement)}`
+          user: `把这个 Minecraft 建房需求规划成语义蓝图：${JSON.stringify({ requirement, skill })}`
         });
         return normalizePlan(parsed, requirement, 'llm', fallback);
       } catch (error) {
@@ -38,19 +38,19 @@ export class PlannerAgent {
     return fallback;
   }
 
-  fallback(requirement) {
-    return normalizePlan(buildFallbackPlan(requirement), requirement, 'fallback');
+  fallback(requirement, skill) {
+    return normalizePlan(buildFallbackPlan(requirement, skill), requirement, 'fallback');
   }
 }
 
-function buildFallbackPlan(requirement) {
+function buildFallbackPlan(requirement, skill) {
   const style = requirement.style || '欧式';
   const features = new Set(requirement.features || []);
   const floors = requirement.floors || 1;
   const hasGarden = features.has('小花园') || features.has('水景') || requirement.scale === 'large';
   const hasWater = features.has('水景') || style === '江南';
-  const footprint = pickFootprint({ style, scale: requirement.scale, floors, features });
-  const zones = buildZones({ style, floors, hasGarden, hasWater, features });
+  const footprint = pickFootprint({ style, scale: requirement.scale, floors, features, skill });
+  const zones = buildZones({ style, floors, hasGarden, hasWater, features, skill });
 
   return {
     footprint,
@@ -61,7 +61,7 @@ function buildFallbackPlan(requirement) {
       stairs: floors > 1 ? 'near-entry' : 'none',
       publicCore: 'living'
     },
-    styleMotifs: buildMotifs(style, features, hasWater),
+    styleMotifs: buildMotifs(style, features, hasWater, skill),
     constraints: [
       '保持 Minecraft fill/setblock 命令可执行',
       '房间之间至少通过一个公共空间连通',
@@ -75,7 +75,10 @@ function buildFallbackPlan(requirement) {
   };
 }
 
-function pickFootprint({ style, scale, floors, features }) {
+function pickFootprint({ style, scale, floors, features, skill }) {
+  if (skill?.preferredFootprint) {
+    return { type: skill.preferredFootprint, source: 'skill', publicSide: 'south' };
+  }
   if (style === '江南' || style === '中式' || features.has('水景')) {
     return { type: 'courtyard', courtyard: true, publicSide: 'south' };
   }
@@ -88,7 +91,7 @@ function pickFootprint({ style, scale, floors, features }) {
   return { type: 'rectangle', publicSide: 'south' };
 }
 
-function buildZones({ style, floors, hasGarden, hasWater, features }) {
+function buildZones({ style, floors, hasGarden, hasWater, features, skill }) {
   const zones = [
     zone('entry', '门厅', 'entry', 0, 90, { needsWindow: false }),
     zone('living', '客厅', 'living', 0, 100),
@@ -102,7 +105,7 @@ function buildZones({ style, floors, hasGarden, hasWater, features }) {
   if (hasWater) zones.push(zone('water', '水景', 'water', 0, 60, { outside: true, needsWindow: false }));
   if (features.has('阳台')) zones.push(zone('balcony', '阳台', 'balcony', Math.min(1, floors - 1), 50, { outside: true }));
 
-  return zones;
+  return mergeSkillZones(zones, skill, floors);
 }
 
 function zone(id, label, type, level, priority, extra = {}) {
@@ -133,7 +136,7 @@ function buildAdjacency(zones, hasGarden) {
   return pairs.filter(([a, b]) => zoneIds.has(a) && zoneIds.has(b) && (hasGarden || !['garden', 'water'].includes(b)));
 }
 
-function buildMotifs(style, features, hasWater) {
+function buildMotifs(style, features, hasWater, skill) {
   const motifs = new Set();
   if (style === '欧式') {
     motifs.add('symmetrical-facade');
@@ -156,7 +159,35 @@ function buildMotifs(style, features, hasWater) {
   }
   if (features.has('阳台')) motifs.add('balcony');
   if (hasWater) motifs.add('water-courtyard');
+  for (const motif of skill?.styleMotifs || []) motifs.add(motif);
   return [...motifs];
+}
+
+function mergeSkillZones(zones, skill, floors) {
+  const existing = new Set(zones.map((item) => item.id));
+  const merged = [...zones];
+  for (const hint of skill?.zoneHints || []) {
+    if (existing.has(hint)) continue;
+    const outside = ['garden', 'water', 'balcony'].includes(hint);
+    merged.push(zone(hint, labelForZone(hint), hint, outside ? 0 : Math.min(1, floors - 1), 45, { outside }));
+    existing.add(hint);
+  }
+  return merged;
+}
+
+function labelForZone(type) {
+  const labels = {
+    entry: '门厅',
+    living: '客厅',
+    bedroom: '卧室',
+    kitchen: '厨房',
+    study: '书房',
+    dining: '餐区',
+    garden: '花园',
+    water: '水景',
+    balcony: '阳台'
+  };
+  return labels[type] || type;
 }
 
 function normalizePlan(value, requirement, source, fallback) {
