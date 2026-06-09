@@ -3,6 +3,7 @@ export function renderReport({ prompt, requirement, design, blueprint, validatio
     ? validation.warnings.map((item) => `- ${item}`).join('\n')
     : '- 无';
   const elementLines = renderElementLines(design);
+  const planLines = renderPlanLines(design.plan);
   const agentLines = renderBlueprintAgentLines(blueprint);
   const installLine = artifacts.installedDatapackDir
     ? `- 已安装到世界：${artifacts.installedDatapackDir}\n`
@@ -30,10 +31,15 @@ ${prompt}
 ## Agent 流水线结果
 
 - RequirementAgent 来源：${requirement.source}
+- PlannerAgent 来源：${design.plan?.source || '未启用'}
 - 风格：${requirement.style}
 - 规模：${requirement.scale}
 - 层数：${requirement.floors}
 - 关键元素：${requirement.features.join('、') || '默认欧式住宅元素'}
+
+## 建筑语义规划
+
+${planLines}
 
 ## 建筑设计
 
@@ -109,10 +115,28 @@ function renderElementLines(design) {
     .join('\n');
 }
 
+function renderPlanLines(plan) {
+  if (!plan) return '- 未生成语义规划';
+  const footprint = plan.footprint?.type || 'rectangle';
+  const zones = (plan.zones || [])
+    .map((zone) => `${zone.label || zone.id}(${zone.type || zone.id})`)
+    .join('、') || '默认房间';
+  const motifs = (plan.styleMotifs || []).join('、') || '默认风格母题';
+  const adjacency = (plan.adjacency || [])
+    .map(([a, b]) => `${a}-${b}`)
+    .join('、') || '默认连通关系';
+  return [
+    `- footprint：${footprint}`,
+    `- zones：${zones}`,
+    `- adjacency：${adjacency}`,
+    `- styleMotifs：${motifs}`
+  ].join('\n');
+}
+
 function renderBlueprintAgentLines(blueprint) {
   const agents = blueprint.agents || {};
   return [
-    `- ShellAgent：内部空间 ${agents.shell?.interiorSpaces?.length || 0} 层，主门 ${agents.shell?.openings?.mainDoor?.side || 'south'}`,
+    `- ShellAgent：内部空间 ${agents.shell?.interiorSpaces?.length || 0} 层，侧翼 ${agents.shell?.extensions?.length || 0} 个，主门 ${agents.shell?.openings?.mainDoor?.side || 'south'}`,
     `- LayoutAgent：房间 ${agents.layout?.rooms?.length || 0} 个，室内门 ${agents.layout?.interiorDoors?.length || 0} 个，楼板开洞 ${agents.layout?.floorOpenings?.length || 0} 个`,
     `- FurnishingAgent：家具/装饰 ${agents.furnishing?.placed || 0} 处，照明 ${agents.furnishing?.lighting || 0} 处`,
     `- GardenAgent：${agents.garden?.enabled ? `庭院地块 ${formatParcel(agents.garden.parcel)}，元素 ${agents.garden.features.join('、')}` : '未启用庭院'}`

@@ -12,22 +12,25 @@ export class LayoutAgent {
     const floorOpenings = [];
     const { width, depth, floorHeight, wallHeight } = workspace.design.dimensions;
     const p = workspace.design.palette;
-    const centerX = Math.floor(width / 2);
-    const centerZ = Math.floor(depth / 2);
     const roomCount = clamp(spec.rooms || 2, 1, 8);
+    const plannedTags = plannedRoomTags(workspace.design.plan);
 
     for (const space of shell.interiorSpaces) {
       const y1 = space.minY;
       const y2 = Math.min(space.maxY - 1, wallHeight - 1);
-      const baseRooms = splitSpace(space, roomCount);
+      const centerX = Math.floor((space.minX + space.maxX) / 2);
+      const centerZ = Math.floor((space.minZ + space.maxZ) / 2);
+      const spaceWidth = space.maxX - space.minX + 1;
+      const spaceDepth = space.maxZ - space.minZ + 1;
+      const baseRooms = splitSpace(space, roomCount, plannedTags, rooms.length);
       rooms.push(...baseRooms);
 
-      if (width >= 13 && roomCount >= 2) {
+      if (spaceWidth >= 9 && roomCount >= 2) {
         workspace.fill(point(centerX, y1, space.minZ + 2), point(centerX, y2, space.maxZ - 2), p.interiorWall, 'interior');
         workspace.fill(point(centerX, y1, centerZ - 1), point(centerX, y1 + 1, centerZ + 1), 'minecraft:air', 'interior');
         interiorDoors.push({ level: space.level, axis: 'x', at: { x: centerX, z: centerZ }, connects: ['living', 'bedroom'] });
       }
-      if (depth >= 13 && roomCount >= 4) {
+      if (spaceDepth >= 9 && roomCount >= 4) {
         workspace.fill(point(space.minX + 2, y1, centerZ), point(space.maxX - 2, y2, centerZ), p.interiorWall, 'interior');
         workspace.fill(point(centerX - 1, y1, centerZ), point(centerX + 1, y1 + 1, centerZ), 'minecraft:air', 'interior');
         interiorDoors.push({ level: space.level, axis: 'z', at: { x: centerX, z: centerZ }, connects: ['living', 'utility'] });
@@ -74,24 +77,24 @@ export class LayoutAgent {
   }
 }
 
-function splitSpace(space, roomCount) {
+function splitSpace(space, roomCount, plannedTags = [], offset = 0) {
   const centerX = Math.floor((space.minX + space.maxX) / 2);
   const centerZ = Math.floor((space.minZ + space.maxZ) / 2);
   if (roomCount >= 4) {
     return [
-      room(space, 'living', space.minX, centerX - 1, space.minZ, centerZ - 1),
-      room(space, 'bedroom', centerX + 1, space.maxX, space.minZ, centerZ - 1),
-      room(space, 'kitchen', space.minX, centerX - 1, centerZ + 1, space.maxZ),
-      room(space, 'utility', centerX + 1, space.maxX, centerZ + 1, space.maxZ)
+      room(space, tagFor(plannedTags, offset, 0, 'living'), space.minX, centerX - 1, space.minZ, centerZ - 1),
+      room(space, tagFor(plannedTags, offset, 1, 'bedroom'), centerX + 1, space.maxX, space.minZ, centerZ - 1),
+      room(space, tagFor(plannedTags, offset, 2, 'kitchen'), space.minX, centerX - 1, centerZ + 1, space.maxZ),
+      room(space, tagFor(plannedTags, offset, 3, 'utility'), centerX + 1, space.maxX, centerZ + 1, space.maxZ)
     ];
   }
   if (roomCount >= 2) {
     return [
-      room(space, 'living', space.minX, centerX - 1, space.minZ, space.maxZ),
-      room(space, 'bedroom', centerX + 1, space.maxX, space.minZ, space.maxZ)
+      room(space, tagFor(plannedTags, offset, 0, 'living'), space.minX, centerX - 1, space.minZ, space.maxZ),
+      room(space, tagFor(plannedTags, offset, 1, 'bedroom'), centerX + 1, space.maxX, space.minZ, space.maxZ)
     ];
   }
-  return [room(space, 'living', space.minX, space.maxX, space.minZ, space.maxZ)];
+  return [room(space, tagFor(plannedTags, offset, 0, 'living'), space.minX, space.maxX, space.minZ, space.maxZ)];
 }
 
 function room(space, tag, minX, maxX, minZ, maxZ) {
@@ -105,4 +108,29 @@ function room(space, tag, minX, maxX, minZ, maxZ) {
     minZ,
     maxZ
   };
+}
+
+function tagFor(plannedTags, offset, slot, fallback) {
+  return plannedTags[offset + slot] || fallback;
+}
+
+function plannedRoomTags(plan) {
+  const zones = Array.isArray(plan?.zones) ? plan.zones : [];
+  return zones
+    .filter((zone) => !zone.outside)
+    .map((zone) => normalizeRoomTag(zone.type || zone.id || zone.label))
+    .filter((tag) => !['entry', 'stairs', 'outside'].includes(tag));
+}
+
+function normalizeRoomTag(value) {
+  const text = String(value || '').toLowerCase();
+  if (/bed|卧/.test(text)) return 'bedroom';
+  if (/kitchen|厨/.test(text)) return 'kitchen';
+  if (/study|书/.test(text)) return 'study';
+  if (/dining|餐/.test(text)) return 'dining';
+  if (/bath|wash|卫|浴/.test(text)) return 'utility';
+  if (/entry|门厅|玄关/.test(text)) return 'entry';
+  if (/stair|楼梯/.test(text)) return 'stairs';
+  if (/utility|功能|储物/.test(text)) return 'utility';
+  return 'living';
 }

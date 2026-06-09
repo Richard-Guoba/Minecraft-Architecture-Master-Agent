@@ -3,6 +3,9 @@ import { clamp, doorState, point, windowPositions } from './BlueprintWorkspace.j
 export class ShellAgent {
   run(workspace) {
     this.workspace = workspace;
+    this.extensionSpaces = [];
+    this.extensions = [];
+    this.courtyard = undefined;
     this.foundation();
     this.walls();
     this.floors();
@@ -11,9 +14,13 @@ export class ShellAgent {
     this.door();
     this.balcony();
     this.chimney();
+    this.plannedExtension();
+    this.courtyardPorch();
     return {
       exteriorBounds: this.exteriorBounds(),
       interiorSpaces: this.interiorSpaces(),
+      extensions: this.extensions,
+      courtyard: this.courtyard,
       openings: {
         mainDoor: workspace.doorOpening(),
         window: workspace.elements.window || {}
@@ -30,7 +37,7 @@ export class ShellAgent {
   interiorSpaces() {
     const { floorHeight, wallHeight } = this.workspace.design.dimensions;
     const inner = this.workspace.innerBounds();
-    return Array.from({ length: this.workspace.design.floors }, (_, level) => ({
+    const mainSpaces = Array.from({ length: this.workspace.design.floors }, (_, level) => ({
       level,
       minX: inner.minX,
       maxX: inner.maxX,
@@ -39,6 +46,7 @@ export class ShellAgent {
       minZ: inner.minZ,
       maxZ: inner.maxZ
     }));
+    return [...mainSpaces, ...this.extensionSpaces];
   }
 
   foundation() {
@@ -282,5 +290,93 @@ export class ShellAgent {
     const z = 4;
     this.workspace.fill(point(x, wallHeight + 1, z), point(x + 1, wallHeight + roofHeight + 3, z + 1), p.chimney, 'chimney');
     this.workspace.setblock(point(x, wallHeight + roofHeight + 4, z), 'minecraft:campfire[lit=true]', 'chimney');
+  }
+
+  plannedExtension() {
+    const footprintType = this.workspace.design.plan?.footprint?.type || 'rectangle';
+    if (!['l-shape', 'winged'].includes(footprintType)) return;
+
+    const { width, depth, floorHeight } = this.workspace.design.dimensions;
+    const p = this.workspace.design.palette;
+    const attachEast = this.workspace.elements.door?.side === 'west';
+    const wingWidth = clamp(Math.floor(width * 0.35), 5, Math.max(7, Math.floor(width * 0.45)));
+    const wingDepth = clamp(Math.floor(depth * 0.55), 7, Math.max(7, depth - 2));
+    const wingFloors = Math.min(this.workspace.design.floors, footprintType === 'winged' ? 2 : 1);
+    const wallHeight = wingFloors * floorHeight;
+    const minX = attachEast ? width : -wingWidth;
+    const maxX = attachEast ? width + wingWidth - 1 : -1;
+    const minZ = clamp(Math.floor(depth * 0.35), 2, Math.max(2, depth - wingDepth - 1));
+    const maxZ = minZ + wingDepth - 1;
+
+    this.workspace.fill(point(minX, 0, minZ), point(maxX, 0, maxZ), p.foundation, 'wing');
+    this.workspace.fill(point(minX, 1, minZ), point(maxX, wallHeight, minZ), p.wall, 'wing');
+    this.workspace.fill(point(minX, 1, maxZ), point(maxX, wallHeight, maxZ), p.wall, 'wing');
+    this.workspace.fill(point(minX, 1, minZ), point(minX, wallHeight, maxZ), p.wall, 'wing');
+    this.workspace.fill(point(maxX, 1, minZ), point(maxX, wallHeight, maxZ), p.wall, 'wing');
+
+    for (let level = 0; level < wingFloors; level += 1) {
+      const y = level * floorHeight + 1;
+      this.workspace.fill(point(minX + 1, y, minZ + 1), point(maxX - 1, y, maxZ - 1), p.floor, 'wing');
+      this.extensionSpaces.push({
+        level,
+        minX: minX + 1,
+        maxX: maxX - 1,
+        minY: level * floorHeight + 2,
+        maxY: Math.min(level * floorHeight + floorHeight, wallHeight),
+        minZ: minZ + 1,
+        maxZ: maxZ - 1,
+        source: 'planned-wing'
+      });
+    }
+
+    const roofY = wallHeight + 1;
+    this.workspace.fill(point(minX, roofY, minZ), point(maxX, roofY, maxZ), p.roof, 'wing');
+    this.workspace.fill(point(minX, roofY + 1, minZ), point(maxX, roofY + 1, minZ), p.trim, 'wing');
+    this.workspace.fill(point(minX, roofY + 1, maxZ), point(maxX, roofY + 1, maxZ), p.trim, 'wing');
+    this.workspace.fill(point(minX, roofY + 1, minZ), point(minX, roofY + 1, maxZ), p.trim, 'wing');
+    this.workspace.fill(point(maxX, roofY + 1, minZ), point(maxX, roofY + 1, maxZ), p.trim, 'wing');
+
+    const connectorZ = Math.floor((minZ + maxZ) / 2);
+    const connectorFromX = attachEast ? width - 1 : -1;
+    const connectorToX = attachEast ? width : 0;
+    this.workspace.fill(point(connectorFromX, 2, connectorZ - 1), point(connectorToX, 3, connectorZ + 1), 'minecraft:air', 'wing');
+    this.workspace.fill(point(connectorFromX, 4, connectorZ - 1), point(connectorToX, 4, connectorZ + 1), p.trim, 'wing');
+
+    const outsideX = attachEast ? maxX : minX;
+    for (let z = minZ + 2; z <= maxZ - 3; z += 5) {
+      this.placeWindowOnX(outsideX, z, 2, 2, 2, p);
+    }
+    const sideWindowX = Math.floor((minX + maxX) / 2) - 1;
+    this.placeWindowOnZ(maxZ, sideWindowX, 2, 2, 2, p);
+
+    this.extensions.push({
+      type: footprintType,
+      side: attachEast ? 'east' : 'west',
+      floors: wingFloors,
+      bounds: { minX, maxX, minZ, maxZ }
+    });
+  }
+
+  courtyardPorch() {
+    const footprintType = this.workspace.design.plan?.footprint?.type || 'rectangle';
+    if (footprintType !== 'courtyard') return;
+
+    const { width, depth } = this.workspace.design.dimensions;
+    const p = this.workspace.design.palette;
+    const center = Math.floor(width / 2);
+    const z1 = depth;
+    const z2 = depth + 2;
+
+    this.workspace.fill(point(center - 3, 1, z1), point(center + 3, 1, z2), p.floor, 'courtyard');
+    this.workspace.fill(point(center - 4, 1, z1), point(center - 4, 3, z2), p.trim, 'courtyard');
+    this.workspace.fill(point(center + 4, 1, z1), point(center + 4, 3, z2), p.trim, 'courtyard');
+    this.workspace.fill(point(center - 4, 4, z1), point(center + 4, 4, z2), p.roofAccent || p.roof, 'courtyard');
+    this.workspace.setblock(point(center - 2, 2, z2), p.lamp, 'courtyard');
+    this.workspace.setblock(point(center + 2, 2, z2), p.lamp, 'courtyard');
+    this.courtyard = {
+      type: 'entry-axis',
+      connectedTo: this.workspace.doorOpening().side,
+      bounds: { minX: center - 4, maxX: center + 4, minZ: z1, maxZ: z2 }
+    };
   }
 }

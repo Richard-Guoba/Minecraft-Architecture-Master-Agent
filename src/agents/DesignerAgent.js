@@ -133,13 +133,13 @@ export class DesignerAgent {
     this.seed = seed ?? 2026;
   }
 
-  run(requirement) {
+  run(requirement, plan = {}) {
     const preset = pickPreset(requirement.style);
     const floors = Math.max(1, Math.min(3, requirement.floors || 2));
     const dimensions = buildDimensions(requirement, preset, floors);
-    const elements = buildElements(requirement, preset, dimensions);
+    const elements = buildElements(requirement, preset, dimensions, plan);
     const palette = buildPalette(preset.palette, elements);
-    const modules = buildModules(requirement, elements, floors);
+    const modules = buildModules(requirement, elements, floors, plan);
 
     return {
       id: `${preset.id}-${requirement.scale}`,
@@ -150,10 +150,12 @@ export class DesignerAgent {
       palette,
       elements,
       modules,
+      plan,
       notes: [
         '建筑以玩家当前位置作为西北角附近起点，向东和向南展开。',
         'v2 为墙壁、地板、门、屋顶、窗户建立独立元素规格，支持尺寸、位置和材质覆盖。',
-        '生成结果包含室内隔断、楼梯、照明和庭院细节，避免只生成空壳房间。'
+        '生成结果包含室内隔断、楼梯、照明和庭院细节，避免只生成空壳房间。',
+        'v3 初步加入语义建筑规划：先生成 footprint、房间区、邻接关系和风格母题，再由蓝图 Agent 程序化落地。'
       ],
       requirement
     };
@@ -181,8 +183,10 @@ function buildDimensions(requirement, preset, floors) {
   };
 }
 
-function buildElements(requirement, preset, dimensions) {
+function buildElements(requirement, preset, dimensions, plan) {
   const prefs = requirement.elementPreferences || {};
+  const plannedRoomCount = countPlannedInteriorZones(plan);
+  const defaultRooms = Math.max(requirement.scale === 'large' ? 4 : 2, plannedRoomCount || 0);
   const wall = {
     material: toBlockId(prefs.wall?.material, preset.palette.wall),
     thickness: clampInt(prefs.wall?.thickness, 1, 3, preset.wall.thickness)
@@ -214,7 +218,7 @@ function buildElements(requirement, preset, dimensions) {
   };
   const interior = {
     enabled: prefs.interior?.enabled !== false,
-    rooms: clampInt(prefs.interior?.rooms, 1, 8, requirement.scale === 'large' ? 4 : 2),
+    rooms: clampInt(prefs.interior?.rooms, 1, 8, defaultRooms),
     stairs: prefs.interior?.stairs !== false && requirement.floors > 1,
     lighting: prefs.interior?.lighting !== false
   };
@@ -222,15 +226,24 @@ function buildElements(requirement, preset, dimensions) {
     enabled: prefs.landscape?.enabled !== false && (
       requirement.features.includes('小花园') ||
       requirement.features.includes('水景') ||
-      requirement.scale === 'large'
+      requirement.scale === 'large' ||
+      hasPlanZone(plan, ['garden', 'water']) ||
+      planFootprintType(plan) === 'courtyard'
     ),
-    waterFeature: prefs.landscape?.waterFeature === true || requirement.features.includes('水景') || requirement.style === '江南'
+    waterFeature: prefs.landscape?.waterFeature === true ||
+      requirement.features.includes('水景') ||
+      requirement.style === '江南' ||
+      hasPlanZone(plan, ['water']) ||
+      hasPlanMotif(plan, 'water-courtyard')
   };
   const balcony = {
-    enabled: prefs.balcony?.enabled === true || requirement.features.includes('阳台')
+    enabled: prefs.balcony?.enabled === true || requirement.features.includes('阳台') || hasPlanZone(plan, ['balcony'])
   };
   const chimney = {
-    enabled: prefs.chimney?.enabled === true || requirement.features.includes('烟囱') || requirement.style === '欧式'
+    enabled: prefs.chimney?.enabled === true ||
+      requirement.features.includes('烟囱') ||
+      requirement.style === '欧式' ||
+      hasPlanMotif(plan, 'chimney')
   };
 
   return { wall, floor, door, roof, window, interior, landscape, balcony, chimney };
@@ -250,12 +263,14 @@ function buildPalette(base, elements) {
   };
 }
 
-function buildModules(requirement, elements, floors) {
+function buildModules(requirement, elements, floors, plan) {
   const modules = ['foundation', 'walls', 'floors', 'roof', 'windows', 'door'];
   if (elements.interior.enabled) modules.push('interior');
   if (elements.interior.stairs && floors > 1) modules.push('stairs');
   if (elements.interior.lighting) modules.push('lighting');
   if (elements.interior.enabled) modules.push('furnishing');
+  if (['l-shape', 'winged'].includes(planFootprintType(plan))) modules.push('wing');
+  if (planFootprintType(plan) === 'courtyard') modules.push('courtyard');
   if (elements.chimney.enabled) modules.push('chimney');
   if (elements.balcony.enabled && floors > 1) modules.push('balcony');
   if (elements.landscape.enabled) modules.push('garden');
@@ -264,6 +279,29 @@ function buildModules(requirement, elements, floors) {
     modules.push('roof_detail');
   }
   return [...new Set(modules)];
+}
+
+function countPlannedInteriorZones(plan) {
+  const zones = Array.isArray(plan?.zones) ? plan.zones : [];
+  const layoutZones = zones.filter((zone) => (
+    !zone.outside &&
+    !['entry', 'stairs'].includes(zone.type) &&
+    !['entry', 'stairs'].includes(zone.id)
+  ));
+  return layoutZones.length;
+}
+
+function hasPlanZone(plan, types) {
+  const zoneTypes = new Set(types);
+  return (plan?.zones || []).some((zone) => zoneTypes.has(zone.type) || zoneTypes.has(zone.id));
+}
+
+function hasPlanMotif(plan, motif) {
+  return (plan?.styleMotifs || []).includes(motif);
+}
+
+function planFootprintType(plan) {
+  return plan?.footprint?.type || 'rectangle';
 }
 
 function toBlockId(value, fallback) {

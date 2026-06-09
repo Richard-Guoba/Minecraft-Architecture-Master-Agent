@@ -87,7 +87,8 @@ export class BlueprintWorkspace {
         floors: this.design.floors,
         dimensions: this.design.dimensions,
         palette: this.design.palette,
-        elements: this.design.elements
+        elements: this.design.elements,
+        plan: this.design.plan
       },
       operations: this.operations
     };

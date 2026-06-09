@@ -11,6 +11,8 @@ export class FurnishingAgent {
     const p = workspace.design.palette;
 
     for (const room of layout.rooms) {
+      if ((room.maxX - room.minX) < 2 || (room.maxZ - room.minZ) < 2) continue;
+
       const y = room.minY;
       const centerX = Math.floor((room.minX + room.maxX) / 2);
       const centerZ = Math.floor((room.minZ + room.maxZ) / 2);
@@ -22,6 +24,14 @@ export class FurnishingAgent {
       } else if (room.tag === 'kitchen' || room.tag === 'utility') {
         workspace.setblock(point(room.minX + 1, y, room.maxZ - 1), 'minecraft:furnace[facing=north]', 'furnishing');
         workspace.setblock(point(room.minX + 2, y, room.maxZ - 1), 'minecraft:crafting_table', 'furnishing');
+        placed += 2;
+      } else if (room.tag === 'study') {
+        workspace.setblock(point(room.minX + 1, y, room.minZ + 1), 'minecraft:bookshelf', 'furnishing');
+        workspace.setblock(point(room.minX + 2, y, room.minZ + 1), 'minecraft:lectern[facing=south]', 'furnishing');
+        placed += 2;
+      } else if (room.tag === 'dining') {
+        workspace.setblock(point(centerX, y, centerZ), 'minecraft:spruce_fence', 'furnishing');
+        workspace.setblock(point(centerX, y + 1, centerZ), 'minecraft:oak_pressure_plate', 'furnishing');
         placed += 2;
       } else {
         workspace.setblock(point(room.minX + 1, y, room.minZ + 1), p.furniture, 'furnishing');

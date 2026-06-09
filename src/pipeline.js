@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { RequirementAgent } from './agents/RequirementAgent.js';
+import { PlannerAgent } from './agents/PlannerAgent.js';
 import { DesignerAgent } from './agents/DesignerAgent.js';
 import { BlueprintAgent } from './agents/BlueprintAgent.js';
 import { ValidatorAgent } from './agents/ValidatorAgent.js';
@@ -32,13 +33,15 @@ export async function runPipeline({
   });
 
   const requirementAgent = new RequirementAgent({ llmClient, mode });
+  const plannerAgent = new PlannerAgent({ llmClient, mode });
   const designerAgent = new DesignerAgent({ seed });
   const blueprintAgent = new BlueprintAgent();
   const validatorAgent = new ValidatorAgent();
   const exportAgent = new ExportAgent({ outputDir, mcVersion, minecraftDir, world, autoBuild });
 
   const requirement = await requirementAgent.run(prompt);
-  const design = designerAgent.run(requirement);
+  const plan = await plannerAgent.run(requirement);
+  const design = designerAgent.run(requirement, plan);
   const blueprint = blueprintAgent.run(design);
   const validation = validatorAgent.run(blueprint, design);
   const artifacts = await exportAgent.run({ prompt, requirement, design, blueprint, validation });
@@ -47,6 +50,7 @@ export async function runPipeline({
     prompt,
     outputDir,
     requirement,
+    plan,
     design,
     blueprint,
     validation,

@@ -32,16 +32,21 @@ test('generates a Minecraft Java 1.21 datapack in fallback mode', async () => {
     );
 
     assert.equal(result.validation.ok, true);
+    assert.equal(result.plan.footprint.type, 'winged');
     for (const module of ['foundation', 'walls', 'floors', 'roof', 'windows', 'door', 'chimney', 'garden']) {
       assert.ok(result.blueprint.modules[module], `missing module ${module}`);
     }
     for (const module of ['interior', 'stairs', 'lighting', 'furnishing']) {
       assert.ok(result.blueprint.modules[module], `missing enriched module ${module}`);
     }
+    assert.ok(result.blueprint.modules.wing, 'missing planned wing module');
     assert.equal(result.design.elements.wall.material, 'minecraft:smooth_sandstone');
     assert.equal(result.design.elements.roof.style, 'gabled');
+    assert.equal(result.design.plan.footprint.type, 'winged');
     assert.equal(result.blueprint.version, 3);
+    assert.equal(result.blueprint.design.plan.footprint.type, 'winged');
     assert.ok(result.blueprint.agents.shell.interiorSpaces.length >= 1);
+    assert.ok(result.blueprint.agents.shell.extensions.length >= 1);
     assert.ok(result.blueprint.agents.layout.rooms.length >= 2);
     assert.ok(result.blueprint.agents.furnishing.placed > 0);
     assert.equal(result.blueprint.agents.garden.enabled, true);
@@ -49,6 +54,8 @@ test('generates a Minecraft Java 1.21 datapack in fallback mode', async () => {
     const report = await fs.readFile(result.artifacts.report, 'utf8');
     assert.match(report, /Minecraft Java 1\.21/);
     assert.match(report, /\/function architect:build/);
+    assert.match(report, /PlannerAgent 来源/);
+    assert.match(report, /footprint：winged/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -67,6 +74,7 @@ test('honors configurable element size, position, and material hints', async () 
     });
 
     assert.equal(result.validation.ok, true);
+    assert.equal(result.plan.footprint.type, 'l-shape');
     assert.equal(result.design.dimensions.width, 31);
     assert.equal(result.design.dimensions.depth, 17);
     assert.equal(result.design.elements.wall.material, 'minecraft:white_concrete');
@@ -80,7 +88,9 @@ test('honors configurable element size, position, and material hints', async () 
     for (const module of ['interior', 'stairs', 'lighting', 'furnishing']) {
       assert.ok(result.blueprint.modules[module], `missing module ${module}`);
     }
+    assert.ok(result.blueprint.modules.wing, 'missing planned l-shape wing module');
     assert.ok(result.blueprint.agents.shell.interiorSpaces.length >= 2);
+    assert.ok(result.blueprint.agents.shell.extensions.length >= 1);
     assert.ok(result.blueprint.agents.layout.floorOpenings.length >= 1);
     assert.ok(result.blueprint.agents.furnishing.rooms.length >= 2);
 
