@@ -1,0 +1,910 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/5bqr1k",
+    "id": "5bqr1k",
+    "slide": 16,
+    "layoutId": "798d9e84-1763-44a5-938b-3a0e8147ae5c",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "6232e085-f003-4d68-b650-e68bca4195df",
+    "masterLayoutName": "Master",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Microsoft YaHei"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "798d9e84-1763-44a5-938b-3a0e8147ae5c",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "6232e085-f003-4d68-b650-e68bca4195df",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "6232e085-f003-4d68-b650-e68bca4195df",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ahoza1gv",
+      "id": "1",
+      "bbox": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "geometry": "rect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/l87ed8ba",
+      "id": "2",
+      "bbox": [
+        0,
+        48,
+        76,
+        84
+      ],
+      "geometry": "rect",
+      "fillColor": "#A00000",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/sneloj2t",
+      "id": "3",
+      "bbox": [
+        790,
+        704,
+        490,
+        12
+      ],
+      "geometry": "rect",
+      "fillColor": "#A00000",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/ih4byhgn",
+      "id": "4",
+      "bbox": [
+        1040,
+        42,
+        190,
+        53
+      ],
+      "contentType": "image/png",
+      "imageFit": "contain",
+      "asset": {
+        "assetId": "ff125299-f28a-47b4-ae47-89373b64a5d6",
+        "contentType": "image/png",
+        "byteLength": 22464
+      }
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/at47y1kr",
+      "id": "5",
+      "bbox": [
+        54,
+        674,
+        400,
+        20
+      ],
+      "geometry": "rect",
+      "text": "15 / Interior",
+      "textPreview": "15 / Interior",
+      "resolvedFontSize": 9.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 9.51,
+        "typeface": "Microsoft YaHei",
+        "color": "#686868",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "15 / Interior"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "15 / Interior",
+          "resolvedTextStyle": {
+            "fontSize": 9.51,
+            "typeface": "Microsoft YaHei",
+            "color": "#686868",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "15 / Interior",
+              "fontSize": 9.51,
+              "typeface": "Microsoft YaHei",
+              "color": "#686868"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lkjm1cfa",
+      "id": "6",
+      "bbox": [
+        98,
+        52,
+        840,
+        48
+      ],
+      "geometry": "rect",
+      "text": "Minecraft 效果：内部空间与功能区",
+      "textPreview": "Minecraft 效果：内部空间与功能区",
+      "resolvedFontSize": 26,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 26,
+        "typeface": "Microsoft YaHei",
+        "color": "#111111",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Minecraft 效果：内部空间与功能区"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Minecraft 效果：内部空间与功能区",
+          "resolvedTextStyle": {
+            "fontSize": 26,
+            "typeface": "Microsoft YaHei",
+            "color": "#111111",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Minecraft 效果：内部空间与功能区",
+              "fontSize": 26,
+              "typeface": "Microsoft YaHei",
+              "color": "#111111"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/szqtcj6t",
+      "id": "7",
+      "bbox": [
+        100,
+        110,
+        940,
+        28
+      ],
+      "geometry": "rect",
+      "text": "截图页可以边指边讲：系统不是只生成外壳，还尝试把 Planner 的 zones 落成房间和家具",
+      "textPreview": "截图页可以边指边讲：系统不是只生成外壳，还尝试把 Planner 的 zones 落成房间和家具",
+      "resolvedFontSize": 13.2,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 13.2,
+        "typeface": "Microsoft YaHei",
+        "color": "#686868",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "截图页可以边指边讲：系统不是只生成外壳，还尝试把 Planner 的 zones 落成房间和家具"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "截图页可以边指边讲：系统不是只生成外壳，还尝试把 Planner 的 zones 落成房间和家具",
+          "resolvedTextStyle": {
+            "fontSize": 13.2,
+            "typeface": "Microsoft YaHei",
+            "color": "#686868",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "截图页可以边指边讲：系统不是只生成外壳，还尝试把 Planner 的 zones 落成房间和家具",
+              "fontSize": 13.2,
+              "typeface": "Microsoft YaHei",
+              "color": "#686868"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/3itgfmlk",
+      "id": "8",
+      "bbox": [
+        68,
+        148,
+        504,
+        314
+      ],
+      "geometry": "rect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#A00000",
+      "lineWidth": 2
+    },
+    {
+      "order": 9,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/7y1kre1w",
+      "id": "9",
+      "bbox": [
+        70,
+        150,
+        500,
+        310
+      ],
+      "contentType": "image/png",
+      "imageFit": "cover",
+      "asset": {
+        "assetId": "47c7d7a1-46aa-48cd-9b8d-978b27849286",
+        "contentType": "image/png",
+        "byteLength": 939217
+      }
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/wfyxobm5",
+      "id": "10",
+      "bbox": [
+        70,
+        466,
+        500,
+        24
+      ],
+      "geometry": "rect",
+      "fillColor": "#A00000",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/l0rqd4vm",
+      "id": "11",
+      "bbox": [
+        80,
+        472,
+        480,
+        13
+      ],
+      "geometry": "rect",
+      "text": "内部视角：楼层、门洞、照明和家具开始表达功能区",
+      "textPreview": "内部视角：楼层、门洞、照明和家具开始表达功能区",
+      "resolvedFontSize": 9.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 9.51,
+        "typeface": "Microsoft YaHei",
+        "color": "#FFFFFF",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "内部视角：楼层、门洞、照明和家具开始表达功能区"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "内部视角：楼层、门洞、照明和家具开始表达功能区",
+          "resolvedTextStyle": {
+            "fontSize": 9.51,
+            "typeface": "Microsoft YaHei",
+            "color": "#FFFFFF",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "内部视角：楼层、门洞、照明和家具开始表达功能区",
+              "fontSize": 9.51,
+              "typeface": "Microsoft YaHei",
+              "color": "#FFFFFF"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ed8bat47",
+      "id": "12",
+      "bbox": [
+        608,
+        148,
+        504,
+        314
+      ],
+      "geometry": "rect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#A00000",
+      "lineWidth": 2
+    },
+    {
+      "order": 13,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/g7adsji5",
+      "id": "13",
+      "bbox": [
+        610,
+        150,
+        500,
+        310
+      ],
+      "contentType": "image/png",
+      "imageFit": "cover",
+      "asset": {
+        "assetId": "8398c119-2894-4b17-823a-5bd181e1158e",
+        "contentType": "image/png",
+        "byteLength": 1665035
+      }
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/wra5gbq1",
+      "id": "14",
+      "bbox": [
+        610,
+        466,
+        500,
+        24
+      ],
+      "geometry": "rect",
+      "fillColor": "#A00000",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 15,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lc7u54zi",
+      "id": "15",
+      "bbox": [
+        620,
+        472,
+        480,
+        13
+      ],
+      "geometry": "rect",
+      "text": "结构视角：房间划分、楼梯连通和庭院关系",
+      "textPreview": "结构视角：房间划分、楼梯连通和庭院关系",
+      "resolvedFontSize": 9.51,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 9.51,
+        "typeface": "Microsoft YaHei",
+        "color": "#FFFFFF",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "结构视角：房间划分、楼梯连通和庭院关系"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "结构视角：房间划分、楼梯连通和庭院关系",
+          "resolvedTextStyle": {
+            "fontSize": 9.51,
+            "typeface": "Microsoft YaHei",
+            "color": "#FFFFFF",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "结构视角：房间划分、楼梯连通和庭院关系",
+              "fontSize": 9.51,
+              "typeface": "Microsoft YaHei",
+              "color": "#FFFFFF"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 16,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/eloj2t83",
+      "id": "16",
+      "bbox": [
+        92,
+        520,
+        440,
+        90
+      ],
+      "geometry": "rect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#D4D4D4",
+      "lineWidth": 1
+    },
+    {
+      "order": 17,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/36hcrmhk",
+      "id": "17",
+      "bbox": [
+        92,
+        520,
+        7,
+        90
+      ],
+      "geometry": "rect",
+      "fillColor": "#245D8A",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 18,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/wval87ed",
+      "id": "18",
+      "bbox": [
+        108,
+        530,
+        412,
+        24
+      ],
+      "geometry": "rect",
+      "text": "和 Planner 的对应",
+      "textPreview": "和 Planner 的对应",
+      "resolvedFontSize": 14,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 14,
+        "typeface": "Microsoft YaHei",
+        "color": "#111111",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "和 Planner 的对应"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "和 Planner 的对应",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Microsoft YaHei",
+            "color": "#111111",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "和 Planner 的对应",
+              "fontSize": 14,
+              "typeface": "Microsoft YaHei",
+              "color": "#111111",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 19,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/pg3ex0nu",
+      "id": "19",
+      "bbox": [
+        108,
+        560,
+        412,
+        42
+      ],
+      "geometry": "rect",
+      "text": "zones=entry/living/kitchen/bedroom/stairs/study/garden/water；Layout/Furnishing 把这些语义区转为房间、门洞、楼梯和装饰。",
+      "textPreview": "zones=entry/living/kitchen/bedroom/stairs/study/garden/water；Layout/Furnishing 把这些语义区转为房间、门洞、楼梯和装饰。",
+      "resolvedFontSize": 10.4,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 10.4,
+        "typeface": "Microsoft YaHei",
+        "color": "#242424",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "zones=entry/living/kitchen/bedroom/stairs/study/garden/water；Layout/Furnishi"
+          },
+          {
+            "index": 2,
+            "text": "ng 把这些语义区转为房间、门洞、楼梯和装饰。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "zones=entry/living/kitchen/bedroom/stairs/study/garden/water；Layout/Furnishing 把这些语义区转为房间、门洞、楼梯和装饰。",
+          "resolvedTextStyle": {
+            "fontSize": 10.4,
+            "typeface": "Microsoft YaHei",
+            "color": "#242424",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "zones=entry/living/kitchen/bedroom/stairs/study/garden/water；Layout/Furnishing 把这些语义区转为房间、门洞、楼梯和装饰。",
+              "fontSize": 10.4,
+              "typeface": "Microsoft YaHei",
+              "color": "#242424"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 20,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/9knih4by",
+      "id": "20",
+      "bbox": [
+        615,
+        520,
+        440,
+        90
+      ],
+      "geometry": "rect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#D4D4D4",
+      "lineWidth": 1
+    },
+    {
+      "order": 21,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/kzupwb2h",
+      "id": "21",
+      "bbox": [
+        615,
+        520,
+        7,
+        90
+      ],
+      "geometry": "rect",
+      "fillColor": "#A00000",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 22,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/re1w7mp0",
+      "id": "22",
+      "bbox": [
+        631,
+        530,
+        412,
+        24
+      ],
+      "geometry": "rect",
+      "text": "效果说明",
+      "textPreview": "效果说明",
+      "resolvedFontSize": 14,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 14,
+        "typeface": "Microsoft YaHei",
+        "color": "#111111",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "效果说明"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "效果说明",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Microsoft YaHei",
+            "color": "#111111",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "效果说明",
+              "fontSize": 14,
+              "typeface": "Microsoft YaHei",
+              "color": "#111111",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 23,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/2t83itgf",
+      "id": "23",
+      "bbox": [
+        631,
+        560,
+        412,
+        42
+      ],
+      "geometry": "rect",
+      "text": "目前能说明“功能存在”，但离真正好看的室内设计还有距离；后续需要更多家具规则、房间模板和截图驱动的 Critic。",
+      "textPreview": "目前能说明“功能存在”，但离真正好看的室内设计还有距离；后续需要更多家具规则、房间模板和截图驱动的 Critic。",
+      "resolvedFontSize": 10.4,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 10.4,
+        "typeface": "Microsoft YaHei",
+        "color": "#242424",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "目前能说明“功能存在”，但离真正好看的室内设计还有距离；后续需要更多家具规则、"
+          },
+          {
+            "index": 2,
+            "text": "房间模板和截图驱动的 Critic。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "目前能说明“功能存在”，但离真正好看的室内设计还有距离；后续需要更多家具规则、房间模板和截图驱动的 Critic。",
+          "resolvedTextStyle": {
+            "fontSize": 10.4,
+            "typeface": "Microsoft YaHei",
+            "color": "#242424",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "目前能说明“功能存在”，但离真正好看的室内设计还有距离；后续需要更多家具规则、房间模板和截图驱动的 Critic。",
+              "fontSize": 10.4,
+              "typeface": "Microsoft YaHei",
+              "color": "#242424"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

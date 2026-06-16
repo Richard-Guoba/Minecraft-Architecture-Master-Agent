@@ -1,7 +1,7 @@
 {
   "name": "minecraft-architect-agent",
   "version": "0.1.0",
-  "description": "A CLI multi-agent prototype that turns Chinese Minecraft house requests into Java 1.21 datapacks.",
+  "description": "A Node.js construction-method Minecraft architect workflow with semantic JSON agents and deterministic CSG/BSP/A* geometry.",
   "type": "module",
   "scripts": {
     "start": "node src/index.js",

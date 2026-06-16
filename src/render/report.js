@@ -4,6 +4,8 @@ export function renderReport({
   originalRequirement,
   skill,
   plan,
+  architecture,
+  topology,
   critique,
   repair,
   design,
@@ -17,7 +19,9 @@ export function renderReport({
     ? validation.warnings.map((item) => `- ${item}`).join('\n')
     : '- 无';
   const elementLines = renderElementLines(design);
+  const europeanVillaLines = renderEuropeanVillaLines(design);
   const planLines = renderPlanLines(plan || design.plan);
+  const superAgentLines = renderSuperAgentLines(architecture, topology, blueprint);
   const skillLines = renderSkillLines(skill);
   const critiqueLines = renderCritiqueLines(critique, repair);
   const agentLines = renderBlueprintAgentLines(blueprint);
@@ -27,15 +31,14 @@ export function renderReport({
   const usageSteps = autoBuild && artifacts.installedDatapackDir
     ? [
       '1. 打开对应的 Minecraft Java 1.21 世界。',
-      '2. 数据包会在第一个玩家当前位置自动执行 clear + build。',
-      '3. 如果游戏已经打开，退出并重新进入世界；必要时可手动运行 /reload 触发自动流程。'
+      '2. 如果游戏已经打开，运行 /reload 刷新数据包。',
+      '3. 站在目标位置运行 /function architect:run。'
     ].join('\n')
     : [
       '1. 创建单人创造超平坦世界，并开启作弊。',
       '2. 把 architect_datapack 复制到 .minecraft/saves/<世界名>/datapacks/。',
-      '3. 进入世界后运行 /reload。',
-      '4. 站在建筑起点运行 /function architect:clear。',
-      '5. 运行 /function architect:build。'
+      '3. 进入世界后运行 /reload 刷新数据包。',
+      '4. 站在建筑起点运行 /function architect:run。'
     ].join('\n');
 
   return `# Minecraft 建筑智能体运行报告
@@ -47,7 +50,7 @@ ${prompt}
 ## Agent 流水线结果
 
 - RequirementAgent 来源：${originalRequirement?.source || requirement.source}
-- SkillRouterAgent 来源：${skill?.source || '未启用'}
+- Legacy skill 参数来源：${skill?.source || '未启用'}
 - PlannerAgent 来源：${design.plan?.source || '未启用'}
 - 风格：${requirement.style}
 - 规模：${requirement.scale}
@@ -61,6 +64,10 @@ ${skillLines}
 ## 建筑语义规划
 
 ${planLines}
+
+## 超级建筑 Agent
+
+${superAgentLines}
 
 ## 评审与修正
 
@@ -80,6 +87,8 @@ ${critiqueLines}
 
 ${elementLines}
 
+${europeanVillaLines}
+
 ## 蓝图子 Agent 交付
 
 ${agentLines}
@@ -95,6 +104,7 @@ ${warnings}
 - 数据包目录：${artifacts.datapackDir}
 - 建造函数：${artifacts.buildPath}
 - 清理函数：${artifacts.clearPath}
+- 一键建造函数：${artifacts.runPath || 'architect:run'}
 - 原始 mcfunction：${artifacts.rawPath}
 - 预览 HTML：${artifacts.previewPath}
 ${installLine}
@@ -138,6 +148,41 @@ function renderElementLines(design) {
   return lines
     .map(([name, parts]) => `- ${name}：${parts.join('，')}`)
     .join('\n');
+}
+
+function renderSuperAgentLines(architecture, topology, blueprint) {
+  if (!architecture && !topology) return '- 未启用超级建筑 Agent';
+  const volumes = (architecture?.volumes || [])
+    .map((volume) => `${volume.role || volume.id}(${volume.shape || 'box'}, ${volume.booleanMode || 'union'})`)
+    .join('、') || '无';
+  const rooms = (topology?.nodes || [])
+    .map((node) => `${node.label || node.id}(L${node.level}, ${node.type})`)
+    .join('、') || '无';
+  const geometry = blueprint?.agents?.geometry || {};
+  return [
+    `- Architect 来源：${architecture?.source || 'unknown'}`,
+    `- Planner 来源：${topology?.source || 'unknown'}`,
+    `- 架构哲学：${architecture?.philosophy || '先造壳，后填瓤'}`,
+    `- CSG 体块：${volumes}`,
+    `- BSP 房间节点：${rooms}`,
+    `- 几何引擎：${geometry.engine || 'CSG+BSP sparse voxel engine'}`,
+    `- CSG 统计：体块 ${geometry.csg?.volumeCount || 0} 个，实体网格 ${geometry.csg?.solidCellCount || 0} 格`,
+    `- BSP 统计：节点 ${geometry.bsp?.nodeCount || 0} 个，边 ${geometry.bsp?.edgeCount || 0} 条`
+  ].join('\n');
+}
+
+function renderEuropeanVillaLines(design) {
+  const spec = design.elements?.europeanVilla;
+  if (!spec?.enabled) return '';
+  return `## 欧式别墅分层参数
+
+- 场地：朝向 ${spec.site?.orientation || 'south'}，前院深度 ${spec.site?.frontGardenDepth || design.dimensions.gardenDepth}，中轴 ${spec.site?.centralAxis || 'front-center'}
+- 体块：主楼 ${spec.massing?.main?.width || design.dimensions.width} x ${spec.massing?.main?.depth || design.dimensions.depth}，左右侧翼 ${spec.massing?.wings?.enabled ? '启用' : '关闭'}，入口凸出 ${spec.massing?.entryProjection?.enabled ? '启用' : '关闭'}
+- 框架：地基台座、墙角柱、楼层腰线、檐口线、正立面壁柱
+- 门廊：宽 ${spec.porch?.width || 9}，深 ${spec.porch?.depth || 4}，柱子 ${spec.porch?.columns || 4} 根
+- 立面：${spec.facade?.symmetry ? '对称' : '自由'}窗序，窗框 ${spec.facade?.framedWindows ? '启用' : '关闭'}，中央山墙 ${spec.facade?.centerPediment ? '启用' : '关闭'}
+- 屋顶：屋檐 ${spec.roofDetail?.eaves ? '启用' : '关闭'}，屋脊 ${spec.roofDetail?.ridge ? '启用' : '关闭'}，老虎窗 ${spec.roofDetail?.dormers || 0} 个
+- 花园：正式中轴 ${spec.garden?.formal ? '启用' : '关闭'}，对称花坛 ${spec.garden?.pairedFlowerBeds ? '启用' : '关闭'}，喷泉 ${spec.garden?.fountain ? '启用' : '关闭'}`;
 }
 
 function renderPlanLines(plan) {

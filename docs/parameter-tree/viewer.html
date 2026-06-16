@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>字段树查看器</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fa;
+      --panel: #ffffff;
+      --panel-2: #eef2f6;
+      --text: #1d252d;
+      --muted: #627180;
+      --line: #d6dde5;
+      --accent: #2f7c67;
+      --accent-2: #7c4e9a;
+      --warn: #9a5a2f;
+      --shadow: 0 10px 28px rgba(31, 42, 55, 0.08);
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      padding: 14px 18px;
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    .sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    button, input, select, .file-button {
+      height: 34px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+    }
+
+    button, .file-button {
+      padding: 0 10px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    button:hover, .file-button:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    input[type="number"] {
+      width: 64px;
+      padding: 0 8px;
+    }
+
+    input[type="search"] {
+      width: min(340px, 42vw);
+      padding: 0 10px;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    main {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(460px, 1fr) 360px;
+      gap: 14px;
+      padding: 14px;
+    }
+
+    .tree-panel, .detail-panel {
+      min-height: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .panel-head {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .panel-title {
+      font-size: 14px;
+      font-weight: 700;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .panel-meta {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .tree-scroll, .detail-scroll {
+      overflow: auto;
+      padding: 14px;
+    }
+
+    .tree {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      min-width: 720px;
+    }
+
+    .tree ul {
+      margin: 0;
+      padding-left: 26px;
+      list-style: none;
+      position: relative;
+    }
+
+    .tree ul::before {
+      content: "";
+      position: absolute;
+      left: 11px;
+      top: 0;
+      bottom: 16px;
+      border-left: 1px solid var(--line);
+    }
+
+    .tree li {
+      position: relative;
+      padding: 5px 0 5px 18px;
+    }
+
+    .tree li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 21px;
+      width: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .node {
+      width: 100%;
+      min-height: 42px;
+      height: auto;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+      text-align: left;
+      color: var(--text);
+      display: grid;
+      grid-template-columns: minmax(120px, max-content) minmax(240px, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .node:hover {
+      border-color: var(--accent);
+      background: #f7fbf9;
+    }
+
+    .node.focused {
+      border-color: var(--accent);
+      background: #edf8f4;
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+
+    .node.context {
+      border-color: #c9b7d8;
+      background: #fbf7ff;
+      box-shadow: inset 3px 0 0 var(--accent-2);
+    }
+
+    .node-name {
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .node-desc {
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .badge {
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .truncated {
+      margin: 4px 0 4px 18px;
+      color: var(--warn);
+      font-size: 12px;
+    }
+
+    .field {
+      padding: 11px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .field:last-child {
+      border-bottom: 0;
+    }
+
+    .label {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .value {
+      font-size: 14px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+
+    .crumbs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .crumb {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .crumb:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .children-list {
+      display: grid;
+      gap: 6px;
+    }
+
+    .child-link {
+      justify-content: flex-start;
+      width: 100%;
+      height: auto;
+      min-height: 32px;
+      text-align: left;
+    }
+
+    pre {
+      margin: 0;
+      padding: 10px;
+      border-radius: 8px;
+      background: #17202a;
+      color: #edf4f2;
+      font-size: 12px;
+      line-height: 1.45;
+      overflow: auto;
+      max-height: 260px;
+    }
+
+    .search-results {
+      position: absolute;
+      right: 14px;
+      top: 58px;
+      width: min(460px, calc(100vw - 28px));
+      max-height: 360px;
+      overflow: auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      z-index: 5;
+      display: none;
+    }
+
+    .search-results.open {
+      display: block;
+    }
+
+    .result {
+      width: 100%;
+      min-height: 44px;
+      height: auto;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      padding: 9px 12px;
+      display: block;
+      text-align: left;
+      background: #fff;
+    }
+
+    .result:last-child {
+      border-bottom: 0;
+    }
+
+    .result strong {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 3px;
+    }
+
+    .result span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .empty {
+      color: var(--muted);
+      padding: 20px;
+      text-align: center;
+    }
+
+    @media (max-width: 980px) {
+      header {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar {
+        justify-content: flex-start;
+      }
+
+      main {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(420px, 1fr) 420px;
+      }
+
+      input[type="search"] {
+        width: min(100%, 360px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>字段树查看器</h1>
+      <div class="sub" id="treeSummary">正在载入字段树...</div>
+    </div>
+    <div class="toolbar">
+      <button id="rootButton" type="button">根节点</button>
+      <button id="parentButton" type="button">父节点</button>
+      <label>
+        <span class="sub">子层数</span>
+        <input id="depthInput" type="number" min="1" max="8" value="2">
+      </label>
+      <input id="searchInput" type="search" placeholder="搜索名称或说明">
+      <label class="file-button" for="fileInput">导入 JSON</label>
+      <input id="fileInput" type="file" accept=".json,application/json">
+      <button id="downloadButton" type="button">导出 JSON</button>
+    </div>
+    <div id="searchResults" class="search-results"></div>
+  </header>
+
+  <main>
+    <section class="tree-panel">
+      <div class="panel-head">
+        <div class="panel-title" id="focusTitle">局部树</div>
+        <div class="panel-meta" id="focusMeta">-</div>
+      </div>
+      <div class="tree-scroll">
+        <ul class="tree" id="tree"></ul>
+      </div>
+    </section>
+
+    <aside class="detail-panel">
+      <div class="panel-head">
+        <div class="panel-title">当前节点</div>
+        <div class="panel-meta" id="nodeCount">-</div>
+      </div>
+      <div class="detail-scroll" id="details"></div>
+    </aside>
+  </main>
+
+  <script>
+    const state = {
+      tree: null,
+      focusedId: null,
+      depth: 2,
+      nodes: new Map(),
+      parents: new Map()
+    };
+
+    const els = {
+      summary: document.getElementById('treeSummary'),
+      tree: document.getElementById('tree'),
+      details: document.getElementById('details'),
+      focusTitle: document.getElementById('focusTitle'),
+      focusMeta: document.getElementById('focusMeta'),
+      nodeCount: document.getElementById('nodeCount'),
+      depthInput: document.getElementById('depthInput'),
+      searchInput: document.getElementById('searchInput'),
+      searchResults: document.getElementById('searchResults'),
+      fileInput: document.getElementById('fileInput')
+    };
+
+    document.getElementById('rootButton').addEventListener('click', () => focusNode(state.tree?.id));
+    document.getElementById('parentButton').addEventListener('click', () => {
+      const parent = state.parents.get(state.focusedId);
+      if (parent) focusNode(parent.id);
+    });
+    document.getElementById('downloadButton').addEventListener('click', downloadTree);
+    els.depthInput.addEventListener('input', () => {
+      state.depth = clamp(Number(els.depthInput.value), 1, 8);
+      render();
+    });
+    els.searchInput.addEventListener('input', renderSearch);
+    els.fileInput.addEventListener('change', importTree);
+    document.addEventListener('click', (event) => {
+      if (!event.target.closest('#searchResults') && event.target !== els.searchInput) {
+        els.searchResults.classList.remove('open');
+      }
+    });
+
+    loadTree();
+
+    async function loadTree() {
+      try {
+        const response = await fetch('european-villa-tree.json', { cache: 'no-store' });
+        if (!response.ok) throw new Error(response.statusText);
+        const tree = await response.json();
+        setTree(tree, '已自动读取 european-villa-tree.json');
+      } catch (error) {
+        els.summary.textContent = '未能自动读取 JSON。请通过本地 HTTP 打开，或点击“导入 JSON”。';
+        els.tree.innerHTML = '<li class="empty">等待导入 european-villa-tree.json</li>';
+        els.details.innerHTML = '<div class="empty">暂无节点数据</div>';
+      }
+    }
+
+    function setTree(tree, message) {
+      validateNode(tree);
+      state.tree = tree;
+      state.focusedId = tree.id;
+      rebuildIndex();
+      els.summary.textContent = `${message}。共 ${state.nodes.size} 个节点。`;
+      render();
+    }
+
+    function rebuildIndex() {
+      state.nodes = new Map();
+      state.parents = new Map();
+      walk(state.tree, null, (node, parent) => {
+        state.nodes.set(node.id, node);
+        if (parent) state.parents.set(node.id, parent);
+      });
+    }
+
+    function render() {
+      if (!state.tree) return;
+      const focus = state.nodes.get(state.focusedId) || state.tree;
+      const parent = state.parents.get(focus.id);
+      els.focusTitle.textContent = focus.name;
+      els.focusMeta.textContent = parent ? `显示父节点 + ${state.depth} 层子节点` : `显示根节点 + ${state.depth} 层子节点`;
+      els.nodeCount.textContent = `${state.nodes.size} 个节点`;
+      els.tree.innerHTML = '';
+
+      if (parent) {
+        const li = document.createElement('li');
+        li.appendChild(nodeButton(parent, { context: true }));
+        const ul = document.createElement('ul');
+        ul.appendChild(renderNode(focus, 0));
+        li.appendChild(ul);
+        els.tree.appendChild(li);
+      } else {
+        els.tree.appendChild(renderNode(focus, 0));
+      }
+      renderDetails(focus);
+    }
+
+    function renderNode(node, depth) {
+      const li = document.createElement('li');
+      li.appendChild(nodeButton(node, { focused: node.id === state.focusedId }));
+      const children = Array.isArray(node.children) ? node.children : [];
+      if (children.length && depth < state.depth) {
+        const ul = document.createElement('ul');
+        for (const child of children) ul.appendChild(renderNode(child, depth + 1));
+        li.appendChild(ul);
+      } else if (children.length) {
+        const hidden = document.createElement('div');
+        hidden.className = 'truncated';
+        hidden.textContent = `还有 ${children.length} 个子节点未显示`;
+        li.appendChild(hidden);
+      }
+      return li;
+    }
+
+    function nodeButton(node, options = {}) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `node${options.focused ? ' focused' : ''}${options.context ? ' context' : ''}`;
+      button.addEventListener('click', () => focusNode(node.id));
+      button.innerHTML = `
+        <span class="node-name">${escapeHtml(node.name || node.id)}</span>
+        <span class="node-desc">${escapeHtml(node.description || '')}</span>
+        <span class="badge">${childCount(node)} 子</span>
+      `;
+      return button;
+    }
+
+    function renderDetails(node) {
+      const path = pathTo(node.id);
+      const children = Array.isArray(node.children) ? node.children : [];
+      els.details.innerHTML = '';
+      els.details.appendChild(field('名称', node.name || node.id));
+      els.details.appendChild(field('说明', node.description || ''));
+      els.details.appendChild(field('路径', crumbs(path)));
+      els.details.appendChild(field('节点 ID', node.id));
+      els.details.appendChild(field('直接子节点', childLinks(children)));
+      els.details.appendChild(field('当前节点 JSON', codeBlock(JSON.stringify(node, null, 2))));
+    }
+
+    function field(label, value) {
+      const wrap = document.createElement('div');
+      wrap.className = 'field';
+      const labelEl = document.createElement('div');
+      labelEl.className = 'label';
+      labelEl.textContent = label;
+      const valueEl = document.createElement('div');
+      valueEl.className = 'value';
+      if (value instanceof Node) valueEl.appendChild(value);
+      else valueEl.textContent = value;
+      wrap.append(labelEl, valueEl);
+      return wrap;
+    }
+
+    function crumbs(path) {
+      const wrap = document.createElement('div');
+      wrap.className = 'crumbs';
+      for (const node of path) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'crumb';
+        item.textContent = node.name || node.id;
+        item.addEventListener('click', () => focusNode(node.id));
+        wrap.appendChild(item);
+      }
+      return wrap;
+    }
+
+    function childLinks(children) {
+      const wrap = document.createElement('div');
+      wrap.className = 'children-list';
+      if (!children.length) {
+        wrap.textContent = '无';
+        return wrap;
+      }
+      for (const child of children) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'child-link';
+        button.textContent = `${child.name || child.id} - ${child.description || ''}`;
+        button.addEventListener('click', () => focusNode(child.id));
+        wrap.appendChild(button);
+      }
+      return wrap;
+    }
+
+    function codeBlock(text) {
+      const pre = document.createElement('pre');
+      pre.textContent = text;
+      return pre;
+    }
+
+    function focusNode(id) {
+      if (!id || !state.nodes.has(id)) return;
+      state.focusedId = id;
+      els.searchResults.classList.remove('open');
+      render();
+    }
+
+    function renderSearch() {
+      const query = els.searchInput.value.trim().toLowerCase();
+      els.searchResults.innerHTML = '';
+      if (!query || !state.tree) {
+        els.searchResults.classList.remove('open');
+        return;
+      }
+      const results = [...state.nodes.values()]
+        .filter((node) => [node.id, node.name, node.description].join(' ').toLowerCase().includes(query))
+        .slice(0, 30);
+      if (!results.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty';
+        empty.textContent = '没有匹配节点';
+        els.searchResults.appendChild(empty);
+      }
+      for (const node of results) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'result';
+        button.innerHTML = `<strong>${escapeHtml(node.name || node.id)}</strong><span>${escapeHtml(pathTo(node.id).map((item) => item.name).join(' / '))}</span>`;
+        button.addEventListener('click', () => {
+          els.searchInput.value = '';
+          focusNode(node.id);
+        });
+        els.searchResults.appendChild(button);
+      }
+      els.searchResults.classList.add('open');
+    }
+
+    async function importTree(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        setTree(JSON.parse(text), `已导入 ${file.name}`);
+      } catch (error) {
+        alert(`导入失败：${error.message}`);
+      } finally {
+        event.target.value = '';
+      }
+    }
+
+    function downloadTree() {
+      if (!state.tree) return;
+      const blob = new Blob([JSON.stringify(state.tree, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'european-villa-tree.json';
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function pathTo(id) {
+      const path = [];
+      let node = state.nodes.get(id);
+      while (node) {
+        path.unshift(node);
+        node = state.parents.get(node.id);
+      }
+      return path;
+    }
+
+    function walk(node, parent, visitor) {
+      visitor(node, parent);
+      for (const child of node.children || []) walk(child, node, visitor);
+    }
+
+    function childCount(node) {
+      return Array.isArray(node.children) ? node.children.length : 0;
+    }
+
+    function validateNode(node) {
+      if (!node || typeof node !== 'object') throw new Error('根节点必须是对象。');
+      if (!node.id || !node.name) throw new Error('每个节点都必须包含 id 和 name。');
+      const ids = new Set();
+      walk(node, null, (item) => {
+        if (!item.id || !item.name) throw new Error('每个节点都必须包含 id 和 name。');
+        if (ids.has(item.id)) throw new Error(`重复节点 id：${item.id}`);
+        ids.add(item.id);
+        if (item.children && !Array.isArray(item.children)) throw new Error(`children 必须是数组：${item.id}`);
+      });
+    }
+
+    function clamp(value, min, max) {
+      if (!Number.isFinite(value)) return min;
+      return Math.max(min, Math.min(max, Math.round(value)));
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

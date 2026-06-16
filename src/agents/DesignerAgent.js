@@ -96,6 +96,12 @@ const STYLE_PRESETS = [
       foundation: 'minecraft:stone_bricks',
       wall: 'minecraft:smooth_sandstone',
       trim: 'minecraft:stripped_dark_oak_log',
+      plinth: 'minecraft:stone_bricks',
+      column: 'minecraft:quartz_pillar',
+      belt: 'minecraft:smooth_quartz',
+      windowFrame: 'minecraft:dark_oak_planks',
+      windowSill: 'minecraft:smooth_quartz',
+      eave: 'minecraft:dark_oak_slab',
       floor: 'minecraft:spruce_planks',
       roof: 'minecraft:dark_oak_planks',
       roofAccent: 'minecraft:dark_oak_slab',
@@ -235,12 +241,16 @@ function buildElements(requirement, preset, dimensions, plan, skill) {
     waterFeature: prefs.landscape?.waterFeature === true ||
       requirement.features.includes('水景') ||
       requirement.style === '江南' ||
+      (skill?.skillId === 'european-manor' && requirement.scale === 'large') ||
       hasPlanZone(plan, ['water']) ||
       hasPlanMotif(plan, 'water-courtyard') ||
       (skill?.requiredModules || []).includes('water_feature')
   };
   const balcony = {
-    enabled: prefs.balcony?.enabled === true || requirement.features.includes('阳台') || hasPlanZone(plan, ['balcony'])
+    enabled: prefs.balcony?.enabled === true ||
+      requirement.features.includes('阳台') ||
+      hasPlanZone(plan, ['balcony']) ||
+      (skill?.skillId === 'european-manor' && requirement.floors > 1)
   };
   const chimney = {
     enabled: prefs.chimney?.enabled === true ||
@@ -249,8 +259,9 @@ function buildElements(requirement, preset, dimensions, plan, skill) {
       hasPlanMotif(plan, 'chimney') ||
       (skill?.requiredModules || []).includes('chimney')
   };
+  const europeanVilla = buildEuropeanVillaElements(requirement, dimensions, plan, skill);
 
-  return { wall, floor, door, roof, window, interior, landscape, balcony, chimney };
+  return { wall, floor, door, roof, window, interior, landscape, balcony, chimney, europeanVilla };
 }
 
 function buildPalette(base, elements) {
@@ -275,6 +286,9 @@ function buildModules(requirement, elements, floors, plan, skill) {
   if (elements.interior.enabled) modules.push('furnishing');
   if (['l-shape', 'winged'].includes(planFootprintType(plan))) modules.push('wing');
   if (planFootprintType(plan) === 'courtyard') modules.push('courtyard');
+  if (elements.europeanVilla?.enabled) {
+    modules.push('facade', 'porch', 'columns', 'roof_detail');
+  }
   if (elements.chimney.enabled) modules.push('chimney');
   if (elements.balcony.enabled && floors > 1) modules.push('balcony');
   if (elements.landscape.enabled) modules.push('garden');
@@ -284,6 +298,87 @@ function buildModules(requirement, elements, floors, plan, skill) {
   }
   for (const module of skill?.requiredModules || []) modules.push(module);
   return [...new Set(modules)];
+}
+
+function buildEuropeanVillaElements(requirement, dimensions, plan, skill) {
+  const enabled = skill?.skillId === 'european-manor' || /欧式/.test(requirement.style);
+  if (!enabled) return { enabled: false };
+
+  const wingWidth = clampInt(undefined, 6, 12, clampInt(Math.floor(dimensions.width * 0.3), 6, 12, 8));
+  const wingDepth = clampInt(undefined, 9, Math.max(9, dimensions.depth - 4), clampInt(Math.floor(dimensions.depth * 0.62), 9, dimensions.depth - 2, 13));
+  const porchWidth = clampInt(undefined, 7, 11, dimensions.width >= 25 ? 9 : 7);
+  const porchDepth = clampInt(undefined, 3, 5, dimensions.width >= 25 ? 4 : 3);
+
+  return {
+    enabled: true,
+    site: {
+      orientation: requirement.elementPreferences?.door?.side || 'south',
+      frontGardenDepth: dimensions.gardenDepth,
+      sideSetback: 6,
+      rearSetback: 4,
+      centralAxis: 'front-center'
+    },
+    massing: {
+      symmetry: true,
+      main: {
+        width: dimensions.width,
+        depth: dimensions.depth,
+        floors: requirement.floors
+      },
+      wings: {
+        enabled: planFootprintType(plan) === 'winged',
+        left: true,
+        right: true,
+        width: wingWidth,
+        depth: wingDepth,
+        floors: Math.min(2, requirement.floors)
+      },
+      entryProjection: {
+        enabled: true,
+        width: porchWidth,
+        depth: Math.max(2, porchDepth - 1)
+      }
+    },
+    frame: {
+      plinthHeight: 1,
+      cornerPillars: true,
+      pilasters: true,
+      beltCourses: true,
+      cornice: true,
+      columnMaterial: 'minecraft:quartz_pillar',
+      beltMaterial: 'minecraft:smooth_quartz'
+    },
+    facade: {
+      symmetry: true,
+      frontPriority: 'high',
+      windowRhythm: 'regular',
+      framedWindows: true,
+      centerPediment: true
+    },
+    porch: {
+      enabled: true,
+      width: porchWidth,
+      depth: porchDepth,
+      columns: 4,
+      columnHeight: Math.max(4, dimensions.floorHeight - 1),
+      steps: true,
+      roof: true,
+      lanterns: true
+    },
+    roofDetail: {
+      eaves: true,
+      ridge: true,
+      dormers: requirement.scale === 'large' ? 2 : 1,
+      porchGable: true,
+      separateWingRoofs: true
+    },
+    garden: {
+      formal: true,
+      centralPathWidth: 3,
+      pairedFlowerBeds: true,
+      fountain: requirement.scale === 'large'
+    }
+  };
 }
 
 function countPlannedInteriorZones(plan) {

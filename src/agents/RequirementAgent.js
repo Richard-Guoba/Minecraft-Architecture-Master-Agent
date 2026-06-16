@@ -100,6 +100,8 @@ function collectFeatures(prompt, style, scale) {
     features.add('尖顶');
     features.add('烟囱');
     features.add('对称窗户');
+    features.add('对称立面');
+    features.add('门廊柱子');
   }
   if (style === '江南' || style === '中式') {
     features.add('白墙');

@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runPipeline } from '../src/pipeline.js';
 
-test('generates a Minecraft Java 1.21 datapack in fallback mode', async () => {
+test('runs the PDF construction-method workflow without SkillAgent', async () => {
   const root = path.resolve('.tmp', `architect-test-${Date.now()}`);
   try {
     const result = await runPipeline({
@@ -16,57 +16,62 @@ test('generates a Minecraft Java 1.21 datapack in fallback mode', async () => {
       seed: 1
     });
 
+    assert.equal(result.workflow, 'construction_method_v1');
+    assert.equal(result.validation.ok, true);
+    assert.equal(result.architecture.source, 'fallback');
+    assert.equal(result.architecture.footprint, 'winged');
+    assert.equal(result.architecture.volumes.length >= 4, true);
+    for (const volume of result.architecture.volumes) {
+      assert.ok(volume.scale, 'volume should use relative scale');
+      assert.ok(volume.placement, 'volume should use semantic placement');
+      assert.equal(Object.hasOwn(volume, 'x'), false);
+      assert.equal(Object.hasOwn(volume, 'y'), false);
+      assert.equal(Object.hasOwn(volume, 'z'), false);
+    }
+
+    assert.equal(result.topology.source, 'fallback');
+    assert.ok(result.topology.nodes.some((node) => node.type === 'living'));
+    assert.ok(result.topology.edges.length > 0);
+    assert.equal(result.runtime, 'nodejs');
+    assert.equal(result.geometry.engine, 'pure JavaScript CSG + BSP + A* voxel engine');
+    assert.ok(result.geometry.csg.solidCellCount > 0);
+    assert.ok(result.geometry.bsp.roomCount >= 8);
+    assert.equal(result.geometry.pathfinder.algorithm, 'A*');
+    assert.ok(result.geometry.pathfinder.openedDoorCount > 0);
+    assert.equal(result.blueprint.constraints.some((item) => /SkillAgent/.test(item)), true);
+    assert.equal(result.blueprint.constraints.some((item) => /Python is not required/.test(item)), true);
+
     const pack = JSON.parse(await fs.readFile(path.join(result.artifacts.datapackDir, 'pack.mcmeta'), 'utf8'));
     assert.equal(pack.pack.pack_format, 48);
 
     const buildPath = path.join(result.artifacts.datapackDir, 'data', 'architect', 'function', 'build.mcfunction');
+    const runPath = path.join(result.artifacts.datapackDir, 'data', 'architect', 'function', 'run.mcfunction');
     const build = await fs.readFile(buildPath, 'utf8');
-    assert.match(build, /fill ~ ~ ~/);
+    const run = await fs.readFile(runPath, 'utf8');
+    assert.match(build, /^fill /m);
     assert.match(build, /minecraft:smooth_sandstone/);
     assert.match(build, /minecraft:dark_oak_door/);
     assert.doesNotMatch(build, /^\//m);
-
-    await assert.rejects(
-      fs.access(path.join(result.artifacts.datapackDir, 'data', 'architect', 'functions')),
-      /ENOENT/
-    );
-
-    assert.equal(result.validation.ok, true);
-    assert.equal(result.skill.skillId, 'european-manor');
-    assert.equal(result.plan.footprint.type, 'winged');
-    assert.ok(result.critique.score > 0);
-    assert.equal(result.repair.applied, false);
-    for (const module of ['foundation', 'walls', 'floors', 'roof', 'windows', 'door', 'chimney', 'garden']) {
-      assert.ok(result.blueprint.modules[module], `missing module ${module}`);
-    }
-    for (const module of ['interior', 'stairs', 'lighting', 'furnishing']) {
-      assert.ok(result.blueprint.modules[module], `missing enriched module ${module}`);
-    }
-    assert.ok(result.blueprint.modules.wing, 'missing planned wing module');
-    assert.equal(result.design.elements.wall.material, 'minecraft:smooth_sandstone');
-    assert.equal(result.design.elements.roof.style, 'gabled');
-    assert.equal(result.design.plan.footprint.type, 'winged');
-    assert.equal(result.blueprint.version, 3);
-    assert.equal(result.blueprint.design.plan.footprint.type, 'winged');
-    assert.ok(result.blueprint.agents.shell.interiorSpaces.length >= 1);
-    assert.ok(result.blueprint.agents.shell.extensions.length >= 1);
-    assert.ok(result.blueprint.agents.layout.rooms.length >= 2);
-    assert.ok(result.blueprint.agents.furnishing.placed > 0);
-    assert.equal(result.blueprint.agents.garden.enabled, true);
+    assert.match(run, /function architect:clear/);
+    assert.match(run, /function architect:build/);
+    assert.match(run, /\/reload only refreshes/);
 
     const report = await fs.readFile(result.artifacts.report, 'utf8');
-    assert.match(report, /Minecraft Java 1\.21/);
-    assert.match(report, /\/function architect:build/);
-    assert.match(report, /SkillRouterAgent 来源/);
-    assert.match(report, /CriticAgent 来源/);
-    assert.match(report, /PlannerAgent 来源/);
-    assert.match(report, /footprint：winged/);
+    assert.match(report, /PDF 流程对齐/);
+    assert.match(report, /SkillAgent：未使用/);
+    assert.match(report, /Python：未使用/);
+    assert.doesNotMatch(report, /SkillRouterAgent 来源/);
+    assert.match(report, /CSG：体块/);
+    assert.match(report, /BSP：房间/);
+    assert.match(report, /A\*：开洞/);
+    assert.match(report, /\/function architect:run/);
+    assert.match(report, /只刷新数据包，不会建造/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test('honors configurable element size, position, and material hints', async () => {
+test('honors configurable size, position, and material hints in the new workflow', async () => {
   const root = path.resolve('.tmp', `architect-config-test-${Date.now()}`);
   try {
     const result = await runPipeline({
@@ -79,27 +84,18 @@ test('honors configurable element size, position, and material hints', async () 
     });
 
     assert.equal(result.validation.ok, true);
-    assert.equal(result.skill.skillId, 'modern-villa');
-    assert.equal(result.plan.footprint.type, 'l-shape');
-    assert.ok(result.critique.score > 0);
-    assert.equal(result.design.dimensions.width, 31);
-    assert.equal(result.design.dimensions.depth, 17);
-    assert.equal(result.design.elements.wall.material, 'minecraft:white_concrete');
-    assert.equal(result.design.elements.floor.material, 'minecraft:quartz_block');
-    assert.equal(result.design.elements.window.width, 4);
-    assert.equal(result.design.elements.window.height, 3);
-    assert.equal(result.design.elements.door.side, 'east');
-    assert.equal(result.design.elements.door.material, 'minecraft:iron_door');
-    assert.equal(result.design.elements.roof.style, 'flat');
-
-    for (const module of ['interior', 'stairs', 'lighting', 'furnishing']) {
-      assert.ok(result.blueprint.modules[module], `missing module ${module}`);
-    }
-    assert.ok(result.blueprint.modules.wing, 'missing planned l-shape wing module');
-    assert.ok(result.blueprint.agents.shell.interiorSpaces.length >= 2);
-    assert.ok(result.blueprint.agents.shell.extensions.length >= 1);
-    assert.ok(result.blueprint.agents.layout.floorOpenings.length >= 1);
-    assert.ok(result.blueprint.agents.furnishing.rooms.length >= 2);
+    assert.equal(result.architecture.style, '现代');
+    assert.equal(result.architecture.footprint, 'l-shape');
+    assert.equal(result.buildSpec.width, 31);
+    assert.equal(result.buildSpec.depth, 17);
+    assert.equal(result.buildSpec.door_side, 'east');
+    assert.equal(result.architecture.materials.wall, 'minecraft:white_concrete');
+    assert.equal(result.architecture.materials.floor, 'minecraft:quartz_block');
+    assert.equal(result.architecture.materials.glass, 'minecraft:glass');
+    assert.equal(result.architecture.materials.door, 'minecraft:iron_door');
+    assert.equal(result.architecture.roof_rules.style, 'flat');
+    assert.ok(result.architecture.volumes.some((volume) => volume.id === 'glass-wing'));
+    assert.ok(result.topology.nodes.some((node) => node.type === 'stairs'));
 
     const buildPath = path.join(result.artifacts.datapackDir, 'data', 'architect', 'function', 'build.mcfunction');
     const build = await fs.readFile(buildPath, 'utf8');
@@ -107,17 +103,12 @@ test('honors configurable element size, position, and material hints', async () 
     assert.match(build, /minecraft:quartz_block/);
     assert.match(build, /minecraft:glass/);
     assert.match(build, /minecraft:iron_door\[facing=east/);
-
-    const report = await fs.readFile(result.artifacts.report, 'utf8');
-    assert.match(report, /可配置建筑元素/);
-    assert.match(report, /蓝图子 Agent 交付/);
-    assert.match(report, /位置 east-center/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test('installs auto-build datapack into a Minecraft save', async () => {
+test('installs datapack into a Minecraft save with a single run function', async () => {
   const root = path.resolve('.tmp', `architect-install-test-${Date.now()}`);
   const minecraftDir = path.join(root, 'mc');
   const worldDir = path.join(minecraftDir, 'saves', 'DemoWorld');
@@ -140,17 +131,47 @@ test('installs auto-build datapack into a Minecraft save', async () => {
     await fs.access(path.join(installed, 'pack.mcmeta'));
 
     const functionDir = path.join(installed, 'data', 'architect', 'function');
-    const tagDir = path.join(installed, 'data', 'minecraft', 'tags', 'function');
-    const autoBuild = await fs.readFile(path.join(functionDir, 'auto_build.mcfunction'), 'utf8');
-    const tick = await fs.readFile(path.join(functionDir, 'tick.mcfunction'), 'utf8');
-    const loadTag = JSON.parse(await fs.readFile(path.join(tagDir, 'load.json'), 'utf8'));
-    const tickTag = JSON.parse(await fs.readFile(path.join(tagDir, 'tick.json'), 'utf8'));
+    const run = await fs.readFile(path.join(functionDir, 'run.mcfunction'), 'utf8');
+    assert.match(run, /function architect:clear/);
+    assert.match(run, /function architect:build/);
+    await assert.rejects(
+      fs.access(path.join(functionDir, 'auto_build.mcfunction')),
+      /ENOENT/
+    );
+    await assert.rejects(
+      fs.access(path.join(functionDir, 'tick.mcfunction')),
+      /ENOENT/
+    );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
 
-    assert.match(autoBuild, /function architect:clear/);
-    assert.match(autoBuild, /function architect:build/);
-    assert.match(tick, /as @a\[limit=1,sort=nearest\] at @s run function architect:auto_build/);
-    assert.deepEqual(loadTag.values, ['architect:load']);
-    assert.deepEqual(tickTag.values, ['architect:tick']);
+test('installs directly into an explicit datapacks directory', async () => {
+  const root = path.resolve('.tmp', `architect-datapacks-dir-test-${Date.now()}`);
+  const datapacksDir = path.join(root, 'saves', 'BuildLab', 'datapacks');
+  try {
+    await fs.mkdir(datapacksDir, { recursive: true });
+    const result = await runPipeline({
+      prompt: '建一个欧式大房子',
+      mode: 'mock',
+      mcVersion: '1.21',
+      outRoot: path.join(root, 'out'),
+      datapacksDir,
+      autoBuild: true,
+      cwd: process.cwd(),
+      seed: 1
+    });
+
+    const installed = path.join(datapacksDir, 'architect_datapack');
+    assert.equal(result.artifacts.installedDatapackDir, installed);
+    await fs.access(path.join(installed, 'pack.mcmeta'));
+    await fs.access(path.join(installed, 'data', 'architect', 'function', 'build.mcfunction'));
+    await fs.access(path.join(installed, 'data', 'architect', 'function', 'run.mcfunction'));
+    await assert.rejects(
+      fs.access(path.join(installed, 'data', 'minecraft', 'tags', 'function', 'load.json')),
+      /ENOENT/
+    );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

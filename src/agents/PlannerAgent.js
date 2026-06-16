@@ -140,8 +140,15 @@ function buildMotifs(style, features, hasWater, skill) {
   const motifs = new Set();
   if (style === '欧式') {
     motifs.add('symmetrical-facade');
+    motifs.add('central-axis');
+    motifs.add('stone-plinth');
+    motifs.add('pilasters');
+    motifs.add('columned-porch');
+    motifs.add('framed-windows');
+    motifs.add('layered-gabled-roof');
     motifs.add('chimney');
     motifs.add('side-wing');
+    motifs.add('formal-garden');
   }
   if (style === '现代') {
     motifs.add('flat-roof');

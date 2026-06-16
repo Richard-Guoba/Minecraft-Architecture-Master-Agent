@@ -10,10 +10,11 @@ export async function writeJson(filePath, data) {
 
 export function createTimestamp(date = new Date()) {
   const pad = (value) => String(value).padStart(2, '0');
+  const padMs = (value) => String(value).padStart(3, '0');
   return [
     date.getFullYear(),
     pad(date.getMonth() + 1),
     pad(date.getDate()),
-    `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
+    `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}${padMs(date.getMilliseconds())}`
   ].join('-');
 }

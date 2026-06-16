@@ -140,6 +140,8 @@ export function renderPreviewHtml({ prompt, design, blueprint, validation }) {
       white_concrete: '#e8ecec',
       light_gray_concrete: '#a7adb0',
       quartz_block: '#ede7d0',
+      smooth_quartz: '#f1eee4',
+      quartz_pillar: '#ece6d6',
       stripped_spruce_log: '#8d6841',
       stripped_dark_oak_log: '#6b4326',
       birch_planks: '#d7c28a',
@@ -178,11 +180,16 @@ export function renderPreviewHtml({ prompt, design, blueprint, validation }) {
       oak_pressure_plate: '#b8874f',
       red_carpet: '#a83232',
       green_carpet: '#427a3b',
+      blue_carpet: '#355f9f',
+      white_carpet: '#f2f2e8',
       light_gray_carpet: '#b6b8b8',
       spruce_stairs: '#8a5b32',
+      stone_brick_stairs: '#7e8589',
       quartz_stairs: '#ede7d0',
       dark_oak_fence: '#3f2618',
-      campfire: '#df7b32'
+      campfire: '#df7b32',
+      flower_pot: '#8f4c32',
+      cauldron: '#555a5d'
     };
 
     const blocks = expandBlocks(data.blueprint.operations);

@@ -1,0 +1,1108 @@
+{
+  "id": "european-villa",
+  "name": "欧式别墅字段树",
+  "description": "围绕中轴对称、主体体块、侧翼、门廊柱子、坡屋顶、石材立面、规则窗户和正式花园组织的参数层级。",
+  "children": [
+    {
+      "id": "site",
+      "name": "场地层",
+      "description": "决定建筑朝向、地块范围、前院后院和入口轴线。",
+      "children": [
+        {
+          "id": "site-orientation",
+          "name": "朝向",
+          "description": "确定正门朝向，默认南向。",
+          "children": [
+            {
+              "id": "site-front-side",
+              "name": "正面方向",
+              "description": "正立面和门廊所在方向。"
+            },
+            {
+              "id": "site-build-growth",
+              "name": "展开方向",
+              "description": "建筑相对玩家起点向东、向南或其他方向展开。"
+            }
+          ]
+        },
+        {
+          "id": "site-plot",
+          "name": "地块尺寸",
+          "description": "控制房屋、花园和留白的总范围。",
+          "children": [
+            {
+              "id": "site-plot-width",
+              "name": "地块宽度",
+              "description": "左右方向可用空间。"
+            },
+            {
+              "id": "site-plot-depth",
+              "name": "地块深度",
+              "description": "前后方向可用空间。"
+            },
+            {
+              "id": "site-side-setback",
+              "name": "左右留白",
+              "description": "房子两侧和边界之间的空地。"
+            },
+            {
+              "id": "site-rear-setback",
+              "name": "后院留白",
+              "description": "主体后方保留的空间。"
+            }
+          ]
+        },
+        {
+          "id": "site-axis",
+          "name": "中轴线",
+          "description": "正门、门廊、主路、喷泉和主楼中心对齐的轴线。",
+          "children": [
+            {
+              "id": "site-axis-x",
+              "name": "轴线位置",
+              "description": "通常等于主楼宽度中心。"
+            },
+            {
+              "id": "site-axis-elements",
+              "name": "轴线元素",
+              "description": "门廊、道路、灯柱、喷泉等需要对齐的元素。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "massing",
+      "name": "总体体块层",
+      "description": "决定主楼、侧翼、入口凸出和塔楼等大形。",
+      "children": [
+        {
+          "id": "massing-main",
+          "name": "主楼",
+          "description": "欧式别墅的核心体块，承载主要房间和正立面。",
+          "children": [
+            {
+              "id": "massing-main-size",
+              "name": "主楼尺寸",
+              "description": "主楼宽度、深度和层数。"
+            },
+            {
+              "id": "massing-main-position",
+              "name": "主楼位置",
+              "description": "主楼在地块中的位置，通常居中并靠后。"
+            },
+            {
+              "id": "massing-main-proportion",
+              "name": "主楼比例",
+              "description": "宽深比和高度比例，避免过扁或过窄。"
+            }
+          ]
+        },
+        {
+          "id": "massing-wings",
+          "name": "左右侧翼",
+          "description": "增加别墅体量和层次，欧式大房子通常左右对称。",
+          "children": [
+            {
+              "id": "massing-left-wing",
+              "name": "左侧翼",
+              "description": "接在主楼左侧的附属体块。"
+            },
+            {
+              "id": "massing-right-wing",
+              "name": "右侧翼",
+              "description": "接在主楼右侧的附属体块。"
+            },
+            {
+              "id": "massing-wing-depth",
+              "name": "侧翼深度",
+              "description": "侧翼前后长度，决定侧翼是否突出。"
+            },
+            {
+              "id": "massing-wing-floors",
+              "name": "侧翼层数",
+              "description": "侧翼可为一层、两层或低于主楼。"
+            },
+            {
+              "id": "massing-wing-connectors",
+              "name": "侧翼连接口",
+              "description": "主楼和侧翼之间的门洞或走廊。"
+            }
+          ]
+        },
+        {
+          "id": "massing-entry-projection",
+          "name": "入口凸出体",
+          "description": "正门附近向外突出的体块，用于强调入口。",
+          "children": [
+            {
+              "id": "massing-entry-width",
+              "name": "入口凸出宽度",
+              "description": "通常比正门和门廊略宽。"
+            },
+            {
+              "id": "massing-entry-depth",
+              "name": "入口凸出深度",
+              "description": "从正立面向前伸出的距离。"
+            },
+            {
+              "id": "massing-entry-height",
+              "name": "入口凸出高度",
+              "description": "可与主楼同高，也可只到二层阳台。"
+            }
+          ]
+        },
+        {
+          "id": "massing-towers",
+          "name": "塔楼候选",
+          "description": "后续可加入角塔、小尖塔或楼梯塔增强轮廓。",
+          "children": [
+            {
+              "id": "massing-corner-tower",
+              "name": "角塔",
+              "description": "放在主楼角部或侧翼端部的竖向体块。"
+            },
+            {
+              "id": "massing-stair-tower",
+              "name": "楼梯塔",
+              "description": "容纳楼梯或作为外观装饰的高体块。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "frame",
+      "name": "结构框架层",
+      "description": "用地基、柱、腰线和檐口建立视觉结构。",
+      "children": [
+        {
+          "id": "frame-foundation",
+          "name": "地基台座",
+          "description": "让房子底部抬高并有石材边界。",
+          "children": [
+            {
+              "id": "frame-foundation-height",
+              "name": "台座高度",
+              "description": "地基高出地面的层数。"
+            },
+            {
+              "id": "frame-foundation-overhang",
+              "name": "台座外扩",
+              "description": "地基比墙体向外多出的格数。"
+            },
+            {
+              "id": "frame-foundation-material",
+              "name": "台座材质",
+              "description": "常用 stone_bricks 或 smooth_stone。"
+            }
+          ]
+        },
+        {
+          "id": "frame-corner-columns",
+          "name": "墙角石柱",
+          "description": "每个体块四角的竖向装饰柱。",
+          "children": [
+            {
+              "id": "frame-corner-column-material",
+              "name": "角柱材质",
+              "description": "常用 quartz_pillar、stone_bricks 或深色木。"
+            },
+            {
+              "id": "frame-corner-column-height",
+              "name": "角柱高度",
+              "description": "从地基延伸到檐口或屋顶下沿。"
+            }
+          ]
+        },
+        {
+          "id": "frame-belt-courses",
+          "name": "楼层腰线",
+          "description": "一层和二层之间绕一圈的横向装饰线。",
+          "children": [
+            {
+              "id": "frame-belt-y",
+              "name": "腰线高度",
+              "description": "通常等于第一层高度加一。"
+            },
+            {
+              "id": "frame-belt-material",
+              "name": "腰线材质",
+              "description": "常用 smooth_quartz 或 stone_bricks。"
+            }
+          ]
+        },
+        {
+          "id": "frame-cornice",
+          "name": "檐口线",
+          "description": "屋顶下方的横向收边，增强顶部层次。",
+          "children": [
+            {
+              "id": "frame-cornice-y",
+              "name": "檐口高度",
+              "description": "通常等于墙体最高处。"
+            },
+            {
+              "id": "frame-cornice-overhang",
+              "name": "檐口外伸",
+              "description": "檐口比墙体外扩的格数。"
+            }
+          ]
+        },
+        {
+          "id": "frame-pilasters",
+          "name": "正立面壁柱",
+          "description": "正面墙上的竖向装饰，形成立面节奏。",
+          "children": [
+            {
+              "id": "frame-pilaster-count",
+              "name": "壁柱数量",
+              "description": "正立面放置几组壁柱。"
+            },
+            {
+              "id": "frame-pilaster-spacing",
+              "name": "壁柱间距",
+              "description": "壁柱之间的水平距离。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "floors-walls",
+      "name": "楼层与墙体层",
+      "description": "决定层高、楼板、外墙、内墙和材料。",
+      "children": [
+        {
+          "id": "floor-levels",
+          "name": "楼层设置",
+          "description": "层数、层高、墙体总高度和楼板高度。",
+          "children": [
+            {
+              "id": "floor-count",
+              "name": "层数",
+              "description": "欧式别墅默认两层，可扩展三层。"
+            },
+            {
+              "id": "floor-height",
+              "name": "层高",
+              "description": "每层内部可用高度。"
+            },
+            {
+              "id": "floor-slab-y",
+              "name": "楼板高度",
+              "description": "每层楼板所在的 y 坐标。"
+            }
+          ]
+        },
+        {
+          "id": "wall-exterior",
+          "name": "外墙",
+          "description": "主楼和侧翼的围护墙体。",
+          "children": [
+            {
+              "id": "wall-material",
+              "name": "外墙主材",
+              "description": "欧式常用 smooth_sandstone、white_concrete 或 quartz。"
+            },
+            {
+              "id": "wall-thickness",
+              "name": "墙厚",
+              "description": "一格或两格厚，影响室内空间。"
+            },
+            {
+              "id": "wall-base-band",
+              "name": "墙底石材带",
+              "description": "外墙底部的石材装饰。"
+            }
+          ]
+        },
+        {
+          "id": "floor-materials",
+          "name": "地板材质",
+          "description": "不同楼层和房间可使用不同地板。",
+          "children": [
+            {
+              "id": "floor-main-material",
+              "name": "主地板",
+              "description": "默认 spruce_planks 或 quartz_block。"
+            },
+            {
+              "id": "floor-hall-material",
+              "name": "大厅地板",
+              "description": "门厅和客厅可用更亮的石材。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "facade",
+      "name": "立面装饰层",
+      "description": "决定正立面、侧立面和背立面的装饰密度。",
+      "children": [
+        {
+          "id": "facade-symmetry",
+          "name": "对称规则",
+          "description": "欧式正立面优先沿中轴对称。",
+          "children": [
+            {
+              "id": "facade-axis-align",
+              "name": "中轴对齐",
+              "description": "门、阳台、山墙和主路对齐。"
+            },
+            {
+              "id": "facade-left-right-balance",
+              "name": "左右平衡",
+              "description": "左右窗户、柱子、花坛尽量成对出现。"
+            }
+          ]
+        },
+        {
+          "id": "facade-priority",
+          "name": "立面优先级",
+          "description": "正面细节最多，侧面次之，背面可简化。",
+          "children": [
+            {
+              "id": "facade-front",
+              "name": "正立面",
+              "description": "门廊、柱子、阳台、窗框和山墙集中出现。"
+            },
+            {
+              "id": "facade-side",
+              "name": "侧立面",
+              "description": "保持窗户和腰线，但装饰少于正面。"
+            },
+            {
+              "id": "facade-back",
+              "name": "背立面",
+              "description": "满足采光和结构完整即可。"
+            }
+          ]
+        },
+        {
+          "id": "facade-ornaments",
+          "name": "装饰构件",
+          "description": "窗台、窗楣、壁柱、浅凹槽和山墙。",
+          "children": [
+            {
+              "id": "facade-window-sill",
+              "name": "窗台",
+              "description": "窗户下方一格的横向装饰。"
+            },
+            {
+              "id": "facade-window-head",
+              "name": "窗楣",
+              "description": "窗户上方的横向装饰或小屋檐。"
+            },
+            {
+              "id": "facade-pediment",
+              "name": "中央山墙",
+              "description": "正门上方的三角形或阶梯式墙面重点。"
+            },
+            {
+              "id": "facade-wall-recess",
+              "name": "墙面浅凹槽",
+              "description": "通过局部替换材质模拟墙面分段。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "porch-columns",
+      "name": "门廊与柱子层",
+      "description": "强化正门入口，形成欧式别墅的第一视觉重点。",
+      "children": [
+        {
+          "id": "porch-platform",
+          "name": "门廊平台",
+          "description": "门前的平台、台阶和地基。",
+          "children": [
+            {
+              "id": "porch-width",
+              "name": "门廊宽度",
+              "description": "通常为 7 到 11 格。"
+            },
+            {
+              "id": "porch-depth",
+              "name": "门廊深度",
+              "description": "通常为 3 到 5 格。"
+            },
+            {
+              "id": "porch-steps",
+              "name": "台阶",
+              "description": "连接主路和门廊平台。"
+            }
+          ]
+        },
+        {
+          "id": "porch-column-set",
+          "name": "门廊柱子",
+          "description": "支撑顶棚并制造气派入口。",
+          "children": [
+            {
+              "id": "porch-column-count",
+              "name": "柱子数量",
+              "description": "常见 2 根或 4 根。"
+            },
+            {
+              "id": "porch-column-height",
+              "name": "柱子高度",
+              "description": "通常接近一层高度。"
+            },
+            {
+              "id": "porch-column-material",
+              "name": "柱子材质",
+              "description": "常用 quartz_pillar。"
+            }
+          ]
+        },
+        {
+          "id": "porch-roof",
+          "name": "门廊顶棚",
+          "description": "柱子上方的顶棚或小坡顶。",
+          "children": [
+            {
+              "id": "porch-canopy",
+              "name": "平顶顶棚",
+              "description": "简单稳定的门廊顶部。"
+            },
+            {
+              "id": "porch-gable",
+              "name": "小三角顶",
+              "description": "后续可加的欧式三角门头。"
+            },
+            {
+              "id": "porch-lanterns",
+              "name": "门廊灯",
+              "description": "门廊两侧的灯笼或发光方块。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "windows",
+      "name": "窗户层",
+      "description": "决定窗户尺寸、节奏、窗框、窗台和特殊窗。",
+      "children": [
+        {
+          "id": "window-pattern",
+          "name": "窗户排布",
+          "description": "控制窗户是否对称、间距和避让规则。",
+          "children": [
+            {
+              "id": "window-spacing",
+              "name": "窗间距",
+              "description": "相邻窗户之间的水平距离。"
+            },
+            {
+              "id": "window-floor-align",
+              "name": "上下对齐",
+              "description": "二层窗户和一层窗户尽量对齐。"
+            },
+            {
+              "id": "window-avoid-door",
+              "name": "避让门廊",
+              "description": "窗户不能覆盖正门、阳台门和柱子。"
+            }
+          ]
+        },
+        {
+          "id": "window-shape",
+          "name": "窗户形态",
+          "description": "不同房间可以使用不同窗型。",
+          "children": [
+            {
+              "id": "window-standard",
+              "name": "标准窗",
+              "description": "普通房间使用的 2 到 3 格宽窗。"
+            },
+            {
+              "id": "window-tall",
+              "name": "竖长窗",
+              "description": "楼梯间或门厅可用的高窗。"
+            },
+            {
+              "id": "window-large-living",
+              "name": "客厅大窗",
+              "description": "客厅正面或侧面的大采光窗。"
+            },
+            {
+              "id": "window-attic",
+              "name": "阁楼小窗",
+              "description": "屋顶或山墙上的小窗。"
+            }
+          ]
+        },
+        {
+          "id": "window-trim",
+          "name": "窗框装饰",
+          "description": "玻璃之外的窗框、窗台和上沿。",
+          "children": [
+            {
+              "id": "window-frame-material",
+              "name": "窗框材质",
+              "description": "常用 dark_oak_planks 或 quartz。"
+            },
+            {
+              "id": "window-sill-material",
+              "name": "窗台材质",
+              "description": "窗下横条材质。"
+            },
+            {
+              "id": "window-head-material",
+              "name": "窗楣材质",
+              "description": "窗上横条或小屋檐材质。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "roof",
+      "name": "屋顶层",
+      "description": "决定主屋顶、侧翼屋顶、门廊屋顶、屋檐、屋脊和老虎窗。",
+      "children": [
+        {
+          "id": "roof-main",
+          "name": "主屋顶",
+          "description": "覆盖主楼的大屋顶。",
+          "children": [
+            {
+              "id": "roof-main-type",
+              "name": "屋顶类型",
+              "description": "双坡、四坡或更复杂组合。"
+            },
+            {
+              "id": "roof-main-height",
+              "name": "屋顶高度",
+              "description": "决定屋顶坡度和整体气势。"
+            },
+            {
+              "id": "roof-main-material",
+              "name": "屋顶材质",
+              "description": "常用 dark_oak_planks 或 deepslate_tiles。"
+            }
+          ]
+        },
+        {
+          "id": "roof-wing",
+          "name": "侧翼屋顶",
+          "description": "左右侧翼各自独立的屋顶。",
+          "children": [
+            {
+              "id": "roof-wing-height",
+              "name": "侧翼屋顶高度",
+              "description": "通常略低于主屋顶。"
+            },
+            {
+              "id": "roof-wing-overhang",
+              "name": "侧翼屋檐",
+              "description": "侧翼屋顶向外伸出一格或两格。"
+            }
+          ]
+        },
+        {
+          "id": "roof-detail",
+          "name": "屋顶细节",
+          "description": "屋脊、屋檐、老虎窗和烟囱穿出点。",
+          "children": [
+            {
+              "id": "roof-ridge",
+              "name": "屋脊",
+              "description": "屋顶最高处的线性装饰。"
+            },
+            {
+              "id": "roof-eaves",
+              "name": "屋檐",
+              "description": "屋顶边缘比墙体外伸的部分。"
+            },
+            {
+              "id": "roof-dormers",
+              "name": "老虎窗",
+              "description": "屋顶坡面上的小窗和小屋顶。"
+            },
+            {
+              "id": "roof-chimney-hole",
+              "name": "烟囱穿出点",
+              "description": "烟囱穿过屋顶的位置。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "attachments",
+      "name": "楼梯阳台烟囱层",
+      "description": "处理楼梯、阳台、烟囱和壁炉等附属构件。",
+      "children": [
+        {
+          "id": "stairs",
+          "name": "楼梯",
+          "description": "连接一层和二层的主要交通构件。",
+          "children": [
+            {
+              "id": "stairs-position",
+              "name": "楼梯位置",
+              "description": "默认靠近门厅一侧，避免挡住入口。"
+            },
+            {
+              "id": "stairs-width",
+              "name": "楼梯宽度",
+              "description": "一格或两格宽。"
+            },
+            {
+              "id": "stairs-opening",
+              "name": "楼板开洞",
+              "description": "二层楼板需要为楼梯留出通道。"
+            },
+            {
+              "id": "stairs-railing",
+              "name": "楼梯栏杆",
+              "description": "沿楼梯侧边放置栅栏。"
+            }
+          ]
+        },
+        {
+          "id": "balcony",
+          "name": "阳台",
+          "description": "通常放在二层正面中央，和门廊对齐。",
+          "children": [
+            {
+              "id": "balcony-position",
+              "name": "阳台位置",
+              "description": "默认在正面中轴线上。"
+            },
+            {
+              "id": "balcony-size",
+              "name": "阳台尺寸",
+              "description": "阳台宽度和向外伸出深度。"
+            },
+            {
+              "id": "balcony-railing",
+              "name": "阳台栏杆",
+              "description": "使用 fence 或 iron_bars。"
+            },
+            {
+              "id": "balcony-door",
+              "name": "阳台门",
+              "description": "二层连接阳台的双开门或普通门。"
+            }
+          ]
+        },
+        {
+          "id": "chimney",
+          "name": "烟囱",
+          "description": "欧式别墅的重要识别元素。",
+          "children": [
+            {
+              "id": "chimney-position",
+              "name": "烟囱位置",
+              "description": "通常放在屋顶后侧或偏侧面。"
+            },
+            {
+              "id": "chimney-height",
+              "name": "烟囱高度",
+              "description": "高出屋顶三到五格。"
+            },
+            {
+              "id": "chimney-material",
+              "name": "烟囱材质",
+              "description": "常用 bricks。"
+            },
+            {
+              "id": "chimney-cap",
+              "name": "烟囱帽",
+              "description": "烟囱顶部加宽或放 campfire。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "interior",
+      "name": "室内空间层",
+      "description": "决定房间类型、相邻关系、门洞、走廊、家具和照明。",
+      "children": [
+        {
+          "id": "interior-floor-1",
+          "name": "一层空间",
+          "description": "公共空间为主，包括门厅、客厅、餐厅、厨房和楼梯间。",
+          "children": [
+            {
+              "id": "room-entry",
+              "name": "门厅",
+              "description": "连接正门、客厅和楼梯。"
+            },
+            {
+              "id": "room-living",
+              "name": "客厅",
+              "description": "一层核心公共空间，可放壁炉和座位。"
+            },
+            {
+              "id": "room-dining",
+              "name": "餐厅",
+              "description": "靠近客厅和厨房。"
+            },
+            {
+              "id": "room-kitchen",
+              "name": "厨房",
+              "description": "放炉子、工作台、水槽和储物。"
+            },
+            {
+              "id": "room-stairs",
+              "name": "楼梯间",
+              "description": "靠近门厅，连接二层。"
+            },
+            {
+              "id": "room-lounge",
+              "name": "侧厅",
+              "description": "可作为会客、壁炉或休闲空间。"
+            }
+          ]
+        },
+        {
+          "id": "interior-floor-2",
+          "name": "二层空间",
+          "description": "私密空间为主，包括卧室、书房、走廊和阳台入口。",
+          "children": [
+            {
+              "id": "room-corridor",
+              "name": "走廊",
+              "description": "连接卧室、书房和阳台。"
+            },
+            {
+              "id": "room-main-bedroom",
+              "name": "主卧",
+              "description": "较大的二层卧室。"
+            },
+            {
+              "id": "room-secondary-bedroom",
+              "name": "次卧",
+              "description": "较小卧室，可重复出现。"
+            },
+            {
+              "id": "room-study",
+              "name": "书房",
+              "description": "靠窗并放书架和讲台。"
+            },
+            {
+              "id": "room-balcony-entry",
+              "name": "阳台入口",
+              "description": "二层中轴空间连接阳台。"
+            }
+          ]
+        },
+        {
+          "id": "interior-relations",
+          "name": "空间关系",
+          "description": "房间之间的连接和功能邻接。",
+          "children": [
+            {
+              "id": "relation-entry-living",
+              "name": "门厅连接客厅",
+              "description": "进入房子后应先到公共空间。"
+            },
+            {
+              "id": "relation-living-dining",
+              "name": "客厅连接餐厅",
+              "description": "公共空间之间保持连通。"
+            },
+            {
+              "id": "relation-dining-kitchen",
+              "name": "餐厅靠近厨房",
+              "description": "方便功能动线。"
+            },
+            {
+              "id": "relation-stairs-corridor",
+              "name": "楼梯连接走廊",
+              "description": "上楼后进入二层走廊。"
+            }
+          ]
+        },
+        {
+          "id": "interior-furnishing",
+          "name": "家具与照明",
+          "description": "每个房间至少放置基本家具和灯光。",
+          "children": [
+            {
+              "id": "furnishing-fireplace",
+              "name": "壁炉",
+              "description": "客厅或侧厅的欧式重点家具。"
+            },
+            {
+              "id": "furnishing-bed",
+              "name": "床和箱子",
+              "description": "卧室基础家具。"
+            },
+            {
+              "id": "furnishing-kitchen-set",
+              "name": "厨房套件",
+              "description": "熔炉、工作台、炼药锅和箱子。"
+            },
+            {
+              "id": "furnishing-study-set",
+              "name": "书房套件",
+              "description": "书架、讲台和座椅。"
+            },
+            {
+              "id": "furnishing-lighting",
+              "name": "照明",
+              "description": "房间中心或天花板位置的灯。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "garden",
+      "name": "花园与道路层",
+      "description": "决定前院、主路、花坛、喷泉、树篱和灯柱。",
+      "children": [
+        {
+          "id": "garden-axis",
+          "name": "中轴道路",
+          "description": "从地块入口到门廊的主路。",
+          "children": [
+            {
+              "id": "garden-path-width",
+              "name": "道路宽度",
+              "description": "欧式正式花园常用三格宽。"
+            },
+            {
+              "id": "garden-path-material",
+              "name": "道路材质",
+              "description": "常用 gravel、mossy_cobblestone 或 stone_bricks。"
+            }
+          ]
+        },
+        {
+          "id": "garden-flower-beds",
+          "name": "对称花坛",
+          "description": "道路左右成对出现的草坪和花。", 
+          "children": [
+            {
+              "id": "garden-left-bed",
+              "name": "左花坛",
+              "description": "中轴左侧花坛。"
+            },
+            {
+              "id": "garden-right-bed",
+              "name": "右花坛",
+              "description": "中轴右侧花坛。"
+            },
+            {
+              "id": "garden-flower-pattern",
+              "name": "花卉节奏",
+              "description": "红花和蓝花交替排布。"
+            }
+          ]
+        },
+        {
+          "id": "garden-fountain",
+          "name": "喷泉或水景",
+          "description": "可放在中轴线上，提升别墅感。",
+          "children": [
+            {
+              "id": "garden-fountain-position",
+              "name": "喷泉位置",
+              "description": "通常在门廊前方数格。"
+            },
+            {
+              "id": "garden-fountain-size",
+              "name": "喷泉尺寸",
+              "description": "水池宽深和中心高度。"
+            }
+          ]
+        },
+        {
+          "id": "garden-border",
+          "name": "花园边界",
+          "description": "树篱、围栏或院墙。",
+          "children": [
+            {
+              "id": "garden-hedge",
+              "name": "树篱",
+              "description": "围住前院的低矮绿化边界。"
+            },
+            {
+              "id": "garden-fence",
+              "name": "围栏",
+              "description": "后续可替代树篱。"
+            },
+            {
+              "id": "garden-lamp-posts",
+              "name": "灯柱",
+              "description": "放在主路或门廊两侧。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "materials",
+      "name": "材质体系层",
+      "description": "把主材、辅材、强调材和功能材分开管理。",
+      "children": [
+        {
+          "id": "material-primary",
+          "name": "主材",
+          "description": "外墙和大面积可见材料。",
+          "children": [
+            {
+              "id": "material-wall",
+              "name": "墙体主材",
+              "description": "smooth_sandstone、white_concrete 或 quartz。"
+            },
+            {
+              "id": "material-roof",
+              "name": "屋顶主材",
+              "description": "dark_oak_planks 或 deepslate_tiles。"
+            },
+            {
+              "id": "material-floor",
+              "name": "地板主材",
+              "description": "spruce_planks 或 quartz_block。"
+            }
+          ]
+        },
+        {
+          "id": "material-secondary",
+          "name": "辅材",
+          "description": "用于边框、腰线、柱子和檐口。",
+          "children": [
+            {
+              "id": "material-column",
+              "name": "柱子材质",
+              "description": "quartz_pillar 或 stone_bricks。"
+            },
+            {
+              "id": "material-trim",
+              "name": "装饰线材质",
+              "description": "smooth_quartz、stone_bricks 或 dark_oak。"
+            },
+            {
+              "id": "material-window-frame",
+              "name": "窗框材质",
+              "description": "dark_oak_planks 或 quartz。"
+            }
+          ]
+        },
+        {
+          "id": "material-functional",
+          "name": "功能材",
+          "description": "门、玻璃、灯、水和植物等功能材料。",
+          "children": [
+            {
+              "id": "material-door",
+              "name": "门材质",
+              "description": "dark_oak_door 或 spruce_door。"
+            },
+            {
+              "id": "material-glass",
+              "name": "玻璃材质",
+              "description": "glass 或 glass_pane。"
+            },
+            {
+              "id": "material-light",
+              "name": "灯光材质",
+              "description": "lantern、glowstone 或 sea_lantern。"
+            },
+            {
+              "id": "material-plant",
+              "name": "植物材质",
+              "description": "花、树叶、草方块和树篱。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "quality",
+      "name": "质量检查层",
+      "description": "用于判断生成结果是否像一栋高质量欧式别墅。",
+      "children": [
+        {
+          "id": "quality-massing",
+          "name": "体块质量",
+          "description": "检查是否不是单一盒子，是否有侧翼和入口重点。",
+          "children": [
+            {
+              "id": "quality-non-boxy",
+              "name": "非盒子感",
+              "description": "至少有主楼、侧翼或入口凸出之一。"
+            },
+            {
+              "id": "quality-symmetry",
+              "name": "对称性",
+              "description": "正面左右是否基本平衡。"
+            }
+          ]
+        },
+        {
+          "id": "quality-facade",
+          "name": "立面质量",
+          "description": "检查门廊、柱子、窗框、腰线和檐口。",
+          "children": [
+            {
+              "id": "quality-entrance",
+              "name": "入口明确",
+              "description": "正门、门廊和主路是否容易识别。"
+            },
+            {
+              "id": "quality-window-rhythm",
+              "name": "窗户节奏",
+              "description": "窗户是否规律且避开门廊。"
+            },
+            {
+              "id": "quality-roof-detail",
+              "name": "屋顶层次",
+              "description": "是否有屋檐、屋脊、老虎窗或烟囱。"
+            }
+          ]
+        },
+        {
+          "id": "quality-interior",
+          "name": "室内质量",
+          "description": "检查房间划分、连通性、楼梯和家具。",
+          "children": [
+            {
+              "id": "quality-room-coverage",
+              "name": "房间覆盖",
+              "description": "是否有门厅、客厅、厨房、卧室和书房。"
+            },
+            {
+              "id": "quality-circulation",
+              "name": "动线连通",
+              "description": "门厅、客厅、楼梯和走廊是否连通。"
+            },
+            {
+              "id": "quality-furnishing",
+              "name": "家具完整",
+              "description": "房间是否有基本家具和灯光。"
+            }
+          ]
+        },
+        {
+          "id": "quality-site",
+          "name": "环境质量",
+          "description": "检查花园、道路、喷泉、树篱和灯柱。",
+          "children": [
+            {
+              "id": "quality-formal-axis",
+              "name": "正式中轴",
+              "description": "主路、门廊和建筑中轴是否对齐。"
+            },
+            {
+              "id": "quality-garden-balance",
+              "name": "花园平衡",
+              "description": "左右花坛或绿化是否平衡。"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

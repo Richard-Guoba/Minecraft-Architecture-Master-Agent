@@ -75,7 +75,7 @@ export class BlueprintWorkspace {
       },
       origin: {
         type: 'relative-player-position',
-        note: 'Run /function architect:build while standing near the northwest corner of the desired build area.'
+        note: 'Run /function architect:run while standing near the northwest corner of the desired build area.'
       },
       bounds: this.bounds,
       modules: Object.fromEntries(this.moduleCounts.entries()),

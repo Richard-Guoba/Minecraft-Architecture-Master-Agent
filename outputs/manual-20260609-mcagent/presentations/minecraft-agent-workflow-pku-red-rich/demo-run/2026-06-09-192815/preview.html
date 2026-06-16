@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Minecraft 建筑预览</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111418;
+      --panel: #1d232b;
+      --text: #eef3f6;
+      --muted: #a8b3bd;
+      --accent: #69d2a0;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 20% 0%, #26313b 0, #111418 42%);
+      color: var(--text);
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    header {
+      display: flex;
+      gap: 18px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      background: rgba(17, 20, 24, 0.88);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    button {
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: #26313b;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover { border-color: var(--accent); }
+    main {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      min-height: 0;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: linear-gradient(#18212a, #111418);
+    }
+    aside {
+      border-left: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(29, 35, 43, 0.92);
+      padding: 16px;
+      overflow: auto;
+    }
+    .stat {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      font-size: 14px;
+    }
+    .label { color: var(--muted); }
+    @media (max-width: 760px) {
+      main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+      aside { border-left: 0; border-top: 1px solid rgba(255, 255, 255, 0.08); max-height: 240px; }
+      header { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Minecraft 建筑预览</h1>
+      <div class="meta" id="subtitle"></div>
+    </div>
+    <div class="actions">
+      <button id="left" title="向左旋转">↺</button>
+      <button id="right" title="向右旋转">↻</button>
+      <button id="zoomIn" title="放大">＋</button>
+      <button id="zoomOut" title="缩小">－</button>
+      <button id="reset" title="重置视角">重置</button>
+    </div>
+  </header>
+  <main>
+    <canvas id="scene"></canvas>
+    <aside id="stats"></aside>
+  </main>
+  <script>
+    const data = {"prompt":"建一个江南两层小院，白墙黑瓦，带水池，室内有卧室客厅厨房","design":{"id":"jiangnan-courtyard-v2-small","style":"江南","scale":"small","floors":2,"dimensions":{"width":15,"depth":13,"floorHeight":5,"wallHeight":10,"roofHeight":5,"gardenDepth":5},"palette":{"foundation":"minecraft:stone_bricks","wall":"minecraft:white_concrete","trim":"minecraft:stripped_dark_oak_log","floor":"minecraft:spruce_planks","roof":"minecraft:deepslate_tiles","roofAccent":"minecraft:dark_oak_planks","glass":"minecraft:glass_pane","doorBase":"minecraft:spruce_door","chimney":"minecraft:bricks","interiorWall":"minecraft:birch_planks","stairs":"minecraft:spruce_stairs[facing=south,half=bottom]","hedge":"minecraft:azalea_leaves[persistent=true]","path":"minecraft:mossy_cobblestone","water":"minecraft:water","flowerRed":"minecraft:poppy","flowerBlue":"minecraft:blue_orchid","lamp":"minecraft:lantern[hanging=true]","furniture":"minecraft:bookshelf","doorLower":"minecraft:spruce_door[facing=south,half=lower,hinge=left]","doorUpper":"minecraft:spruce_door[facing=south,half=upper,hinge=left]"},"elements":{"wall":{"material":"minecraft:white_concrete","thickness":1},"floor":{"material":"minecraft:spruce_planks","levels":2},"door":{"material":"minecraft:spruce_door","side":"south","width":1,"height":2,"position":"south-center"},"roof":{"material":"minecraft:deepslate_tiles","style":"pagoda","height":5,"overhang":2},"window":{"material":"minecraft:glass_pane","width":2,"height":2,"spacing":6,"placement":"balanced"},"interior":{"enabled":true,"rooms":4,"stairs":true,"lighting":true},"landscape":{"enabled":true,"waterFeature":true},"balcony":{"enabled":false},"chimney":{"enabled":false}},"modules":["foundation","walls","floors","roof","windows","door","interior","stairs","lighting","furnishing","courtyard","garden","water_feature","roof_detail"],"plan":{"source":"fallback","footprint":{"type":"courtyard","source":"skill","publicSide":"south"},"zones":[{"id":"entry","label":"门厅","type":"entry","level":0,"priority":90,"areaHint":"medium","needsWindow":false,"outside":false},{"id":"living","label":"客厅","type":"living","level":0,"priority":100,"areaHint":"medium","needsWindow":true,"outside":false},{"id":"kitchen","label":"厨房","type":"kitchen","level":0,"priority":70,"areaHint":"medium","needsWindow":true,"outside":false},{"id":"bedroom","label":"卧室","type":"bedroom","level":1,"priority":80,"areaHint":"medium","needsWindow":true,"outside":false},{"id":"stairs","label":"楼梯间","type":"stairs","level":0,"priority":95,"areaHint":"medium","needsWindow":false,"outside":false},{"id":"study","label":"书房","type":"study","level":1,"priority":55,"areaHint":"medium","needsWindow":true,"outside":false},{"id":"garden","label":"水院","type":"garden","level":0,"priority":65,"areaHint":"exterior","needsWindow":true,"outside":true},{"id":"water","label":"水景","type":"water","level":0,"priority":60,"areaHint":"exterior","needsWindow":false,"outside":true}],"adjacency":[["entry","living"],["living","kitchen"],["living","bedroom"],["living","stairs"],["bedroom","study"],["living","garden"],["garden","water"]],"circulation":{"entry":"south","stairs":"near-entry","publicCore":"living"},"styleMotifs":["white-wall-dark-roof","courtyard-axis","eave-corners","water-courtyard"],"constraints":["保持 Minecraft fill/setblock 命令可执行","房间之间至少通过一个公共空间连通","门窗和楼梯不得互相覆盖"],"evaluationGoals":["满足用户要求的风格、尺寸和功能元素","增加外形层次而不是只生成矩形空壳","优先生成可通行、可预览、可校验的建筑"]},"skill":{"source":"fallback","skillId":"jiangnan-courtyard","name":"江南水乡小院","confidence":0.72,"rationale":"江南 风格和关键词匹配 江南水乡小院 skill。","emphasis":["white-wall-dark-roof","courtyard-axis","eave-corners","water-courtyard"],"preferredFootprint":"courtyard","styleMotifs":["white-wall-dark-roof","courtyard-axis","eave-corners","water-courtyard"],"zoneHints":["entry","living","bedroom","kitchen","study","garden","water"],"requiredModules":["courtyard","garden","water_feature","roof_detail"],"optionalModules":["balcony","stairs"],"critiqueRules":{"minimumScore":84,"requiredMotifs":["white-wall-dark-roof","courtyard-axis"],"requiredModules":["courtyard","garden"]},"repairRules":{"forceFootprint":"courtyard","enable":["landscape","waterFeature"],"addMotifs":["white-wall-dark-roof","courtyard-axis","water-courtyard"]}},"notes":["建筑以玩家当前位置作为西北角附近起点，向东和向南展开。","v2 为墙壁、地板、门、屋顶、窗户建立独立元素规格，支持尺寸、位置和材质覆盖。","生成结果包含室内隔断、楼梯、照明和庭院细节，避免只生成空壳房间。","v3 初步加入语义建筑规划：先生成 footprint、房间区、邻接关系和风格母题，再由蓝图 Agent 程序化落地。"],"requirement":{"source":"fallback","prompt":"建一个江南两层小院，白墙黑瓦，带水池，室内有卧室客厅厨房","style":"江南","scale":"small","floors":2,"features":["白墙","黛瓦","飞檐","小花园","水景","室内功能"],"materials":["white_concrete","deepslate_tiles"],"dimensions":{"width":15,"depth":13,"floorHeight":5,"gardenDepth":5},"elementPreferences":{"wall":{"material":"minecraft:white_concrete","thickness":1},"floor":{},"door":{"side":"south","position":"south-center","width":1,"height":2},"roof":{"material":"minecraft:deepslate_tiles","style":"pagoda","overhang":2},"window":{"placement":"balanced","width":2,"height":2,"spacing":6},"interior":{"rooms":4,"enabled":true,"stairs":true,"lighting":true},"landscape":{"enabled":true,"waterFeature":true},"balcony":{"enabled":false},"chimney":{"enabled":false}},"constraints":["Minecraft Java 1.21","单人创造超平坦世界","使用数据包函数执行"],"notes":["未配置大模型时使用规则模板解析。"]}},"blueprint":{"version":3,"target":{"minecraft":"Java 1.21","datapackFormat":48},"origin":{"type":"relative-player-position","note":"Run /function architect:build while standing near the northwest corner of the desired build area."},"bounds":{"minX":-3,"minY":0,"minZ":-2,"maxX":17,"maxY":15,"maxZ":19},"modules":{"foundation":1,"walls":16,"floors":2,"roof":5,"roof_detail":8,"windows":38,"door":7,"courtyard":6,"interior":8,"stairs":6,"furnishing":24,"lighting":8,"garden":10,"water_feature":3},"agents":{"shell":{"exteriorBounds":{"minX":0,"minY":0,"minZ":0,"maxX":14,"maxY":19,"maxZ":12},"interiorSpaces":[{"level":0,"minX":1,"maxX":13,"minY":2,"maxY":5,"minZ":1,"maxZ":11},{"level":1,"minX":1,"maxX":13,"minY":7,"maxY":10,"minZ":1,"maxZ":11}],"extensions":[],"courtyard":{"type":"entry-axis","connectedTo":"south","bounds":{"minX":3,"maxX":11,"minZ":13,"maxZ":15}},"openings":{"mainDoor":{"side":"south","start":6,"end":8},"window":{"material":"minecraft:glass_pane","width":2,"height":2,"spacing":6,"placement":"balanced"}},"roof":{"material":"minecraft:deepslate_tiles","style":"pagoda","height":5,"overhang":2}},"layout":{"rooms":[{"level":0,"tag":"living","minX":1,"maxX":6,"minY":2,"maxY":5,"minZ":1,"maxZ":5},{"level":0,"tag":"kitchen","minX":8,"maxX":13,"minY":2,"maxY":5,"minZ":1,"maxZ":5},{"level":0,"tag":"bedroom","minX":1,"maxX":6,"minY":2,"maxY":5,"minZ":7,"maxZ":11},{"level":0,"tag":"study","minX":8,"maxX":13,"minY":2,"maxY":5,"minZ":7,"maxZ":11},{"level":1,"tag":"living","minX":1,"maxX":6,"minY":7,"maxY":10,"minZ":1,"maxZ":5},{"level":1,"tag":"bedroom","minX":8,"maxX":13,"minY":7,"maxY":10,"minZ":1,"maxZ":5},{"level":1,"tag":"kitchen","minX":1,"maxX":6,"minY":7,"maxY":10,"minZ":7,"maxZ":11},{"level":1,"tag":"utility","minX":8,"maxX":13,"minY":7,"maxY":10,"minZ":7,"maxZ":11}],"stairs":[{"level":0,"step":0,"at":{"x":3,"y":2,"z":4}},{"level":0,"step":1,"at":{"x":3,"y":3,"z":5}},{"level":0,"step":2,"at":{"x":4,"y":4,"z":6}},{"level":0,"step":3,"at":{"x":4,"y":5,"z":7}},{"level":0,"step":4,"at":{"x":5,"y":6,"z":8}}],"interiorDoors":[{"level":0,"axis":"x","at":{"x":7,"z":6},"connects":["living","bedroom"]},{"level":0,"axis":"z","at":{"x":7,"z":6},"connects":["living","utility"]},{"level":1,"axis":"x","at":{"x":7,"z":6},"connects":["living","bedroom"]},{"level":1,"axis":"z","at":{"x":7,"z":6},"connects":["living","utility"]}],"floorOpenings":[{"level":1,"minX":3,"maxX":6,"y":6,"minZ":4,"maxZ":9}]},"furnishing":{"placed":24,"lighting":8,"rooms":[{"level":0,"tag":"living"},{"level":0,"tag":"kitchen"},{"level":0,"tag":"bedroom"},{"level":0,"tag":"study"},{"level":1,"tag":"living"},{"level":1,"tag":"bedroom"},{"level":1,"tag":"kitchen"},{"level":1,"tag":"utility"}]},"garden":{"enabled":true,"parcel":{"minX":-3,"maxX":17,"minZ":14,"maxZ":18},"features":["path","hedge","flower_beds","water_feature"],"connectedTo":"south"}},"design":{"id":"jiangnan-courtyard-v2-small","style":"江南","scale":"small","floors":2,"dimensions":{"width":15,"depth":13,"floorHeight":5,"wallHeight":10,"roofHeight":5,"gardenDepth":5},"palette":{"foundation":"minecraft:stone_bricks","wall":"minecraft:white_concrete","trim":"minecraft:stripped_dark_oak_log","floor":"minecraft:spruce_planks","roof":"minecraft:deepslate_tiles","roofAccent":"minecraft:dark_oak_planks","glass":"minecraft:glass_pane","doorBase":"minecraft:spruce_door","chimney":"minecraft:bricks","interiorWall":"minecraft:birch_planks","stairs":"minecraft:spruce_stairs[facing=south,half=bottom]","hedge":"minecraft:azalea_leaves[persistent=true]","path":"minecraft:mossy_cobblestone","water":"minecraft:water","flowerRed":"minecraft:poppy","flowerBlue":"minecraft:blue_orchid","lamp":"minecraft:lantern[hanging=true]","furniture":"minecraft:bookshelf","doorLower":"minecraft:spruce_door[facing=south,half=lower,hinge=left]","doorUpper":"minecraft:spruce_door[facing=south,half=upper,hinge=left]"},"elements":{"wall":{"material":"minecraft:white_concrete","thickness":1},"floor":{"material":"minecraft:spruce_planks","levels":2},"door":{"material":"minecraft:spruce_door","side":"south","width":1,"height":2,"position":"south-center"},"roof":{"material":"minecraft:deepslate_tiles","style":"pagoda","height":5,"overhang":2},"window":{"material":"minecraft:glass_pane","width":2,"height":2,"spacing":6,"placement":"balanced"},"interior":{"enabled":true,"rooms":4,"stairs":true,"lighting":true},"landscape":{"enabled":true,"waterFeature":true},"balcony":{"enabled":false},"chimney":{"enabled":false}},"plan":{"source":"fallback","footprint":{"type":"courtyard","source":"skill","publicSide":"south"},"zones":[{"id":"entry","label":"门厅","type":"entry","level":0,"priority":90,"areaHint":"medium","needsWindow":false,"outside":false},{"id":"living","label":"客厅","type":"living","level":0,"priority":100,"areaHint":"medium","needsWindow":true,"outside":false},{"id":"kitchen","label":"厨房","type":"kitchen","level":0,"priority":70,"areaHint":"medium","needsWindow":true,"outside":false},{"id":"bedroom","label":"卧室","type":"bedroom","level":1,"priority":80,"areaHint":"medium","needsWindow":true,"outside":false},{"id":"stairs","label":"楼梯间","type":"stairs","level":0,"priority":95,"areaHint":"medium","needsWindow":false,"outside":false},{"id":"study","label":"书房","type":"study","level":1,"priority":55,"areaHint":"medium","needsWindow":true,"outside":false},{"id":"garden","label":"水院","type":"garden","level":0,"priority":65,"areaHint":"exterior","needsWindow":true,"outside":true},{"id":"water","label":"水景","type":"water","level":0,"priority":60,"areaHint":"exterior","needsWindow":false,"outside":true}],"adjacency":[["entry","living"],["living","kitchen"],["living","bedroom"],["living","stairs"],["bedroom","study"],["living","garden"],["garden","water"]],"circulation":{"entry":"south","stairs":"near-entry","publicCore":"living"},"styleMotifs":["white-wall-dark-roof","courtyard-axis","eave-corners","water-courtyard"],"constraints":["保持 Minecraft fill/setblock 命令可执行","房间之间至少通过一个公共空间连通","门窗和楼梯不得互相覆盖"],"evaluationGoals":["满足用户要求的风格、尺寸和功能元素","增加外形层次而不是只生成矩形空壳","优先生成可通行、可预览、可校验的建筑"]}},"operations":[{"kind":"fill","from":{"x":0,"y":0,"z":0},"to":{"x":14,"y":0,"z":12},"block":"minecraft:stone_bricks","module":"foundation"},{"kind":"fill","from":{"x":0,"y":1,"z":0},"to":{"x":14,"y":10,"z":0},"block":"minecraft:white_concrete","module":"walls"},{"kind":"fill","from":{"x":0,"y":1,"z":12},"to":{"x":14,"y":10,"z":12},"block":"minecraft:white_concrete","module":"walls"},{"kind":"fill","from":{"x":0,"y":1,"z":0},"to":{"x":0,"y":10,"z":12},"block":"minecraft:white_concrete","module":"walls"},{"kind":"fill","from":{"x":14,"y":1,"z":0},"to":{"x":14,"y":10,"z":12},"block":"minecraft:white_concrete","module":"walls"},{"kind":"fill","from":{"x":0,"y":1,"z":0},"to":{"x":0,"y":11,"z":0},"block":"minecraft:stripped_dark_oak_log","module":"walls"},{"kind":"fill","from":{"x":0,"y":1,"z":12},"to":{"x":0,"y":11,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"walls"},{"kind":"fill","from":{"x":14,"y":1,"z":0},"to":{"x":14,"y":11,"z":0},"block":"minecraft:stripped_dark_oak_log","module":"walls"},{"kind":"fill","from":{"x":14,"y":1,"z":12},"to":{"x":14,"y":11,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"walls"},{"kind":"fill","from":{"x":0,"y":6,"z":0},"to":{"x":14,"y":6,"z":0},"block":"minecraft:stripped_dark_oak_log","module":"walls"},{"kind":"fill","from":{"x":0,"y":6,"z":12},"to":{"x":14,"y":6,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"walls"},{"kind":"fill","from":{"x":0,"y":6,"z":0},"to":{"x":0,"y":6,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"walls"},{"kind":"fill","from":{"x":14,"y":6,"z":0},"to":{"x":14,"y":6,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"walls"},{"kind":"fill","from":{"x":0,"y":10,"z":0},"to":{"x":14,"y":10,"z":0},"block":"minecraft:stripped_dark_oak_log","module":"walls"},{"kind":"fill","from":{"x":0,"y":10,"z":12},"to":{"x":14,"y":10,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"walls"},{"kind":"fill","from":{"x":0,"y":10,"z":0},"to":{"x":0,"y":10,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"walls"},{"kind":"fill","from":{"x":14,"y":10,"z":0},"to":{"x":14,"y":10,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"walls"},{"kind":"fill","from":{"x":1,"y":1,"z":1},"to":{"x":13,"y":1,"z":11},"block":"minecraft:spruce_planks","module":"floors"},{"kind":"fill","from":{"x":1,"y":6,"z":1},"to":{"x":13,"y":6,"z":11},"block":"minecraft:spruce_planks","module":"floors"},{"kind":"fill","from":{"x":-2,"y":11,"z":-2},"to":{"x":16,"y":11,"z":14},"block":"minecraft:deepslate_tiles","module":"roof"},{"kind":"fill","from":{"x":-1,"y":12,"z":-1},"to":{"x":15,"y":12,"z":13},"block":"minecraft:deepslate_tiles","module":"roof"},{"kind":"fill","from":{"x":0,"y":13,"z":0},"to":{"x":14,"y":13,"z":12},"block":"minecraft:deepslate_tiles","module":"roof"},{"kind":"fill","from":{"x":1,"y":14,"z":1},"to":{"x":13,"y":14,"z":11},"block":"minecraft:deepslate_tiles","module":"roof"},{"kind":"fill","from":{"x":2,"y":15,"z":2},"to":{"x":12,"y":15,"z":10},"block":"minecraft:deepslate_tiles","module":"roof"},{"kind":"fill","from":{"x":-2,"y":11,"z":-2},"to":{"x":16,"y":11,"z":-2},"block":"minecraft:stripped_dark_oak_log","module":"roof_detail"},{"kind":"fill","from":{"x":-2,"y":11,"z":14},"to":{"x":16,"y":11,"z":14},"block":"minecraft:stripped_dark_oak_log","module":"roof_detail"},{"kind":"fill","from":{"x":-2,"y":11,"z":-2},"to":{"x":-2,"y":11,"z":14},"block":"minecraft:stripped_dark_oak_log","module":"roof_detail"},{"kind":"fill","from":{"x":16,"y":11,"z":-2},"to":{"x":16,"y":11,"z":14},"block":"minecraft:stripped_dark_oak_log","module":"roof_detail"},{"kind":"setblock","at":{"x":-2,"y":12,"z":-2},"block":"minecraft:dark_oak_planks","module":"roof_detail"},{"kind":"setblock","at":{"x":16,"y":12,"z":-2},"block":"minecraft:dark_oak_planks","module":"roof_detail"},{"kind":"setblock","at":{"x":-2,"y":12,"z":14},"block":"minecraft:dark_oak_planks","module":"roof_detail"},{"kind":"setblock","at":{"x":16,"y":12,"z":14},"block":"minecraft:dark_oak_planks","module":"roof_detail"},{"kind":"fill","from":{"x":4,"y":2,"z":0},"to":{"x":5,"y":3,"z":0},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":3,"y":1,"z":0},"to":{"x":6,"y":1,"z":0},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":3,"y":4,"z":0},"to":{"x":6,"y":4,"z":0},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":4,"y":2,"z":12},"to":{"x":5,"y":3,"z":12},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":3,"y":1,"z":12},"to":{"x":6,"y":1,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":3,"y":4,"z":12},"to":{"x":6,"y":4,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":10,"y":2,"z":0},"to":{"x":11,"y":3,"z":0},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":9,"y":1,"z":0},"to":{"x":12,"y":1,"z":0},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":9,"y":4,"z":0},"to":{"x":12,"y":4,"z":0},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":10,"y":2,"z":12},"to":{"x":11,"y":3,"z":12},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":9,"y":1,"z":12},"to":{"x":12,"y":1,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":9,"y":4,"z":12},"to":{"x":12,"y":4,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":0,"y":2,"z":4},"to":{"x":0,"y":3,"z":5},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":0,"y":1,"z":3},"to":{"x":0,"y":1,"z":6},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":0,"y":4,"z":3},"to":{"x":0,"y":4,"z":6},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":14,"y":2,"z":4},"to":{"x":14,"y":3,"z":5},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":14,"y":1,"z":3},"to":{"x":14,"y":1,"z":6},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":14,"y":4,"z":3},"to":{"x":14,"y":4,"z":6},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":4,"y":7,"z":0},"to":{"x":5,"y":8,"z":0},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":3,"y":6,"z":0},"to":{"x":6,"y":6,"z":0},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":3,"y":9,"z":0},"to":{"x":6,"y":9,"z":0},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":4,"y":7,"z":12},"to":{"x":5,"y":8,"z":12},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":3,"y":6,"z":12},"to":{"x":6,"y":6,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":3,"y":9,"z":12},"to":{"x":6,"y":9,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":10,"y":7,"z":0},"to":{"x":11,"y":8,"z":0},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":9,"y":6,"z":0},"to":{"x":12,"y":6,"z":0},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":9,"y":9,"z":0},"to":{"x":12,"y":9,"z":0},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":10,"y":7,"z":12},"to":{"x":11,"y":8,"z":12},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":9,"y":6,"z":12},"to":{"x":12,"y":6,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":9,"y":9,"z":12},"to":{"x":12,"y":9,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":0,"y":7,"z":4},"to":{"x":0,"y":8,"z":5},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":0,"y":6,"z":3},"to":{"x":0,"y":6,"z":6},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":0,"y":9,"z":3},"to":{"x":0,"y":9,"z":6},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":14,"y":7,"z":4},"to":{"x":14,"y":8,"z":5},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":14,"y":6,"z":3},"to":{"x":14,"y":6,"z":6},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":14,"y":9,"z":3},"to":{"x":14,"y":9,"z":6},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":6,"y":12,"z":13},"to":{"x":8,"y":13,"z":13},"block":"minecraft:glass_pane","module":"windows"},{"kind":"fill","from":{"x":5,"y":11,"z":13},"to":{"x":9,"y":11,"z":13},"block":"minecraft:stripped_dark_oak_log","module":"windows"},{"kind":"fill","from":{"x":6,"y":1,"z":12},"to":{"x":8,"y":3,"z":12},"block":"minecraft:air","module":"door"},{"kind":"fill","from":{"x":6,"y":3,"z":12},"to":{"x":8,"y":3,"z":12},"block":"minecraft:stripped_dark_oak_log","module":"door"},{"kind":"setblock","at":{"x":7,"y":1,"z":12},"block":"minecraft:spruce_door[facing=south,half=lower,hinge=left]","module":"door"},{"kind":"setblock","at":{"x":7,"y":2,"z":12},"block":"minecraft:spruce_door[facing=south,half=upper,hinge=left]","module":"door"},{"kind":"fill","from":{"x":6,"y":0,"z":13},"to":{"x":8,"y":0,"z":13},"block":"minecraft:mossy_cobblestone","module":"door"},{"kind":"setblock","at":{"x":6,"y":2,"z":13},"block":"minecraft:lantern[hanging=true]","module":"door"},{"kind":"setblock","at":{"x":8,"y":2,"z":13},"block":"minecraft:lantern[hanging=true]","module":"door"},{"kind":"fill","from":{"x":4,"y":1,"z":13},"to":{"x":10,"y":1,"z":15},"block":"minecraft:spruce_planks","module":"courtyard"},{"kind":"fill","from":{"x":3,"y":1,"z":13},"to":{"x":3,"y":3,"z":15},"block":"minecraft:stripped_dark_oak_log","module":"courtyard"},{"kind":"fill","from":{"x":11,"y":1,"z":13},"to":{"x":11,"y":3,"z":15},"block":"minecraft:stripped_dark_oak_log","module":"courtyard"},{"kind":"fill","from":{"x":3,"y":4,"z":13},"to":{"x":11,"y":4,"z":15},"block":"minecraft:dark_oak_planks","module":"courtyard"},{"kind":"setblock","at":{"x":5,"y":2,"z":15},"block":"minecraft:lantern[hanging=true]","module":"courtyard"},{"kind":"setblock","at":{"x":9,"y":2,"z":15},"block":"minecraft:lantern[hanging=true]","module":"courtyard"},{"kind":"fill","from":{"x":7,"y":2,"z":3},"to":{"x":7,"y":4,"z":9},"block":"minecraft:birch_planks","module":"interior"},{"kind":"fill","from":{"x":7,"y":2,"z":5},"to":{"x":7,"y":3,"z":7},"block":"minecraft:air","module":"interior"},{"kind":"fill","from":{"x":3,"y":2,"z":6},"to":{"x":11,"y":4,"z":6},"block":"minecraft:birch_planks","module":"interior"},{"kind":"fill","from":{"x":6,"y":2,"z":6},"to":{"x":8,"y":3,"z":6},"block":"minecraft:air","module":"interior"},{"kind":"fill","from":{"x":7,"y":7,"z":3},"to":{"x":7,"y":9,"z":9},"block":"minecraft:birch_planks","module":"interior"},{"kind":"fill","from":{"x":7,"y":7,"z":5},"to":{"x":7,"y":8,"z":7},"block":"minecraft:air","module":"interior"},{"kind":"fill","from":{"x":3,"y":7,"z":6},"to":{"x":11,"y":9,"z":6},"block":"minecraft:birch_planks","module":"interior"},{"kind":"fill","from":{"x":6,"y":7,"z":6},"to":{"x":8,"y":8,"z":6},"block":"minecraft:air","module":"interior"},{"kind":"fill","from":{"x":3,"y":6,"z":4},"to":{"x":6,"y":6,"z":9},"block":"minecraft:air","module":"stairs"},{"kind":"setblock","at":{"x":3,"y":2,"z":4},"block":"minecraft:spruce_stairs[facing=south,half=bottom]","module":"stairs"},{"kind":"setblock","at":{"x":3,"y":3,"z":5},"block":"minecraft:spruce_stairs[facing=south,half=bottom]","module":"stairs"},{"kind":"setblock","at":{"x":4,"y":4,"z":6},"block":"minecraft:spruce_stairs[facing=south,half=bottom]","module":"stairs"},{"kind":"setblock","at":{"x":4,"y":5,"z":7},"block":"minecraft:spruce_stairs[facing=south,half=bottom]","module":"stairs"},{"kind":"setblock","at":{"x":5,"y":6,"z":8},"block":"minecraft:spruce_stairs[facing=south,half=bottom]","module":"stairs"},{"kind":"setblock","at":{"x":2,"y":2,"z":2},"block":"minecraft:bookshelf","module":"furnishing"},{"kind":"setblock","at":{"x":5,"y":2,"z":4},"block":"minecraft:crafting_table","module":"furnishing"},{"kind":"fill","from":{"x":2,"y":2,"z":2},"to":{"x":4,"y":2,"z":4},"block":"minecraft:green_carpet","module":"furnishing"},{"kind":"setblock","at":{"x":3,"y":5,"z":3},"block":"minecraft:lantern[hanging=true]","module":"lighting"},{"kind":"setblock","at":{"x":9,"y":2,"z":4},"block":"minecraft:furnace[facing=north]","module":"furnishing"},{"kind":"setblock","at":{"x":10,"y":2,"z":4},"block":"minecraft:crafting_table","module":"furnishing"},{"kind":"fill","from":{"x":9,"y":2,"z":2},"to":{"x":11,"y":2,"z":4},"block":"minecraft:light_gray_carpet","module":"furnishing"},{"kind":"setblock","at":{"x":10,"y":5,"z":3},"block":"minecraft:lantern[hanging=true]","module":"lighting"},{"kind":"setblock","at":{"x":5,"y":2,"z":8},"block":"minecraft:red_bed[facing=south]","module":"furnishing"},{"kind":"setblock","at":{"x":4,"y":2,"z":8},"block":"minecraft:chest[facing=south]","module":"furnishing"},{"kind":"fill","from":{"x":2,"y":2,"z":8},"to":{"x":4,"y":2,"z":10},"block":"minecraft:red_carpet","module":"furnishing"},{"kind":"setblock","at":{"x":3,"y":5,"z":9},"block":"minecraft:lantern[hanging=true]","module":"lighting"},{"kind":"setblock","at":{"x":9,"y":2,"z":8},"block":"minecraft:bookshelf","module":"furnishing"},{"kind":"setblock","at":{"x":10,"y":2,"z":8},"block":"minecraft:lectern[facing=south]","module":"furnishing"},{"kind":"fill","from":{"x":9,"y":2,"z":8},"to":{"x":11,"y":2,"z":10},"block":"minecraft:green_carpet","module":"furnishing"},{"kind":"setblock","at":{"x":10,"y":5,"z":9},"block":"minecraft:lantern[hanging=true]","module":"lighting"},{"kind":"setblock","at":{"x":2,"y":7,"z":2},"block":"minecraft:bookshelf","module":"furnishing"},{"kind":"setblock","at":{"x":5,"y":7,"z":4},"block":"minecraft:crafting_table","module":"furnishing"},{"kind":"fill","from":{"x":2,"y":7,"z":2},"to":{"x":4,"y":7,"z":4},"block":"minecraft:green_carpet","module":"furnishing"},{"kind":"setblock","at":{"x":3,"y":10,"z":3},"block":"minecraft:lantern[hanging=true]","module":"lighting"},{"kind":"setblock","at":{"x":12,"y":7,"z":2},"block":"minecraft:red_bed[facing=south]","module":"furnishing"},{"kind":"setblock","at":{"x":11,"y":7,"z":2},"block":"minecraft:chest[facing=south]","module":"furnishing"},{"kind":"fill","from":{"x":9,"y":7,"z":2},"to":{"x":11,"y":7,"z":4},"block":"minecraft:red_carpet","module":"furnishing"},{"kind":"setblock","at":{"x":10,"y":10,"z":3},"block":"minecraft:lantern[hanging=true]","module":"lighting"},{"kind":"setblock","at":{"x":2,"y":7,"z":10},"block":"minecraft:furnace[facing=north]","module":"furnishing"},{"kind":"setblock","at":{"x":3,"y":7,"z":10},"block":"minecraft:crafting_table","module":"furnishing"},{"kind":"fill","from":{"x":2,"y":7,"z":8},"to":{"x":4,"y":7,"z":10},"block":"minecraft:light_gray_carpet","module":"furnishing"},{"kind":"setblock","at":{"x":3,"y":10,"z":9},"block":"minecraft:lantern[hanging=true]","module":"lighting"},{"kind":"setblock","at":{"x":9,"y":7,"z":10},"block":"minecraft:furnace[facing=north]","module":"furnishing"},{"kind":"setblock","at":{"x":10,"y":7,"z":10},"block":"minecraft:crafting_table","module":"furnishing"},{"kind":"fill","from":{"x":9,"y":7,"z":8},"to":{"x":11,"y":7,"z":10},"block":"minecraft:light_gray_carpet","module":"furnishing"},{"kind":"setblock","at":{"x":10,"y":10,"z":9},"block":"minecraft:lantern[hanging=true]","module":"lighting"},{"kind":"fill","from":{"x":6,"y":0,"z":13},"to":{"x":8,"y":0,"z":18},"block":"minecraft:mossy_cobblestone","module":"garden"},{"kind":"fill","from":{"x":-3,"y":0,"z":14},"to":{"x":-3,"y":1,"z":18},"block":"minecraft:azalea_leaves[persistent=true]","module":"garden"},{"kind":"fill","from":{"x":17,"y":0,"z":14},"to":{"x":17,"y":1,"z":18},"block":"minecraft:azalea_leaves[persistent=true]","module":"garden"},{"kind":"fill","from":{"x":-3,"y":0,"z":18},"to":{"x":17,"y":1,"z":18},"block":"minecraft:azalea_leaves[persistent=true]","module":"garden"},{"kind":"fill","from":{"x":2,"y":0,"z":15},"to":{"x":5,"y":0,"z":17},"block":"minecraft:grass_block","module":"garden"},{"kind":"fill","from":{"x":9,"y":0,"z":15},"to":{"x":12,"y":0,"z":17},"block":"minecraft:grass_block","module":"garden"},{"kind":"setblock","at":{"x":3,"y":1,"z":15},"block":"minecraft:blue_orchid","module":"garden"},{"kind":"setblock","at":{"x":11,"y":1,"z":15},"block":"minecraft:poppy","module":"garden"},{"kind":"setblock","at":{"x":3,"y":1,"z":17},"block":"minecraft:blue_orchid","module":"garden"},{"kind":"setblock","at":{"x":11,"y":1,"z":17},"block":"minecraft:poppy","module":"garden"},{"kind":"fill","from":{"x":11,"y":0,"z":16},"to":{"x":15,"y":0,"z":19},"block":"minecraft:stone_bricks","module":"water_feature"},{"kind":"fill","from":{"x":12,"y":1,"z":17},"to":{"x":14,"y":1,"z":18},"block":"minecraft:water","module":"water_feature"},{"kind":"setblock","at":{"x":13,"y":2,"z":17},"block":"minecraft:lantern[hanging=true]","module":"water_feature"}]},"validation":{"ok":true,"errors":[],"warnings":[],"stats":{"operationCount":142,"fillCount":98,"setblockCount":44,"bounds":{"width":21,"height":16,"depth":22},"modules":{"foundation":1,"walls":16,"floors":2,"roof":5,"roof_detail":8,"windows":38,"door":7,"courtyard":6,"interior":8,"stairs":6,"furnishing":24,"lighting":8,"garden":10,"water_feature":3},"requiredModules":["foundation","walls","floors","roof","windows","door","interior","stairs","lighting","furnishing","courtyard","garden","water_feature","roof_detail"]}}};
+    const canvas = document.getElementById('scene');
+    const ctx = canvas.getContext('2d');
+    const subtitle = document.getElementById('subtitle');
+    const stats = document.getElementById('stats');
+    let yaw = Math.PI / 4;
+    let scale = 18;
+
+    subtitle.textContent = data.prompt;
+    stats.innerHTML = [
+      ['风格', data.design.style],
+      ['层数', data.design.floors],
+      ['尺寸', data.validation.stats.bounds.width + ' × ' + data.validation.stats.bounds.height + ' × ' + data.validation.stats.bounds.depth],
+      ['命令数', data.validation.stats.operationCount],
+      ['fill', data.validation.stats.fillCount],
+      ['setblock', data.validation.stats.setblockCount]
+    ].map(([k, v]) => '<div class="stat"><span class="label">' + k + '</span><strong>' + v + '</strong></div>').join('');
+
+    const colors = {
+      stone_bricks: '#7e8589',
+      smooth_stone: '#a9a9a2',
+      cobblestone: '#777b7d',
+      mossy_cobblestone: '#6f7f62',
+      grass_block: '#5e9d45',
+      smooth_sandstone: '#d7c990',
+      white_concrete: '#e8ecec',
+      light_gray_concrete: '#a7adb0',
+      quartz_block: '#ede7d0',
+      stripped_spruce_log: '#8d6841',
+      stripped_dark_oak_log: '#6b4326',
+      birch_planks: '#d7c28a',
+      oak_planks: '#b8874f',
+      spruce_planks: '#8a5b32',
+      dark_oak_planks: '#3f2618',
+      dark_oak_slab: '#3f2618',
+      spruce_slab: '#8a5b32',
+      deepslate_tiles: '#363a3d',
+      dark_prismarine: '#2d5f62',
+      glass: '#87cbe6',
+      glass_pane: '#87cbe6',
+      dark_oak_door: '#4a2d1d',
+      spruce_door: '#7d5532',
+      iron_door: '#c5c8c7',
+      bricks: '#9c4f3f',
+      oak_leaves: '#3f7d3f',
+      azalea_leaves: '#4e8d4e',
+      spruce_leaves: '#2f6040',
+      gravel: '#8d8b84',
+      coarse_dirt: '#805939',
+      water: '#3a7bd5',
+      poppy: '#d9413d',
+      red_tulip: '#db4b42',
+      cornflower: '#4477c7',
+      blue_orchid: '#4a8dd8',
+      glowstone: '#f0c66a',
+      sea_lantern: '#bfe6da',
+      lantern: '#e6b45c',
+      bookshelf: '#9a6a32',
+      crafting_table: '#9c6b3a',
+      furnace: '#666a6d',
+      chest: '#b0742f',
+      red_bed: '#b73435',
+      oak_fence: '#9b6a35',
+      oak_pressure_plate: '#b8874f',
+      red_carpet: '#a83232',
+      green_carpet: '#427a3b',
+      light_gray_carpet: '#b6b8b8',
+      spruce_stairs: '#8a5b32',
+      quartz_stairs: '#ede7d0',
+      dark_oak_fence: '#3f2618',
+      campfire: '#df7b32'
+    };
+
+    const blocks = expandBlocks(data.blueprint.operations);
+
+    function expandBlocks(operations) {
+      const result = [];
+      for (const op of operations) {
+        if (op.block === 'minecraft:air') continue;
+        if (op.kind === 'setblock') {
+          result.push({ ...op.at, block: op.block });
+          continue;
+        }
+        const volume = (op.to.x - op.from.x + 1) * (op.to.y - op.from.y + 1) * (op.to.z - op.from.z + 1);
+        if (volume > 2500) continue;
+        for (let x = op.from.x; x <= op.to.x; x++) {
+          for (let y = op.from.y; y <= op.to.y; y++) {
+            for (let z = op.from.z; z <= op.to.z; z++) {
+              result.push({ x, y, z, block: op.block });
+            }
+          }
+        }
+      }
+      return result.slice(0, 12000);
+    }
+
+    function blockColor(block) {
+      const id = block.replace('minecraft:', '').split('[')[0];
+      return colors[id] || '#cccccc';
+    }
+
+    function project(p) {
+      const cos = Math.cos(yaw);
+      const sin = Math.sin(yaw);
+      const rx = p.x * cos - p.z * sin;
+      const rz = p.x * sin + p.z * cos;
+      return {
+        x: canvas.width / 2 + (rx - rz) * scale * 0.58,
+        y: canvas.height * 0.7 + (rx + rz) * scale * 0.25 - p.y * scale * 0.62
+      };
+    }
+
+    function drawBlock(p) {
+      const c = project(p);
+      const s = scale * 0.55;
+      ctx.fillStyle = blockColor(p.block);
+      ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(c.x, c.y - s * 0.45);
+      ctx.lineTo(c.x + s, c.y);
+      ctx.lineTo(c.x, c.y + s * 0.45);
+      ctx.lineTo(c.x - s, c.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.floor(rect.width * devicePixelRatio);
+      canvas.height = Math.floor(rect.height * devicePixelRatio);
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      draw();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const sorted = [...blocks].sort((a, b) => (a.x + a.z + a.y * 0.2) - (b.x + b.z + b.y * 0.2));
+      for (const block of sorted) drawBlock(block);
+    }
+
+    document.getElementById('left').onclick = () => { yaw -= Math.PI / 12; draw(); };
+    document.getElementById('right').onclick = () => { yaw += Math.PI / 12; draw(); };
+    document.getElementById('zoomIn').onclick = () => { scale = Math.min(34, scale + 2); draw(); };
+    document.getElementById('zoomOut').onclick = () => { scale = Math.max(8, scale - 2); draw(); };
+    document.getElementById('reset').onclick = () => { yaw = Math.PI / 4; scale = 18; draw(); };
+    addEventListener('resize', resize);
+    resize();
+  </script>
+</body>
+</html>

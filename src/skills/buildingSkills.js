@@ -5,19 +5,41 @@ export const BUILDING_SKILLS = [
     styles: ['欧式'],
     keywords: ['欧式', '欧洲', '古典', '城堡', '庄园', '别墅', '尖顶'],
     preferredFootprint: 'winged',
-    styleMotifs: ['symmetrical-facade', 'chimney', 'side-wing', 'formal-garden'],
+    styleMotifs: [
+      'symmetrical-facade',
+      'central-axis',
+      'stone-plinth',
+      'pilasters',
+      'columned-porch',
+      'framed-windows',
+      'layered-gabled-roof',
+      'chimney',
+      'side-wing',
+      'formal-garden'
+    ],
     zoneHints: ['entry', 'living', 'bedroom', 'kitchen', 'study', 'garden'],
-    requiredModules: ['wing', 'chimney', 'windows'],
-    optionalModules: ['garden', 'stairs', 'balcony'],
+    requiredModules: ['wing', 'chimney', 'windows', 'porch', 'columns', 'facade', 'roof_detail', 'garden'],
+    optionalModules: ['stairs', 'balcony', 'water_feature'],
     critiqueRules: {
-      minimumScore: 82,
-      requiredMotifs: ['chimney', 'side-wing'],
-      requiredModules: ['wing', 'chimney']
+      minimumScore: 88,
+      requiredMotifs: ['central-axis', 'columned-porch', 'framed-windows', 'layered-gabled-roof', 'formal-garden'],
+      requiredModules: ['wing', 'chimney', 'porch', 'columns', 'facade', 'roof_detail', 'garden']
     },
     repairRules: {
       forceFootprint: 'winged',
       enable: ['chimney', 'landscape'],
-      addMotifs: ['symmetrical-facade', 'chimney', 'side-wing']
+      addMotifs: [
+        'symmetrical-facade',
+        'central-axis',
+        'stone-plinth',
+        'pilasters',
+        'columned-porch',
+        'framed-windows',
+        'layered-gabled-roof',
+        'chimney',
+        'side-wing',
+        'formal-garden'
+      ]
     }
   },
   {

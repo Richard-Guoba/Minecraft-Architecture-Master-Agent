@@ -9,6 +9,10 @@ import { listWorlds } from './lib/minecraftWorlds.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 
+const DATAPACK_TARGETS = {
+  'build-lab': 'D:\\Program Files\\minecraft\\自然之旅\\自然之旅3-1.20.1 [v1.6X]\\.minecraft\\saves\\建造实验v1\\datapacks'
+};
+
 function parseArgs(argv) {
   const options = {
     mode: 'auto',
@@ -17,6 +21,7 @@ function parseArgs(argv) {
     seed: undefined,
     minecraftDir: process.env.MINECRAFT_DIR,
     world: undefined,
+    datapacksDir: process.env.ARCHITECT_DATAPACKS_DIR || resolveDatapacksTarget(process.env.ARCHITECT_DATAPACKS_TARGET),
     autoBuild: false,
     launch: false,
     launchCommand: process.env.MINECRAFT_LAUNCH_COMMAND,
@@ -39,6 +44,10 @@ function parseArgs(argv) {
       options.minecraftDir = path.resolve(argv[++i] || '');
     } else if (arg === '--world') {
       options.world = argv[++i];
+    } else if (arg === '--datapacks-dir') {
+      options.datapacksDir = path.resolve(argv[++i] || '');
+    } else if (arg === '--datapacks-target') {
+      options.datapacksDir = resolveDatapacksTarget(argv[++i]);
     } else if (arg === '--auto-build') {
       options.autoBuild = true;
     } else if (arg === '--launch') {
@@ -60,26 +69,47 @@ function parseArgs(argv) {
   };
 }
 
+function resolveDatapacksTarget(name) {
+  if (!name) return undefined;
+  const target = DATAPACK_TARGETS[name];
+  if (!target) {
+    const names = Object.keys(DATAPACK_TARGETS).join(', ') || '无';
+    throw new Error(`未知 datapacks 快捷目标: ${name}。可用目标: ${names}`);
+  }
+  return target;
+}
+
 function printHelp() {
-  console.log(`Minecraft Architect Agent
+  console.log(`Minecraft Architect Agent (construction_method_v1)
 
 Usage:
   npm start -- "建一个欧式大房子"
   npm start -- --mode mock --mc-version 1.21 "建一个两层欧式大房子，带花园"
-  npm start -- --world "DemoWorld" --auto-build --launch "建一个欧式大房子"
+  npm start -- --world "DemoWorld" --launch "建一个欧式大房子"
+  npm start -- --datapacks-dir "D:\\path\\to\\world\\datapacks" "建一个欧式大房子"
+  npm start -- --datapacks-target build-lab "建一个欧式大房子"
   npm start -- --list-worlds
 
 Options:
-  --mode mock|llm|auto       Use rule fallback, force LLM, or auto-detect API config.
+  --mode mock|llm|auto       Use rule fallback, force LLM JSON, or auto-detect API config.
   --mc-version 1.21          Target Minecraft Java version. v1 exports 1.21 datapacks.
   --out <dir>                Output root directory. Defaults to ./out.
   --seed <number>            Optional deterministic seed for design variation.
   --minecraft-dir <dir>      Minecraft Java directory. Defaults to MINECRAFT_DIR or %APPDATA%\\.minecraft.
   --world <name|latest|dir>  Install the datapack into this save after generation.
-  --auto-build               Add load/tick functions so the datapack builds automatically on world load.
+  --datapacks-dir <dir>      Install directly into this world's datapacks directory. Can also use ARCHITECT_DATAPACKS_DIR.
+  --datapacks-target <name>  Install into a named quick target. Available: ${Object.keys(DATAPACK_TARGETS).join(', ') || 'none'}.
+  --auto-build               Deprecated compatibility flag. /reload only refreshes; use /function architect:run to build.
   --launch                   Open Minecraft or a launcher after generation with MINECRAFT_LAUNCH_COMMAND.
   --launch-command <command> Command used by --launch.
   --list-worlds              List detected local Minecraft save names.
+
+Workflow:
+  ArchitectAgent -> PlannerAgent -> CSGBuilder -> BSPPartitioner -> AStarPathfinder.
+  SkillAgent/SkillRouter is not used.
+  Runtime: Node.js only. Python is not required.
+  Default LLM: Zhipu API via LLM_PROVIDER=zhipu.
+  Optional LLM: set LLM_PROVIDER=codex or LLM_PROVIDER=openai-compatible.
 `);
 }
 
@@ -119,10 +149,13 @@ async function main() {
     cwd: projectRoot,
     minecraftDir: options.minecraftDir,
     world: options.world,
+    datapacksDir: options.datapacksDir,
     autoBuild: options.autoBuild
   });
 
   console.log('\n建筑智能体运行完成。');
+  console.log(`工作流: ${result.workflow}`);
+  console.log(`LLM通道: ${result.llmProvider}`);
   console.log(`输出目录: ${result.outputDir}`);
   console.log(`数据包: ${result.artifacts.datapackDir}`);
   if (result.artifacts.installedDatapackDir) {
@@ -130,10 +163,12 @@ async function main() {
   }
   console.log(`预览: ${result.artifacts.previewHtml}`);
   console.log(`报告: ${result.artifacts.report}`);
-  if (options.autoBuild && result.artifacts.installedDatapackDir) {
-    console.log('\n已启用自动建造：打开该世界后，数据包会在第一个玩家位置自动 clear + build。');
+  if (result.artifacts.installedDatapackDir) {
+    console.log('\nMinecraft 1.21 中执行: /reload -> /function architect:run');
+    console.log('/reload 只刷新数据包，不会建造。');
   } else {
-    console.log('\nMinecraft 1.21 中执行: /reload -> /function architect:clear -> /function architect:build');
+    console.log('\n安装数据包后执行: /reload -> /function architect:run');
+    console.log('/reload 只刷新数据包，不会建造。');
   }
 
   if (options.launch) {
