@@ -13,22 +13,33 @@ export class CSGBuilder {
     this.materials = materials;
   }
 
-  generateShell(architectureJson) {
+  generateShell(architectureJson, planInput = {}) {
+    this.architecture = architectureJson || {};
+    const plans = normalizePlanBundle(planInput);
+    this.structure = plans.structure || {};
+    this.facadePlan = plans.facade || {};
+    this.roofPlan = plans.roof || {};
+    this.sitePlan = plans.site || {};
     const volumeBoxes = this.resolveVolumes(architectureJson.volumes || []);
     const solid = this.buildSolid(volumeBoxes);
     const grid = new Map();
+    const shellThickness = this.shellThickness(architectureJson);
 
     for (const pointKey of solid) {
       const point = parseKey(pointKey);
-      if (!isSurfaceCell(solid, point)) continue;
+      if (!isShellCell(solid, point, shellThickness)) continue;
       const meta = this.metaForPoint(point, volumeBoxes);
-      grid.set(pointKey, cell(this.materials.wall || 'minecraft:smooth_sandstone', meta.module || 'walls'));
+      grid.set(pointKey, cell(this.shellBlockForMeta(meta), meta.module || 'walls'));
     }
 
     this.addFloorsAndFoundations(grid, volumeBoxes);
-    this.addRoofs(grid, volumeBoxes, architectureJson.roof_rules || {});
-    this.addWindows(grid, volumeBoxes, architectureJson.facade_rules || {});
+    this.addStructuralDetails(grid, volumeBoxes, architectureJson.structural_rules || {}, this.structure);
+    this.addRoofs(grid, volumeBoxes, architectureJson.roof_rules || {}, this.roofPlan);
+    this.addWindows(grid, volumeBoxes, architectureJson.facade_rules || {}, this.facadePlan);
+    this.addFacadeDetails(grid, volumeBoxes, architectureJson.facade_rules || {}, this.facadePlan);
+    this.addRoofPlanDetails(grid, volumeBoxes, this.roofPlan);
     this.addSite(grid, architectureJson.site_rules || {});
+    this.addSiteLandscape(grid, this.sitePlan);
 
     return {
       grid,
@@ -39,10 +50,25 @@ export class CSGBuilder {
       csg: {
         volumeCount: volumeBoxes.length,
         solidCellCount: solid.size,
-        surfaceCellCount: [...solid].filter((keyValue) => isSurfaceCell(solid, parseKey(keyValue))).length,
+        surfaceCellCount: [...solid].filter((keyValue) => isShellCell(solid, parseKey(keyValue), shellThickness)).length,
+        shellThickness,
+        roofStyle: String(architectureJson.roof_rules?.style || this.spec.roof_style || 'gabled'),
+        structuralSystem: architectureJson.structural_rules?.system || this.spec.structural?.system || 'standard-shell',
+        structure: summarizeStructurePlan(this.structure),
+        facade: summarizeFacadePlan(this.facadePlan),
+        roofPlan: summarizeRoofPlan(this.roofPlan),
+        sitePlan: summarizeSitePlan(this.sitePlan),
         philosophy: architectureJson.philosophy || '先造壳，后填瓤。'
       }
     };
+  }
+
+  shellThickness(architectureJson = this.architecture || {}) {
+    return clampInt(
+      Number(this.spec.shell_thickness || architectureJson.envelope_rules?.shell_thickness || architectureJson.envelope_rules?.shellThickness || 1),
+      1,
+      3
+    );
   }
 
   resolveVolumes(volumes) {
@@ -61,7 +87,9 @@ export class CSGBuilder {
         max_z: depth - 1,
         floors,
         side: 'center',
-        boolean_mode: 'union'
+        boolean_mode: 'union',
+        tags: ['primary-mass'],
+        purpose: 'main-building-envelope'
       }
     ];
 
@@ -74,28 +102,38 @@ export class CSGBuilder {
 
   resolveAttachedVolume(volume, width, depth, wallHeight) {
     const scale = normalizeScale(volume.scale);
+    const module = moduleForVolume(volume);
     const boxWidth = clampInt(Math.round(width * scale[0]), 4, Math.max(4, Math.floor(width / 2)));
     const boxDepth = clampInt(Math.round(depth * scale[2]), 4, Math.max(4, depth));
-    const boxHeight = clampInt(Math.round(wallHeight * scale[1]), Math.max(4, this.spec.floor_height), Math.max(4, wallHeight + 4));
+    const maxHeight = module === 'tower' ? wallHeight + Math.max(3, this.spec.roof_height || 4) : module === 'porch' ? Math.max(4, Math.ceil(wallHeight * 0.65)) : wallHeight + 4;
+    const boxHeight = clampInt(Math.round(wallHeight * scale[1]), Math.max(4, this.spec.floor_height), Math.max(4, maxHeight));
     const relation = String(volume.placement?.relation || volume.id || '').toLowerCase();
+    const hasWest = relation.includes('west') || relation.includes('西');
+    const hasEast = relation.includes('east') || relation.includes('东');
+    const hasNorth = relation.includes('north') || relation.includes('rear') || relation.includes('北');
+    const hasSouth = relation.includes('front') || relation.includes('south') || relation.includes('南');
     let minX = Math.floor(width / 2) - Math.floor(boxWidth / 2);
     let minZ = depth;
     let side = 'front';
 
-    if (relation.includes('west') || relation.includes('西')) {
-      minX = -boxWidth;
-      minZ = clampInt(Math.round(depth * 0.2), 1, Math.max(1, depth - boxDepth - 1));
+    if (hasWest) {
+      minX = module === 'tower' ? -Math.ceil(boxWidth / 2) : -boxWidth;
       side = 'west';
-    } else if (relation.includes('east') || relation.includes('东')) {
-      minX = width;
-      minZ = clampInt(Math.round(depth * (relation.includes('rear') ? 0.12 : 0.2)), 1, Math.max(1, depth - boxDepth - 1));
+    } else if (hasEast) {
+      minX = module === 'tower' ? width - Math.floor(boxWidth / 2) : width;
       side = 'east';
-    } else if (relation.includes('north') || relation.includes('rear') || relation.includes('北')) {
-      minZ = -boxDepth;
-      side = 'rear';
     }
 
-    const module = moduleForVolume(volume);
+    if (hasNorth) {
+      minZ = module === 'tower' ? -Math.ceil(boxDepth / 2) : -boxDepth;
+      side = hasEast ? 'north-east' : hasWest ? 'north-west' : 'rear';
+    } else if (hasSouth) {
+      minZ = depth;
+      side = hasEast ? 'south-east' : hasWest ? 'south-west' : 'front';
+    } else if (hasEast || hasWest) {
+      minZ = clampInt(Math.round(depth * 0.2), 1, Math.max(1, depth - boxDepth - 1));
+    }
+
     return {
       id: String(volume.id || 'volume'),
       role: String(volume.role || volume.id || '体块'),
@@ -109,7 +147,11 @@ export class CSGBuilder {
       max_z: minZ + boxDepth - 1,
       floors: Math.max(1, Math.min(this.spec.floors, Math.round(boxHeight / Math.max(1, this.spec.floor_height)))),
       side,
-      boolean_mode: String(volume.boolean_mode || 'union')
+      boolean_mode: String(volume.boolean_mode || 'union'),
+      tags: Array.isArray(volume.tags) ? volume.tags.map(String) : [],
+      purpose: volume.purpose,
+      facade_role: volume.facade_role,
+      roof_policy: volume.roof_policy
     };
   }
 
@@ -133,7 +175,17 @@ export class CSGBuilder {
     return { module: 'walls' };
   }
 
+  shellBlockForMeta(meta) {
+    const tags = Array.isArray(meta.tags) ? meta.tags.join(' ') : '';
+    const text = `${meta.module || ''} ${meta.facade_role || ''} ${tags}`.toLowerCase();
+    if (/sunroom|greenhouse|transparent|glass/.test(text)) return this.materials.glass || 'minecraft:glass';
+    if (/gallery|porch/.test(text)) return this.materials.trim || this.materials.wall || 'minecraft:smooth_sandstone';
+    if (/garage/.test(text)) return this.materials.foundation || this.materials.wall || 'minecraft:stone_bricks';
+    return this.materials.wall || 'minecraft:smooth_sandstone';
+  }
+
   addFloorsAndFoundations(grid, boxes) {
+    const thickness = this.shellThickness();
     for (const box of boxes) {
       const module = box.module === 'porch' ? 'porch' : 'foundation';
       fillBox(grid, box.min_x, 0, box.min_z, box.max_x, 0, box.max_z, this.materials.foundation || 'minecraft:stone_bricks', module);
@@ -141,22 +193,33 @@ export class CSGBuilder {
       for (let level = 0; level < box.floors; level += 1) {
         const y = level * this.spec.floor_height + 1;
         if (y > box.max_y) continue;
-        fillBox(grid, box.min_x + 1, y, box.min_z + 1, box.max_x - 1, y, box.max_z - 1, this.materials.floor || 'minecraft:spruce_planks', 'floors');
+        fillBox(grid, box.min_x + thickness, y, box.min_z + thickness, box.max_x - thickness, y, box.max_z - thickness, this.materials.floor || 'minecraft:spruce_planks', 'floors');
       }
     }
   }
 
-  addRoofs(grid, boxes, roofRules) {
-    const roofStyle = String(roofRules.style || 'gabled');
-    const overhang = Number(roofRules.overhang ?? 1);
+  addRoofs(grid, boxes, roofRules, roofPlan = {}) {
+    const roofStyle = String(roofRules.style || this.spec.roof_style || 'gabled');
+    const overhang = Number(roofRules.overhang ?? this.spec.roof_overhang ?? 1);
     for (const box of boxes) {
+      const boxRoofStyle = box.roof_policy || roofStyle;
       if (box.module === 'porch') {
         this.addFlatRoof(grid, box, Math.max(0, overhang), 'porch');
-      } else if (roofStyle === 'flat' || box.shape === 'cylinder') {
+      } else if (box.module === 'tower' || box.shape === 'cylinder') {
+        this.addTowerRoof(grid, box, Math.max(2, this.spec.roof_height || 4), overhang);
+      } else if (boxRoofStyle === 'flat') {
         this.addFlatRoof(grid, box, Math.max(0, overhang), 'roof');
+      } else if (boxRoofStyle === 'hipped') {
+        this.addHippedRoof(grid, box, this.spec.roof_height, overhang);
+      } else if (boxRoofStyle === 'pagoda') {
+        this.addPagodaRoof(grid, box, this.spec.roof_height, Math.max(1, overhang));
+      } else if (boxRoofStyle === 'domed') {
+        this.addDomedRoof(grid, box, this.spec.roof_height, Math.max(0, overhang));
       } else {
         this.addGabledRoof(grid, box, this.spec.roof_height, overhang);
       }
+      if (box.module !== 'porch' && Number(roofRules.dormers || 0) > 0) this.addDormers(grid, box, Number(roofRules.dormers));
+      if (box.module !== 'porch' && (roofRules.skylights || roofPlan.engine_hints?.render_skylight_grid || box.module === 'sunroom')) this.addSkylights(grid, box);
     }
   }
 
@@ -172,6 +235,9 @@ export class CSGBuilder {
       this.materials.roof || 'minecraft:dark_oak_planks',
       module
     );
+    if (module === 'roof' && (this.architecture?.roof_rules?.roof_terrace || this.spec.roof_style === 'flat')) {
+      this.addParapet(grid, box, overhang);
+    }
   }
 
   addGabledRoof(grid, box, roofHeight, overhang) {
@@ -186,16 +252,316 @@ export class CSGBuilder {
     fillBox(grid, ridgeX, ridgeY, box.min_z - overhang, ridgeX, ridgeY, box.max_z + overhang, this.materials.trim || 'minecraft:smooth_quartz', 'roof_detail');
   }
 
-  addWindows(grid, boxes, facadeRules) {
-    const wide = Boolean(facadeRules.large_glass);
-    const windowWidth = wide ? 4 : 2;
-    const windowHeight = wide ? 3 : 2;
+  addStructuralDetails(grid, boxes, structuralRules, structurePlan = {}) {
+    const mainBox = boxes.find((box) => box.id === 'main') || boxes[0];
+    const supports = String(structuralRules.primary_supports || this.spec.structural?.supports || '');
+    const system = String(structuralRules.system || this.spec.structural?.system || '');
+    const supportElements = normalizePlanItems(structurePlan.support_elements);
+    const bracingElements = normalizePlanItems(structurePlan.bracing_elements);
+    const reinforcementElements = normalizePlanItems(structurePlan.reinforcement_elements);
+    const roofFrameElements = normalizePlanItems(structurePlan.roof_frame?.elements);
+    const hints = structurePlan.engine_hints || {};
+    const wantsColumns = /column|pillar|pilaster|regular-columns|柱/i.test(`${supports} ${system}`) ||
+      hints.render_column_grid ||
+      this.spec.facade?.porch ||
+      this.architecture?.facade_rules?.columns;
+    const wantsButtresses = /buttress|gothic|vault|扶壁/i.test(`${supports} ${system}`) ||
+      hints.render_buttresses ||
+      this.architecture?.facade_rules?.pointed_arches;
+    const wantsStilts = /stilt|tree-trunk|高脚|吊脚/i.test(`${supports} ${system}`) || hints.render_stilts;
+    const columnGrid = supportElements.find((item) => item.kind === 'column-grid');
+
+    for (const box of boxes) {
+      if (box.module === 'porch') continue;
+      if (wantsColumns) this.addCornerPilasters(grid, box);
+      if (wantsButtresses) this.addButtresses(grid, box);
+      if (wantsStilts && box.id === mainBox.id) this.addStilts(grid, box);
+      if (columnGrid && box.id === 'main') this.addColumnGrid(grid, box, Number(columnGrid.spacing || 5));
+      if (reinforcementElements.some((item) => item.kind === 'ring-beams')) this.addRingBeams(grid, box);
+      if (roofFrameElements.length) this.addRoofFrame(grid, box, roofFrameElements[0]);
+    }
+
+    if (hints.render_tree_trunk) this.addTreeTrunkCore(grid, boxes);
+    if (hints.render_cantilever_braces || bracingElements.some((item) => item.kind === 'knee-brace')) this.addCantileverBraces(grid, boxes);
+    if (hints.render_retaining_ribs || reinforcementElements.some((item) => item.kind === 'retaining-ribs')) this.addRetainingRibs(grid, mainBox);
+    if (hints.render_glass_ribs || supportElements.some((item) => item.kind === 'glass-ribs')) this.addGlassRibs(grid, boxes);
+    if (hints.render_service_braces || bracingElements.some((item) => item.kind === 'x-brace')) this.addServiceCoreBraces(grid, boxes);
+    if (bracingElements.some((item) => item.kind === 'anchor-ties')) this.addFoundationAnchors(grid, boxes);
+
+    if (this.architecture?.facade_rules?.porch || this.spec.facade?.porch) {
+      this.addEntryColumns(grid, mainBox);
+    }
+  }
+
+  addCornerPilasters(grid, box) {
+    const block = this.materials.trim || 'minecraft:smooth_quartz';
+    const y1 = 1;
+    const y2 = box.max_y;
+    const corners = [
+      [box.min_x, box.min_z],
+      [box.max_x, box.min_z],
+      [box.min_x, box.max_z],
+      [box.max_x, box.max_z]
+    ];
+    for (const [x, z] of corners) {
+      fillBox(grid, x, y1, z, x, y2, z, block, 'structural_frame');
+    }
+  }
+
+  addButtresses(grid, box) {
+    const block = this.materials.foundation || 'minecraft:stone_bricks';
+    const y2 = Math.max(3, box.max_y - 1);
+    const xs = windowPositions(box.min_x, box.max_x, 1, 6);
+    for (const x of xs) {
+      fillBox(grid, x, 1, box.min_z - 1, x, y2, box.min_z - 1, block, 'buttress');
+      fillBox(grid, x, 1, box.max_z + 1, x, y2, box.max_z + 1, block, 'buttress');
+    }
+  }
+
+  addStilts(grid, box) {
+    const block = this.materials.foundation || 'minecraft:jungle_log';
+    for (let x = box.min_x + 2; x <= box.max_x - 2; x += 5) {
+      for (let z = box.min_z + 2; z <= box.max_z - 2; z += 5) {
+        fillBox(grid, x, 0, z, x, 2, z, block, 'structural_frame');
+      }
+    }
+  }
+
+  addColumnGrid(grid, box, spacing = 5) {
+    const block = this.materials.trim || this.materials.foundation || 'minecraft:smooth_quartz';
+    const step = clampInt(spacing, 3, 8, 5);
+    const y1 = 1;
+    const y2 = box.max_y;
+    for (let x = box.min_x + step; x <= box.max_x - step; x += step) {
+      for (let z = box.min_z + step; z <= box.max_z - step; z += step) {
+        fillBox(grid, x, y1, z, x, y2, z, block, 'structural_frame');
+      }
+    }
+  }
+
+  addRingBeams(grid, box) {
+    const block = this.materials.trim || this.materials.foundation || 'minecraft:smooth_quartz';
+    for (let floor = 1; floor <= Math.max(1, box.floors); floor += 1) {
+      const y = Math.min(box.max_y, floor * this.spec.floor_height + 1);
+      fillBox(grid, box.min_x, y, box.min_z, box.max_x, y, box.min_z, block, 'structural_frame');
+      fillBox(grid, box.min_x, y, box.max_z, box.max_x, y, box.max_z, block, 'structural_frame');
+      fillBox(grid, box.min_x, y, box.min_z, box.min_x, y, box.max_z, block, 'structural_frame');
+      fillBox(grid, box.max_x, y, box.min_z, box.max_x, y, box.max_z, block, 'structural_frame');
+    }
+  }
+
+  addRoofFrame(grid, box, element = {}) {
+    if (box.module === 'porch') return;
+    const block = this.materials.trim || this.materials.foundation || 'minecraft:smooth_quartz';
+    const y = box.max_y + 1;
+    const step = element.kind === 'glass-roof-ribs' ? 3 : 4;
+    for (let x = box.min_x + 2; x <= box.max_x - 2; x += step) {
+      fillBox(grid, x, y, box.min_z, x, y, box.max_z, block, 'roof_frame');
+    }
+    for (let z = box.min_z + 2; z <= box.max_z - 2; z += step) {
+      fillBox(grid, box.min_x, y, z, box.max_x, y, z, block, 'roof_frame');
+    }
+  }
+
+  addTreeTrunkCore(grid, boxes) {
+    const trunk = boxes.find((box) => box.id === 'trunk-core') || boxes.find((box) => box.tags?.includes('support-trunk'));
+    const main = boxes.find((box) => box.id === 'main') || boxes[0];
+    if (!main) return;
+    const block = this.materials.foundation || 'minecraft:jungle_log';
+    const cx = trunk ? Math.floor((trunk.min_x + trunk.max_x) / 2) : Math.floor((main.min_x + main.max_x) / 2);
+    const cz = trunk ? Math.floor((trunk.min_z + trunk.max_z) / 2) : Math.floor((main.min_z + main.max_z) / 2);
+    const y2 = Math.max(main.max_y, trunk?.max_y || main.max_y);
+    fillBox(grid, cx - 1, 0, cz - 1, cx + 1, y2, cz + 1, block, 'structural_frame');
+  }
+
+  addCantileverBraces(grid, boxes) {
+    const block = this.materials.foundation || this.materials.trim || 'minecraft:stone_bricks';
+    const targets = boxes.filter((box) => box.module === 'gallery' || /deck|platform|cantilever|view/.test(`${box.id} ${box.facade_role} ${(box.tags || []).join(' ')}`));
+    for (const box of targets) {
+      const yTop = Math.max(2, Math.min(box.max_y, Math.floor(this.spec.floor_height * 0.7)));
+      const xs = [box.min_x + 1, box.max_x - 1].filter((value, index, list) => index === 0 || value !== list[0]);
+      for (const x of xs) {
+        if (box.side.includes('front') || box.min_z >= this.spec.depth) {
+          drawSteppedBrace(grid, { x, y: 1, z: box.max_z }, { x, y: yTop, z: Math.max(box.min_z, this.spec.depth - 1) }, block, 'bracing');
+        } else if (box.side.includes('rear') || box.max_z < 0) {
+          drawSteppedBrace(grid, { x, y: 1, z: box.min_z }, { x, y: yTop, z: Math.min(box.max_z, 0) }, block, 'bracing');
+        } else {
+          const z = Math.floor((box.min_z + box.max_z) / 2);
+          const outerX = box.side.includes('west') ? box.min_x : box.max_x;
+          const innerX = box.side.includes('west') ? Math.min(box.max_x, 0) : Math.max(box.min_x, this.spec.width - 1);
+          drawSteppedBrace(grid, { x: outerX, y: 1, z }, { x: innerX, y: yTop, z }, block, 'bracing');
+        }
+      }
+    }
+  }
+
+  addRetainingRibs(grid, box) {
+    if (!box) return;
+    const block = this.materials.foundation || 'minecraft:deepslate_bricks';
+    const y2 = Math.max(3, box.max_y - 1);
+    const spacing = 4;
+    for (let x = box.min_x + 1; x <= box.max_x - 1; x += spacing) {
+      fillBox(grid, x, 1, box.min_z - 1, x, y2, box.min_z - 1, block, 'retaining_wall');
+      fillBox(grid, x, 1, box.max_z + 1, x, y2, box.max_z + 1, block, 'retaining_wall');
+    }
+    for (let z = box.min_z + 1; z <= box.max_z - 1; z += spacing) {
+      fillBox(grid, box.min_x - 1, 1, z, box.min_x - 1, y2, z, block, 'retaining_wall');
+      fillBox(grid, box.max_x + 1, 1, z, box.max_x + 1, y2, z, block, 'retaining_wall');
+    }
+  }
+
+  addGlassRibs(grid, boxes) {
+    const block = this.materials.trim || 'minecraft:oxidized_copper';
+    for (const box of boxes.filter((item) => item.module === 'sunroom')) {
+      for (let x = box.min_x + 1; x <= box.max_x - 1; x += 3) {
+        fillBox(grid, x, 1, box.min_z, x, box.max_y, box.min_z, block, 'structural_frame');
+        fillBox(grid, x, 1, box.max_z, x, box.max_y, box.max_z, block, 'structural_frame');
+      }
+      for (let z = box.min_z + 1; z <= box.max_z - 1; z += 3) {
+        fillBox(grid, box.min_x, 1, z, box.min_x, box.max_y, z, block, 'structural_frame');
+        fillBox(grid, box.max_x, 1, z, box.max_x, box.max_y, z, block, 'structural_frame');
+      }
+    }
+  }
+
+  addServiceCoreBraces(grid, boxes) {
+    const block = this.materials.trim || 'minecraft:cyan_concrete';
+    const targets = boxes.filter((box) => box.id === 'service-core' || /service-core|neon/.test(`${box.id} ${(box.tags || []).join(' ')}`));
+    for (const box of targets) {
+      drawSteppedBrace(grid, { x: box.min_x, y: 2, z: box.min_z }, { x: box.max_x, y: Math.max(3, box.max_y - 1), z: box.max_z }, block, 'bracing');
+      drawSteppedBrace(grid, { x: box.max_x, y: 2, z: box.min_z }, { x: box.min_x, y: Math.max(3, box.max_y - 1), z: box.max_z }, block, 'bracing');
+    }
+  }
+
+  addFoundationAnchors(grid, boxes) {
+    const block = this.materials.foundation || 'minecraft:stone_bricks';
+    for (const box of boxes.filter((item) => item.module === 'gallery' || item.module === 'tower')) {
+      const z = box.side.includes('front') ? Math.max(this.spec.depth - 1, box.min_z) : box.side.includes('rear') ? Math.min(0, box.max_z) : Math.floor((box.min_z + box.max_z) / 2);
+      fillBox(grid, box.min_x, 0, z, box.max_x, 0, z, block, 'foundation_anchor');
+    }
+  }
+
+  addEntryColumns(grid, mainBox) {
+    const side = String(this.spec.door_side || this.architecture?.facade_rules?.front_side || 'south');
+    const block = this.materials.trim || 'minecraft:smooth_quartz';
+    const y1 = 1;
+    const y2 = Math.min(mainBox.max_y, Math.max(3, this.spec.floor_height));
+    const centerX = Math.floor((mainBox.min_x + mainBox.max_x) / 2);
+    const centerZ = Math.floor((mainBox.min_z + mainBox.max_z) / 2);
+    if (['south', 'north'].includes(side)) {
+      const z = side === 'south' ? mainBox.max_z + 2 : mainBox.min_z - 2;
+      for (const x of [centerX - 3, centerX + 3]) fillBox(grid, x, y1, z, x, y2, z, block, 'columns');
+      fillBox(grid, centerX - 4, y2 + 1, z, centerX + 4, y2 + 1, z, block, 'porch');
+    } else {
+      const x = side === 'east' ? mainBox.max_x + 2 : mainBox.min_x - 2;
+      for (const z of [centerZ - 3, centerZ + 3]) fillBox(grid, x, y1, z, x, y2, z, block, 'columns');
+      fillBox(grid, x, y2 + 1, centerZ - 4, x, y2 + 1, centerZ + 4, block, 'porch');
+    }
+  }
+
+  addHippedRoof(grid, box, roofHeight, overhang) {
+    for (let layer = 0; layer < Math.max(1, roofHeight); layer += 1) {
+      const inset = Math.floor(layer / 2);
+      const x1 = box.min_x - overhang + inset;
+      const x2 = box.max_x + overhang - inset;
+      const z1 = box.min_z - overhang + inset;
+      const z2 = box.max_z + overhang - inset;
+      if (x1 > x2 || z1 > z2) break;
+      fillBox(grid, x1, box.max_y + 1 + layer, z1, x2, box.max_y + 1 + layer, z2, this.materials.roof || 'minecraft:dark_oak_planks', 'roof');
+    }
+    const cx = Math.floor((box.min_x + box.max_x) / 2);
+    const cz = Math.floor((box.min_z + box.max_z) / 2);
+    fillBox(grid, cx - 1, box.max_y + roofHeight + 1, cz - 1, cx + 1, box.max_y + roofHeight + 1, cz + 1, this.materials.trim || 'minecraft:smooth_quartz', 'roof_detail');
+  }
+
+  addPagodaRoof(grid, box, roofHeight, overhang) {
+    const layers = Math.max(2, roofHeight);
+    for (let layer = 0; layer < layers; layer += 1) {
+      const step = Math.floor(layer / 2);
+      const extra = layer % 2 === 0 ? overhang : Math.max(0, overhang - 1);
+      const x1 = box.min_x - extra + step;
+      const x2 = box.max_x + extra - step;
+      const z1 = box.min_z - extra + step;
+      const z2 = box.max_z + extra - step;
+      if (x1 > x2 || z1 > z2) break;
+      fillBox(grid, x1, box.max_y + 1 + layer, z1, x2, box.max_y + 1 + layer, z2, this.materials.roof || 'minecraft:deepslate_tiles', 'roof');
+    }
+    const y = box.max_y + layers + 1;
+    fillBox(grid, box.min_x, y, box.min_z, box.max_x, y, box.min_z, this.materials.trim || 'minecraft:stripped_dark_oak_log', 'roof_detail');
+    fillBox(grid, box.min_x, y, box.max_z, box.max_x, y, box.max_z, this.materials.trim || 'minecraft:stripped_dark_oak_log', 'roof_detail');
+  }
+
+  addTowerRoof(grid, box, roofHeight, overhang) {
+    const centerX = Math.floor((box.min_x + box.max_x) / 2);
+    const centerZ = Math.floor((box.min_z + box.max_z) / 2);
+    const radius = Math.max(1, Math.floor(Math.min(box.max_x - box.min_x + 1, box.max_z - box.min_z + 1) / 2) + overhang);
+    for (let layer = 0; layer < Math.max(2, roofHeight); layer += 1) {
+      const r = Math.max(0, radius - layer);
+      if (r <= 0) {
+        fillBox(grid, centerX, box.max_y + 1 + layer, centerZ, centerX, box.max_y + 1 + layer, centerZ, this.materials.trim || 'minecraft:smooth_quartz', 'roof_detail');
+        break;
+      }
+      fillDisk(grid, centerX, box.max_y + 1 + layer, centerZ, r, this.materials.roof || 'minecraft:dark_oak_planks', 'roof');
+    }
+  }
+
+  addDomedRoof(grid, box, roofHeight, overhang) {
+    const centerX = Math.floor((box.min_x + box.max_x) / 2);
+    const centerZ = Math.floor((box.min_z + box.max_z) / 2);
+    const baseRadius = Math.max(2, Math.floor(Math.min(box.max_x - box.min_x + 1, box.max_z - box.min_z + 1) / 2) + overhang);
+    const layers = Math.max(2, roofHeight);
+    for (let layer = 0; layer < layers; layer += 1) {
+      const progress = layer / Math.max(1, layers - 1);
+      const radius = Math.max(1, Math.round(baseRadius * Math.cos(progress * Math.PI / 2)));
+      fillDisk(grid, centerX, box.max_y + 1 + layer, centerZ, radius, this.materials.roof || 'minecraft:smooth_quartz', 'roof');
+    }
+    fillBox(grid, centerX, box.max_y + layers + 1, centerZ, centerX, box.max_y + layers + 1, centerZ, this.materials.trim || 'minecraft:gold_block', 'roof_detail');
+  }
+
+  addDormers(grid, box, count) {
+    const dormerCount = clampInt(count, 1, 4);
+    const block = this.materials.trim || 'minecraft:smooth_quartz';
+    const glass = this.materials.glass || 'minecraft:glass';
+    const y = box.max_y + 2;
+    const z = this.spec.door_side === 'north' ? box.min_z - 1 : box.max_z + 1;
+    const xs = windowPositions(box.min_x + 2, box.max_x - 2, 1, Math.max(4, Math.floor((box.max_x - box.min_x + 1) / dormerCount)));
+    for (const x of xs.slice(0, dormerCount)) {
+      fillBox(grid, x - 1, y, z, x + 1, y + 1, z, block, 'roof_detail');
+      fillBox(grid, x, y, z, x, y + 1, z, glass, 'windows');
+      fillBox(grid, x - 1, y + 2, z, x + 1, y + 2, z, this.materials.roof || 'minecraft:dark_oak_planks', 'roof_detail');
+    }
+  }
+
+  addSkylights(grid, box) {
+    const y = box.max_y + 2;
+    const centerX = Math.floor((box.min_x + box.max_x) / 2);
+    const centerZ = Math.floor((box.min_z + box.max_z) / 2);
+    fillBox(grid, centerX - 2, y, centerZ - 1, centerX + 2, y, centerZ + 1, this.materials.glass || 'minecraft:glass', 'skylight');
+  }
+
+  addParapet(grid, box, overhang) {
+    const y = box.max_y + 2;
+    const block = this.materials.trim || 'minecraft:light_gray_concrete';
+    fillBox(grid, box.min_x - overhang, y, box.min_z - overhang, box.max_x + overhang, y, box.min_z - overhang, block, 'roof_detail');
+    fillBox(grid, box.min_x - overhang, y, box.max_z + overhang, box.max_x + overhang, y, box.max_z + overhang, block, 'roof_detail');
+    fillBox(grid, box.min_x - overhang, y, box.min_z - overhang, box.min_x - overhang, y, box.max_z + overhang, block, 'roof_detail');
+    fillBox(grid, box.max_x + overhang, y, box.min_z - overhang, box.max_x + overhang, y, box.max_z + overhang, block, 'roof_detail');
+  }
+
+  addWindows(grid, boxes, facadeRules, facadePlan = {}) {
+    const wide = Boolean(facadeRules.large_glass || this.spec.facade?.large_glass);
+    const glazingRatio = String(facadeRules.glazing_ratio || this.spec.facade?.glazing_ratio || 'medium');
+    const narrow = glazingRatio === 'low';
+    const planned = facadePlan.window_system || {};
+    const windowWidth = clampInt(planned.width || (wide ? 4 : narrow ? 1 : 2), 1, 5, wide ? 4 : 2);
+    const windowHeight = clampInt(planned.height || (wide ? 3 : 2), 1, 4, wide ? 3 : 2);
+    const spacing = clampInt(planned.spacing || (wide ? 5 : narrow ? 8 : 6), 3, 10, wide ? 5 : 6);
     const glass = this.materials.glass || 'minecraft:glass';
 
     for (const box of boxes) {
       if (box.module === 'porch') continue;
-      const xs = windowPositions(box.min_x, box.max_x, windowWidth, 6);
-      const zs = windowPositions(box.min_z, box.max_z, windowWidth, 6);
+      const xs = windowPositions(box.min_x, box.max_x, windowWidth, spacing);
+      const zs = windowPositions(box.min_z, box.max_z, windowWidth, spacing);
       for (let level = 0; level < box.floors; level += 1) {
         const baseY = level * this.spec.floor_height + 3;
         if (baseY + windowHeight - 1 >= box.max_y) continue;
@@ -211,29 +577,353 @@ export class CSGBuilder {
     }
   }
 
-  addSite(grid, siteRules) {
-    if (!siteRules.formal_garden && !siteRules.water_feature) return;
-    const center = Math.floor(this.spec.width / 2);
-    fillBox(grid, center - 1, 0, this.spec.depth, center + 1, 0, this.spec.depth + this.spec.garden_depth, this.materials.path || 'minecraft:gravel', 'garden');
-    if (siteRules.water_feature) {
-      const z = this.spec.depth + Math.max(2, Math.floor(this.spec.garden_depth / 2));
-      fillBox(grid, center - 2, 0, z, center + 2, 0, z + 2, 'minecraft:water', 'water_feature');
+  addFacadeDetails(grid, boxes, facadeRules, facadePlan = {}) {
+    const mainBox = boxes.find((box) => box.id === 'main') || boxes[0];
+    if (!mainBox) return;
+    if (facadeRules.screen || this.spec.facade?.screens) this.addScreenFacade(grid, mainBox);
+    if (facadeRules.arches || facadeRules.pointed_arches || this.spec.facade?.arches) this.addEntryArch(grid, mainBox, Boolean(facadeRules.pointed_arches));
+    if (facadeRules.balcony || this.spec.facade?.balcony) this.addBalcony(grid, mainBox);
+    if (facadeRules.bay_windows) this.addBayWindow(grid, mainBox);
+    if (facadePlan.engine_hints?.render_window_trim) this.addWindowTrimBands(grid, mainBox, facadePlan);
+    if (facadePlan.engine_hints?.render_shutters) this.addShutters(grid, mainBox, facadePlan);
+    if (facadePlan.engine_hints?.render_neon_trim) this.addNeonTrim(grid, mainBox, facadePlan);
+    if (facadePlan.engine_hints?.render_balcony_rail) this.addBalconyRail(grid, mainBox, facadePlan);
+    if (facadePlan.engine_hints?.render_protected_slits) this.addProtectedSlitFrames(grid, mainBox, facadePlan);
+  }
+
+  addScreenFacade(grid, box) {
+    const side = String(this.spec.door_side || 'south');
+    const block = this.materials.trim || 'minecraft:stripped_dark_oak_log';
+    const y1 = 2;
+    const y2 = Math.min(box.max_y, this.spec.floor_height);
+    if (['south', 'north'].includes(side)) {
+      const z = side === 'south' ? box.max_z + 1 : box.min_z - 1;
+      for (let x = box.min_x + 2; x <= box.max_x - 2; x += 3) fillBox(grid, x, y1, z, x, y2, z, block, 'screens');
+    } else {
+      const x = side === 'east' ? box.max_x + 1 : box.min_x - 1;
+      for (let z = box.min_z + 2; z <= box.max_z - 2; z += 3) fillBox(grid, x, y1, z, x, y2, z, block, 'screens');
     }
+  }
+
+  addEntryArch(grid, box, pointed) {
+    const side = String(this.spec.door_side || 'south');
+    const block = this.materials.trim || 'minecraft:smooth_quartz';
+    const width = Math.max(3, Number(this.spec.door_width || 2) + 2);
+    const height = Math.max(3, Number(this.spec.door_height || 3) + 1);
+    const centerX = Math.floor((box.min_x + box.max_x) / 2);
+    const centerZ = Math.floor((box.min_z + box.max_z) / 2);
+    if (['south', 'north'].includes(side)) {
+      const z = side === 'south' ? box.max_z + 1 : box.min_z - 1;
+      fillBox(grid, centerX - Math.floor(width / 2), 1, z, centerX - Math.floor(width / 2), height, z, block, 'arches');
+      fillBox(grid, centerX + Math.floor(width / 2), 1, z, centerX + Math.floor(width / 2), height, z, block, 'arches');
+      fillBox(grid, centerX - Math.floor(width / 2), height, z, centerX + Math.floor(width / 2), height, z, block, 'arches');
+      if (pointed) fillBox(grid, centerX, height + 1, z, centerX, height + 1, z, block, 'arches');
+    } else {
+      const x = side === 'east' ? box.max_x + 1 : box.min_x - 1;
+      fillBox(grid, x, 1, centerZ - Math.floor(width / 2), x, height, centerZ - Math.floor(width / 2), block, 'arches');
+      fillBox(grid, x, 1, centerZ + Math.floor(width / 2), x, height, centerZ + Math.floor(width / 2), block, 'arches');
+      fillBox(grid, x, height, centerZ - Math.floor(width / 2), x, height, centerZ + Math.floor(width / 2), block, 'arches');
+      if (pointed) fillBox(grid, x, height + 1, centerZ, x, height + 1, centerZ, block, 'arches');
+    }
+  }
+
+  addBalcony(grid, box) {
+    if (this.spec.floors <= 1) return;
+    const side = String(this.spec.door_side || 'south');
+    const floorY = this.spec.floor_height + 1;
+    const railY = floorY + 1;
+    const centerX = Math.floor((box.min_x + box.max_x) / 2);
+    const centerZ = Math.floor((box.min_z + box.max_z) / 2);
+    const floorBlock = this.materials.floor || 'minecraft:spruce_planks';
+    const railBlock = this.materials.trim || 'minecraft:smooth_quartz';
+    if (['south', 'north'].includes(side)) {
+      const z1 = side === 'south' ? box.max_z + 1 : box.min_z - 3;
+      const z2 = side === 'south' ? box.max_z + 3 : box.min_z - 1;
+      fillBox(grid, centerX - 3, floorY, z1, centerX + 3, floorY, z2, floorBlock, 'balcony');
+      fillBox(grid, centerX - 3, railY, z2, centerX + 3, railY, z2, railBlock, 'balcony');
+    } else {
+      const x1 = side === 'east' ? box.max_x + 1 : box.min_x - 3;
+      const x2 = side === 'east' ? box.max_x + 3 : box.min_x - 1;
+      fillBox(grid, x1, floorY, centerZ - 3, x2, floorY, centerZ + 3, floorBlock, 'balcony');
+      fillBox(grid, x2, railY, centerZ - 3, x2, railY, centerZ + 3, railBlock, 'balcony');
+    }
+  }
+
+  addBayWindow(grid, box) {
+    const block = this.materials.glass || 'minecraft:glass';
+    const trim = this.materials.trim || 'minecraft:smooth_quartz';
+    const x = Math.floor((box.min_x + box.max_x) / 2);
+    const z = box.max_z + 1;
+    fillBox(grid, x - 2, 2, z, x + 2, 4, z, block, 'windows');
+    fillBox(grid, x - 3, 1, z, x + 3, 1, z, trim, 'facade');
+    fillBox(grid, x - 3, 5, z, x + 3, 5, z, trim, 'facade');
+  }
+
+  addWindowTrimBands(grid, box, facadePlan = {}) {
+    const block = facadePlan.window_system?.trim || this.materials.accent || this.materials.trim || 'minecraft:smooth_quartz';
+    for (let floor = 0; floor < Math.max(1, box.floors); floor += 1) {
+      const y = floor * this.spec.floor_height + 2;
+      if (y >= box.max_y) continue;
+      fillBox(grid, box.min_x, y, box.min_z - 1, box.max_x, y, box.min_z - 1, block, 'facade_trim');
+      fillBox(grid, box.min_x, y, box.max_z + 1, box.max_x, y, box.max_z + 1, block, 'facade_trim');
+      fillBox(grid, box.min_x - 1, y, box.min_z, box.min_x - 1, y, box.max_z, block, 'facade_trim');
+      fillBox(grid, box.max_x + 1, y, box.min_z, box.max_x + 1, y, box.max_z, block, 'facade_trim');
+    }
+  }
+
+  addShutters(grid, box, facadePlan = {}) {
+    const block = facadePlan.window_system?.sill || this.materials.accent || this.materials.trim || 'minecraft:dark_oak_planks';
+    const y1 = 3;
+    const y2 = Math.min(box.max_y, 4);
+    const spacing = clampInt(facadePlan.window_system?.spacing || 6, 4, 10, 6);
+    for (let x = box.min_x + 3; x <= box.max_x - 3; x += spacing) {
+      fillBox(grid, x - 1, y1, box.max_z + 1, x - 1, y2, box.max_z + 1, block, 'facade_detail');
+      fillBox(grid, x + 2, y1, box.max_z + 1, x + 2, y2, box.max_z + 1, block, 'facade_detail');
+    }
+  }
+
+  addNeonTrim(grid, box) {
+    const block = this.materials.facade_light || this.materials.neon || 'minecraft:sea_lantern';
+    const y = Math.min(box.max_y + 1, Math.max(3, this.spec.wall_height));
+    fillBox(grid, box.min_x, y, box.max_z + 1, box.max_x, y, box.max_z + 1, block, 'facade_light');
+    fillBox(grid, box.max_x + 1, 2, box.min_z, box.max_x + 1, Math.min(box.max_y, y), box.min_z, block, 'facade_light');
+  }
+
+  addBalconyRail(grid, box) {
+    if (this.spec.floors <= 1) return;
+    const block = this.materials.railing || this.materials.trim || 'minecraft:iron_bars';
+    const y = this.spec.floor_height + 2;
+    const side = String(this.spec.door_side || 'south');
+    if (['south', 'north'].includes(side)) {
+      const z = side === 'south' ? box.max_z + 3 : box.min_z - 3;
+      const cx = Math.floor((box.min_x + box.max_x) / 2);
+      fillBox(grid, cx - 4, y, z, cx + 4, y, z, block, 'railing');
+    } else {
+      const x = side === 'east' ? box.max_x + 3 : box.min_x - 3;
+      const cz = Math.floor((box.min_z + box.max_z) / 2);
+      fillBox(grid, x, y, cz - 4, x, y, cz + 4, block, 'railing');
+    }
+  }
+
+  addProtectedSlitFrames(grid, box) {
+    const block = this.materials.accent || this.materials.trim || 'minecraft:mossy_cobblestone';
+    for (let x = box.min_x + 4; x <= box.max_x - 4; x += 7) {
+      fillBox(grid, x - 1, 2, box.max_z + 1, x + 1, 2, box.max_z + 1, block, 'facade_trim');
+      fillBox(grid, x - 1, 5, box.max_z + 1, x + 1, 5, box.max_z + 1, block, 'facade_trim');
+    }
+  }
+
+  addRoofPlanDetails(grid, boxes, roofPlan = {}) {
+    if (!roofPlan || !roofPlan.engine_hints) return;
+    const mainBox = boxes.find((box) => box.id === 'main') || boxes[0];
+    if (!mainBox) return;
+    if (roofPlan.engine_hints.render_ridge_caps) this.addRidgeCaps(grid, boxes, roofPlan);
+    if (roofPlan.engine_hints.render_gutters) this.addGutters(grid, boxes, roofPlan);
+    if (roofPlan.engine_hints.render_chimney) this.addChimney(grid, mainBox, roofPlan);
+    if (roofPlan.engine_hints.render_roof_garden) this.addRoofGarden(grid, mainBox, roofPlan);
+    if (roofPlan.engine_hints.render_neon_sign) this.addRoofSign(grid, mainBox, roofPlan);
+    if (roofPlan.engine_hints.render_snow_caps) this.addSnowCaps(grid, boxes, roofPlan);
+    if (roofPlan.engine_hints.render_canopy_caps) this.addCanopyCaps(grid, boxes, roofPlan);
+  }
+
+  addRidgeCaps(grid, boxes, roofPlan = {}) {
+    const block = roofPlan.materials?.trim || this.materials.roof_detail || this.materials.trim || 'minecraft:smooth_quartz';
+    for (const box of boxes.filter((item) => item.module !== 'porch')) {
+      const y = box.max_y + Math.max(2, Math.floor((this.spec.roof_height || 3) / 2));
+      const z = Math.floor((box.min_z + box.max_z) / 2);
+      fillBox(grid, box.min_x + 1, y, z, box.max_x - 1, y, z, block, 'roof_detail');
+    }
+  }
+
+  addGutters(grid, boxes, roofPlan = {}) {
+    const block = roofPlan.materials?.trim || this.materials.roof_detail || this.materials.trim || 'minecraft:iron_bars';
+    for (const box of boxes.filter((item) => item.module !== 'porch')) {
+      const y = box.max_y + 1;
+      fillBox(grid, box.min_x, y, box.min_z - 1, box.max_x, y, box.min_z - 1, block, 'roof_detail');
+      fillBox(grid, box.min_x, y, box.max_z + 1, box.max_x, y, box.max_z + 1, block, 'roof_detail');
+    }
+  }
+
+  addChimney(grid, box, roofPlan = {}) {
+    const block = roofPlan.materials?.chimney || this.materials.chimney || this.materials.foundation || 'minecraft:bricks';
+    const x = clampInt(box.max_x - 4, box.min_x + 2, box.max_x - 2, box.max_x - 3);
+    const z = clampInt(box.min_z + 3, box.min_z + 2, box.max_z - 2, box.min_z + 3);
+    const y1 = box.max_y + 1;
+    fillBox(grid, x, y1, z, x + 1, y1 + 4, z + 1, block, 'chimney');
+  }
+
+  addRoofGarden(grid, box, roofPlan = {}) {
+    const plant = roofPlan.materials?.garden || this.materials.plant || 'minecraft:oak_leaves[persistent=true]';
+    const soil = this.materials.landscape || 'minecraft:moss_block';
+    const y = box.max_y + 2;
+    const x1 = Math.max(box.min_x + 3, Math.floor((box.min_x + box.max_x) / 2) - 4);
+    const x2 = Math.min(box.max_x - 3, x1 + 8);
+    const z1 = Math.max(box.min_z + 3, Math.floor((box.min_z + box.max_z) / 2) - 3);
+    const z2 = Math.min(box.max_z - 3, z1 + 6);
+    fillBox(grid, x1, y, z1, x2, y, z2, soil, 'roof_garden');
+    for (let x = x1; x <= x2; x += 3) {
+      for (let z = z1; z <= z2; z += 3) fillBox(grid, x, y + 1, z, x, y + 1, z, plant, 'roof_garden');
+    }
+  }
+
+  addRoofSign(grid, box, roofPlan = {}) {
+    const block = roofPlan.materials?.light || this.materials.facade_light || 'minecraft:sea_lantern';
+    const y = box.max_y + Math.max(3, this.spec.roof_height || 3);
+    const z = box.max_z + 1;
+    const cx = Math.floor((box.min_x + box.max_x) / 2);
+    fillBox(grid, cx - 3, y, z, cx + 3, y + 1, z, block, 'roof_sign');
+  }
+
+  addSnowCaps(grid, boxes) {
+    for (const box of boxes.filter((item) => item.module !== 'porch')) {
+      fillBox(grid, box.min_x, box.max_y + this.spec.roof_height + 1, box.min_z, box.max_x, box.max_y + this.spec.roof_height + 1, box.max_z, 'minecraft:snow', 'roof_detail');
+    }
+  }
+
+  addCanopyCaps(grid, boxes, roofPlan = {}) {
+    const block = roofPlan.materials?.garden || this.materials.plant || 'minecraft:oak_leaves[persistent=true]';
+    for (const box of boxes.filter((item) => item.id === 'main' || item.tags?.includes('treehouse'))) {
+      fillBox(grid, box.min_x - 1, box.max_y + 2, box.min_z - 1, box.max_x + 1, box.max_y + 2, box.max_z + 1, block, 'roof_garden');
+    }
+  }
+
+  addSite(grid, siteRules) {
+    if (!siteRules.formal_garden && !siteRules.water_feature && !siteRules.dry_garden && !siteRules.patio && !siteRules.enclosed_courtyard) return;
+    const center = Math.floor(this.spec.width / 2);
+    const gardenDepth = Math.max(3, Number(this.spec.garden_depth || 6));
+    const pathBlock = this.materials.path || 'minecraft:gravel';
+    fillBox(grid, center - 1, 0, this.spec.depth, center + 1, 0, this.spec.depth + gardenDepth, pathBlock, 'garden');
+    if (siteRules.formal_garden) {
+      this.addFormalGarden(grid, center, gardenDepth);
+    }
+    if (siteRules.dry_garden) {
+      this.addDryGarden(grid, center, gardenDepth);
+    }
+    if (siteRules.patio || siteRules.enclosed_courtyard) {
+      this.addPatio(grid, center, gardenDepth);
+    }
+    if (siteRules.water_feature) {
+      const z = this.spec.depth + Math.max(2, Math.floor(gardenDepth / 2));
+      fillBox(grid, center - 2, 0, z, center + 2, 0, z + 2, 'minecraft:water', 'water_feature');
+      fillBox(grid, center - 3, 0, z - 1, center + 3, 0, z - 1, this.materials.foundation || 'minecraft:stone_bricks', 'water_feature');
+      fillBox(grid, center - 3, 0, z + 3, center + 3, 0, z + 3, this.materials.foundation || 'minecraft:stone_bricks', 'water_feature');
+    }
+  }
+
+  addFormalGarden(grid, center, gardenDepth) {
+    const hedge = 'minecraft:oak_leaves[persistent=true]';
+    const leftX1 = Math.max(-6, center - 9);
+    const rightX2 = Math.min(this.spec.width + 5, center + 9);
+    const z1 = this.spec.depth + 2;
+    const z2 = this.spec.depth + gardenDepth;
+    fillBox(grid, leftX1, 0, z1, center - 3, 0, z2, 'minecraft:grass_block', 'garden');
+    fillBox(grid, center + 3, 0, z1, rightX2, 0, z2, 'minecraft:grass_block', 'garden');
+    for (let z = z1 + 1; z <= z2; z += 3) {
+      fillBox(grid, leftX1, 1, z, center - 3, 1, z, hedge, 'garden');
+      fillBox(grid, center + 3, 1, z, rightX2, 1, z, hedge, 'garden');
+    }
+  }
+
+  addDryGarden(grid, center, gardenDepth) {
+    const z1 = this.spec.depth + 2;
+    const z2 = this.spec.depth + gardenDepth;
+    fillBox(grid, center - 7, 0, z1, center + 7, 0, z2, 'minecraft:sand', 'dry_garden');
+    for (let z = z1 + 1; z <= z2; z += 3) {
+      fillBox(grid, center - 6, 1, z, center - 6, 1, z, 'minecraft:cobblestone', 'dry_garden');
+      fillBox(grid, center + 5, 1, z + 1, center + 5, 1, z + 1, 'minecraft:mossy_cobblestone', 'dry_garden');
+    }
+  }
+
+  addPatio(grid, center, gardenDepth) {
+    const z1 = this.spec.depth + 1;
+    const z2 = this.spec.depth + Math.min(gardenDepth, 5);
+    fillBox(grid, center - 5, 0, z1, center + 5, 0, z2, this.materials.foundation || 'minecraft:stone_bricks', 'patio');
+  }
+
+  addSiteLandscape(grid, sitePlan = {}) {
+    if (!sitePlan || !sitePlan.engine_hints) return;
+    const center = Math.floor(this.spec.width / 2);
+    const gardenDepth = Math.max(3, Number(this.spec.garden_depth || 6));
+    const zStart = this.spec.depth + 1;
+    const zEnd = this.spec.depth + gardenDepth;
+    if (sitePlan.engine_hints.render_entry_path) {
+      const width = Math.max(1, Number(sitePlan.entry_sequence?.path_width || 2));
+      fillBox(grid, center - width, 0, this.spec.depth, center + width, 0, zEnd, sitePlan.materials?.path || this.materials.path || 'minecraft:gravel', 'landscape_path');
+    }
+    if (sitePlan.engine_hints.render_path_lights) this.addPathLights(grid, center, zStart, zEnd, sitePlan);
+    if (sitePlan.engine_hints.render_boundary) this.addSiteBoundary(grid, center, zStart, zEnd, sitePlan);
+    if (sitePlan.engine_hints.render_tree_clusters) this.addTreeClusters(grid, center, zStart, zEnd, sitePlan);
+    if (sitePlan.engine_hints.render_rock_edges) this.addRockEdges(grid, center, zStart, zEnd, sitePlan);
+    if (sitePlan.engine_hints.render_water_edge) this.addWaterEdge(grid, center, zStart, sitePlan);
+    if (sitePlan.engine_hints.render_sunken_court) this.addSunkenCourtMarkers(grid, center, zStart, sitePlan);
+    if (sitePlan.engine_hints.render_deck_transition) this.addDeckTransitionRail(grid, center, zStart, sitePlan);
+  }
+
+  addPathLights(grid, center, zStart, zEnd, sitePlan = {}) {
+    const block = sitePlan.materials?.light || this.materials.path_light || 'minecraft:glowstone';
+    for (let z = zStart + 1; z <= zEnd; z += 3) {
+      fillBox(grid, center - 3, 1, z, center - 3, 1, z, block, 'path_light');
+      fillBox(grid, center + 3, 1, z, center + 3, 1, z, block, 'path_light');
+    }
+  }
+
+  addSiteBoundary(grid, center, zStart, zEnd, sitePlan = {}) {
+    const block = sitePlan.materials?.fence || this.materials.railing || 'minecraft:oak_fence';
+    const left = center - 9;
+    const right = center + 9;
+    fillBox(grid, left, 1, zStart, left, 1, zEnd, block, 'fence');
+    fillBox(grid, right, 1, zStart, right, 1, zEnd, block, 'fence');
+    fillBox(grid, left, 1, zEnd, right, 1, zEnd, block, 'fence');
+  }
+
+  addTreeClusters(grid, center, zStart, zEnd, sitePlan = {}) {
+    const trunk = this.materials.foundation || 'minecraft:oak_log';
+    const leaves = sitePlan.materials?.plant || this.materials.plant || 'minecraft:oak_leaves[persistent=true]';
+    for (const [x, z] of [[center - 8, zStart + 2], [center + 8, zEnd - 1]]) {
+      fillBox(grid, x, 1, z, x, 3, z, trunk, 'landscape');
+      fillBox(grid, x - 1, 4, z - 1, x + 1, 4, z + 1, leaves, 'landscape');
+    }
+  }
+
+  addRockEdges(grid, center, zStart, zEnd, sitePlan = {}) {
+    const block = sitePlan.materials?.landscape || this.materials.landscape || 'minecraft:stone';
+    for (let z = zStart; z <= zEnd; z += 2) {
+      fillBox(grid, center - 10, 0, z, center - 10, 1, z, block, 'landscape');
+      fillBox(grid, center + 10, 0, z + 1, center + 10, 1, z + 1, block, 'landscape');
+    }
+  }
+
+  addWaterEdge(grid, center, zStart, sitePlan = {}) {
+    const water = sitePlan.materials?.water || this.materials.water || 'minecraft:water';
+    fillBox(grid, center - 7, 0, zStart + 3, center + 7, 0, zStart + 5, water, 'water_feature');
+  }
+
+  addSunkenCourtMarkers(grid, center, zStart, sitePlan = {}) {
+    const block = sitePlan.materials?.landscape || this.materials.retaining || 'minecraft:mossy_cobblestone';
+    fillBox(grid, center - 6, 0, zStart, center + 6, 0, zStart, block, 'sunken_court');
+    fillBox(grid, center - 6, 1, zStart, center - 6, 1, zStart + 4, block, 'sunken_court');
+    fillBox(grid, center + 6, 1, zStart, center + 6, 1, zStart + 4, block, 'sunken_court');
+  }
+
+  addDeckTransitionRail(grid, center, zStart, sitePlan = {}) {
+    const block = sitePlan.materials?.fence || this.materials.railing || 'minecraft:oak_fence';
+    fillBox(grid, center - 5, 1, zStart, center + 5, 1, zStart, block, 'railing');
   }
 
   interiorSpaces(boxes) {
     const spaces = [];
+    const thickness = this.shellThickness();
     for (const box of boxes) {
       if (box.module === 'porch') continue;
       for (let floor = 0; floor < box.floors; floor += 1) {
         spaces.push({
           floor,
-          min_x: box.min_x + 1,
-          max_x: box.max_x - 1,
+          min_x: box.min_x + thickness,
+          max_x: box.max_x - thickness,
           min_y: floor * this.spec.floor_height + 2,
           max_y: Math.min((floor + 1) * this.spec.floor_height, box.max_y),
-          min_z: box.min_z + 1,
-          max_z: box.max_z - 1,
+          min_z: box.min_z + thickness,
+          max_z: box.max_z - thickness,
           source: box.id,
           side: box.side
         });
@@ -254,6 +944,94 @@ export function fillBox(grid, minX, minY, minZ, maxX, maxY, maxZ, block, module)
       }
     }
   }
+}
+
+export function fillDisk(grid, centerX, y, centerZ, radius, block, module) {
+  for (let x = centerX - radius; x <= centerX + radius; x += 1) {
+    for (let z = centerZ - radius; z <= centerZ + radius; z += 1) {
+      if ((x - centerX) ** 2 + (z - centerZ) ** 2 <= radius ** 2) {
+        grid.set(keyFor(x, y, z), cell(block, module));
+      }
+    }
+  }
+}
+
+function drawSteppedBrace(grid, from, to, block, module) {
+  const steps = Math.max(
+    1,
+    Math.abs(Number(to.x) - Number(from.x)),
+    Math.abs(Number(to.y) - Number(from.y)),
+    Math.abs(Number(to.z) - Number(from.z))
+  );
+  for (let index = 0; index <= steps; index += 1) {
+    const ratio = index / steps;
+    const x = Math.round(Number(from.x) + (Number(to.x) - Number(from.x)) * ratio);
+    const y = Math.round(Number(from.y) + (Number(to.y) - Number(from.y)) * ratio);
+    const z = Math.round(Number(from.z) + (Number(to.z) - Number(from.z)) * ratio);
+    grid.set(keyFor(x, y, z), cell(block, module));
+  }
+}
+
+function normalizePlanItems(value) {
+  return Array.isArray(value) ? value.filter((item) => item && typeof item === 'object') : [];
+}
+
+function normalizePlanBundle(input = {}) {
+  const value = input && typeof input === 'object' ? input : {};
+  if (value.structure || value.facade || value.roof || value.site) {
+    return {
+      structure: value.structure || {},
+      facade: value.facade || {},
+      roof: value.roof || {},
+      site: value.site || {}
+    };
+  }
+  return {
+    structure: value,
+    facade: {},
+    roof: {},
+    site: {}
+  };
+}
+
+function summarizeStructurePlan(plan = {}) {
+  return {
+    system: plan.system || 'standard-shell',
+    foundationStrategy: plan.foundation?.strategy || 'unknown',
+    supportElementCount: normalizePlanItems(plan.support_elements).length,
+    bracingElementCount: normalizePlanItems(plan.bracing_elements).length,
+    reinforcementElementCount: normalizePlanItems(plan.reinforcement_elements).length,
+    roofFrameElementCount: normalizePlanItems(plan.roof_frame?.elements).length,
+    loadPathCount: normalizePlanItems(plan.load_paths).length,
+    lateralSystem: plan.stability?.lateral_system || 'unknown'
+  };
+}
+
+function summarizeFacadePlan(plan = {}) {
+  return {
+    rhythm: plan.window_system?.rhythm || 'balanced',
+    glazingRatio: plan.window_system?.glazing_ratio || 'medium',
+    elementCount: Array.isArray(plan.facade_elements) ? plan.facade_elements.length : 0,
+    frontSide: plan.front_side || 'south'
+  };
+}
+
+function summarizeRoofPlan(plan = {}) {
+  return {
+    style: plan.style || 'gabled',
+    profile: plan.profile || 'style-default',
+    elementCount: normalizePlanItems(plan.elements).length,
+    drainage: plan.drainage || 'unknown'
+  };
+}
+
+function summarizeSitePlan(plan = {}) {
+  return {
+    mood: plan.mood || 'simple',
+    zoneCount: Array.isArray(plan.zones) ? plan.zones.length : 0,
+    boundary: plan.boundary || 'open-setback',
+    terrain: plan.terrain_response || 'flat-lot'
+  };
 }
 
 export function computeBounds(grid) {
@@ -311,6 +1089,17 @@ function isSurfaceCell(solid, point) {
   return DIRECTIONS.some(([dx, dy, dz]) => !solid.has(keyFor(point.x + dx, point.y + dy, point.z + dz)));
 }
 
+function isShellCell(solid, point, thickness = 1) {
+  if (isSurfaceCell(solid, point)) return true;
+  const shellThickness = clampInt(thickness, 1, 3);
+  return DIRECTIONS.some(([dx, dy, dz]) => {
+    for (let step = 1; step <= shellThickness; step += 1) {
+      if (!solid.has(keyFor(point.x + dx * step, point.y + dy * step, point.z + dz * step))) return true;
+    }
+    return false;
+  });
+}
+
 function pointInBox(point, box) {
   return point.x >= box.min_x && point.x <= box.max_x &&
     point.y >= box.min_y && point.y <= box.max_y &&
@@ -318,9 +1107,15 @@ function pointInBox(point, box) {
 }
 
 function moduleForVolume(volume) {
-  const text = `${volume.id || ''} ${volume.role || ''} ${volume.placement?.relation || ''}`.toLowerCase();
-  if (/porch|gate|门廊|门楼/.test(text)) return 'porch';
-  if (/wing|侧翼/.test(text)) return 'wing';
+  const tags = Array.isArray(volume.tags) ? volume.tags.join(' ') : '';
+  const text = `${volume.id || ''} ${volume.role || ''} ${volume.purpose || ''} ${volume.facade_role || ''} ${volume.placement?.relation || ''} ${tags}`.toLowerCase();
+  if (/tower|turret|vertical-accent|塔|尖塔|钟楼|角塔/.test(text)) return 'tower';
+  if (/sunroom|greenhouse|transparent|glass|阳光房|温室|花房|玻璃/.test(text)) return 'sunroom';
+  if (/garage|parking|车库|停车/.test(text)) return 'garage';
+  if (/gallery|corridor|veranda|engawa|deck|platform|view|overlook|cantilever|连廊|回廊|侧廊|缘侧|露台|平台|观景|悬挑/.test(text)) return 'gallery';
+  if (/porch|gate|threshold|entry|entrance|门廊|门楼|玄关|入口|前院门楼/.test(text)) return 'porch';
+  if (/wing|侧翼|翼楼/.test(text)) return 'wing';
+  if (/courtyard|patio|lightwell|atrium|庭院|院落|内院|采光井|天井/.test(text)) return 'courtyard';
   return 'walls';
 }
 
@@ -337,6 +1132,8 @@ function windowPositions(min, max, width, spacing) {
   return positions;
 }
 
-function clampInt(value, min, max) {
-  return Math.max(min, Math.min(max, Math.round(Number(value))));
+function clampInt(value, min, max, fallback = min) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(number)));
 }
