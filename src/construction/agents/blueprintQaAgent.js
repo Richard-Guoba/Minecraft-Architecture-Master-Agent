@@ -1,5 +1,16 @@
 const BLOCK_PATTERN = /^minecraft:[a-z0-9_]+(?:\[[a-z0-9_=,]+\])?$/;
 const MAX_FILL_VOLUME = 32768;
+const AGENT_CONTRACTS = [
+  ['stylePreset', 'local-style-preset-memory'],
+  ['materialPalette', 'local-material-palette'],
+  ['structure', 'fallback-structure'],
+  ['facade', 'local-facade-agent'],
+  ['roof', 'local-roof-agent'],
+  ['site', 'local-site-landscape-agent'],
+  ['opening', 'local-opening-connectivity-agent'],
+  ['interior', 'local-interior-detail-agent'],
+  ['repair', 'local-constraint-repair-agent']
+];
 
 export class BlueprintQAAgent {
   run(blueprint) {
@@ -13,6 +24,7 @@ export class BlueprintQAAgent {
     const roomStats = validateRooms(blueprint, errors, warnings, checks);
     const circulationStats = validateCirculation(blueprint, errors, warnings, checks);
     const semanticStats = validateSemanticCompleteness(blueprint, errors, warnings, checks);
+    const agentContractStats = validateAgentContracts(blueprint, errors, warnings, checks);
 
     if ((blueprint.operations || []).length > 8000) warnings.push('函数命令数量接近 Minecraft 单次执行压力上限。');
 
@@ -32,7 +44,8 @@ export class BlueprintQAAgent {
         exporter: exporterStats,
         rooms: roomStats,
         circulation: circulationStats,
-        semantic: semanticStats
+        semantic: semanticStats,
+        agentContracts: agentContractStats
       }
     };
   }
@@ -214,6 +227,105 @@ function validateSemanticCompleteness(blueprint, errors, warnings, checks) {
   };
 }
 
+function validateAgentContracts(blueprint, errors, warnings, checks) {
+  const missing = [];
+  const sourceMismatches = [];
+  const summaryMismatches = [];
+
+  for (const [key, expectedSource] of AGENT_CONTRACTS) {
+    const output = blueprint[key];
+    if (!output || typeof output !== 'object' || Array.isArray(output)) {
+      missing.push(key);
+      continue;
+    }
+    if (output.source && output.source !== expectedSource) {
+      sourceMismatches.push({ key, expectedSource, actualSource: output.source });
+    }
+  }
+
+  for (const key of missing) errors.push(`缺少 agent 输出: ${key}`);
+  for (const item of sourceMismatches) {
+    warnings.push(`${item.key} 来源不是预期 agent: ${item.actualSource}，预期 ${item.expectedSource}`);
+  }
+
+  const materialWarnings = blueprint.materialPalette?.warnings || [];
+  const materialValid = blueprint.materialPalette?.valid !== false;
+  if (!materialValid) errors.push(`MaterialPaletteAgent 输出包含非法方块: ${materialWarnings.join('; ') || 'unknown'}`);
+  if (materialWarnings.length && materialValid) warnings.push(`MaterialPaletteAgent 材料警告: ${materialWarnings.join('; ')}`);
+
+  const paletteMismatches = materialPaletteMismatches(blueprint);
+  if (paletteMismatches.length) {
+    errors.push(`architecture.materials 未同步 MaterialPaletteAgent: ${paletteMismatches.join(', ')}`);
+  }
+
+  compareSummaryCount(summaryMismatches, 'structure.support_elements', blueprint.structure?.support_elements, blueprint.geometry?.structure?.supportElementCount);
+  compareSummaryCount(summaryMismatches, 'facade.facade_elements', blueprint.facade?.facade_elements, blueprint.geometry?.facade?.elementCount);
+  compareSummaryCount(summaryMismatches, 'roof.elements', blueprint.roof?.elements, blueprint.geometry?.roof?.elementCount);
+  compareSummaryCount(summaryMismatches, 'site.zones', blueprint.site?.zones, blueprint.geometry?.site?.zoneCount);
+
+  for (const item of summaryMismatches) {
+    errors.push(`${item.name} 与 geometry 摘要数量不一致: agent=${item.expected}, geometry=${item.actual}`);
+  }
+
+  const openingPlanned = numberOrUndefined(blueprint.opening?.engine_hints?.planned_opening_count);
+  const pathfinderPlanned = numberOrUndefined(blueprint.geometry?.pathfinder?.plannedOpeningCount);
+  const openingMismatch = openingPlanned !== undefined && pathfinderPlanned !== undefined && openingPlanned !== pathfinderPlanned;
+  if (openingMismatch) {
+    errors.push(`OpeningConnectivityAgent 计划开口数与 A* 记录不一致: opening=${openingPlanned}, pathfinder=${pathfinderPlanned}`);
+  }
+
+  const interiorRoomCount = numberOrUndefined(blueprint.interior?.room_count);
+  const actualRoomCount = (blueprint.layout?.rooms || []).length;
+  const interiorMismatch = interiorRoomCount !== undefined && interiorRoomCount !== actualRoomCount;
+  if (interiorMismatch) {
+    errors.push(`InteriorDetailAgent 房间数与 BSP 结果不一致: interior=${interiorRoomCount}, rooms=${actualRoomCount}`);
+  }
+
+  const failedRepairChecks = (blueprint.repair?.checks || []).filter((item) => !item.ok).map((item) => item.name);
+  if (blueprint.repair && blueprint.repair.ok === false) {
+    warnings.push(`ConstraintRepairAgent 标记需关注: ${failedRepairChecks.join(', ') || blueprint.repair.suggestions?.join('; ') || 'unknown'}`);
+  }
+
+  const ok = !missing.length &&
+    !sourceMismatches.length &&
+    materialValid &&
+    !paletteMismatches.length &&
+    !summaryMismatches.length &&
+    !openingMismatch &&
+    !interiorMismatch &&
+    blueprint.repair?.ok !== false;
+
+  checks.push(check('agent-contracts', ok, {
+    requiredAgentCount: AGENT_CONTRACTS.length,
+    missing,
+    sourceMismatches,
+    materialValid,
+    paletteMismatches,
+    summaryMismatches,
+    openingPlanned,
+    pathfinderPlanned,
+    interiorRoomCount,
+    actualRoomCount,
+    repairOk: blueprint.repair?.ok !== false,
+    failedRepairChecks
+  }));
+
+  return {
+    requiredAgentCount: AGENT_CONTRACTS.length,
+    missing,
+    sourceMismatches,
+    materialValid,
+    paletteMismatches,
+    summaryMismatches,
+    openingPlanned,
+    pathfinderPlanned,
+    interiorRoomCount,
+    actualRoomCount,
+    repairOk: blueprint.repair?.ok !== false,
+    failedRepairChecks
+  };
+}
+
 function buildRoomGraph(blueprint) {
   const graph = new Map();
   for (const room of blueprint.layout?.rooms || []) graph.set(room.id, new Set());
@@ -264,4 +376,32 @@ function operationVolume(operation) {
   ) * (
     Math.abs(operation.to.z - operation.from.z) + 1
   );
+}
+
+function materialPaletteMismatches(blueprint) {
+  const paletteMaterials = blueprint.materialPalette?.materials || {};
+  const architectureMaterials = blueprint.architecture?.materials || {};
+  const mismatches = [];
+  for (const [role, block] of Object.entries(paletteMaterials)) {
+    if (architectureMaterials[role] !== block) mismatches.push(role);
+  }
+  return mismatches;
+}
+
+function compareSummaryCount(mismatches, name, agentArray, geometryCount) {
+  if (!Array.isArray(agentArray)) return;
+  if (geometryCount === undefined) {
+    mismatches.push({ name, expected: agentArray.length, actual: 'missing' });
+    return;
+  }
+  const actual = Number(geometryCount);
+  if (!Number.isFinite(actual) || actual !== agentArray.length) {
+    mismatches.push({ name, expected: agentArray.length, actual: geometryCount });
+  }
+}
+
+function numberOrUndefined(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
 }

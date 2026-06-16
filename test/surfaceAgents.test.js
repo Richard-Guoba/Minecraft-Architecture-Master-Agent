@@ -43,6 +43,8 @@ test('CSG consumes facade, roof, and site plans as real modules', () => {
   assert.ok(counts.landscape_path > 0);
   assert.ok(counts.path_light > 0);
   assert.equal(context.shell.csg.facade.elementCount > 0, true);
+  assert.equal(context.shell.csg.roof.elementCount > 0, true);
+  assert.equal(context.shell.csg.site.zoneCount > 0, true);
   assert.equal(context.shell.csg.roofPlan.elementCount > 0, true);
   assert.equal(context.shell.csg.sitePlan.zoneCount > 0, true);
 });

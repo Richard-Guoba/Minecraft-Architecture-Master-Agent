@@ -41,6 +41,11 @@ export class CSGBuilder {
     this.addSite(grid, architectureJson.site_rules || {});
     this.addSiteLandscape(grid, this.sitePlan);
 
+    const structureSummary = summarizeStructurePlan(this.structure);
+    const facadeSummary = summarizeFacadePlan(this.facadePlan);
+    const roofSummary = summarizeRoofPlan(this.roofPlan);
+    const siteSummary = summarizeSitePlan(this.sitePlan);
+
     return {
       grid,
       solid,
@@ -54,10 +59,12 @@ export class CSGBuilder {
         shellThickness,
         roofStyle: String(architectureJson.roof_rules?.style || this.spec.roof_style || 'gabled'),
         structuralSystem: architectureJson.structural_rules?.system || this.spec.structural?.system || 'standard-shell',
-        structure: summarizeStructurePlan(this.structure),
-        facade: summarizeFacadePlan(this.facadePlan),
-        roofPlan: summarizeRoofPlan(this.roofPlan),
-        sitePlan: summarizeSitePlan(this.sitePlan),
+        structure: structureSummary,
+        facade: facadeSummary,
+        roof: roofSummary,
+        site: siteSummary,
+        roofPlan: roofSummary,
+        sitePlan: siteSummary,
         philosophy: architectureJson.philosophy || '先造壳，后填瓤。'
       }
     };
