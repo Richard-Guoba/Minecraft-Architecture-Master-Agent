@@ -34,7 +34,7 @@ Windows 运行不需要 Python。
    导出 blueprint.json、preview.html、run_report.md 和 datapack
 ```
 
-`SkillAgent/SkillRouter` 不再参与主流程。
+旧版 `src/agents` / `src/engine` 生成体系已经移除；当前只有 `src/construction` 这一套主流程。
 
 ## 模块职责
 

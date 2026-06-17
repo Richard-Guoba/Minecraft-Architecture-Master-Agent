@@ -123,6 +123,17 @@ export class CSGBuilder {
     let minZ = depth;
     let side = 'front';
 
+    const alignedZ = () => {
+      if (hasNorth) return 0;
+      if (hasSouth) return Math.max(0, depth - boxDepth);
+      return clampInt(Math.round(depth * 0.2), 1, Math.max(1, depth - boxDepth - 1));
+    };
+    const alignedX = () => {
+      if (hasWest) return 0;
+      if (hasEast) return Math.max(0, width - boxWidth);
+      return Math.floor(width / 2) - Math.floor(boxWidth / 2);
+    };
+
     if (hasWest) {
       minX = module === 'tower' ? -Math.ceil(boxWidth / 2) : -boxWidth;
       side = 'west';
@@ -131,7 +142,14 @@ export class CSGBuilder {
       side = 'east';
     }
 
-    if (hasNorth) {
+    if ((hasEast || hasWest) && module !== 'tower') {
+      minZ = alignedZ();
+      side = hasEast && hasNorth ? 'north-east'
+        : hasWest && hasNorth ? 'north-west'
+          : hasEast && hasSouth ? 'south-east'
+            : hasWest && hasSouth ? 'south-west'
+              : side;
+    } else if (hasNorth) {
       minZ = module === 'tower' ? -Math.ceil(boxDepth / 2) : -boxDepth;
       side = hasEast ? 'north-east' : hasWest ? 'north-west' : 'rear';
     } else if (hasSouth) {
@@ -139,6 +157,8 @@ export class CSGBuilder {
       side = hasEast ? 'south-east' : hasWest ? 'south-west' : 'front';
     } else if (hasEast || hasWest) {
       minZ = clampInt(Math.round(depth * 0.2), 1, Math.max(1, depth - boxDepth - 1));
+    } else {
+      minX = alignedX();
     }
 
     return {

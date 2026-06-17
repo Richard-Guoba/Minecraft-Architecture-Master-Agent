@@ -15,6 +15,7 @@
 - 数据包函数路径：`data/architect/function/`，使用 Minecraft 1.21 要求的单数 `function` 目录。
 - 用户命令：
   - 本地运行：`npm start -- "建一个欧式大房子"`。
+  - 可复现变体：`npm start -- --seed 12345 "建一个欧式大房子"`；不传 `--seed` 时 CLI 会自动随机一个 seed 并打印。
   - 自动安装到世界：`npm start -- --world "世界名" "建一个欧式大房子"`。
   - 查看可识别世界：`npm start -- --list-worlds`。
   - 如需打开 Minecraft/启动器，配置 `MINECRAFT_LAUNCH_COMMAND` 后使用 `--launch`。
@@ -26,8 +27,10 @@
   - `preview.html`
   - `run_report.md`
 - 默认流水线必须在没有 API key 的情况下可运行，并使用规则兜底。
+- CLI 输出必须提示本次是否调用并采用 LLM；`--mode mock` 应显示未调用。
 - 默认 LLM 通道为智谱 API：设置 `LLM_PROVIDER=zhipu` 后，通过 chat completions 接口生成 Architect/Planner JSON。
-- Codex 和 OpenAI 兼容通道保留：设置 `LLM_PROVIDER=codex` 或 `LLM_PROVIDER=openai-compatible` 后，可切换到对应通道。
+- Codex 和 OpenAI 兼容通道保留：设置 `LLM_PROVIDER=codex` 或 `LLM_PROVIDER=openai-compatible` 后，可切换到对应通道；DeepSeek 使用 `OPENAI_BASE_URL=https://api.deepseek.com`，默认高配模型为 `deepseek-v4-pro`。
+- 本地 `.env` 优先级高于外层环境变量，避免 Codex/系统环境里的 API key 覆盖项目配置。
 - Windows 运行只需要 Node.js 20+，不需要 Python。
 - `/reload` 只刷新数据包，不自动建造；一键建造入口为 `/function architect:run`，内部执行 clear + build。
 - 严禁提交 `.env` 或任何 API key。密钥只能保存在本地。

@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runPipeline } from '../src/pipeline.js';
 
-test('runs the PDF construction-method workflow without SkillAgent', async () => {
+test('runs the construction-method workflow as the single active pipeline', async () => {
   const root = path.resolve('.tmp', `architect-test-${Date.now()}`);
   try {
     const result = await runPipeline({
@@ -18,6 +18,11 @@ test('runs the PDF construction-method workflow without SkillAgent', async () =>
 
     assert.equal(result.workflow, 'construction_method_v1');
     assert.equal(result.validation.ok, true);
+    assert.equal(result.seed, 1);
+    assert.equal(result.seedSource, 'manual');
+    assert.equal(result.llmUsage.called, false);
+    assert.equal(result.llmUsage.status, 'not-called');
+    assert.equal(result.blueprint.seedSource, 'manual');
     assert.equal(result.architecture.source, 'fallback');
     assert.equal(result.architecture.footprint, 'winged');
     assert.equal(result.architecture.volumes.length >= 4, true);
@@ -61,7 +66,7 @@ test('runs the PDF construction-method workflow without SkillAgent', async () =>
     assert.equal(result.validation.stats.circulation.failedEdgeCount, 0);
     assert.equal(result.validation.stats.semantic.hasDecoration, true);
     assert.ok(result.geometry.pathfinder.openedDoorCount > 0);
-    assert.equal(result.blueprint.constraints.some((item) => /SkillAgent/.test(item)), true);
+    assert.equal(result.blueprint.constraints.some((item) => /construction_method_v1/.test(item)), true);
     assert.equal(result.blueprint.constraints.some((item) => /Python is not required/.test(item)), true);
 
     const pack = JSON.parse(await fs.readFile(path.join(result.artifacts.datapackDir, 'pack.mcmeta'), 'utf8'));
@@ -82,9 +87,10 @@ test('runs the PDF construction-method workflow without SkillAgent', async () =>
     const report = await fs.readFile(result.artifacts.report, 'utf8');
     const preview = await fs.readFile(result.artifacts.previewHtml, 'utf8');
     assert.match(report, /PDF 流程对齐/);
-    assert.match(report, /SkillAgent：未使用/);
+    assert.match(report, /旧 Requirement\/Designer\/Blueprint\/Super agent 流程：已移除/);
     assert.match(report, /Python：未使用/);
-    assert.doesNotMatch(report, /SkillRouterAgent 来源/);
+    assert.match(report, /LLM 调用：未调用，使用本地规则/);
+    assert.match(report, /Seed：1 \(manual\)/);
     assert.match(report, /StructureAgent/);
     assert.match(report, /MaterialPaletteAgent/);
     assert.match(report, /FacadeAgent \/ RoofAgent \/ SiteLandscapeAgent/);
@@ -143,6 +149,26 @@ test('honors configurable size, position, and material hints in the new workflow
     assert.match(build, /minecraft:quartz_block/);
     assert.match(build, /minecraft:glass/);
     assert.match(build, /minecraft:iron_door\[facing=east/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('generates a random seed when none is provided', async () => {
+  const root = path.resolve('.tmp', `architect-random-seed-test-${Date.now()}`);
+  try {
+    const result = await runPipeline({
+      prompt: '建一个小木屋',
+      mode: 'mock',
+      mcVersion: '1.21',
+      outRoot: path.join(root, 'out'),
+      cwd: process.cwd()
+    });
+
+    assert.equal(Number.isInteger(result.seed), true);
+    assert.equal(result.seedSource, 'random');
+    assert.equal(result.blueprint.seed, result.seed);
+    assert.equal(result.blueprint.seedSource, 'random');
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

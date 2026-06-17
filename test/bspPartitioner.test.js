@@ -10,8 +10,9 @@ test('BSPPartitioner preserves Japanese room semantics and courtyard-oriented me
   const { layout } = buildLayout('建一个日式一层町屋，木格栅，榻榻米，茶室，枯山水小庭院，宽二十三深十九');
 
   assert.equal(layout.bsp.splitStrategy, 'courtyard-ring');
-  assert.deepEqual(roomIds(layout), ['entry', 'living', 'tatami', 'tea-room', 'kitchen']);
+  assert.deepEqual([...roomIds(layout)].sort(), ['entry', 'kitchen', 'living', 'tatami', 'tea-room']);
   assert.equal(layout.bsp.unassignedPlannerNodes.length, 0);
+  assert.ok(layout.rooms.find((room) => room.id === 'entry').max_z > layout.rooms.find((room) => room.id === 'living').max_z);
   assert.equal(layout.rooms.find((room) => room.id === 'tatami').orientation, 'courtyard');
   assert.equal(layout.rooms.find((room) => room.id === 'tea-room').orientation, 'garden');
   assert.equal(layout.rooms.find((room) => room.id === 'kitchen').zone, 'service');

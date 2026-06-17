@@ -22,6 +22,7 @@ export class BlueprintQAAgent {
     const boundsStats = validateBounds(blueprint.bounds || {}, warnings, checks);
     const exporterStats = validateExporter(blueprint, errors, warnings, checks);
     const roomStats = validateRooms(blueprint, errors, warnings, checks);
+    const spatialGeometryStats = validateSpatialGeometry(blueprint, errors, warnings, checks);
     const circulationStats = validateCirculation(blueprint, errors, warnings, checks);
     const semanticStats = validateSemanticCompleteness(blueprint, errors, warnings, checks);
     const agentContractStats = validateAgentContracts(blueprint, errors, warnings, checks);
@@ -43,6 +44,7 @@ export class BlueprintQAAgent {
         largestFillVolume: commandStats.largestFillVolume,
         exporter: exporterStats,
         rooms: roomStats,
+        spatialGeometry: spatialGeometryStats,
         circulation: circulationStats,
         semantic: semanticStats,
         agentContracts: agentContractStats
@@ -155,6 +157,78 @@ function validateRooms(blueprint, errors, warnings, checks) {
     invalidRooms
   }));
   return { roomCount: rooms.length, duplicateIds, invalidRooms };
+}
+
+function validateSpatialGeometry(blueprint, errors, warnings, checks) {
+  const rooms = (blueprint.layout?.rooms || []).map(normalizeRoomBox).filter(Boolean);
+  const spaces = (blueprint.shell?.interiorSpaces || []).map(normalizeInteriorSpace).filter(Boolean);
+  const volumes = (blueprint.shell?.volumeBoxes || []).map(normalizeVolumeBox).filter(Boolean);
+  const mainBox = volumes.find((box) => box.id === 'main') || volumes[0];
+  const shellThickness = clampInt(blueprint.buildSpec?.shell_thickness || 1, 1, 3);
+  const floorHeight = clampInt(blueprint.buildSpec?.floor_height || 5, 1, 16, 5);
+  const floorCount = clampInt(blueprint.buildSpec?.floors || 1, 1, 8, 1);
+
+  const invalidVolumes = volumes.filter((box) => !isValidBox(box)).map((box) => box.id);
+  const detachedVolumes = mainBox
+    ? volumes
+      .filter((box) => box.id !== mainBox.id && box.boolean_mode !== 'subtract')
+      .filter((box) => !hasFaceContactOrOverlap(mainBox, box))
+      .map((box) => box.id)
+    : [];
+  const invalidSpaces = spaces.filter((space) => !isValidBox(space)).map((space) => `${space.source}:F${space.floor}`);
+  const roomsOutsideInterior = rooms
+    .filter((room) => !roomContainedByInterior(room, spaces))
+    .map((room) => room.id);
+  const overlappingRooms = roomOverlaps(rooms).map(([a, b]) => `${a}/${b}`);
+  const doorIssues = validateInteriorDoorGeometry(blueprint.layout?.interiorDoors || [], rooms, shellThickness);
+  const mainDoorIssues = validateMainDoorGeometry(blueprint.paths?.mainDoor, rooms, mainBox, shellThickness);
+  const stairIssues = validateStairGeometry(blueprint.paths?.stairs || [], rooms, floorHeight);
+  const floorOpeningIssues = validateFloorOpeningGeometry(blueprint.layout?.floorOpenings || [], blueprint.paths?.stairs || [], rooms, floorHeight, floorCount);
+
+  if (invalidVolumes.length) errors.push(`体块边界无效: ${invalidVolumes.join(', ')}`);
+  if (detachedVolumes.length) errors.push(`附属体块未与主体共享墙面或重叠接合: ${detachedVolumes.join(', ')}`);
+  if (invalidSpaces.length) errors.push(`室内空间边界无效: ${invalidSpaces.join(', ')}`);
+  if (roomsOutsideInterior.length) errors.push(`房间不在任何可用室内空间内: ${roomsOutsideInterior.join(', ')}`);
+  if (overlappingRooms.length) errors.push(`同层房间发生平面重叠: ${overlappingRooms.join(', ')}`);
+  if (doorIssues.length) errors.push(`门洞空间关系异常: ${doorIssues.join('; ')}`);
+  if (mainDoorIssues.length) errors.push(`主入口空间关系异常: ${mainDoorIssues.join('; ')}`);
+  if (stairIssues.length) errors.push(`楼梯空间关系异常: ${stairIssues.join('; ')}`);
+  if (floorOpeningIssues.length) errors.push(`楼板开洞空间关系异常: ${floorOpeningIssues.join('; ')}`);
+  if (!spaces.length) warnings.push('缺少 shell.interiorSpaces，空间几何校验覆盖较弱。');
+
+  const ok = !invalidVolumes.length &&
+    !detachedVolumes.length &&
+    !invalidSpaces.length &&
+    !roomsOutsideInterior.length &&
+    !overlappingRooms.length &&
+    !doorIssues.length &&
+    !mainDoorIssues.length &&
+    !stairIssues.length &&
+    !floorOpeningIssues.length;
+
+  checks.push(check('spatial-geometry', ok, {
+    roomCount: rooms.length,
+    interiorSpaceCount: spaces.length,
+    detachedVolumes,
+    roomsOutsideInterior,
+    overlappingRooms,
+    doorIssueCount: doorIssues.length,
+    mainDoorIssueCount: mainDoorIssues.length,
+    stairIssueCount: stairIssues.length,
+    floorOpeningIssueCount: floorOpeningIssues.length
+  }));
+
+  return {
+    roomCount: rooms.length,
+    interiorSpaceCount: spaces.length,
+    detachedVolumes,
+    roomsOutsideInterior,
+    overlappingRooms,
+    doorIssues,
+    mainDoorIssues,
+    stairIssues,
+    floorOpeningIssues
+  };
 }
 
 function validateCirculation(blueprint, errors, warnings, checks) {
@@ -326,6 +400,254 @@ function validateAgentContracts(blueprint, errors, warnings, checks) {
   };
 }
 
+function normalizeRoomBox(room = {}) {
+  return normalizeSpatialBox(room, {
+    id: String(room.id || 'room'),
+    source: String(room.source || ''),
+    floor: numberOrUndefined(room.floor) ?? 0,
+    type: String(room.type || 'room')
+  });
+}
+
+function normalizeInteriorSpace(space = {}) {
+  return normalizeSpatialBox(space, {
+    id: `${space.source || 'space'}:F${space.floor || 0}`,
+    source: String(space.source || ''),
+    floor: numberOrUndefined(space.floor) ?? 0
+  });
+}
+
+function normalizeVolumeBox(box = {}) {
+  return normalizeSpatialBox(box, {
+    id: String(box.id || 'volume'),
+    source: String(box.id || ''),
+    module: String(box.module || ''),
+    boolean_mode: String(box.boolean_mode || box.booleanMode || 'union')
+  });
+}
+
+function normalizeSpatialBox(value = {}, extra = {}) {
+  return {
+    ...extra,
+    min_x: readCoordinate(value, 'min_x', 'minX'),
+    max_x: readCoordinate(value, 'max_x', 'maxX'),
+    min_y: readCoordinate(value, 'min_y', 'minY'),
+    max_y: readCoordinate(value, 'max_y', 'maxY'),
+    min_z: readCoordinate(value, 'min_z', 'minZ'),
+    max_z: readCoordinate(value, 'max_z', 'maxZ')
+  };
+}
+
+function readCoordinate(value, snakeKey, camelKey) {
+  const bounds = value.bounds || {};
+  const raw = value[snakeKey] ?? value[camelKey] ?? bounds[camelKey];
+  const number = Number(raw);
+  return Number.isFinite(number) ? number : NaN;
+}
+
+function isValidBox(box) {
+  return ['min_x', 'max_x', 'min_y', 'max_y', 'min_z', 'max_z'].every((keyName) => Number.isFinite(box[keyName])) &&
+    box.min_x <= box.max_x &&
+    box.min_y <= box.max_y &&
+    box.min_z <= box.max_z;
+}
+
+function hasFaceContactOrOverlap(a, b) {
+  if (!isValidBox(a) || !isValidBox(b)) return false;
+  const yOverlap = rangesOverlap(a.min_y, a.max_y, b.min_y, b.max_y);
+  const xOverlap = rangesOverlap(a.min_x, a.max_x, b.min_x, b.max_x);
+  const zOverlap = rangesOverlap(a.min_z, a.max_z, b.min_z, b.max_z);
+  const xFaceContact = (a.max_x + 1 === b.min_x || b.max_x + 1 === a.min_x) && zOverlap;
+  const zFaceContact = (a.max_z + 1 === b.min_z || b.max_z + 1 === a.min_z) && xOverlap;
+  return yOverlap && ((xOverlap && zOverlap) || xFaceContact || zFaceContact);
+}
+
+function roomContainedByInterior(room, spaces) {
+  if (!spaces.length) return true;
+  const sameSource = spaces.filter((space) => space.floor === room.floor && room.source && space.source === room.source);
+  const candidates = sameSource.length ? sameSource : spaces.filter((space) => space.floor === room.floor);
+  return candidates.some((space) => containsBox(space, room));
+}
+
+function containsBox(outer, inner) {
+  return isValidBox(outer) && isValidBox(inner) &&
+    inner.min_x >= outer.min_x &&
+    inner.max_x <= outer.max_x &&
+    inner.min_y >= outer.min_y &&
+    inner.max_y <= outer.max_y &&
+    inner.min_z >= outer.min_z &&
+    inner.max_z <= outer.max_z;
+}
+
+function roomOverlaps(rooms) {
+  const overlaps = [];
+  const validRooms = rooms.filter(isValidBox);
+  for (let i = 0; i < validRooms.length; i += 1) {
+    for (let j = i + 1; j < validRooms.length; j += 1) {
+      const a = validRooms[i];
+      const b = validRooms[j];
+      if (a.floor !== b.floor) continue;
+      if (overlapArea2d(a, b) > 0) overlaps.push([a.id, b.id]);
+    }
+  }
+  return overlaps;
+}
+
+function validateInteriorDoorGeometry(doors, rooms, shellThickness) {
+  const issues = [];
+  const roomById = new Map(rooms.map((room) => [room.id, room]));
+  for (const door of doors) {
+    const connects = Array.isArray(door.connects) ? door.connects.filter(Boolean) : [];
+    const label = connects.join('<->') || door.kind || 'door';
+    if (!door.at || !Number.isFinite(Number(door.at.x)) || !Number.isFinite(Number(door.at.z))) {
+      issues.push(`${label} 缺少门洞坐标`);
+      continue;
+    }
+    if (!['x', 'z'].includes(String(door.axis))) {
+      issues.push(`${label} 门洞轴向无效`);
+      continue;
+    }
+    if (connects.length < 2) {
+      issues.push(`${label} 未声明两侧房间`);
+      continue;
+    }
+    const connectedRooms = connects.map((id) => roomById.get(id));
+    const missing = connects.filter((id, index) => !connectedRooms[index]);
+    if (missing.length) {
+      issues.push(`${label} 引用不存在房间 ${missing.join(',')}`);
+      continue;
+    }
+    const floor = numberOrUndefined(door.floor) ?? connectedRooms[0].floor;
+    if (connectedRooms.some((room) => room.floor !== floor)) {
+      issues.push(`${label} 门洞楼层与房间楼层不一致`);
+      continue;
+    }
+    const missedRooms = connectedRooms.filter((room) => !doorReachesRoom(door, room, shellThickness + 1));
+    if (missedRooms.length) issues.push(`${label} 未贴到房间 ${missedRooms.map((room) => room.id).join(',')}`);
+  }
+  return issues;
+}
+
+function validateMainDoorGeometry(mainDoor, rooms, mainBox, shellThickness) {
+  const issues = [];
+  if (!mainDoor || !mainBox) return issues;
+  const target = rooms.find((room) => room.id === mainDoor.targetRoom);
+  if (!target) {
+    if (mainDoor.targetRoom) issues.push(`目标房间不存在: ${mainDoor.targetRoom}`);
+    return issues;
+  }
+  if (target.floor !== 0) issues.push(`主入口目标不在一层: ${target.id}`);
+  if (!mainDoorReachesRoom(mainDoor, target, mainBox, shellThickness + 1)) {
+    issues.push(`主入口未贴到目标房间 ${target.id}`);
+  }
+  return issues;
+}
+
+function validateStairGeometry(stairs, rooms, floorHeight) {
+  const issues = [];
+  const roomByFloor = new Map(rooms.map((room) => [`${room.id}:F${room.floor}`, room]));
+  for (const step of stairs) {
+    const floor = numberOrUndefined(step.floor) ?? 0;
+    const room = roomByFloor.get(`${step.sourceRoom}:F${floor}`);
+    if (!room) continue;
+    if (!pointInBox2d(room, Number(step.x), Number(step.z))) {
+      issues.push(`${step.sourceRoom}:F${floor} 第 ${step.step} 级越出楼梯间`);
+    }
+    const expectedY = floor * floorHeight + 2 + Number(step.step || 0);
+    if (Number(step.y) !== expectedY) issues.push(`${step.sourceRoom}:F${floor} 第 ${step.step} 级高度应为 ${expectedY}`);
+  }
+  return issues;
+}
+
+function validateFloorOpeningGeometry(openings, stairs, rooms, floorHeight, floorCount) {
+  const issues = [];
+  const roomByFloor = new Map(rooms.map((room) => [`${room.id}:F${room.floor}`, room]));
+  for (const opening of openings) {
+    const floor = numberOrUndefined(opening.floor);
+    if (floor === undefined) {
+      issues.push('楼板开洞缺少楼层');
+      continue;
+    }
+    const expectedY = floor * floorHeight + 1;
+    if (Number(opening.y) !== expectedY) issues.push(`F${floor} 楼板开洞高度应为 ${expectedY}`);
+    const lowerRoom = roomByFloor.get(`${opening.sourceRoom}:F${floor - 1}`);
+    if (lowerRoom && !rectInsideRoom2d(opening, lowerRoom)) {
+      issues.push(`${opening.sourceRoom}:F${floor - 1} 楼板开洞不在楼梯间投影内`);
+    }
+    const topStep = stairs.find((step) => Number(step.floor) === floor - 1 && Number(step.step) === floorHeight - 1);
+    if (topStep && !pointInOpening(opening, Number(topStep.x), Number(topStep.z))) {
+      issues.push(`F${floor} 楼板开洞未覆盖上一层楼梯末级`);
+    }
+  }
+  if (floorCount > 1 && openings.length > 0) {
+    const floorsWithOpenings = new Set(openings.map((opening) => Number(opening.floor)));
+    for (let floor = 1; floor < floorCount; floor += 1) {
+      if (!floorsWithOpenings.has(floor)) issues.push(`缺少 F${floor} 楼板开洞`);
+    }
+  }
+  return issues;
+}
+
+function doorReachesRoom(door, room, tolerance) {
+  const x = Number(door.at.x);
+  const z = Number(door.at.z);
+  if (door.axis === 'x') {
+    return rangesOverlap(z - 1, z + 1, room.min_z, room.max_z) &&
+      x >= room.min_x - tolerance &&
+      x <= room.max_x + tolerance;
+  }
+  return rangesOverlap(x - 1, x + 1, room.min_x, room.max_x) &&
+    z >= room.min_z - tolerance &&
+    z <= room.max_z + tolerance;
+}
+
+function mainDoorReachesRoom(mainDoor, room, mainBox, tolerance) {
+  const side = String(mainDoor.side || 'south');
+  const width = clampInt(mainDoor.width || 1, 1, 8, 1);
+  if (['east', 'west'].includes(side)) {
+    const x = side === 'east' ? mainBox.max_x : mainBox.min_x;
+    const z1 = Number(mainDoor.z);
+    const z2 = z1 + width - 1;
+    return rangesOverlap(z1, z2, room.min_z, room.max_z) &&
+      x >= room.min_x - tolerance &&
+      x <= room.max_x + tolerance;
+  }
+  const z = side === 'south' ? mainBox.max_z : mainBox.min_z;
+  const x1 = Number(mainDoor.x);
+  const x2 = x1 + width - 1;
+  return rangesOverlap(x1, x2, room.min_x, room.max_x) &&
+    z >= room.min_z - tolerance &&
+    z <= room.max_z + tolerance;
+}
+
+function rectInsideRoom2d(rect, room) {
+  return Number(rect.min_x) >= room.min_x &&
+    Number(rect.max_x) <= room.max_x &&
+    Number(rect.min_z) >= room.min_z &&
+    Number(rect.max_z) <= room.max_z;
+}
+
+function pointInOpening(opening, x, z) {
+  return x >= Number(opening.min_x) &&
+    x <= Number(opening.max_x) &&
+    z >= Number(opening.min_z) &&
+    z <= Number(opening.max_z);
+}
+
+function pointInBox2d(box, x, z) {
+  return x >= box.min_x && x <= box.max_x && z >= box.min_z && z <= box.max_z;
+}
+
+function overlapArea2d(a, b) {
+  const x = Math.max(0, Math.min(a.max_x, b.max_x) - Math.max(a.min_x, b.min_x) + 1);
+  const z = Math.max(0, Math.min(a.max_z, b.max_z) - Math.max(a.min_z, b.min_z) + 1);
+  return x * z;
+}
+
+function rangesOverlap(aMin, aMax, bMin, bMax) {
+  return Math.max(aMin, bMin) <= Math.min(aMax, bMax);
+}
+
 function buildRoomGraph(blueprint) {
   const graph = new Map();
   for (const room of blueprint.layout?.rooms || []) graph.set(room.id, new Set());
@@ -398,6 +720,12 @@ function compareSummaryCount(mismatches, name, agentArray, geometryCount) {
   if (!Number.isFinite(actual) || actual !== agentArray.length) {
     mismatches.push({ name, expected: agentArray.length, actual: geometryCount });
   }
+}
+
+function clampInt(value, min, max, fallback = min) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(number)));
 }
 
 function numberOrUndefined(value) {

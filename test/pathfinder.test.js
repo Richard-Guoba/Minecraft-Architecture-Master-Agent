@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CSGBuilder } from '../src/construction/engine/csgBuilder.js';
+import { CSGBuilder, keyFor } from '../src/construction/engine/csgBuilder.js';
 import { BSPPartitioner } from '../src/construction/engine/bspPartitioner.js';
 import { AStarPathfinder } from '../src/construction/engine/pathfinder.js';
 import { buildFallbackArchitecture } from '../src/construction/agents/architectAgent.js';
@@ -8,7 +8,7 @@ import { buildFallbackTopology } from '../src/construction/agents/plannerAgent.j
 import { deriveBuildSpec } from '../src/construction/workflow.js';
 
 test('AStarPathfinder aligns main door, open-plan routes, attached volumes, and stair core for modern houses', () => {
-  const { layout, paths } = buildCirculation('建一个现代两层房子，宽31深17，大玻璃窗，阳光房，车库，开放厨房，平屋顶，门在东侧');
+  const { spec, shell, layout, paths } = buildCirculation('建一个现代两层房子，宽31深17，大玻璃窗，阳光房，车库，开放厨房，平屋顶，门在东侧');
   const stairRoom = layout.rooms.find((room) => room.id === 'stairs');
 
   assert.equal(paths.mainDoor.side, 'east');
@@ -20,12 +20,13 @@ test('AStarPathfinder aligns main door, open-plan routes, attached volumes, and 
   assert.ok(paths.stairs.length > 0);
   assert.ok(paths.stairs.every((step) => step.sourceRoom === 'stairs'));
   assert.ok(paths.stairs.every((step) => pointInRoom(stairRoom, step.x, step.z)));
+  assertStairsMeetUpperFloors(shell.grid, spec, paths);
   assert.ok(paths.openedEdges.some((edge) => edge.from === 'living' && edge.to === 'sunroom' && edge.status === 'routed' && edge.pathLength > 0));
   assert.ok(paths.openedEdges.some((edge) => [edge.from, edge.to].includes('garage') && edge.status === 'routed'));
 });
 
 test('AStarPathfinder respects fortified wall thickness and places castle stairs in the tower stair core', () => {
-  const { spec, layout, paths } = buildCirculation('建一个哥特式四层城堡，宽33深29，厚墙，高门，带尖塔、尖拱和玫瑰窗');
+  const { spec, shell, layout, paths } = buildCirculation('建一个哥特式四层城堡，宽33深29，厚墙，高门，带尖塔、尖拱和玫瑰窗');
   const stairRoom = layout.rooms.find((room) => room.id === 'tower-stair');
 
   assert.equal(paths.mainDoor.targetRoom, 'entry');
@@ -35,6 +36,7 @@ test('AStarPathfinder respects fortified wall thickness and places castle stairs
   assert.equal(paths.floorOpenings.length, spec.floors - 1);
   assert.ok(paths.stairs.every((step) => step.sourceRoom === 'tower-stair'));
   assert.ok(paths.stairs.every((step) => pointInRoom(stairRoom, step.x, step.z)));
+  assertStairsMeetUpperFloors(shell.grid, spec, paths);
   assert.ok(paths.openedEdges.some((edge) => edge.status === 'vertical-edge' && edge.relation === 'vertical-flow'));
   assert.ok(paths.openedEdges.some((edge) => edge.to === 'tower-room' && edge.status === 'routed'));
 });
@@ -61,4 +63,31 @@ function buildCirculation(prompt) {
 
 function pointInRoom(room, x, z) {
   return x >= room.min_x && x <= room.max_x && z >= room.min_z && z <= room.max_z;
+}
+
+function assertStairsMeetUpperFloors(grid, spec, paths) {
+  for (let floor = 0; floor < spec.floors - 1; floor += 1) {
+    const topStep = paths.stairs.find((step) => step.floor === floor && step.step === spec.floor_height - 1);
+    const opening = paths.floorOpenings.find((item) => item.floor === floor + 1);
+    assert.ok(topStep, `missing top stair for floor ${floor}`);
+    assert.ok(opening, `missing floor opening for floor ${floor + 1}`);
+    assert.equal(topStep.y, (floor + 1) * spec.floor_height + 1);
+
+    const landing = landingAfter(topStep);
+    const landingCell = grid.get(keyFor(landing.x, topStep.y, landing.z));
+    assert.ok(landingCell, `stair landing should be solid at ${landing.x},${topStep.y},${landing.z}`);
+    assert.equal(pointInOpening(opening, landing.x, landing.z), false);
+    assert.equal(pointInOpening(opening, topStep.x, topStep.z), true);
+  }
+}
+
+function landingAfter(step) {
+  if (step.facing === 'north') return { x: step.x, z: step.z - 1 };
+  if (step.facing === 'south') return { x: step.x, z: step.z + 1 };
+  if (step.facing === 'west') return { x: step.x - 1, z: step.z };
+  return { x: step.x + 1, z: step.z };
+}
+
+function pointInOpening(opening, x, z) {
+  return x >= opening.min_x && x <= opening.max_x && z >= opening.min_z && z <= opening.max_z;
 }

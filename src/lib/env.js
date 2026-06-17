@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-export function loadEnvFile(filePath) {
+export function loadEnvFile(filePath, { override = true } = {}) {
   if (!fs.existsSync(filePath)) return;
   const content = fs.readFileSync(filePath, 'utf8');
   for (const rawLine of content.split(/\r?\n/)) {
@@ -13,7 +13,7 @@ export function loadEnvFile(filePath) {
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
-    if (key && process.env[key] === undefined) {
+    if (key && (override || process.env[key] === undefined)) {
       process.env[key] = value;
     }
   }

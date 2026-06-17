@@ -10,19 +10,16 @@ export function createLlmClient({ env = process.env, cwd = process.cwd() } = {})
   if (provider === 'openai' || provider === 'openai-compatible') {
     return createOpenAiCompatibleClient(env);
   }
-  if (provider === 'legacy') {
-    return createLegacyCompatibleClient(env);
-  }
   if (provider === 'auto') {
     return new FallbackLlmClient([
       createCodexClient(env, cwd),
-      createLegacyCompatibleClient(env)
+      createConfiguredApiClient(env)
     ]);
   }
   if (provider === 'codex') {
     return new FallbackLlmClient([
       createCodexClient(env, cwd),
-      createLegacyCompatibleClient(env)
+      createConfiguredApiClient(env)
     ]);
   }
 
@@ -65,7 +62,7 @@ function createCodexClient(env, cwd) {
   });
 }
 
-function createLegacyCompatibleClient(env) {
+function createConfiguredApiClient(env) {
   if (env.ZHIPU_API_KEY || env.ZHIPU_BASE_URL || env.ZHIPU_MODEL) {
     return createZhipuClient(env);
   }
@@ -86,8 +83,18 @@ function createOpenAiCompatibleClient(env) {
     name: 'openai-compatible',
     apiKey: env.OPENAI_API_KEY,
     baseUrl: env.OPENAI_BASE_URL,
-    model: env.OPENAI_MODEL
+    model: env.OPENAI_MODEL || defaultOpenAiCompatibleModel(env),
+    responseFormat: env.OPENAI_RESPONSE_FORMAT || 'json_object',
+    maxTokens: env.OPENAI_MAX_TOKENS || 4096,
+    thinking: env.OPENAI_THINKING,
+    reasoningEffort: env.OPENAI_REASONING_EFFORT
   });
+}
+
+function defaultOpenAiCompatibleModel(env) {
+  const baseUrl = String(env.OPENAI_BASE_URL || '').toLowerCase();
+  if (baseUrl.includes('api.deepseek.com')) return 'deepseek-v4-pro';
+  return undefined;
 }
 
 function normalizeProvider(provider) {

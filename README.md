@@ -10,7 +10,7 @@
 ArchitectAgent -> PlannerAgent -> CSGBuilder -> BSPPartitioner -> AStarPathfinder -> Datapack/GDMC
 ```
 
-`SkillAgent/SkillRouter` 不再参与主流程。
+旧版 `src/agents` / `src/engine` 生成体系已经移除；当前只有 `src/construction` 这一套主流程。
 
 ## 目录
 
@@ -54,6 +54,14 @@ npm install
 ```powershell
 npm start -- "建一个欧式大房子"
 ```
+
+不传 `--seed` 时会自动随机一个设计 seed，并在命令行、`blueprint.json` 和 `run_report.md` 里记录。想复现同一次默认变体，可以显式传回这个 seed：
+
+```powershell
+npm start -- --seed 12345 "建一个欧式大房子"
+```
+
+命令行结束时会打印 `LLM调用`，说明这次是否真的调用并采用了 LLM 结果；`--mode mock` 会明确显示未调用。
 
 强制规则兜底：
 
@@ -126,6 +134,20 @@ OPENAI_API_KEY=你的 key
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4o-mini
 ```
+
+DeepSeek 也走同一个 OpenAI-compatible 通道：
+
+```text
+LLM_PROVIDER=openai-compatible
+OPENAI_API_KEY=你的 DeepSeek key
+OPENAI_BASE_URL=https://api.deepseek.com
+OPENAI_MODEL=deepseek-v4-pro
+OPENAI_RESPONSE_FORMAT=json_object
+OPENAI_MAX_TOKENS=4096
+OPENAI_THINKING=disabled
+```
+
+`deepseek-v4-pro` 是 DeepSeek 当前高配模型；如果省钱或提速，可以把 `OPENAI_MODEL` 改回 `deepseek-v4-flash`。项目会优先使用本地 `.env`，覆盖外层 shell/Codex 环境里同名变量，避免把别的 OpenAI key 错发到 DeepSeek。
 
 ## 测试
 

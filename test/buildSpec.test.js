@@ -63,6 +63,34 @@ test('deriveBuildSpec records default sources when prompt omits hard dimensions'
   assert.equal(spec.lot.width, spec.width + spec.lot.side_setback * 2);
 });
 
+test('deriveBuildSpec uses seed variation only for omitted defaults', () => {
+  const prompt = '建一个欧式大房子';
+  const architecture = buildFallbackArchitecture(prompt);
+  const first = deriveBuildSpec(prompt, architecture, 1);
+  const firstAgain = deriveBuildSpec(prompt, architecture, 1);
+  const second = deriveBuildSpec(prompt, architecture, 2);
+
+  assert.deepEqual(
+    [first.width, first.depth, first.garden_depth],
+    [firstAgain.width, firstAgain.depth, firstAgain.garden_depth]
+  );
+  assert.notDeepEqual(
+    [first.width, first.depth, first.garden_depth],
+    [second.width, second.depth, second.garden_depth]
+  );
+  assert.equal(first.seed, 1);
+  assert.equal(first.seed_variation.source, 'seed');
+
+  const explicit = deriveBuildSpec('建一个现代两层房子，宽31深17，庭院深七', buildFallbackArchitecture('建一个现代两层房子，宽31深17，庭院深七'), 99);
+  const explicitAgain = deriveBuildSpec('建一个现代两层房子，宽31深17，庭院深七', buildFallbackArchitecture('建一个现代两层房子，宽31深17，庭院深七'), 100);
+  assert.equal(explicit.width, 31);
+  assert.equal(explicit.depth, 17);
+  assert.equal(explicit.garden_depth, 7);
+  assert.equal(explicitAgain.width, 31);
+  assert.equal(explicitAgain.depth, 17);
+  assert.equal(explicitAgain.garden_depth, 7);
+});
+
 test('deriveBuildSpec adapts defaults for treehouse grammar', () => {
   const prompt = '建一个树屋，树上小屋，环绕露台，木头和树叶屋顶';
   const architecture = buildFallbackArchitecture(prompt);

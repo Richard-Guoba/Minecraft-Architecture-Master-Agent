@@ -44,7 +44,9 @@ export class ConstructionPlannerAgent {
           system: [
             '你是一个严谨的 Minecraft 建筑平面规划 Agent。',
             '你只输出房间拓扑和空间组织规则，不允许输出具体长宽高或 XYZ 坐标。',
-            '只输出严格 JSON。',
+            '只输出严格 JSON object；不要 Markdown、注释、解释文字或尾随逗号。',
+            '所有数组元素、对象属性都必须用英文逗号分隔。字符串内不要使用未转义的双引号。',
+            '保持输出精简：每层 3-5 个核心房间即可，避免生成冗长描述。',
             '必需字段: nodes, edges, floor_program, zoning, circulation_rules, facade_alignment, site_connections, bsp_hints。',
             'nodes 每项包含 id, label, type, floor, weight, privacy，可选 zone, orientation, access, daylight, tags。',
             'edges 每项包含 from, to, relation，可选 priority。',
@@ -564,7 +566,9 @@ function compactBuildSpec(buildSpec) {
     facade: buildSpec.facade,
     site: buildSpec.site,
     structural: buildSpec.structural,
-    modules: buildSpec.modules
+    modules: buildSpec.modules,
+    seed: buildSpec.seed,
+    seed_variation: buildSpec.seed_variation
   };
 }
 

@@ -142,6 +142,7 @@ export class AStarPathfinder {
     const stairCoreRoom = selectStairCoreRoom(rooms, plannerJson);
     const anchor = stairAnchor(stairCoreRoom, mainBox, this.spec);
     const stairBlock = stairState(this.materials.stairs, anchor.facing);
+    const floorBlock = this.materials.floor || 'minecraft:spruce_planks';
 
     for (let floor = 0; floor < this.spec.floors - 1; floor += 1) {
       const openingY = (floor + 1) * this.spec.floor_height + 1;
@@ -158,6 +159,7 @@ export class AStarPathfinder {
         }
         stairs.push({ floor, step, x: point.x, y: point.y, z: point.z, facing: anchor.facing, sourceRoom: stairCoreRoom?.id || 'fallback-corner' });
       }
+      placeStairLanding(grid, anchor, openingY, floorBlock);
     }
     return { stairs, floorOpenings, stairCoreRoom };
   }
@@ -243,8 +245,8 @@ function stairPoint(anchor, floor, step, floorHeight) {
 function openingForAnchor(anchor, floor, y, room) {
   const sourceRoom = room?.id || 'fallback-corner';
   if (anchor.axis === 'x') {
-    const x1 = Math.min(anchor.start.x, anchor.end.x) - 1;
-    const x2 = Math.max(anchor.start.x, anchor.end.x) + 1;
+    const x1 = Math.min(anchor.start.x, anchor.end.x);
+    const x2 = Math.max(anchor.start.x, anchor.end.x);
     return {
       floor,
       sourceRoom,
@@ -256,8 +258,8 @@ function openingForAnchor(anchor, floor, y, room) {
       max_z: anchor.start.z + 2
     };
   }
-  const z1 = Math.min(anchor.start.z, anchor.end.z) - 1;
-  const z2 = Math.max(anchor.start.z, anchor.end.z) + 1;
+  const z1 = Math.min(anchor.start.z, anchor.end.z);
+  const z2 = Math.max(anchor.start.z, anchor.end.z);
   return {
     floor,
     sourceRoom,
@@ -268,6 +270,27 @@ function openingForAnchor(anchor, floor, y, room) {
     min_z: z1,
     max_z: z2
   };
+}
+
+function placeStairLanding(grid, anchor, y, floorBlock) {
+  for (const point of landingCellsForAnchor(anchor)) {
+    grid.set(keyFor(point.x, y, point.z), cell(floorBlock, 'floors'));
+    grid.delete(keyFor(point.x, y + 1, point.z));
+    grid.delete(keyFor(point.x, y + 2, point.z));
+  }
+}
+
+function landingCellsForAnchor(anchor) {
+  const dx = Math.sign(anchor.end.x - anchor.start.x);
+  const dz = Math.sign(anchor.end.z - anchor.start.z);
+  const base = {
+    x: anchor.end.x + dx,
+    z: anchor.end.z + dz
+  };
+  return anchor.offsets.map((offset) => ({
+    x: base.x + offset.x,
+    z: base.z + offset.z
+  }));
 }
 
 function routeBoundsForRooms(a, b, shellBounds = {}) {

@@ -27,6 +27,8 @@ test('BlueprintQAAgent passes a complete generated blueprint and reports reachab
   assert.equal(validation.stats.exporter.coverageOk, true);
   assert.equal(validation.stats.circulation.failedEdgeCount, 0);
   assert.equal(validation.stats.rooms.roomCount, blueprint.layout.rooms.length);
+  assert.equal(validation.stats.spatialGeometry.overlappingRooms.length, 0);
+  assert.ok(validation.checks.some((item) => item.name === 'spatial-geometry' && item.ok));
   assert.ok(validation.stats.circulation.reachableRoomCount > 0);
   assert.ok(validation.stats.semantic.hasDecoration);
   assert.equal(validation.stats.agentContracts.missing.length, 0);
@@ -80,6 +82,24 @@ test('BlueprintQAAgent rejects missing integrated agent contracts', () => {
   assert.equal(validation.ok, false);
   assert.ok(validation.errors.some((item) => item.includes('缺少 agent 输出: facade')));
   assert.equal(validation.checks.find((item) => item.name === 'agent-contracts').ok, false);
+});
+
+test('BlueprintQAAgent rejects spatial room overlap and detached attached volumes', () => {
+  const blueprint = buildBlueprintForQa('建一个现代两层房子，宽31深17，大玻璃窗，阳光房，车库，开放厨房，平屋顶');
+  const sourceRoom = blueprint.layout.rooms.find((room) => room.id === 'living');
+  blueprint.layout.rooms.push({ ...sourceRoom, id: 'overlap-room', label: '重叠房间' });
+  blueprint.interior.room_count = blueprint.layout.rooms.length;
+
+  const attached = blueprint.shell.volumeBoxes.find((box) => box.id !== 'main' && box.module !== 'porch');
+  attached.min_x += 40;
+  attached.max_x += 40;
+
+  const validation = new BlueprintQAAgent().run(blueprint);
+
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.some((item) => item.includes('同层房间发生平面重叠')));
+  assert.ok(validation.errors.some((item) => item.includes('附属体块未与主体共享墙面或重叠接合')));
+  assert.equal(validation.checks.find((item) => item.name === 'spatial-geometry').ok, false);
 });
 
 function buildBlueprintForQa(prompt) {

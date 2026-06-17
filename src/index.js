@@ -5,6 +5,7 @@ import { loadEnvFile } from './lib/env.js';
 import { runPipeline } from './pipeline.js';
 import { launchConfiguredMinecraft } from './lib/launcher.js';
 import { listWorlds } from './lib/minecraftWorlds.js';
+import { formatLlmUsage } from './construction/workflow.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -38,8 +39,10 @@ function parseArgs(argv) {
     } else if (arg === '--out') {
       options.out = path.resolve(argv[++i] || options.out);
     } else if (arg === '--seed') {
-      const parsed = Number(argv[++i]);
-      options.seed = Number.isFinite(parsed) ? parsed : undefined;
+      const rawSeed = argv[++i];
+      const parsed = Number(rawSeed);
+      if (!Number.isFinite(parsed)) throw new Error(`无效 seed: ${rawSeed}`);
+      options.seed = Math.trunc(parsed);
     } else if (arg === '--minecraft-dir') {
       options.minecraftDir = path.resolve(argv[++i] || '');
     } else if (arg === '--world') {
@@ -94,7 +97,7 @@ Options:
   --mode mock|llm|auto       Use rule fallback, force LLM JSON, or auto-detect API config.
   --mc-version 1.21          Target Minecraft Java version. v1 exports 1.21 datapacks.
   --out <dir>                Output root directory. Defaults to ./out.
-  --seed <number>            Optional deterministic seed for design variation.
+  --seed <number>            Deterministic design seed. Omit it to generate a random seed.
   --minecraft-dir <dir>      Minecraft Java directory. Defaults to MINECRAFT_DIR or %APPDATA%\\.minecraft.
   --world <name|latest|dir>  Install the datapack into this save after generation.
   --datapacks-dir <dir>      Install directly into this world's datapacks directory. Can also use ARCHITECT_DATAPACKS_DIR.
@@ -106,7 +109,7 @@ Options:
 
 Workflow:
   ArchitectAgent -> PlannerAgent -> CSGBuilder -> BSPPartitioner -> AStarPathfinder.
-  SkillAgent/SkillRouter is not used.
+  construction_method_v1 is the only active generation pipeline.
   Runtime: Node.js only. Python is not required.
   Default LLM: Zhipu API via LLM_PROVIDER=zhipu.
   Optional LLM: set LLM_PROVIDER=codex or LLM_PROVIDER=openai-compatible.
@@ -155,7 +158,9 @@ async function main() {
 
   console.log('\n建筑智能体运行完成。');
   console.log(`工作流: ${result.workflow}`);
+  console.log(`Seed: ${result.seed} (${result.seedSource === 'random' ? '自动随机' : '手动指定'})`);
   console.log(`LLM通道: ${result.llmProvider}`);
+  console.log(`LLM调用: ${formatLlmUsage(result.llmUsage)}`);
   console.log(`输出目录: ${result.outputDir}`);
   console.log(`数据包: ${result.artifacts.datapackDir}`);
   if (result.artifacts.installedDatapackDir) {

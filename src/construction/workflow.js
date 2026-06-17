@@ -29,6 +29,7 @@ export async function runConstructionWorkflow({
   mcVersion = '1.21',
   outputDir,
   seed,
+  seedSource = seed === undefined ? 'none' : 'manual',
   cwd = process.cwd(),
   minecraftDir,
   world,
@@ -53,8 +54,9 @@ export async function runConstructionWorkflow({
       material_palette: materialPalette.palette
     }
   };
-  const buildSpec = deriveBuildSpec(prompt, architecture);
+  const buildSpec = deriveBuildSpec(prompt, architecture, seed);
   const topology = await new ConstructionPlannerAgent({ llmClient, mode }).run(prompt, architecture, buildSpec);
+  const llmUsage = summarizeLlmUsage({ mode, llmProvider, architecture, topology });
   const structure = new StructureAgent().run(architecture, buildSpec, topology);
   const facade = new FacadeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
   const roof = new RoofAgent().run(prompt, architecture, buildSpec, structure, facade, materialPalette, stylePreset);
@@ -119,6 +121,8 @@ export async function runConstructionWorkflow({
     operations,
     bounds,
     llmProvider,
+    llmUsage,
+    seedSource,
     seed
   });
   const validation = validateBlueprint(blueprint);
@@ -142,7 +146,10 @@ export async function runConstructionWorkflow({
     prompt,
     outputDir,
     mode,
+    seed,
+    seedSource,
     llmProvider,
+    llmUsage,
     mcVersion,
     architecture,
     topology,
@@ -163,7 +170,7 @@ export async function runConstructionWorkflow({
   };
 }
 
-export function deriveBuildSpec(prompt, architecture) {
+export function deriveBuildSpec(prompt, architecture, seed) {
   const normalizedArchitecture = architecture || {};
   const scale = detectScale(prompt);
   const footprint = normalizeFootprint(normalizedArchitecture.footprint);
@@ -171,17 +178,19 @@ export function deriveBuildSpec(prompt, architecture) {
   const styleFamily = String(normalizedArchitecture.style_family || normalizedArchitecture.styleFamily || 'general');
   const typology = String(normalizedArchitecture.typology || inferTypology(prompt, style));
   const defaults = defaultBuildDimensions({ scale, footprint, style, styleFamily, typology });
+  const seedVariation = createSeedVariation(seed, { scale, typology });
   const explicitDimensions = parseDimensions(prompt, defaults.width, defaults.depth, {
     minWidth: defaults.min_width,
     maxWidth: defaults.max_width,
     minDepth: defaults.min_depth,
     maxDepth: defaults.max_depth
   });
+  const dimensions = applySeedDimensionVariation(explicitDimensions, defaults, seedVariation, typology);
   const floorHeight = deriveFloorHeight(prompt, normalizedArchitecture, defaults);
   const floors = deriveFloorCount(prompt, normalizedArchitecture, scale, typology);
   const roofHeight = deriveRoofHeight(prompt, normalizedArchitecture, defaults, floors, floorHeight);
   const wallHeight = floors * floorHeight;
-  const gardenDepth = deriveGardenDepth(prompt, normalizedArchitecture, defaults);
+  const gardenDepth = deriveGardenDepth(prompt, normalizedArchitecture, defaults, seedVariation);
   const shellThickness = deriveShellThickness(prompt, normalizedArchitecture);
   const doorSide = normalizeSide(String(normalizedArchitecture.facade_rules?.front_side || detectDoorSide(prompt)));
   const doorWidth = deriveDoorWidth(prompt, normalizedArchitecture, scale, typology);
@@ -196,14 +205,14 @@ export function deriveBuildSpec(prompt, architecture) {
     style_family: styleFamily,
     typology,
     footprint,
-    width: explicitDimensions.width,
-    depth: explicitDimensions.depth,
+    width: dimensions.width,
+    depth: dimensions.depth,
     floors,
     floor_height: floorHeight,
     wall_height: wallHeight,
     roof_height: roofHeight,
     total_height: wallHeight + roofHeight,
-    garden_depth: gardenDepth,
+    garden_depth: gardenDepth.value,
     shell_thickness: shellThickness,
     door_side: doorSide,
     door_width: doorWidth,
@@ -211,12 +220,14 @@ export function deriveBuildSpec(prompt, architecture) {
     roof_style: String(roofRules.style || defaults.roof_style),
     roof_overhang: clampNumber(Number(roofRules.overhang ?? defaults.roof_overhang), 0, 4, defaults.roof_overhang),
     lot: {
-      width: explicitDimensions.width + defaults.side_setback * 2,
-      depth: explicitDimensions.depth + gardenDepth + defaults.rear_setback,
+      width: dimensions.width + defaults.side_setback * 2,
+      depth: dimensions.depth + gardenDepth.value + defaults.rear_setback,
       side_setback: defaults.side_setback,
-      front_setback: gardenDepth,
+      front_setback: gardenDepth.value,
       rear_setback: defaults.rear_setback
     },
+    seed,
+    seed_variation: seedVariation,
     structural: {
       system: normalizedArchitecture.structural_rules?.system || 'standard-shell',
       shell_thickness: shellThickness,
@@ -253,6 +264,9 @@ export function deriveBuildSpec(prompt, architecture) {
     },
     source: {
       dimensions: explicitDimensions.source,
+      width: explicitDimensions.width_source,
+      depth: explicitDimensions.depth_source,
+      garden_depth: gardenDepth.source,
       floors: deriveFloorCountSource(prompt, normalizedArchitecture),
       floor_height: hasNumberAfter(prompt, /层高\s*([一二三四五六七八九十两\d]{1,3})/i) ? 'prompt' : 'default',
       roof_height: hasNumberAfter(prompt, /屋顶(?:高|高度)\s*([一二三四五六七八九十两\d]{1,3})/i) ? 'prompt' : 'architecture-or-default',
@@ -273,21 +287,72 @@ function parseDimensions(prompt, defaultWidth, defaultDepth, limits = {}) {
   const maxWidth = limits.maxWidth ?? 45;
   const minDepth = limits.minDepth ?? 11;
   const maxDepth = limits.maxDepth ?? 45;
+  const widthFromPrompt = rawWidth !== undefined;
+  const depthFromPrompt = rawDepth !== undefined;
   return {
     width: clampNumber(rawWidth ?? defaultWidth, minWidth, maxWidth, defaultWidth),
     depth: clampNumber(rawDepth ?? defaultDepth, minDepth, maxDepth, defaultDepth),
-    source: rawWidth || rawDepth ? 'prompt' : 'default'
+    source: widthFromPrompt || depthFromPrompt ? 'prompt' : 'default',
+    width_source: widthFromPrompt ? 'prompt' : 'default',
+    depth_source: depthFromPrompt ? 'prompt' : 'default'
   };
 }
 
-function buildBlueprint({ prompt, architecture, topology, stylePreset, materialPalette, structure, facade, roof, site, opening, interior, repair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, seed }) {
+function applySeedDimensionVariation(dimensions, defaults, variation, typology) {
+  const compactTypology = ['cabin', 'treehouse', 'lodge'].includes(typology);
+  const minWidth = Math.max(defaults.min_width, defaults.width - 4);
+  const maxWidth = compactTypology ? defaults.width : Math.min(defaults.max_width, defaults.width + 4);
+  const minDepth = Math.max(defaults.min_depth, defaults.depth - 4);
+  const maxDepth = compactTypology ? defaults.depth : Math.min(defaults.max_depth, defaults.depth + 4);
+  return {
+    ...dimensions,
+    width: dimensions.width_source === 'default'
+      ? clampNumber(dimensions.width + variation.width_delta, minWidth, maxWidth, dimensions.width)
+      : dimensions.width,
+    depth: dimensions.depth_source === 'default'
+      ? clampNumber(dimensions.depth + variation.depth_delta, minDepth, maxDepth, dimensions.depth)
+      : dimensions.depth
+  };
+}
+
+function createSeedVariation(seed, context = {}) {
+  const parsed = Number(seed);
+  if (!Number.isFinite(parsed)) {
+    return {
+      source: 'none',
+      width_delta: 0,
+      depth_delta: 0,
+      garden_delta: 0
+    };
+  }
+
+  const seedInt = Math.abs(Math.trunc(parsed));
+  const compactTypology = ['cabin', 'treehouse', 'lodge'].includes(context.typology);
+  const dimensionSteps = compactTypology
+    ? [-2, 0, 0]
+    : context.scale === 'large'
+      ? [-4, -2, 0, 2, 4]
+      : [-2, 0, 2];
+  const gardenSteps = [-1, 0, 1];
+
+  return {
+    source: 'seed',
+    width_delta: dimensionSteps[seedInt % dimensionSteps.length],
+    depth_delta: dimensionSteps[Math.floor(seedInt / dimensionSteps.length) % dimensionSteps.length],
+    garden_delta: gardenSteps[Math.floor(seedInt / (dimensionSteps.length * dimensionSteps.length)) % gardenSteps.length]
+  };
+}
+
+function buildBlueprint({ prompt, architecture, topology, stylePreset, materialPalette, structure, facade, roof, site, opening, interior, repair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
   return {
     version: 4,
     workflow: 'construction_method_v1',
     runtime: 'nodejs',
     prompt,
     seed,
+    seedSource,
     llmProvider,
+    llmUsage,
     philosophy: architecture.philosophy,
     buildSpec,
     architecture,
@@ -349,7 +414,7 @@ function buildBlueprint({ prompt, architecture, topology, stylePreset, materialP
       'LLM outputs semantic JSON only.',
       'Zhipu API is the default LLM channel; Codex CLI and OpenAI-compatible HTTP APIs are preserved.',
       'All coordinates are generated by deterministic local JavaScript algorithms.',
-      'SkillAgent/SkillRouter is not used in this workflow.',
+      'construction_method_v1 is the only active generation pipeline.',
       'Python is not required.'
     ]
   };
@@ -359,6 +424,52 @@ function moduleCounts(grid) {
   const counts = {};
   for (const cell of grid.values()) counts[cell.module] = (counts[cell.module] || 0) + 1;
   return counts;
+}
+
+function summarizeLlmUsage({ mode, llmProvider, architecture, topology }) {
+  const stages = [
+    summarizeLlmStage('ArchitectAgent', architecture),
+    summarizeLlmStage('PlannerAgent', topology)
+  ];
+  const called = stages.some((stage) => stage.called);
+  const used = stages.some((stage) => stage.used);
+  const failedStages = stages.filter((stage) => stage.error);
+  return {
+    mode,
+    provider: llmProvider,
+    called,
+    used,
+    status: used ? 'used' : called ? 'fallback-after-error' : 'not-called',
+    stages,
+    errors: failedStages.map((stage) => `${stage.agent}: ${stage.error}`)
+  };
+}
+
+function summarizeLlmStage(agent, output = {}) {
+  const source = String(output?.source || 'unknown');
+  const called = source === 'llm' || source === 'fallback-after-llm-error';
+  const used = source === 'llm';
+  const stage = {
+    agent,
+    source,
+    called,
+    used
+  };
+  if (output?.llm_error) stage.error = String(output.llm_error);
+  return stage;
+}
+
+export function formatLlmUsage(usage = {}) {
+  const stages = Array.isArray(usage.stages) ? usage.stages : [];
+  if (usage.used) {
+    const usedStages = stages.filter((stage) => stage.used).map((stage) => stage.agent).join('、') || '部分阶段';
+    const fallbackStages = stages.filter((stage) => stage.called && !stage.used).map((stage) => stage.agent);
+    return fallbackStages.length
+      ? `已调用并采用 ${usedStages}；${fallbackStages.join('、')} 回退到本地规则`
+      : `已调用并采用 ${usedStages}`;
+  }
+  if (usage.called) return '尝试调用，但结果不可用，已回退到本地规则';
+  return '未调用，使用本地规则';
 }
 
 function summarizeStructure(structure = {}) {
@@ -519,9 +630,11 @@ ${prompt}
 - ConstraintRepairAgent：导出前做约束检查与修复建议。
 - GeometryEngine：本地纯 JavaScript CSG + BSP + A* 负责所有坐标、门洞和楼梯。
 - Export：将网格转成 Minecraft 函数命令。
-- SkillAgent：未使用。
+- 旧 Requirement/Designer/Blueprint/Super agent 流程：已移除。
 - Python：未使用。
 - LLM 通道：${blueprint.llmProvider}
+- LLM 调用：${formatLlmUsage(blueprint.llmUsage)}
+- Seed：${blueprint.seed ?? 'none'} (${blueprint.seedSource || 'unknown'})
 
 ## 建筑语义 JSON
 
@@ -715,14 +828,19 @@ function deriveRoofHeight(prompt, architecture, defaults, floors, floorHeight) {
   return clampNumber(value, 1, Math.min(9, maxTotalRoof), defaults.roof_height);
 }
 
-function deriveGardenDepth(prompt, architecture, defaults) {
+function deriveGardenDepth(prompt, architecture, defaults, variation = createSeedVariation()) {
   const explicit = extractNumber(prompt, /(?:庭院|院子|花园|前院|后院)(?:深|长度)?\s*([一二三四五六七八九十两\d]{1,3})/i);
   const semantic = Number(architecture.site_rules?.garden_depth || architecture.site_rules?.gardenDepth);
+  const source = explicit !== undefined ? 'prompt' : Number.isFinite(semantic) ? 'architecture' : 'default';
   let value = explicit ?? (Number.isFinite(semantic) ? semantic : defaults.garden_depth);
   if (architecture.site_rules?.formal_garden) value = Math.max(value, 8);
   if (architecture.site_rules?.dry_garden) value = Math.max(value, 6);
   if (architecture.site_rules?.water_feature) value = Math.max(value, 7);
-  return clampNumber(value, 3, 18, defaults.garden_depth);
+  if (source === 'default') value += variation.garden_delta;
+  return {
+    value: clampNumber(value, 3, 18, defaults.garden_depth),
+    source
+  };
 }
 
 function deriveShellThickness(prompt, architecture) {

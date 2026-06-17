@@ -652,7 +652,8 @@ function buildVolumes({ prompt, footprint, profile, scale, intents }) {
     volumes.push(volume('garage-wing', '车库侧翼', 'box', [0.34, 0.45, 0.42], { relation: 'attached-west', attach_to: 'main' }, 'union', { tags: ['service', 'garage'] }));
   }
 
-  if (intents.greenhouse || intents.sunroom) {
+  const lShapeGlassWingAlreadyCoversSunroom = footprint === 'l-shape' && (intents.greenhouse || intents.sunroom || profile.style === '现代');
+  if ((intents.greenhouse || intents.sunroom) && !lShapeGlassWingAlreadyCoversSunroom) {
     volumes.push(volume('sunroom', '阳光房', 'box', [0.32, 0.48, 0.36], { relation: 'attached-east-rear', attach_to: 'main' }, 'union', { tags: ['glass', 'sunroom'], facade_role: 'transparent-volume' }));
   }
 

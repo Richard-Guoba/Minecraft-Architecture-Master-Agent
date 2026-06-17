@@ -58,10 +58,13 @@ export class BSPPartitioner {
     const spaces = shell.interiorSpaces
       .filter((space) => space.source !== 'main')
       .filter((space) => spanSize(space.min_x, space.max_x) >= 3 && spanSize(space.min_z, space.max_z) >= 3)
-      .sort((a, b) => volumeSortScore(boxById.get(a.source)) - volumeSortScore(boxById.get(b.source)) || a.floor - b.floor);
+      .sort((a, b) => volumeSortScore(boxById.get(a.source)) - volumeSortScore(boxById.get(b.source)) ||
+        a.floor - b.floor ||
+        rectArea(b) - rectArea(a));
     const rooms = [];
 
     for (const space of spaces) {
+      if (rooms.some((room) => isMostlyCoveredByRoom(space, room))) continue;
       const box = boxById.get(space.source) || { id: space.source, module: 'attached', side: space.side };
       const node = matchNodeForSpace(space, box, nodes, assignedNodeIds);
       if (node) assignedNodeIds.add(node.id);
@@ -77,7 +80,8 @@ export class BSPPartitioner {
       const door = attachedDoorForRoom(room, mainBox, this.spec);
       if (!door) continue;
       fillBox(grid, door.min_x, door.min_y, door.min_z, door.max_x, door.max_y, door.max_z, 'minecraft:air', 'interior');
-      const target = nearestRoom(room, mainRooms.filter((candidate) => candidate.floor === room.floor));
+      const candidates = mainRooms.filter((candidate) => candidate.floor === room.floor);
+      const target = roomAtDoor(door, candidates, mainBox, this.spec) || nearestRoom(room, candidates);
       interiorDoors.push({
         kind: 'attached-volume',
         floor: room.floor,
@@ -111,30 +115,36 @@ export class BSPPartitioner {
 
     if (axis === 'x') {
       const splitX = clampInt(Math.round(rect.min_x + (rect.max_x - rect.min_x) * ratio), rect.min_x + 4, rect.max_x - 4);
-      if (!softBoundary) {
-        fillBox(grid, splitX, rect.min_y, rect.min_z, splitX, rect.max_y, rect.max_z, wallBlock, 'interior');
-        const doorZ = Math.floor((rect.min_z + rect.max_z) / 2);
-        carveOpening(grid, splitX, rect.min_y, doorZ, axis);
-        interiorDoors.push({ kind: 'bsp-door', floor: rect.floor, axis, at: { x: splitX, z: doorZ }, connects: [leftNodes[0]?.id, rightNodes[0]?.id].filter(Boolean) });
-      } else {
-        interiorDoors.push({ kind: 'open-plan-threshold', floor: rect.floor, axis, at: { x: splitX, z: Math.floor((rect.min_z + rect.max_z) / 2) }, connects: [leftNodes[0]?.id, rightNodes[0]?.id].filter(Boolean) });
-      }
-      rooms.push(...this.partition(grid, { ...rect, max_x: splitX - 1 }, leftNodes, depth + 1, interiorDoors, hints));
-      rooms.push(...this.partition(grid, { ...rect, min_x: splitX + 1 }, rightNodes, depth + 1, interiorDoors, hints));
+      if (!softBoundary) fillBox(grid, splitX, rect.min_y, rect.min_z, splitX, rect.max_y, rect.max_z, wallBlock, 'interior');
+      const leftRooms = this.partition(grid, { ...rect, max_x: splitX - 1 }, leftNodes, depth + 1, interiorDoors, hints);
+      const rightRooms = this.partition(grid, { ...rect, min_x: splitX + 1 }, rightNodes, depth + 1, interiorDoors, hints);
+      const door = doorForSplit(leftRooms, rightRooms, axis, splitX, rect);
+      if (!softBoundary) carveOpening(grid, splitX, rect.min_y, door.at.z, axis);
+      interiorDoors.push({
+        kind: softBoundary ? 'open-plan-threshold' : 'bsp-door',
+        floor: rect.floor,
+        axis,
+        at: door.at,
+        connects: door.connects
+      });
+      rooms.push(...leftRooms, ...rightRooms);
       return rooms;
     }
 
     const splitZ = clampInt(Math.round(rect.min_z + (rect.max_z - rect.min_z) * ratio), rect.min_z + 4, rect.max_z - 4);
-    if (!softBoundary) {
-      fillBox(grid, rect.min_x, rect.min_y, splitZ, rect.max_x, rect.max_y, splitZ, wallBlock, 'interior');
-      const doorX = Math.floor((rect.min_x + rect.max_x) / 2);
-      carveOpening(grid, doorX, rect.min_y, splitZ, axis);
-      interiorDoors.push({ kind: 'bsp-door', floor: rect.floor, axis, at: { x: doorX, z: splitZ }, connects: [leftNodes[0]?.id, rightNodes[0]?.id].filter(Boolean) });
-    } else {
-      interiorDoors.push({ kind: 'open-plan-threshold', floor: rect.floor, axis, at: { x: Math.floor((rect.min_x + rect.max_x) / 2), z: splitZ }, connects: [leftNodes[0]?.id, rightNodes[0]?.id].filter(Boolean) });
-    }
-    rooms.push(...this.partition(grid, { ...rect, max_z: splitZ - 1 }, leftNodes, depth + 1, interiorDoors, hints));
-    rooms.push(...this.partition(grid, { ...rect, min_z: splitZ + 1 }, rightNodes, depth + 1, interiorDoors, hints));
+    if (!softBoundary) fillBox(grid, rect.min_x, rect.min_y, splitZ, rect.max_x, rect.max_y, splitZ, wallBlock, 'interior');
+    const leftRooms = this.partition(grid, { ...rect, max_z: splitZ - 1 }, leftNodes, depth + 1, interiorDoors, hints);
+    const rightRooms = this.partition(grid, { ...rect, min_z: splitZ + 1 }, rightNodes, depth + 1, interiorDoors, hints);
+    const door = doorForSplit(leftRooms, rightRooms, axis, splitZ, rect);
+    if (!softBoundary) carveOpening(grid, door.at.x, rect.min_y, splitZ, axis);
+    interiorDoors.push({
+      kind: softBoundary ? 'open-plan-threshold' : 'bsp-door',
+      floor: rect.floor,
+      axis,
+      at: door.at,
+      connects: door.connects
+    });
+    rooms.push(...leftRooms, ...rightRooms);
     return rooms;
   }
 
@@ -223,6 +233,9 @@ function chooseAxis(rect, depth, nodes, hints = {}, spec = {}) {
   const strategy = String(hints.split_strategy || 'weighted');
   const width = rect.max_x - rect.min_x + 1;
   const depthSize = rect.max_z - rect.min_z + 1;
+  if (depth === 0 && Number(rect.floor || 0) === 0 && hints.keep_entry_on_front !== false && nodes.some((node) => node.id === 'entry' || node.access === 'main-door')) {
+    return ['north', 'south'].includes(String(spec.door_side || 'south')) ? 'z' : 'x';
+  }
   if (strategy === 'courtyard-ring' && depth === 0) return ['north', 'south'].includes(spec.door_side) ? 'z' : 'x';
   if (strategy === 'axis-balanced' && Math.abs(width - depthSize) < 6) return depth % 2 === 0 ? 'x' : 'z';
   if (strategy === 'open-plan-weighted' && nodes.some((node) => node.daylight === 'high')) return width >= depthSize ? 'x' : 'z';
@@ -240,6 +253,43 @@ function splitNodes(nodes) {
   return [nodes.slice(0, 1), nodes.slice(1)];
 }
 
+function doorForSplit(leftRooms, rightRooms, axis, splitCoord, rect) {
+  const candidates = [];
+  for (const left of leftRooms) {
+    for (const right of rightRooms) {
+      if (axis === 'x') {
+        const overlapStart = Math.max(left.min_z, right.min_z);
+        const overlapEnd = Math.min(left.max_z, right.max_z);
+        if (overlapStart > overlapEnd) continue;
+        const boundaryGap = Math.abs((splitCoord - 1) - left.max_x) + Math.abs(right.min_x - (splitCoord + 1));
+        candidates.push({
+          at: { x: splitCoord, z: Math.floor((overlapStart + overlapEnd) / 2) },
+          connects: [left.id, right.id].filter(Boolean),
+          score: boundaryGap * 100 - (overlapEnd - overlapStart + 1)
+        });
+      } else {
+        const overlapStart = Math.max(left.min_x, right.min_x);
+        const overlapEnd = Math.min(left.max_x, right.max_x);
+        if (overlapStart > overlapEnd) continue;
+        const boundaryGap = Math.abs((splitCoord - 1) - left.max_z) + Math.abs(right.min_z - (splitCoord + 1));
+        candidates.push({
+          at: { x: Math.floor((overlapStart + overlapEnd) / 2), z: splitCoord },
+          connects: [left.id, right.id].filter(Boolean),
+          score: boundaryGap * 100 - (overlapEnd - overlapStart + 1)
+        });
+      }
+    }
+  }
+
+  if (candidates.length) return candidates.sort((a, b) => a.score - b.score)[0];
+  return {
+    at: axis === 'x'
+      ? { x: splitCoord, z: Math.floor((rect.min_z + rect.max_z) / 2) }
+      : { x: Math.floor((rect.min_x + rect.max_x) / 2), z: splitCoord },
+    connects: [leftRooms[0]?.id, rightRooms[0]?.id].filter(Boolean)
+  };
+}
+
 function orderNodesForFloor(nodes, plannerJson = {}, spec = {}, floor = 0) {
   const strategy = String(plannerJson.bsp_hints?.split_strategy || 'weighted');
   const publicCore = plannerJson.circulation_rules?.public_core;
@@ -250,7 +300,10 @@ function orderNodesForFloor(nodes, plannerJson = {}, spec = {}, floor = 0) {
 }
 
 function nodeOrderScore(node, strategy, publicCore, spec, floor) {
-  if (node.id === 'entry') return 0;
+  const frontSide = String(spec.door_side || 'south');
+  const entryOnHighSide = ['south', 'east'].includes(frontSide);
+  if (floor === 0 && (node.id === 'entry' || node.access === 'main-door')) return entryOnHighSide ? 100 : -100;
+  if (floor === 0 && node.type === 'stairs') return entryOnHighSide ? 95 : -95;
   if (node.id === publicCore) return 1;
   if (node.type === 'stairs') return floor === 0 ? 2 : 8;
   if (node.type === 'corridor') return 2;
@@ -437,8 +490,8 @@ function attachedDoorForRoom(room, mainBox, spec) {
       max_x: x + 1,
       min_y: y1,
       max_y: y2,
-      min_z: mainBox.min_z,
-      max_z: mainBox.min_z + thickness
+      min_z: room.max_z + 1,
+      max_z: mainBox.min_z + thickness - 1
     };
   }
   if (room.min_x > mainBox.max_x) {
@@ -446,8 +499,8 @@ function attachedDoorForRoom(room, mainBox, spec) {
     return {
       axis: 'x',
       at: { x: mainBox.max_x, z },
-      min_x: mainBox.max_x - thickness,
-      max_x: mainBox.max_x,
+      min_x: mainBox.max_x - thickness + 1,
+      max_x: room.min_x - 1,
       min_y: y1,
       max_y: y2,
       min_z: z - 1,
@@ -459,8 +512,8 @@ function attachedDoorForRoom(room, mainBox, spec) {
     return {
       axis: 'x',
       at: { x: mainBox.min_x, z },
-      min_x: mainBox.min_x,
-      max_x: mainBox.min_x + thickness,
+      min_x: room.max_x + 1,
+      max_x: mainBox.min_x + thickness - 1,
       min_y: y1,
       max_y: y2,
       min_z: z - 1,
@@ -476,11 +529,43 @@ function attachedDoorForRoom(room, mainBox, spec) {
       max_x: x + 1,
       min_y: y1,
       max_y: y2,
-      min_z: mainBox.max_z - thickness,
-      max_z: mainBox.max_z
+      min_z: mainBox.max_z - thickness + 1,
+      max_z: room.min_z - 1
     };
   }
   return undefined;
+}
+
+function roomAtDoor(door, rooms, mainBox, spec) {
+  const thickness = clampInt(spec.shell_thickness || 1, 1, 3);
+  const probe = doorProbe(door, mainBox, thickness);
+  return rooms.find((room) => pointInRoom2d(probe.x, probe.z, room)) ||
+    rooms.find((room) => doorReachesRoom(door, room, thickness + 1));
+}
+
+function doorProbe(door, mainBox, thickness) {
+  if (door.axis === 'x') {
+    return {
+      x: door.at.x <= mainBox.min_x ? mainBox.min_x + thickness : mainBox.max_x - thickness,
+      z: door.at.z
+    };
+  }
+  return {
+    x: door.at.x,
+    z: door.at.z <= mainBox.min_z ? mainBox.min_z + thickness : mainBox.max_z - thickness
+  };
+}
+
+function doorReachesRoom(door, room, tolerance = 2) {
+  if (!door?.at) return false;
+  if (door.axis === 'x') {
+    return rangesOverlap(door.at.z - 1, door.at.z + 1, room.min_z, room.max_z) &&
+      door.at.x >= room.min_x - tolerance &&
+      door.at.x <= room.max_x + tolerance;
+  }
+  return rangesOverlap(door.at.x - 1, door.at.x + 1, room.min_x, room.max_x) &&
+    door.at.z >= room.min_z - tolerance &&
+    door.at.z <= room.max_z + tolerance;
 }
 
 function nearestRoom(room, candidates) {
@@ -498,6 +583,31 @@ function center(room) {
 
 function distance(a, b) {
   return Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
+}
+
+function pointInRoom2d(x, z, room) {
+  return x >= room.min_x && x <= room.max_x && z >= room.min_z && z <= room.max_z;
+}
+
+function isMostlyCoveredByRoom(space, room) {
+  if (Number(space.floor || 0) !== Number(room.floor || 0)) return false;
+  const overlap = overlapArea(space, room);
+  if (overlap <= 0) return false;
+  return overlap / Math.max(1, rectArea(space)) >= 0.7;
+}
+
+function overlapArea(a, b) {
+  const x = Math.max(0, Math.min(a.max_x, b.max_x) - Math.max(a.min_x, b.min_x) + 1);
+  const z = Math.max(0, Math.min(a.max_z, b.max_z) - Math.max(a.min_z, b.min_z) + 1);
+  return x * z;
+}
+
+function rectArea(rect) {
+  return spanSize(rect.min_x, rect.max_x) * spanSize(rect.min_z, rect.max_z);
+}
+
+function rangesOverlap(aMin, aMax, bMin, bMax) {
+  return Math.max(aMin, bMin) <= Math.min(aMax, bMax);
 }
 
 function spanSize(min, max) {
