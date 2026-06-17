@@ -7,7 +7,7 @@
 核心链路：
 
 ```text
-ArchitectAgent -> PlannerAgent -> CSGBuilder -> BSPPartitioner -> AStarPathfinder -> Datapack/GDMC
+ArchitectAgent -> StylePresetMemoryAgent -> MaterialPaletteAgent -> PlannerAgent -> CSGBuilder -> BSPPartitioner -> AStarPathfinder -> Datapack/GDMC
 ```
 
 旧版 `src/agents` / `src/engine` 生成体系已经移除；当前只有 `src/construction` 这一套主流程。
@@ -18,8 +18,13 @@ ArchitectAgent -> PlannerAgent -> CSGBuilder -> BSPPartitioner -> AStarPathfinde
 src/construction/
 ├── agents/
 │   ├── architectAgent.js      # 第一步：外壳语义 JSON
+│   ├── materialPaletteAgent.js # Java 1.21.1 材料角色池和方块校验
+│   ├── minecraftBlockCatalog.js # Minecraft 方块目录、角色分类和查询 API
+│   ├── minecraftBlockRegistry1_21.js # 1060 个 Java 1.21.1 方块 ID 快照
 │   ├── plannerAgent.js        # 第二步：房间拓扑 JSON
-│   └── decoratorAgent.js      # 未来扩展：局部内饰
+│   ├── interiorDetailAgent.js # 房间级室内语义与专家能力清单
+│   ├── interiorRoomAgents.js  # 房间功能专家 + 建筑风格内饰专家
+│   └── decoratorAgent.js      # 将室内家具、灯光和装饰写入方块网格
 ├── engine/
 │   ├── csgBuilder.js          # 体块 CSG，生成空心外壳
 │   ├── bspPartitioner.js      # BSP，把内部空间切成房间

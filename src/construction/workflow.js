@@ -606,6 +606,8 @@ function renderReport({ prompt, blueprint, validation, mcVersion, autoBuild, dat
   const passedChecks = validation.checks.filter((item) => item.ok).length;
   const totalChecks = validation.checks.length;
   const installLine = installedDatapackDir ? `- 已安装到世界：${installedDatapackDir}\n` : '';
+  const materialCatalogCount = blueprint.materialPalette?.block_catalog?.blockCount || 0;
+  const materialControllableCount = blueprint.materialPalette?.controllableBlockCount || 0;
   const usage = [
     '1. 如果刚复制或更新了数据包，先运行 /reload。这个命令只刷新数据包，不会建造。',
     '2. 站在目标位置运行 /function architect:run。它会自动 clear + build。'
@@ -621,12 +623,12 @@ ${prompt}
 
 - ArchitectAgent：生成第一步外壳 JSON，只包含 style/materials/volumes 等语义字段。
 - StylePresetMemoryAgent：匹配可复用风格预设，给材料/立面/屋顶/场地 agent 提供共同语境。
-- MaterialPaletteAgent：扩展 Minecraft 方块角色，生成主材、点缀、栏杆、灯光、景观等材料表。
+- MaterialPaletteAgent：加载 Minecraft Java 1.21.1 方块注册表（${materialCatalogCount} 个），生成主材、点缀、栏杆、灯光、景观和完整 catalog 材料池。
 - PlannerAgent：生成第二步房间拓扑 JSON，只包含 nodes/edges/circulation/bsp hints。
 - StructureAgent：生成结构框架 JSON，只包含 foundation/supports/bracing/load paths 等语义字段。
 - FacadeAgent / RoofAgent / SiteLandscapeAgent：生成外立面、屋顶和场地细节 JSON。
 - OpeningConnectivityAgent：生成入口、窗洞、内部阈值和竖向开口计划。
-- InteriorDetailAgent：生成房间级室内细节计划，DecoratorAgent 负责写入方块。
+- InteriorDetailAgent：生成房间级室内细节计划，房间功能专家和建筑风格专家各掌握 20+ 方块，DecoratorAgent 负责写入方块。
 - ConstraintRepairAgent：导出前做约束检查与修复建议。
 - GeometryEngine：本地纯 JavaScript CSG + BSP + A* 负责所有坐标、门洞和楼梯。
 - Export：将网格转成 Minecraft 函数命令。
@@ -643,7 +645,7 @@ ${prompt}
 - 预设：${blueprint.stylePreset?.id || 'none'}
 - 体块：${volumes}
 - 材质：${Object.entries(architecture.materials).map(([key, value]) => `${key}=${value}`).join(', ')}
-- 材料调色板：${blueprint.materialPalette?.palette || 'unknown'}，角色 ${blueprint.materialPalette?.roles?.length || 0} 个
+- 材料调色板：${blueprint.materialPalette?.palette || 'unknown'}，材料角色 ${blueprint.materialPalette?.roles?.length || 0} 个，可控方块 ${materialControllableCount} 个，校验目录 ${materialCatalogCount} 个
 
 ## 拓扑 JSON
 
@@ -666,7 +668,7 @@ ${prompt}
 - RoofAgent：${blueprint.roof?.style || geometry.roof?.style || 'unknown'} / ${blueprint.roof?.profile || geometry.roof?.profile || 'style-default'}，元素 ${blueprint.roof?.elements?.map((item) => item.kind).join('、') || '无'}
 - SiteLandscapeAgent：${blueprint.site?.mood || geometry.site?.mood || 'simple'}，区域 ${blueprint.site?.zones?.join('、') || '无'}
 - OpeningConnectivityAgent：主入口 ${blueprint.opening?.main_entry?.side || 'south'}，计划开口 ${blueprint.opening?.engine_hints?.planned_opening_count || 0}
-- InteriorDetailAgent：房间细节 ${blueprint.interior?.room_count || 0} 个，灯光 ${blueprint.interior?.lighting_strategy || 'unknown'}
+- InteriorDetailAgent：房间细节 ${blueprint.interior?.room_count || 0} 个，灯光 ${blueprint.interior?.lighting_strategy || 'unknown'}，专家 ${blueprint.interior?.room_specialists?.map((item) => `${item.label || item.id}(${item.block_count || 0})`).join('、') || '无'}
 - ConstraintRepairAgent：${blueprint.repair?.ok ? '通过' : '需关注'}，建议 ${blueprint.repair?.suggestions?.join('；') || '无'}
 
 ## 几何结果

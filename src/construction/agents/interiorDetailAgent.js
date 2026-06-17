@@ -1,13 +1,17 @@
+import { interiorSpecialistCapabilities, specialistDefinitionsForRoom } from './interiorRoomAgents.js';
+
 export class InteriorDetailAgent {
   run(rooms = [], architecture = {}, buildSpec = {}, topology = {}, materialPalette = {}, stylePreset = {}) {
     const family = String(architecture.style_family || buildSpec.style_family || 'general');
     const roomDetails = (rooms || []).map((room) => detailForRoom(room, family, materialPalette, architecture));
+    const roomSpecialists = interiorSpecialistCapabilities();
     return {
       source: 'local-interior-detail-agent',
       style_family: family,
       preset: stylePreset.id || 'none',
       room_count: roomDetails.length,
       room_details: roomDetails,
+      room_specialists: roomSpecialists,
       lighting_strategy: lightingForFamily(family),
       circulation_detail: {
         vertical_core: topology.circulation_rules?.vertical_core || 'none',
@@ -17,7 +21,9 @@ export class InteriorDetailAgent {
         apply_room_accents: true,
         protect_circulation: true,
         add_task_lighting: true,
-        add_style_storage: true
+        add_style_storage: true,
+        use_room_specialist_agents: true,
+        minimum_blocks_per_specialist: 20
       }
     };
   }
@@ -25,6 +31,8 @@ export class InteriorDetailAgent {
 
 function detailForRoom(room, family, materialPalette = {}, architecture = {}) {
   const materials = materialPalette.materials || architecture.materials || {};
+  const specialists = specialistDefinitionsForRoom(room, { styleFamily: family, architecture });
+  const blockCounts = specialists.map((specialist) => specialist.capability_blocks.length);
   const base = {
     room_id: room.id,
     type: room.type,
@@ -34,7 +42,11 @@ function detailForRoom(room, family, materialPalette = {}, architecture = {}) {
     task_light: materials.path_light || materials.lamp || 'minecraft:glowstone',
     storage_block: storageForFamily(family),
     floor_accent: floorAccentForFamily(family),
-    furniture_density: densityForRoom(room)
+    furniture_density: densityForRoom(room),
+    specialist_agent: specialists[0]?.source || 'general-room-furnishing',
+    specialist_agents: specialists.map((specialist) => specialist.source),
+    specialist_block_count: blockCounts.length ? Math.max(...blockCounts) : 0,
+    specialist_block_counts: Object.fromEntries(specialists.map((specialist) => [specialist.source, specialist.capability_blocks.length]))
   };
   if (['kitchen', 'bathroom', 'garage', 'utility'].includes(room.type)) base.service_wall = materials.secondary_wall || architecture.materials?.interior_wall || 'minecraft:light_gray_concrete';
   if (['living', 'great_hall', 'lounge'].includes(room.type)) base.focal_feature = focalFeatureForFamily(family);

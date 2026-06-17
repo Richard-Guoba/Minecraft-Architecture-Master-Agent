@@ -1,4 +1,5 @@
 import { keyFor } from '../engine/csgBuilder.js';
+import { interiorSpecialistCapabilities, specialistAgentsForRoom } from './interiorRoomAgents.js';
 
 export class ConstructionDecoratorAgent {
   run(rooms, materials = {}, context = {}) {
@@ -8,17 +9,29 @@ export class ConstructionDecoratorAgent {
     const styleFamily = architecture.style_family || buildSpec.style_family || 'general';
     const interior = context.interior || {};
     const detailByRoom = new Map((interior.room_details || []).map((detail) => [detail.room_id, detail]));
+    const specialistAgents = interiorSpecialistCapabilities();
+    const activeSpecialists = [];
     const placements = [];
     const suggestions = [];
 
     for (const room of rooms || []) {
       const plan = furnishRoom(room, materials, { styleFamily, architecture, buildSpec, roomDetail: detailByRoom.get(room.id), interior });
       if (!plan.blocks.length) continue;
+      for (const specialist of plan.specialists || []) {
+        activeSpecialists.push({
+          ...specialist,
+          room_id: room.id,
+          room_type: room.type
+        });
+      }
       suggestions.push({
         room_id: room.id,
         type: room.type,
         local_only: true,
         style_family: styleFamily,
+        specialist_agent: plan.specialists?.[0]?.agent_id,
+        specialist_agents: (plan.specialists || []).map((specialist) => specialist.agent_id),
+        capability_block_count: Math.max(0, ...(plan.specialists || []).map((specialist) => specialist.block_count || 0)),
         blocks: plan.blocks.map(({ at, module, ...item }) => item)
       });
 
@@ -35,6 +48,8 @@ export class ConstructionDecoratorAgent {
         : 'DecoratorAgent generated room-scale furnishing suggestions without mutating a grid.',
       style_family: styleFamily,
       interior_source: interior.source || 'none',
+      specialist_agents: specialistAgents,
+      activeSpecialists,
       placementCount: placements.length,
       roomCount: suggestions.length,
       stats: placementStats(placements),
@@ -110,7 +125,9 @@ function furnishRoom(room, materials, context) {
       break;
   }
 
-  return { blocks: builder.blocks };
+  const specialists = specialistAgentsForRoom(room, context).map((agent) => agent.run(builder));
+
+  return { blocks: builder.blocks, specialists, specialist: specialists[0] };
 }
 
 class RoomFurnishingBuilder {
@@ -320,6 +337,19 @@ class RoomFurnishingBuilder {
       module,
       at: point
     });
+    return true;
+  }
+
+  addWithin(role, block, x, y, z, placement, module, agentId) {
+    if (!pointInsideRoom(this.room, x, y, z)) return false;
+    if (this.hasPlannedBlockAt(x, y, z)) return false;
+    const added = this.add(role, block, x, y, z, placement, module);
+    if (added && agentId) this.blocks[this.blocks.length - 1].agent_id = agentId;
+    return added;
+  }
+
+  hasPlannedBlockAt(x, y, z) {
+    return this.blocks.some((item) => item.at.x === x && item.at.y === y && item.at.z === z);
   }
 }
 
@@ -361,6 +391,13 @@ function clampPointToRoom(room, x, y, z) {
   return point;
 }
 
+function pointInsideRoom(room, x, y, z) {
+  return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) &&
+    x >= room.min_x && x <= room.max_x &&
+    y >= room.min_y && y <= room.max_y &&
+    z >= room.min_z && z <= room.max_z;
+}
+
 function lightBlockForStyle(styleFamily, materials) {
   if (materials.lamp) return materials.lamp;
   if (styleFamily === 'modern' || styleFamily === 'futuristic') return 'minecraft:sea_lantern';
@@ -387,16 +424,18 @@ function placementStats(placements) {
   const byRole = {};
   const byModule = {};
   const byRoomType = {};
+  const byAgent = {};
   for (const item of placements) {
     byRole[item.role] = (byRole[item.role] || 0) + 1;
     byModule[item.module] = (byModule[item.module] || 0) + 1;
     byRoomType[item.type] = (byRoomType[item.type] || 0) + 1;
+    if (item.agent_id) byAgent[item.agent_id] = (byAgent[item.agent_id] || 0) + 1;
   }
-  return { byRole, byModule, byRoomType };
+  return { byRole, byModule, byRoomType, byAgent };
 }
 
 function serializablePlacement(item) {
-  return {
+  const placement = {
     room_id: item.room_id,
     type: item.type,
     role: item.role,
@@ -405,6 +444,8 @@ function serializablePlacement(item) {
     module: item.module,
     at: item.at
   };
+  if (item.agent_id) placement.agent_id = item.agent_id;
+  return placement;
 }
 
 function clampInt(value, min, max, fallback = min) {

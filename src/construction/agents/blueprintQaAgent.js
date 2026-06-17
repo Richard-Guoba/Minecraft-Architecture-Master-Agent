@@ -1,3 +1,5 @@
+import { isKnownMinecraft121Block } from './minecraftBlockCatalog.js';
+
 const BLOCK_PATTERN = /^minecraft:[a-z0-9_]+(?:\[[a-z0-9_=,]+\])?$/;
 const MAX_FILL_VOLUME = 32768;
 const AGENT_CONTRACTS = [
@@ -63,7 +65,7 @@ function validateOperations(operations, errors, checks) {
   const unknownKinds = [];
 
   for (const operation of operations) {
-    if (!BLOCK_PATTERN.test(operation.block)) illegalBlocks.push(operation.block);
+    if (!validBlockId(operation.block)) illegalBlocks.push(operation.block);
     blocks.add(operation.block);
 
     if (operation.kind === 'fill') {
@@ -97,6 +99,10 @@ function validateOperations(operations, errors, checks) {
     blockTypeCount: blocks.size,
     largestFillVolume
   };
+}
+
+function validBlockId(block) {
+  return BLOCK_PATTERN.test(String(block || '')) && isKnownMinecraft121Block(block);
 }
 
 function validateBounds(bounds, warnings, checks) {

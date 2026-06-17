@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ConstructionDecoratorAgent } from '../src/construction/agents/decoratorAgent.js';
+import { InteriorDetailAgent } from '../src/construction/agents/interiorDetailAgent.js';
+import { interiorSpecialistCapabilities } from '../src/construction/agents/interiorRoomAgents.js';
 import { CSGBuilder } from '../src/construction/engine/csgBuilder.js';
 import { BSPPartitioner } from '../src/construction/engine/bspPartitioner.js';
 import { AStarPathfinder } from '../src/construction/engine/pathfinder.js';
@@ -48,6 +50,67 @@ test('DecoratorAgent furnishes modern sunrooms and garages with functional props
   assert.ok(decorator.placements.some((item) => item.block === 'minecraft:sea_lantern'));
 });
 
+test('Interior specialist agents expose at least twenty controllable blocks each', () => {
+  const capabilities = interiorSpecialistCapabilities();
+  const expected = [
+    'local-bedroom-decoration-agent',
+    'local-dining-decoration-agent',
+    'local-gothic-interior-style-agent',
+    'local-japanese-interior-style-agent',
+    'local-kitchen-decoration-agent',
+    'local-living-room-decoration-agent',
+    'local-modern-interior-style-agent',
+    'local-study-decoration-agent'
+  ];
+  const sources = new Set(capabilities.map((item) => item.source));
+
+  assert.ok(capabilities.length >= 20);
+  for (const source of expected) assert.ok(sources.has(source), `${source} should be registered`);
+  for (const agent of capabilities) {
+    assert.ok(agent.block_count >= 20, `${agent.source} should control at least 20 blocks`);
+    assert.ok(new Set(agent.capability_blocks).size >= 20, `${agent.source} should expose 20 unique blocks`);
+  }
+});
+
+test('DecoratorAgent activates kitchen, living room, bedroom, and study specialists', () => {
+  const { decorator, interior } = buildDecorated('建一个现代两层大房子，宽31深17，大玻璃窗，开放厨房，三间卧室，书房，客厅');
+  const expected = [
+    'local-kitchen-decoration-agent',
+    'local-living-room-decoration-agent',
+    'local-bedroom-decoration-agent',
+    'local-study-decoration-agent',
+    'local-modern-interior-style-agent'
+  ];
+  const active = new Set(decorator.activeSpecialists.map((item) => item.agent_id));
+
+  assert.ok(interior.room_specialists.length >= 20);
+  assert.ok(interior.room_specialists.every((agent) => agent.block_count >= 20));
+  for (const source of expected) {
+    assert.ok(active.has(source), `${source} should be active`);
+    assert.ok(decorator.stats.byAgent[source] > 0, `${source} should write placements`);
+  }
+
+  assert.ok(decorator.placements.some((item) => item.agent_id === 'local-kitchen-decoration-agent' && item.role === 'range-hood'));
+  assert.ok(decorator.placements.some((item) => item.agent_id === 'local-living-room-decoration-agent' && item.role === 'media-wall'));
+  assert.ok(decorator.placements.some((item) => item.agent_id === 'local-bedroom-decoration-agent' && item.role === 'wardrobe'));
+  assert.ok(decorator.placements.some((item) => item.agent_id === 'local-study-decoration-agent' && item.role === 'reading-lamp'));
+  assert.ok(decorator.placements.some((item) => item.agent_id === 'local-modern-interior-style-agent' && item.role.includes('modern-style')));
+});
+
+test('DecoratorAgent combines architectural style specialists with special room experts', () => {
+  const japanese = buildDecorated('建一个日式一层町屋，木格栅，榻榻米，茶室，枯山水小庭院，宽二十三深十九');
+  const gothic = buildDecorated('建一个哥特式四层城堡，宽33深29，厚墙，高门，带尖塔、尖拱和玫瑰窗');
+  const japaneseActive = new Set(japanese.decorator.activeSpecialists.map((item) => item.agent_id));
+  const gothicActive = new Set(gothic.decorator.activeSpecialists.map((item) => item.agent_id));
+
+  assert.ok(japaneseActive.has('local-japanese-interior-style-agent'));
+  assert.ok(japaneseActive.has('local-tatami-decoration-agent'));
+  assert.ok(japaneseActive.has('local-tea-room-decoration-agent'));
+  assert.ok(gothicActive.has('local-gothic-interior-style-agent'));
+  assert.ok(gothicActive.has('local-armory-decoration-agent'));
+  assert.ok(gothicActive.has('local-tower-decoration-agent'));
+});
+
 function buildDecorated(prompt) {
   const architecture = buildFallbackArchitecture(prompt);
   const buildSpec = deriveBuildSpec(prompt, architecture);
@@ -55,14 +118,16 @@ function buildDecorated(prompt) {
   const shell = new CSGBuilder(buildSpec, architecture.materials).generateShell(architecture);
   const layout = new BSPPartitioner(buildSpec, architecture.materials).fitRooms(shell, topology);
   const paths = new AStarPathfinder(buildSpec, architecture.materials).connect(shell, layout, topology);
+  const interior = new InteriorDetailAgent().run(layout.rooms, architecture, buildSpec, topology, { materials: architecture.materials }, {});
   const decorator = new ConstructionDecoratorAgent().run(layout.rooms, architecture.materials, {
     grid: shell.grid,
     buildSpec,
     architecture,
     topology,
-    paths
+    paths,
+    interior
   });
-  return { architecture, buildSpec, topology, shell, layout, paths, decorator };
+  return { architecture, buildSpec, topology, shell, layout, paths, interior, decorator };
 }
 
 function moduleCounts(grid) {

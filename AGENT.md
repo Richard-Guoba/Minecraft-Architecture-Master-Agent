@@ -6,7 +6,7 @@
 - 课程背景：本项目是“大语言模型与信息决策”课程项目，主题围绕大语言模型智能体系统构建。
 - 项目目标：把中文自然语言建房需求转换为 Minecraft Java 1.21 可执行的数据包，使其能在单人创造超平坦世界中自动生成建筑。
 - 当前重点：按 `CONSTRUCTION_METHORD.pdf` 落地的 construction_method_v1，不是实时 Mineflayer 游戏机器人。
-- 核心演示流程：用户输入需求 -> ArchitectAgent 生成外壳语义 JSON -> PlannerAgent 生成房间拓扑 JSON -> CSGBuilder 生成空心外壳 -> BSPPartitioner 切分室内房间 -> AStarPathfinder 打通门洞和楼梯 -> Minecraft 数据包导出。
+- 核心演示流程：用户输入需求 -> ArchitectAgent 生成外壳语义 JSON -> PlannerAgent 生成房间拓扑 JSON -> CSGBuilder 生成空心外壳 -> BSPPartitioner 切分室内房间 -> AStarPathfinder 打通门洞和楼梯 -> InteriorDetail/Decorator 写入内饰 -> Minecraft 数据包导出。
 
 ## 项目要求
 
@@ -39,9 +39,9 @@
 
 ## 当前范围
 
-- 已实现：Node.js ESM 命令行入口、JavaScript orchestrator、ArchitectAgent、PlannerAgent、DecoratorAgent 占位扩展、CSG 空心外壳、BSP 室内切分、A* 门洞/楼梯、Minecraft 1.21 数据包输出、自动安装到本地世界、一键建造函数、本地 HTML 预览和测试。
+- 已实现：Node.js ESM 命令行入口、JavaScript orchestrator、ArchitectAgent、MaterialPaletteAgent、PlannerAgent、InteriorDetailAgent、房间功能内饰专家、建筑风格内饰专家、DecoratorAgent 方块写入、Minecraft Java 1.21.1 全量方块目录校验、CSG 空心外壳、BSP 室内切分、A* 门洞/楼梯、Minecraft 1.21 数据包输出、自动安装到本地世界、一键建造函数、本地 HTML 预览和测试。
 - 已实现的主要演示风格：欧式大体量、现代两层、江南/中式小院、木屋；其中欧式会生成对称侧翼和门廊，现代会生成玻璃侧翼，江南/中式会生成庭院/水景语义。
-- 部分实现：LLM 可以参与 Architect/Planner 两个语义 JSON；DecoratorAgent 当前仅保留未来局部内饰扩展，不参与核心流程。复杂 CSG 形体、更多 A* 连通约束、GDMC 批量接口和真实游戏内直接渲染仍是后续增强方向。
+- 部分实现：LLM 可以参与 Architect/Planner 两个语义 JSON；复杂 CSG 形体、更多 A* 连通约束、GDMC 批量接口和真实游戏内直接渲染仍是后续增强方向。
 - v1 暂不包含：Mineflayer 连服控制、生存模式资源采集、模拟玩家逐块放置、自动下载 Minecraft。启动 Minecraft 仅支持通过 `MINECRAFT_LAUNCH_COMMAND` 调用用户已配置的启动器命令。
 
 ## 开发命令

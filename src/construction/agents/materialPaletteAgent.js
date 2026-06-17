@@ -1,3 +1,5 @@
+import { blockCatalogStats, isKnownMinecraft121Block, materialOptionsForFamily } from './minecraftBlockCatalog.js';
+
 const BLOCK_PATTERN = /^minecraft:[a-z0-9_]+(?:\[[a-z0-9_=,]+\])?$/;
 
 const FAMILY_EXTRAS = {
@@ -109,14 +111,19 @@ export class MaterialPaletteAgent {
       furniture: base.furniture || furnitureForFamily(family)
     });
 
-    const invalid = Object.entries(materials).filter(([, block]) => !BLOCK_PATTERN.test(block));
+    const materialOptions = materialOptionsForFamily(family, prompt);
+    const invalid = Object.entries(materials).filter(([, block]) => !validMinecraftBlock(block));
     return {
       source: 'local-material-palette',
       style_family: family,
       preset: stylePreset.id || 'none',
       palette: stylePreset.palette || paletteNameForFamily(family),
       materials,
+      material_options: materialOptions,
+      block_catalog: blockCatalogStats(),
       roles: Object.keys(materials).sort(),
+      option_roles: Object.keys(materialOptions).sort(),
+      controllableBlockCount: unique(Object.values(materialOptions).flat()).length,
       contrast: contrastForFamily(family),
       warnings: invalid.map(([role, block]) => `Invalid block for ${role}: ${block}`),
       valid: invalid.length === 0
@@ -144,6 +151,10 @@ function normalizeMaterials(materials) {
   return normalized;
 }
 
+function validMinecraftBlock(block) {
+  return BLOCK_PATTERN.test(String(block || '')) && isKnownMinecraft121Block(block);
+}
+
 function furnitureForFamily(family) {
   if (family === 'cyberpunk' || family === 'modern') return 'minecraft:smooth_quartz_slab[type=bottom]';
   if (family === 'treehouse' || family === 'tropical') return 'minecraft:jungle_slab[type=bottom]';
@@ -160,4 +171,8 @@ function contrastForFamily(family) {
   if (['cyberpunk', 'gothic', 'subterranean'].includes(family)) return 'high';
   if (['japanese', 'treehouse', 'alpine'].includes(family)) return 'natural';
   return 'balanced';
+}
+
+function unique(values) {
+  return [...new Set(values.map(String).filter(Boolean))];
 }
