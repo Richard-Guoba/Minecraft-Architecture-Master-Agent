@@ -23,7 +23,8 @@ export class InteriorDetailAgent {
         add_task_lighting: true,
         add_style_storage: true,
         use_room_specialist_agents: true,
-        minimum_blocks_per_specialist: 20
+        minimum_blocks_per_specialist: 50,
+        add_vibrant_accent_layers: true
       }
     };
   }

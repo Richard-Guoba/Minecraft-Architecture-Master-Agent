@@ -39,7 +39,7 @@
 
 ## 当前范围
 
-- 已实现：Node.js ESM 命令行入口、JavaScript orchestrator、ArchitectAgent、MaterialPaletteAgent、PlannerAgent、InteriorDetailAgent、房间功能内饰专家、建筑风格内饰专家、DecoratorAgent 方块写入、Minecraft Java 1.21.1 全量方块目录校验、CSG 空心外壳、BSP 室内切分、A* 门洞/楼梯、Minecraft 1.21 数据包输出、自动安装到本地世界、一键建造函数、本地 HTML 预览和测试。
+- 已实现：Node.js ESM 命令行入口、JavaScript orchestrator、ArchitectAgent、MaterialPaletteAgent、PlannerAgent、InteriorDetailAgent、50+ 方块房间功能内饰专家、50+ 方块建筑风格内饰专家、缤纷软装层、DecoratorAgent 方块写入、Minecraft Java 1.21.1 全量方块目录校验、CSG 空心外壳、BSP 室内切分、A* 门洞/楼梯、Minecraft 1.21 数据包输出、自动安装到本地世界、一键建造函数、本地 HTML 预览和测试。
 - 已实现的主要演示风格：欧式大体量、现代两层、江南/中式小院、木屋；其中欧式会生成对称侧翼和门廊，现代会生成玻璃侧翼，江南/中式会生成庭院/水景语义。
 - 部分实现：LLM 可以参与 Architect/Planner 两个语义 JSON；复杂 CSG 形体、更多 A* 连通约束、GDMC 批量接口和真实游戏内直接渲染仍是后续增强方向。
 - v1 暂不包含：Mineflayer 连服控制、生存模式资源采集、模拟玩家逐块放置、自动下载 Minecraft。启动 Minecraft 仅支持通过 `MINECRAFT_LAUNCH_COMMAND` 调用用户已配置的启动器命令。
@@ -47,6 +47,7 @@
 ## 开发命令
 
 - 运行测试：`npm test`
+- 运行 20 条覆盖式 prompt 批量评价：`npm run evaluate:prompts`
 - 生成演示输出：`npm start -- "建一个欧式大房子"`
 - 安装到世界：`npm start -- --world "世界名" "建一个欧式大房子"`
 - 强制使用规则兜底模式：`npm start -- --mode mock "建一个欧式大房子"`

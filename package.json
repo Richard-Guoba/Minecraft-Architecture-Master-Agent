@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "evaluate:prompts": "node src/evaluatePromptSuite.js"
   },
   "engines": {
     "node": ">=20"

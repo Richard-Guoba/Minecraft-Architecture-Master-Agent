@@ -130,12 +130,14 @@ export function normalizeTopology(value, source, fallback = {}, buildSpec = {}) 
   const raw = value && typeof value === 'object' ? value : {};
   const maxFloor = Math.max(0, Number(buildSpec.floors || 3) - 1);
   const nodes = normalizeNodes(raw.nodes, fallback.nodes, maxFloor);
+  const idNormalization = uniquifyNodeIds(nodes);
+  const rebuildDerivedTopology = idNormalization.renamed.length > 0;
   return {
     source,
     nodes,
-    edges: normalizeEdges(raw.edges, nodes, fallback.edges),
-    floor_program: normalizeFloorProgram(raw.floor_program || raw.floorProgram, nodes, fallback.floor_program, maxFloor),
-    zoning: normalizeZoning(raw.zoning, nodes, fallback.zoning),
+    edges: rebuildDerivedTopology ? buildEdges(nodes) : normalizeEdges(raw.edges, nodes, fallback.edges),
+    floor_program: rebuildDerivedTopology ? buildFloorProgram(nodes, maxFloor + 1) : normalizeFloorProgram(raw.floor_program || raw.floorProgram, nodes, fallback.floor_program, maxFloor),
+    zoning: rebuildDerivedTopology ? buildZoning(nodes) : normalizeZoning(raw.zoning, nodes, fallback.zoning),
     circulation_rules: {
       ...(fallback.circulation_rules || {}),
       ...normalizeObject(raw.circulation_rules || raw.circulationRules)
@@ -573,12 +575,37 @@ function compactBuildSpec(buildSpec) {
 }
 
 function ensureUniqueIds(nodes) {
-  const seen = new Map();
+  uniquifyNodeIds(nodes);
+}
+
+function uniquifyNodeIds(nodes) {
+  const used = new Set();
+  const baseCounts = new Map();
+  const renamed = [];
+
   for (const item of nodes) {
-    const count = seen.get(item.id) || 0;
-    seen.set(item.id, count + 1);
-    if (count > 0) item.id = `${item.id}-${count + 1}`;
+    const base = normalizeId(item.id || item.type || 'room');
+    const count = baseCounts.get(base) || 0;
+    baseCounts.set(base, count + 1);
+
+    let id = base;
+    if (used.has(id)) {
+      const floor = Number(item.floor);
+      const suffix = Number.isFinite(floor) && floor > 0 ? `floor-${floor}` : String(count + 1);
+      id = normalizeId(`${base}-${suffix}`);
+      let serial = 2;
+      while (used.has(id)) {
+        id = normalizeId(`${base}-${suffix}-${serial}`);
+        serial += 1;
+      }
+      renamed.push({ from: base, to: id, floor: item.floor });
+    }
+
+    item.id = id;
+    used.add(id);
   }
+
+  return { nodes, renamed };
 }
 
 function normalizeRoomType(value) {

@@ -50,7 +50,7 @@ test('DecoratorAgent furnishes modern sunrooms and garages with functional props
   assert.ok(decorator.placements.some((item) => item.block === 'minecraft:sea_lantern'));
 });
 
-test('Interior specialist agents expose at least twenty controllable blocks each', () => {
+test('Interior specialist agents expose at least fifty controllable blocks each', () => {
   const capabilities = interiorSpecialistCapabilities();
   const expected = [
     'local-bedroom-decoration-agent',
@@ -67,8 +67,12 @@ test('Interior specialist agents expose at least twenty controllable blocks each
   assert.ok(capabilities.length >= 20);
   for (const source of expected) assert.ok(sources.has(source), `${source} should be registered`);
   for (const agent of capabilities) {
-    assert.ok(agent.block_count >= 20, `${agent.source} should control at least 20 blocks`);
-    assert.ok(new Set(agent.capability_blocks).size >= 20, `${agent.source} should expose 20 unique blocks`);
+    assert.ok(agent.block_count >= 50, `${agent.source} should control at least 50 blocks`);
+    assert.ok(new Set(agent.capability_blocks).size >= 50, `${agent.source} should expose 50 unique blocks`);
+    assert.ok(agent.capability_blocks.some((block) => block.includes('_carpet')), `${agent.source} should include colorful carpets`);
+    assert.ok(agent.capability_blocks.some((block) => block.includes('_banner')), `${agent.source} should include banners`);
+    assert.ok(agent.capability_blocks.some((block) => block.includes('_candle')), `${agent.source} should include colored candles`);
+    assert.ok(agent.capability_blocks.some((block) => block.includes('potted_')), `${agent.source} should include potted plants`);
   }
 });
 
@@ -82,9 +86,19 @@ test('DecoratorAgent activates kitchen, living room, bedroom, and study speciali
     'local-modern-interior-style-agent'
   ];
   const active = new Set(decorator.activeSpecialists.map((item) => item.agent_id));
+  const uniquePlacedBlocks = new Set(decorator.placements.map((item) => item.block.split('[')[0]));
+  const vibrantPlacements = decorator.placements.filter((item) => item.role.startsWith('vibrant'));
+  const vibrantBlocks = new Set(vibrantPlacements.map((item) => item.block.split('[')[0]));
 
   assert.ok(interior.room_specialists.length >= 20);
-  assert.ok(interior.room_specialists.every((agent) => agent.block_count >= 20));
+  assert.ok(interior.room_specialists.every((agent) => agent.block_count >= 50));
+  assert.equal(interior.engine_hints.minimum_blocks_per_specialist, 50);
+  assert.ok(uniquePlacedBlocks.size >= 50);
+  assert.ok(vibrantPlacements.length >= 40);
+  assert.ok(vibrantBlocks.size >= 20);
+  assert.ok([...vibrantBlocks].some((block) => block.endsWith('_glazed_terracotta')));
+  assert.ok([...vibrantBlocks].some((block) => block.endsWith('_stained_glass_pane')));
+  assert.ok([...vibrantBlocks].some((block) => block.endsWith('_candle')));
   for (const source of expected) {
     assert.ok(active.has(source), `${source} should be active`);
     assert.ok(decorator.stats.byAgent[source] > 0, `${source} should write placements`);

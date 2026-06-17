@@ -628,7 +628,7 @@ ${prompt}
 - StructureAgent：生成结构框架 JSON，只包含 foundation/supports/bracing/load paths 等语义字段。
 - FacadeAgent / RoofAgent / SiteLandscapeAgent：生成外立面、屋顶和场地细节 JSON。
 - OpeningConnectivityAgent：生成入口、窗洞、内部阈值和竖向开口计划。
-- InteriorDetailAgent：生成房间级室内细节计划，房间功能专家和建筑风格专家各掌握 20+ 方块，DecoratorAgent 负责写入方块。
+- InteriorDetailAgent：生成房间级室内细节计划，房间功能专家和建筑风格专家各掌握 50+ 室内方块，并叠加缤纷软装层，DecoratorAgent 负责写入方块。
 - ConstraintRepairAgent：导出前做约束检查与修复建议。
 - GeometryEngine：本地纯 JavaScript CSG + BSP + A* 负责所有坐标、门洞和楼梯。
 - Export：将网格转成 Minecraft 函数命令。

@@ -13,7 +13,7 @@ export class BSPPartitioner {
     const nodes = Array.isArray(plannerJson.nodes) ? plannerJson.nodes : [];
     const mainBox = shell.volumeBoxes.find((box) => box.id === 'main') || shell.volumeBoxes[0];
     const assignedNodeIds = new Set();
-    const attachedRooms = this.fitAttachedVolumeRooms(shell, nodes, assignedNodeIds);
+    const attachedRooms = this.fitAttachedVolumeRooms(shell, nodes, assignedNodeIds, mainBox);
     const mainRooms = [];
 
     for (let floor = 0; floor < this.spec.floors; floor += 1) {
@@ -53,7 +53,7 @@ export class BSPPartitioner {
     };
   }
 
-  fitAttachedVolumeRooms(shell, nodes, assignedNodeIds) {
+  fitAttachedVolumeRooms(shell, nodes, assignedNodeIds, mainBox) {
     const boxById = new Map(shell.volumeBoxes.map((box) => [box.id, box]));
     const spaces = shell.interiorSpaces
       .filter((space) => space.source !== 'main')
@@ -67,9 +67,12 @@ export class BSPPartitioner {
       if (rooms.some((room) => isMostlyCoveredByRoom(space, room))) continue;
       const box = boxById.get(space.source) || { id: space.source, module: 'attached', side: space.side };
       const node = matchNodeForSpace(space, box, nodes, assignedNodeIds);
+      if (!node && !shouldCreateFallbackAttachedRoom(box)) continue;
       if (node) assignedNodeIds.add(node.id);
       const fallback = fallbackNodeForSpace(space, box);
-      rooms.push(roomFromSpace(space, node || fallback, box, Boolean(node)));
+      const room = trimAttachedRoomOutsideMain(roomFromSpace(space, node || fallback, box, Boolean(node)), mainBox, this.spec);
+      if (spanSize(room.min_x, room.max_x) < 3 || spanSize(room.min_z, room.max_z) < 3) continue;
+      rooms.push(room);
     }
 
     return rooms;
@@ -364,6 +367,31 @@ function roomFromSpace(space, node, box, assignedNode) {
   };
 }
 
+function trimAttachedRoomOutsideMain(room, mainBox, spec = {}) {
+  if (!mainBox || room.source === 'main') return room;
+  const thickness = clampInt(spec.shell_thickness || 1, 1, 3);
+  const interior = {
+    min_x: mainBox.min_x + thickness,
+    max_x: mainBox.max_x - thickness,
+    min_z: mainBox.min_z + thickness,
+    max_z: mainBox.max_z - thickness
+  };
+  const side = String(room.volume?.side || room.orientation || '').toLowerCase();
+  const trimmed = { ...room };
+
+  if (side.includes('north') && trimmed.min_z < interior.min_z && trimmed.max_z >= interior.min_z) {
+    trimmed.max_z = Math.min(trimmed.max_z, interior.min_z - 1);
+  } else if (side.includes('south') && trimmed.max_z > interior.max_z && trimmed.min_z <= interior.max_z) {
+    trimmed.min_z = Math.max(trimmed.min_z, interior.max_z + 1);
+  } else if (side.includes('east') && trimmed.max_x > interior.max_x && trimmed.min_x <= interior.max_x) {
+    trimmed.min_x = Math.max(trimmed.min_x, interior.max_x + 1);
+  } else if (side.includes('west') && trimmed.min_x < interior.min_x && trimmed.max_x >= interior.min_x) {
+    trimmed.max_x = Math.min(trimmed.max_x, interior.min_x - 1);
+  }
+
+  return trimmed;
+}
+
 function rectFromSpace(space, source) {
   return {
     floor: Number(space.floor || 0),
@@ -452,6 +480,13 @@ function fallbackTypeForVolume(box) {
   if (box.module === 'courtyard') return 'atrium';
   if (box.module === 'wing') return wingRoomType(box);
   return 'room';
+}
+
+function shouldCreateFallbackAttachedRoom(box = {}) {
+  if (box.module === 'tower') return false;
+  const tags = normalizeStringArray(box.tags).join(' ');
+  const text = `${box.id || ''} ${box.role || ''} ${box.purpose || ''} ${tags}`.toLowerCase();
+  return !/vertical-core|service-core|trunk-core|support|structural|anchor/.test(text);
 }
 
 function fallbackLabelForVolume(box, type) {

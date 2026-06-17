@@ -40,8 +40,12 @@ test('MaterialPaletteAgent publishes large role-based material option pools', ()
 });
 
 test('catalog role helpers include broad buildable categories', () => {
+  const plantBlocks = minecraftBlocksForRole('plant');
+
   assert.ok(materialOptionsForFamily('general').catalog.includes('minecraft:heavy_core'));
   assert.ok(minecraftBlocksForRole('lighting').includes('minecraft:sea_lantern'));
-  assert.ok(minecraftBlocksForRole('plant').includes('minecraft:potted_bamboo'));
+  assert.ok(plantBlocks.includes('minecraft:potted_bamboo'));
+  assert.ok(!plantBlocks.includes('minecraft:grass'));
+  assert.ok(plantBlocks.every((block) => isKnownMinecraft121Block(block)));
   assert.ok(minecraftBlocksForRole('door').includes('minecraft:copper_door'));
 });

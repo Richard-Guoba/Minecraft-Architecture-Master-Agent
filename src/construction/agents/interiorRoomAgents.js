@@ -1,5 +1,123 @@
 import { blockCatalogStats, minecraftBlocksForRole } from './minecraftBlockCatalog.js';
 
+const INTERIOR_COLORS = [
+  'white',
+  'orange',
+  'magenta',
+  'light_blue',
+  'yellow',
+  'lime',
+  'pink',
+  'gray',
+  'light_gray',
+  'cyan',
+  'purple',
+  'blue',
+  'brown',
+  'green',
+  'red',
+  'black'
+];
+
+const VIBRANT_INTERIOR_BLOCKS = [
+  ...INTERIOR_COLORS.map((color) => `minecraft:${color}_carpet`),
+  ...INTERIOR_COLORS.map((color) => `minecraft:${color}_banner`),
+  ...INTERIOR_COLORS.map((color) => `minecraft:${color}_candle`),
+  ...INTERIOR_COLORS.map((color) => `minecraft:${color}_bed`),
+  ...INTERIOR_COLORS.map((color) => `minecraft:${color}_glazed_terracotta`),
+  ...INTERIOR_COLORS.map((color) => `minecraft:${color}_stained_glass_pane`),
+  ...INTERIOR_COLORS.map((color) => `minecraft:${color}_shulker_box`),
+  'minecraft:decorated_pot',
+  'minecraft:flower_pot',
+  'minecraft:potted_torchflower',
+  'minecraft:potted_blue_orchid',
+  'minecraft:potted_allium',
+  'minecraft:potted_azure_bluet',
+  'minecraft:potted_cornflower',
+  'minecraft:potted_lily_of_the_valley',
+  'minecraft:potted_red_tulip',
+  'minecraft:potted_orange_tulip',
+  'minecraft:potted_bamboo',
+  'minecraft:potted_cherry_sapling',
+  'minecraft:potted_azalea_bush',
+  'minecraft:potted_flowering_azalea_bush',
+  'minecraft:pearlescent_froglight',
+  'minecraft:verdant_froglight',
+  'minecraft:ochre_froglight',
+  'minecraft:redstone_lamp',
+  'minecraft:copper_bulb',
+  'minecraft:jukebox',
+  'minecraft:note_block',
+  'minecraft:loom',
+  'minecraft:lectern',
+  'minecraft:cartography_table',
+  'minecraft:chiseled_bookshelf',
+  'minecraft:brewing_stand'
+];
+
+const VIBRANT_PALETTES = [
+  {
+    key: 'festival-pop',
+    rugs: ['minecraft:magenta_carpet', 'minecraft:cyan_carpet', 'minecraft:yellow_carpet', 'minecraft:lime_carpet', 'minecraft:pink_carpet'],
+    banners: ['minecraft:magenta_banner', 'minecraft:cyan_banner'],
+    candles: ['minecraft:yellow_candle', 'minecraft:lime_candle'],
+    planter: 'minecraft:potted_torchflower',
+    display: 'minecraft:decorated_pot',
+    storage: 'minecraft:purple_shulker_box',
+    tile: 'minecraft:orange_glazed_terracotta',
+    screen: 'minecraft:light_blue_stained_glass_pane',
+    light: 'minecraft:pearlescent_froglight'
+  },
+  {
+    key: 'warm-market',
+    rugs: ['minecraft:orange_carpet', 'minecraft:red_carpet', 'minecraft:yellow_carpet', 'minecraft:white_carpet', 'minecraft:pink_carpet'],
+    banners: ['minecraft:red_banner', 'minecraft:orange_banner'],
+    candles: ['minecraft:orange_candle', 'minecraft:red_candle'],
+    planter: 'minecraft:potted_red_tulip',
+    display: 'minecraft:decorated_pot',
+    storage: 'minecraft:red_shulker_box',
+    tile: 'minecraft:red_glazed_terracotta',
+    screen: 'minecraft:orange_stained_glass_pane',
+    light: 'minecraft:ochre_froglight'
+  },
+  {
+    key: 'garden-bright',
+    rugs: ['minecraft:lime_carpet', 'minecraft:green_carpet', 'minecraft:light_blue_carpet', 'minecraft:yellow_carpet', 'minecraft:white_carpet'],
+    banners: ['minecraft:green_banner', 'minecraft:yellow_banner'],
+    candles: ['minecraft:lime_candle', 'minecraft:light_blue_candle'],
+    planter: 'minecraft:potted_blue_orchid',
+    display: 'minecraft:decorated_pot',
+    storage: 'minecraft:lime_shulker_box',
+    tile: 'minecraft:lime_glazed_terracotta',
+    screen: 'minecraft:green_stained_glass_pane',
+    light: 'minecraft:verdant_froglight'
+  },
+  {
+    key: 'royal-contrast',
+    rugs: ['minecraft:purple_carpet', 'minecraft:blue_carpet', 'minecraft:red_carpet', 'minecraft:white_carpet', 'minecraft:cyan_carpet'],
+    banners: ['minecraft:purple_banner', 'minecraft:blue_banner'],
+    candles: ['minecraft:purple_candle', 'minecraft:blue_candle'],
+    planter: 'minecraft:potted_allium',
+    display: 'minecraft:decorated_pot',
+    storage: 'minecraft:blue_shulker_box',
+    tile: 'minecraft:purple_glazed_terracotta',
+    screen: 'minecraft:blue_stained_glass_pane',
+    light: 'minecraft:sea_lantern'
+  },
+  {
+    key: 'mono-neon',
+    rugs: ['minecraft:black_carpet', 'minecraft:cyan_carpet', 'minecraft:magenta_carpet', 'minecraft:purple_carpet', 'minecraft:light_gray_carpet'],
+    banners: ['minecraft:black_banner', 'minecraft:cyan_banner'],
+    candles: ['minecraft:cyan_candle', 'minecraft:magenta_candle'],
+    planter: 'minecraft:potted_cornflower',
+    display: 'minecraft:decorated_pot',
+    storage: 'minecraft:cyan_shulker_box',
+    tile: 'minecraft:cyan_glazed_terracotta',
+    screen: 'minecraft:magenta_stained_glass_pane',
+    light: 'minecraft:redstone_lamp'
+  }
+];
+
 const UNIVERSAL_INTERIOR_BLOCKS = [
   'minecraft:barrel',
   'minecraft:chest',
@@ -27,6 +145,7 @@ const UNIVERSAL_INTERIOR_BLOCKS = [
   'minecraft:decorated_pot',
   'minecraft:oak_pressure_plate',
   'minecraft:note_block',
+  ...VIBRANT_INTERIOR_BLOCKS,
   ...minecraftBlocksForRole('furniture'),
   ...minecraftBlocksForRole('lighting'),
   ...minecraftBlocksForRole('plant'),
@@ -788,9 +907,79 @@ function placeStyleSignature(builder, definition) {
   add(builder, definition, `${definition.style_key}-style-plant`, plant, west, y1, north, 'style-plant', 'decor_plant');
 }
 
+function placeVibrantLayer(builder, definition) {
+  const { y, y1, ceiling, north, south, west, east, cx, cz } = anchors(builder);
+  const palette = vibrantPaletteFor(definition, builder.styleFamily);
+  const offset = hashKey(definition.source || definition.id) % 13;
+  const floorPoints = uniquePoints([
+    [cx, cz],
+    [cx - 1, cz],
+    [cx + 1, cz],
+    [cx, cz - 1],
+    [cx, cz + 1],
+    [west, north],
+    [east, north],
+    [west, south],
+    [east, south],
+    [west, cz],
+    [east, cz],
+    [cx, north],
+    [cx, south]
+  ]);
+  const wallPoints = uniquePoints([
+    [west, cz],
+    [east, cz],
+    [cx, north],
+    [cx, south],
+    [west, north + 1],
+    [east, north + 1],
+    [west, south - 1],
+    [east, south - 1],
+    [west, north],
+    [east, south]
+  ]);
+  const ceilingPoints = uniquePoints([
+    [cx, north],
+    [cx, south],
+    [west, cz],
+    [east, cz],
+    [cx, cz],
+    [west, north],
+    [east, south]
+  ]);
+
+  palette.rugs.forEach((block, index) => {
+    const [x, z] = pointAt(floorPoints, offset + index);
+    add(builder, definition, `vibrant-rug-${index + 1}`, block, x, y, z, `${palette.key}-rug-mosaic`, 'decor_floor');
+  });
+
+  const [bannerX1, bannerZ1] = pointAt(wallPoints, offset);
+  const [bannerX2, bannerZ2] = pointAt(wallPoints, offset + 3);
+  const [candleX1, candleZ1] = pointAt(floorPoints, offset + 5);
+  const [candleX2, candleZ2] = pointAt(floorPoints, offset + 7);
+  const [plantX, plantZ] = pointAt(floorPoints, offset + 8);
+  const [displayX, displayZ] = pointAt(floorPoints, offset + 9);
+  const [storageX, storageZ] = pointAt(floorPoints, offset + 10);
+  const [tileX, tileZ] = pointAt(floorPoints, offset + 11);
+  const [screenX, screenZ] = pointAt(wallPoints, offset + 6);
+  const [lightX, lightZ] = pointAt(ceilingPoints, offset + 2);
+
+  add(builder, definition, 'vibrant-banner-left', palette.banners[0], bannerX1, y1, bannerZ1, `${palette.key}-wall-color`, 'decor_detail');
+  add(builder, definition, 'vibrant-banner-right', palette.banners[1], bannerX2, y1, bannerZ2, `${palette.key}-wall-color`, 'decor_detail');
+  add(builder, definition, 'vibrant-candle-left', palette.candles[0], candleX1, y, candleZ1, `${palette.key}-colored-candles`, 'decor_light');
+  add(builder, definition, 'vibrant-candle-right', palette.candles[1], candleX2, y, candleZ2, `${palette.key}-colored-candles`, 'decor_light');
+  add(builder, definition, 'vibrant-planter', palette.planter, plantX, y, plantZ, `${palette.key}-plant-color`, 'decor_plant');
+  add(builder, definition, 'vibrant-display-pot', palette.display, displayX, y, displayZ, `${palette.key}-ceramic-display`, 'decor_detail');
+  add(builder, definition, 'vibrant-storage-cube', palette.storage, storageX, y, storageZ, `${palette.key}-color-storage`, 'decor_storage');
+  add(builder, definition, 'vibrant-glazed-tile', palette.tile, tileX, y, tileZ, `${palette.key}-glazed-tile`, 'decor_floor');
+  add(builder, definition, 'vibrant-glass-screen', palette.screen, screenX, y1, screenZ, `${palette.key}-glass-screen`, 'decor_detail');
+  add(builder, definition, 'vibrant-ceiling-light', palette.light, lightX, ceiling, lightZ, `${palette.key}-ceiling-color`, 'decor_light');
+}
+
 function runSpecialist(builder, definition, place) {
   const before = builder.blocks.length;
   place(builder, definition);
+  placeVibrantLayer(builder, definition);
   return {
     agent_id: definition.source,
     id: definition.id,
@@ -818,6 +1007,15 @@ function addRug(builder, definition, placement, block, centerX, centerZ, radiusX
 function addTableSet(builder, definition, x, y, z, placement) {
   add(builder, definition, 'table-base', 'minecraft:oak_fence', x, y, z, placement, 'decor_furniture');
   add(builder, definition, 'table-top', 'minecraft:oak_pressure_plate', x, y + 1, z, placement, 'decor_furniture');
+}
+
+function vibrantPaletteFor(definition, styleFamily) {
+  const key = definition.style_key || definition.placer || definition.id || styleFamily || 'general';
+  if (key === 'cyberpunk' || styleFamily === 'cyberpunk') return VIBRANT_PALETTES.find((palette) => palette.key === 'mono-neon');
+  if (['sunroom', 'greenhouse-house', 'treehouse'].includes(key) || ['greenhouse-house', 'treehouse'].includes(styleFamily)) return VIBRANT_PALETTES.find((palette) => palette.key === 'garden-bright');
+  if (['gothic', 'classical', 'chapel', 'tower'].includes(key) || ['gothic', 'classical'].includes(styleFamily)) return VIBRANT_PALETTES.find((palette) => palette.key === 'royal-contrast');
+  if (['kitchen', 'dining', 'entry', 'desert', 'chinese-courtyard'].includes(key)) return VIBRANT_PALETTES.find((palette) => palette.key === 'warm-market');
+  return VIBRANT_PALETTES[hashKey(key) % VIBRANT_PALETTES.length];
 }
 
 function anchors(builder) {
@@ -928,9 +1126,29 @@ function firstBlock(blocks, pattern) {
   return blocks.find((block) => pattern.test(block));
 }
 
+function hashKey(key) {
+  return [...String(key || '')].reduce((total, char) => total + char.charCodeAt(0), 0);
+}
+
 function asMinecraftBlock(block) {
   const text = String(block || '');
   return text.startsWith('minecraft:') ? text : `minecraft:${text}`;
+}
+
+function uniquePoints(points) {
+  const seen = new Set();
+  const result = [];
+  for (const [x, z] of points) {
+    const key = `${x},${z}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push([x, z]);
+  }
+  return result;
+}
+
+function pointAt(points, index) {
+  return points[((index % points.length) + points.length) % points.length];
 }
 
 function unique(values) {

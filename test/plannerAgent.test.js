@@ -52,3 +52,35 @@ test('planner aligns modern public rooms to glass frontage and preserves normali
     assert.equal(Object.hasOwn(node, 'x'), false);
   }
 });
+
+test('planner normalization repairs duplicate LLM room ids before geometry', () => {
+  const raw = {
+    nodes: [
+      { id: 'entry', label: '一层入口', type: 'entry', floor: 0, weight: 0.7, privacy: 'public', zone: 'public' },
+      { id: 'living', label: '一层客厅', type: 'living', floor: 0, weight: 1.5, privacy: 'public', zone: 'public' },
+      { id: 'kitchen', label: '一层厨房', type: 'kitchen', floor: 0, weight: 0.9, privacy: 'service', zone: 'service' },
+      { id: 'corridor', label: '二层走廊', type: 'corridor', floor: 1, weight: 0.7, privacy: 'circulation', zone: 'circulation' },
+      { id: 'entry', label: '二层门厅', type: 'entry', floor: 1, weight: 0.5, privacy: 'public', zone: 'public' },
+      { id: 'living', label: '二层起居', type: 'living', floor: 1, weight: 1.0, privacy: 'private', zone: 'private' },
+      { id: 'kitchen', label: '二层茶水间', type: 'kitchen', floor: 1, weight: 0.5, privacy: 'service', zone: 'service' }
+    ],
+    edges: [
+      { from: 'living', to: 'kitchen', relation: 'ambiguous-llm-edge' },
+      { from: 'entry', to: 'living', relation: 'ambiguous-llm-edge' },
+      { from: 'corridor', to: 'living', relation: 'upper-ambiguous-edge' }
+    ],
+    floor_program: []
+  };
+
+  const topology = normalizeTopology(raw, 'llm', {}, { floors: 2 });
+  const ids = topology.nodes.map((node) => node.id);
+
+  assert.equal(new Set(ids).size, ids.length);
+  assert.ok(ids.includes('entry-floor-1'));
+  assert.ok(ids.includes('living-floor-1'));
+  assert.ok(ids.includes('kitchen-floor-1'));
+  assert.ok(topology.edges.some((edge) => edge.from === 'corridor' && edge.to === 'living-floor-1'));
+  assert.ok(topology.edges.every((edge) => ids.includes(edge.from) && ids.includes(edge.to)));
+  assert.ok(topology.floor_program[1].private.includes('living-floor-1'));
+  assert.ok(topology.floor_program[1].service.includes('kitchen-floor-1'));
+});

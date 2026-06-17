@@ -23,7 +23,7 @@ src/construction/
 │   ├── minecraftBlockRegistry1_21.js # 1060 个 Java 1.21.1 方块 ID 快照
 │   ├── plannerAgent.js        # 第二步：房间拓扑 JSON
 │   ├── interiorDetailAgent.js # 房间级室内语义与专家能力清单
-│   ├── interiorRoomAgents.js  # 房间功能专家 + 建筑风格内饰专家
+│   ├── interiorRoomAgents.js  # 50+ 方块房间功能专家 + 建筑风格内饰专家
 │   └── decoratorAgent.js      # 将室内家具、灯光和装饰写入方块网格
 ├── engine/
 │   ├── csgBuilder.js          # 体块 CSG，生成空心外壳
@@ -159,3 +159,11 @@ OPENAI_THINKING=disabled
 ```powershell
 npm test
 ```
+
+批量评价 20 条覆盖式 prompt：
+
+```powershell
+npm run evaluate:prompts
+```
+
+输出会写到 `out/evaluation-<时间戳>/`，包含 `evaluation_summary.json` 和 `evaluation_report.md`，用于查看每条 prompt 的分数、房间数、内饰装饰数量、弱项和完整评价指标。

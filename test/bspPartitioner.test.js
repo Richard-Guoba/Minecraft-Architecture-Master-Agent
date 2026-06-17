@@ -29,7 +29,7 @@ test('BSPPartitioner assigns castle tower rooms to tower volume while keeping th
   assert.equal(towerRoom.volume.module, 'tower');
   assert.equal(towerRoom.assigned_node, true);
   assert.equal(layout.rooms.find((room) => room.id === 'tower-stair').source, 'main');
-  assert.ok(layout.rooms.some((room) => room.source === 'corner-tower' && room.assigned_node === false));
+  assert.equal(layout.rooms.some((room) => room.source === 'corner-tower' && room.assigned_node === false), false);
   assert.ok(layout.interiorDoors.some((door) => door.kind === 'attached-volume' && door.connects.includes('tower-room')));
 });
 

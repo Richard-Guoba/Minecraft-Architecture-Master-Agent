@@ -644,7 +644,8 @@ function promptDrivenBlocks(prompt) {
 }
 
 function asMinecraftBlocks(blocks) {
-  return unique(blocks.map((block) => String(block).startsWith('minecraft:') ? block : `minecraft:${block}`));
+  return unique(blocks.map((block) => String(block).startsWith('minecraft:') ? block : `minecraft:${block}`))
+    .filter((block) => isKnownMinecraft121Block(block));
 }
 
 function unique(values) {
