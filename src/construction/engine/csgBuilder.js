@@ -708,41 +708,63 @@ export class CSGBuilder {
     const reliefBlock = blocks[0] || reliefBlockForStyle(family, this.materials);
     const accentBlock = blocks[1] || this.materials.secondary_wall || this.materials.accent || this.materials.trim || 'minecraft:quartz_bricks';
     const pierBlock = blocks[2] || reliefBlock;
-    const panelBlock = blocks[3] || accentBlock;
-    const buttonBlock = blocks[4] || reliefBlock;
-    const railBlock = blocks[5] || accentBlock;
     const density = String(facadePlan.relief_density || 'medium');
-    const spacing = density === 'high' ? 2 : density === 'low' ? 5 : ['modern', 'industrial', 'futuristic', 'cyberpunk'].includes(family) ? 3 : 4;
+    const minClearSpan = clampInt(
+      facadePlan.exterior_detail_requirements?.min_blank_wall_span_for_relief ||
+      facadePlan.composition_strategy?.ornament_budget?.min_blank_wall_span ||
+      4,
+      3,
+      8,
+      4
+    );
+    const spacing = density === 'high' ? 5 : density === 'low' || density === 'organic-low' ? 8 : ['modern', 'industrial', 'futuristic', 'cyberpunk'].includes(family) ? 7 : 6;
+    const cornerStep = density === 'high' ? 1 : 2;
+    const beltEvery = density === 'organic-low' ? 3 : 2;
 
     for (let floor = 0; floor < Math.max(1, box.floors); floor += 1) {
       const floorY = floor * this.spec.floor_height;
       const minY = floorY + 1;
       const maxY = Math.min(box.max_y - 1, (floor + 1) * this.spec.floor_height - 1);
       if (minY > maxY) continue;
-      const yFor = (value, offset = 0) => clampInt(minY + 1 + ((value + floor + offset) % Math.max(2, maxY - minY + 1)), minY, maxY, minY);
+      const beltY = minY;
+      const topY = Math.max(minY, maxY);
+      const midY = clampInt(Math.floor((minY + maxY) / 2), minY, maxY, minY);
 
-      for (let x = box.min_x + 2; x <= box.max_x - 2; x += spacing) {
-        this.placeFacadeCell(grid, x, yFor(x), box.max_z + 1, blockAt(blocks, x + floor, reliefBlock), 'facade_relief');
-        this.placeFacadeCell(grid, x, yFor(x, 1), box.min_z - 1, blockAt(blocks, x + floor + 1, reliefBlock), 'facade_relief');
-        if ((x + floor) % 2 === 0) {
-          this.placeFacadeCell(grid, x + 1, minY, box.max_z + 1, accentBlock, 'facade_relief');
-          this.placeFacadeCell(grid, x - 1, maxY, box.min_z - 1, pierBlock, 'facade_relief');
-        }
-        this.placeFacadeCell(grid, x, minY, box.max_z + 1, buttonBlock, 'facade_relief');
-        this.placeFacadeCell(grid, x, maxY, box.min_z - 1, railBlock, 'facade_relief');
-        if (x + 2 <= box.max_x - 1) this.placeFacadeCell(grid, x + 2, yFor(x, 2), box.max_z + 1, panelBlock, 'facade_relief');
+      for (let y = minY; y <= maxY; y += cornerStep) {
+        this.placeClearFacadeCell(grid, box.min_x + 1, y, box.min_z - 1, pierBlock, 'facade_relief', 1);
+        this.placeClearFacadeCell(grid, box.max_x - 1, y, box.min_z - 1, pierBlock, 'facade_relief', 1);
+        this.placeClearFacadeCell(grid, box.min_x + 1, y, box.max_z + 1, pierBlock, 'facade_relief', 1);
+        this.placeClearFacadeCell(grid, box.max_x - 1, y, box.max_z + 1, pierBlock, 'facade_relief', 1);
+        this.placeClearFacadeCell(grid, box.min_x - 1, y, box.min_z + 1, pierBlock, 'facade_relief', 1);
+        this.placeClearFacadeCell(grid, box.min_x - 1, y, box.max_z - 1, pierBlock, 'facade_relief', 1);
+        this.placeClearFacadeCell(grid, box.max_x + 1, y, box.min_z + 1, pierBlock, 'facade_relief', 1);
+        this.placeClearFacadeCell(grid, box.max_x + 1, y, box.max_z - 1, pierBlock, 'facade_relief', 1);
       }
 
-      for (let z = box.min_z + 2; z <= box.max_z - 2; z += spacing) {
-        this.placeFacadeCell(grid, box.min_x - 1, yFor(z), z, blockAt(blocks, z + floor, reliefBlock), 'facade_relief');
-        this.placeFacadeCell(grid, box.max_x + 1, yFor(z, 1), z, blockAt(blocks, z + floor + 1, reliefBlock), 'facade_relief');
-        if ((z + floor) % 2 === 1) {
-          this.placeFacadeCell(grid, box.min_x - 1, minY, z + 1, accentBlock, 'facade_relief');
-          this.placeFacadeCell(grid, box.max_x + 1, maxY, z - 1, accentBlock, 'facade_relief');
+      for (let x = box.min_x + 2; x <= box.max_x - 2; x += beltEvery) {
+        this.placeClearFacadeCell(grid, x, beltY, box.max_z + 1, reliefBlock, 'facade_relief', 1);
+        this.placeClearFacadeCell(grid, x, beltY, box.min_z - 1, reliefBlock, 'facade_relief', 1);
+        if (floor > 0 || density !== 'low') {
+          this.placeClearFacadeCell(grid, x, topY, box.max_z + 1, accentBlock, 'facade_relief', 1);
+          this.placeClearFacadeCell(grid, x, topY, box.min_z - 1, accentBlock, 'facade_relief', 1);
         }
-        this.placeFacadeCell(grid, box.min_x - 1, minY, z, buttonBlock, 'facade_relief');
-        this.placeFacadeCell(grid, box.max_x + 1, maxY, z, railBlock, 'facade_relief');
-        if (z + 2 <= box.max_z - 1) this.placeFacadeCell(grid, box.min_x - 1, yFor(z, 2), z + 2, panelBlock, 'facade_relief');
+      }
+      for (let z = box.min_z + 2; z <= box.max_z - 2; z += beltEvery) {
+        this.placeClearFacadeCell(grid, box.min_x - 1, beltY, z, reliefBlock, 'facade_relief', 1);
+        this.placeClearFacadeCell(grid, box.max_x + 1, beltY, z, reliefBlock, 'facade_relief', 1);
+        if (floor > 0 || density !== 'low') {
+          this.placeClearFacadeCell(grid, box.min_x - 1, topY, z, accentBlock, 'facade_relief', 1);
+          this.placeClearFacadeCell(grid, box.max_x + 1, topY, z, accentBlock, 'facade_relief', 1);
+        }
+      }
+
+      for (let x = box.min_x + minClearSpan; x <= box.max_x - minClearSpan; x += spacing) {
+        this.placeClearFacadeCell(grid, x, midY, box.max_z + 1, accentBlock, 'facade_relief', minClearSpan);
+        this.placeClearFacadeCell(grid, x, midY, box.min_z - 1, accentBlock, 'facade_relief', minClearSpan);
+      }
+      for (let z = box.min_z + minClearSpan; z <= box.max_z - minClearSpan; z += spacing) {
+        this.placeClearFacadeCell(grid, box.min_x - 1, midY, z, accentBlock, 'facade_relief', minClearSpan);
+        this.placeClearFacadeCell(grid, box.max_x + 1, midY, z, accentBlock, 'facade_relief', minClearSpan);
       }
     }
   }
@@ -760,6 +782,14 @@ export class CSGBuilder {
     const spacing = clampInt(planned.spacing || (wide ? 5 : narrow ? 8 : 6), 3, 10, wide ? 5 : 6);
     const xs = windowPositions(box.min_x, box.max_x, windowWidth, spacing);
     const zs = windowPositions(box.min_z, box.max_z, windowWidth, spacing);
+    const clearGap = Math.max(0, spacing - windowWidth);
+    const pattern = String(facadePlan.window_surround_pattern || facadePlan.composition_strategy?.window_surround_policy?.pattern || 'sill-lintel-with-optional-jambs');
+    const frameOptions = {
+      sideJambs: clearGap >= 4 && !/minimal/.test(pattern),
+      grille: narrow || /tracery|protected/.test(pattern),
+      shutters: false,
+      hardware: false
+    };
 
     for (let level = 0; level < Math.max(1, box.floors); level += 1) {
       const baseY = level * this.spec.floor_height + 2;
@@ -767,64 +797,80 @@ export class CSGBuilder {
       const actualWindowHeight = Math.min(windowHeight, maxWindowY - baseY + 1);
       if (actualWindowHeight < 1) continue;
       for (const x of xs) {
-        this.addWindowFrameZ(grid, x, x + windowWidth - 1, box.min_z - 1, baseY, actualWindowHeight, blocks, block);
-        this.addWindowFrameZ(grid, x, x + windowWidth - 1, box.max_z + 1, baseY, actualWindowHeight, blocks, block);
+        this.addWindowFrameZ(grid, x, x + windowWidth - 1, box.min_z - 1, baseY, actualWindowHeight, blocks, block, frameOptions);
+        this.addWindowFrameZ(grid, x, x + windowWidth - 1, box.max_z + 1, baseY, actualWindowHeight, blocks, block, frameOptions);
       }
       for (const z of zs) {
-        this.addWindowFrameX(grid, box.min_x - 1, z, z + windowWidth - 1, baseY, actualWindowHeight, blocks, block);
-        this.addWindowFrameX(grid, box.max_x + 1, z, z + windowWidth - 1, baseY, actualWindowHeight, blocks, block);
+        this.addWindowFrameX(grid, box.min_x - 1, z, z + windowWidth - 1, baseY, actualWindowHeight, blocks, block, frameOptions);
+        this.addWindowFrameX(grid, box.max_x + 1, z, z + windowWidth - 1, baseY, actualWindowHeight, blocks, block, frameOptions);
       }
     }
   }
 
-  addWindowFrameZ(grid, x1, x2, z, baseY, height, blocks, fallbackBlock) {
+  addWindowFrameZ(grid, x1, x2, z, baseY, height, blocks, fallbackBlock, options = {}) {
     const sill = blockAt(blocks, 0, fallbackBlock);
     const lintel = blockAt(blocks, 1, fallbackBlock);
     const jamb = blockAt(blocks, 2, fallbackBlock);
     const bar = blockAt(blocks, 3, fallbackBlock);
     const shutter = blockAt(blocks, 4, fallbackBlock);
     const hardware = blockAt(blocks, 5, fallbackBlock);
-    for (let x = x1 - 1; x <= x2 + 1; x += 1) {
-      this.placeFacadeCell(grid, x, baseY - 1, z, x === x1 - 1 || x === x2 + 1 ? jamb : sill, 'facade_detail');
-      this.placeFacadeCell(grid, x, baseY + height, z, x === x1 - 1 || x === x2 + 1 ? jamb : lintel, 'facade_detail');
+    for (let x = x1; x <= x2; x += 1) {
+      this.placeFacadeCell(grid, x, baseY - 1, z, sill, 'facade_detail');
+      this.placeFacadeCell(grid, x, baseY + height, z, lintel, 'facade_detail');
     }
-    for (let y = baseY; y <= baseY + height - 1; y += 1) {
-      this.placeFacadeCell(grid, x1 - 1, y, z, jamb, 'facade_detail');
-      this.placeFacadeCell(grid, x2 + 1, y, z, jamb, 'facade_detail');
-      if (y === baseY || y === baseY + height - 1) {
+    if (options.sideJambs) {
+      for (let y = baseY; y <= baseY + height - 1; y += 1) {
+        this.placeFacadeCell(grid, x1 - 1, y, z, jamb, 'facade_detail');
+        this.placeFacadeCell(grid, x2 + 1, y, z, jamb, 'facade_detail');
+      }
+    }
+    if (options.shutters) {
+      for (let y = baseY; y <= baseY + height - 1; y += Math.max(1, height - 1)) {
         this.placeFacadeCell(grid, x1 - 2, y, z, shutter, 'facade_detail');
         this.placeFacadeCell(grid, x2 + 2, y, z, shutter, 'facade_detail');
       }
     }
-    const midY = baseY + Math.floor(Math.max(1, height) / 2);
-    for (let x = x1; x <= x2; x += 1) this.placeFacadeCell(grid, x, midY, z, bar, 'facade_detail');
-    this.placeFacadeCell(grid, x1 - 2, baseY - 1, z, hardware, 'facade_detail');
-    this.placeFacadeCell(grid, x2 + 2, baseY - 1, z, hardware, 'facade_detail');
+    if (options.grille && height >= 3) {
+      const midY = baseY + Math.floor(Math.max(1, height) / 2);
+      for (let x = x1; x <= x2; x += 2) this.placeFacadeCell(grid, x, midY, z, bar, 'facade_detail');
+    }
+    if (options.hardware) {
+      this.placeFacadeCell(grid, x1 - 2, baseY - 1, z, hardware, 'facade_detail');
+      this.placeFacadeCell(grid, x2 + 2, baseY - 1, z, hardware, 'facade_detail');
+    }
   }
 
-  addWindowFrameX(grid, x, z1, z2, baseY, height, blocks, fallbackBlock) {
+  addWindowFrameX(grid, x, z1, z2, baseY, height, blocks, fallbackBlock, options = {}) {
     const sill = blockAt(blocks, 0, fallbackBlock);
     const lintel = blockAt(blocks, 1, fallbackBlock);
     const jamb = blockAt(blocks, 2, fallbackBlock);
     const bar = blockAt(blocks, 3, fallbackBlock);
     const shutter = blockAt(blocks, 4, fallbackBlock);
     const hardware = blockAt(blocks, 5, fallbackBlock);
-    for (let z = z1 - 1; z <= z2 + 1; z += 1) {
-      this.placeFacadeCell(grid, x, baseY - 1, z, z === z1 - 1 || z === z2 + 1 ? jamb : sill, 'facade_detail');
-      this.placeFacadeCell(grid, x, baseY + height, z, z === z1 - 1 || z === z2 + 1 ? jamb : lintel, 'facade_detail');
+    for (let z = z1; z <= z2; z += 1) {
+      this.placeFacadeCell(grid, x, baseY - 1, z, sill, 'facade_detail');
+      this.placeFacadeCell(grid, x, baseY + height, z, lintel, 'facade_detail');
     }
-    for (let y = baseY; y <= baseY + height - 1; y += 1) {
-      this.placeFacadeCell(grid, x, y, z1 - 1, jamb, 'facade_detail');
-      this.placeFacadeCell(grid, x, y, z2 + 1, jamb, 'facade_detail');
-      if (y === baseY || y === baseY + height - 1) {
+    if (options.sideJambs) {
+      for (let y = baseY; y <= baseY + height - 1; y += 1) {
+        this.placeFacadeCell(grid, x, y, z1 - 1, jamb, 'facade_detail');
+        this.placeFacadeCell(grid, x, y, z2 + 1, jamb, 'facade_detail');
+      }
+    }
+    if (options.shutters) {
+      for (let y = baseY; y <= baseY + height - 1; y += Math.max(1, height - 1)) {
         this.placeFacadeCell(grid, x, y, z1 - 2, shutter, 'facade_detail');
         this.placeFacadeCell(grid, x, y, z2 + 2, shutter, 'facade_detail');
       }
     }
-    const midY = baseY + Math.floor(Math.max(1, height) / 2);
-    for (let z = z1; z <= z2; z += 1) this.placeFacadeCell(grid, x, midY, z, bar, 'facade_detail');
-    this.placeFacadeCell(grid, x, baseY - 1, z1 - 2, hardware, 'facade_detail');
-    this.placeFacadeCell(grid, x, baseY - 1, z2 + 2, hardware, 'facade_detail');
+    if (options.grille && height >= 3) {
+      const midY = baseY + Math.floor(Math.max(1, height) / 2);
+      for (let z = z1; z <= z2; z += 2) this.placeFacadeCell(grid, x, midY, z, bar, 'facade_detail');
+    }
+    if (options.hardware) {
+      this.placeFacadeCell(grid, x, baseY - 1, z1 - 2, hardware, 'facade_detail');
+      this.placeFacadeCell(grid, x, baseY - 1, z2 + 2, hardware, 'facade_detail');
+    }
   }
 
   addEntryDetail(grid, box, facadePlan = {}) {
@@ -903,7 +949,14 @@ export class CSGBuilder {
     const existing = grid.get(keyFor(x, y, z));
     if (existing && ['door', 'entry_path', 'stairs'].includes(existing.module)) return;
     if (existing?.module === 'arches' && module !== 'arches') return;
+    if (module !== 'windows' && directlyFacesWindow(grid, x, y, z)) return;
     grid.set(keyFor(x, y, z), cell(block, module));
+  }
+
+  placeClearFacadeCell(grid, x, y, z, block, module, clearance = 2) {
+    if (hasNearbyWindow(grid, x, y, z, clearance)) return false;
+    this.placeFacadeCell(grid, x, y, z, block, module);
+    return true;
   }
 
   addScreenFacade(grid, box, facadePlan = {}) {
@@ -1041,15 +1094,15 @@ export class CSGBuilder {
     const blocks = exteriorKitBlocks('window_surround', facadePlan, family, this.materials);
     const block = blockAt(blocks, 0, facadePlan.window_system?.trim || this.materials.accent || this.materials.trim || 'minecraft:smooth_quartz');
     for (let floor = 0; floor < Math.max(1, box.floors); floor += 1) {
-      const y = floor * this.spec.floor_height + 2;
+      const y = floor * this.spec.floor_height + 1;
       if (y >= box.max_y) continue;
       for (let x = box.min_x; x <= box.max_x; x += 1) {
-        this.placeFacadeCell(grid, x, y, box.min_z - 1, blockAt(blocks, x + floor, block), 'facade_trim');
-        this.placeFacadeCell(grid, x, y, box.max_z + 1, blockAt(blocks, x + floor + 1, block), 'facade_trim');
+        this.placeClearFacadeCell(grid, x, y, box.min_z - 1, block, 'facade_trim', 1);
+        this.placeClearFacadeCell(grid, x, y, box.max_z + 1, block, 'facade_trim', 1);
       }
       for (let z = box.min_z; z <= box.max_z; z += 1) {
-        this.placeFacadeCell(grid, box.min_x - 1, y, z, blockAt(blocks, z + floor, block), 'facade_trim');
-        this.placeFacadeCell(grid, box.max_x + 1, y, z, blockAt(blocks, z + floor + 1, block), 'facade_trim');
+        this.placeClearFacadeCell(grid, box.min_x - 1, y, z, block, 'facade_trim', 1);
+        this.placeClearFacadeCell(grid, box.max_x + 1, y, z, block, 'facade_trim', 1);
       }
     }
   }
@@ -1177,21 +1230,20 @@ export class CSGBuilder {
     const blocks = exteriorKitBlocks('plant_boxes', facadePlan, family, this.materials);
     const face = blockAt(blocks, 0, this.materials.flower_box || this.materials.planter || 'minecraft:flower_pot');
     const basin = blockAt(blocks, 1, face);
-    const pot = blockAt(blocks, 2, 'minecraft:flower_pot');
-    const plant = blockAt(blocks, 3, this.materials.plant || 'minecraft:potted_azalea_bush');
-    const leaves = blockAt(blocks, 4, this.materials.plant || 'minecraft:oak_leaves[persistent=true]');
-    const moss = blockAt(blocks, 5, 'minecraft:moss_carpet');
     const bracket = blockAt(blocks, 6, face);
-    for (let x = box.min_x + 4; x <= box.max_x - 4; x += 6) {
-      this.placeFacadeCell(grid, x - 1, 2, box.max_z + 1, face, 'flower_box');
-      this.placeFacadeCell(grid, x, 2, box.max_z + 1, basin, 'flower_box');
-      this.placeFacadeCell(grid, x + 1, 2, box.max_z + 1, face, 'flower_box');
-      this.placeFacadeCell(grid, x, 3, box.max_z + 1, pot, 'flower_box');
-      this.placeFacadeCell(grid, x, 4, box.max_z + 1, plant, 'flower_box');
-      this.placeFacadeCell(grid, x - 1, 3, box.max_z + 1, leaves, 'flower_box');
-      this.placeFacadeCell(grid, x + 1, 3, box.max_z + 1, moss, 'flower_box');
-      this.placeFacadeCell(grid, x - 2, 2, box.max_z + 1, bracket, 'flower_box');
-      this.placeFacadeCell(grid, x + 2, 2, box.max_z + 1, bracket, 'flower_box');
+    const planned = facadePlan.window_system || {};
+    const wide = Boolean(this.architecture?.facade_rules?.large_glass || this.spec.facade?.large_glass);
+    const windowWidth = clampInt(planned.width || (wide ? 4 : 2), 1, 5, wide ? 4 : 2);
+    const spacing = clampInt(planned.spacing || (wide ? 5 : 6), 3, 10, wide ? 5 : 6);
+    const xs = windowPositions(box.min_x, box.max_x, windowWidth, spacing);
+    for (let index = 0; index < xs.length; index += 2) {
+      const x = xs[index];
+      const y = 1;
+      for (let px = x; px <= x + windowWidth - 1; px += 1) {
+        this.placeFacadeCell(grid, px, y, box.max_z + 1, px === x || px === x + windowWidth - 1 ? face : basin, 'flower_box');
+      }
+      this.placeFacadeCell(grid, x - 1, y, box.max_z + 1, bracket, 'flower_box');
+      this.placeFacadeCell(grid, x + windowWidth, y, box.max_z + 1, bracket, 'flower_box');
     }
   }
 
@@ -1321,6 +1373,8 @@ export class CSGBuilder {
 
   addRoofGarden(grid, box, roofPlan = {}) {
     const plant = roofPlan.materials?.garden || this.materials.plant || 'minecraft:oak_leaves[persistent=true]';
+    const plantPalette = blockPalette(roofPlan.materials?.garden_palette, plant, this.materials.plant_secondary);
+    const understory = blockPalette(roofPlan.materials?.understory_palette, 'minecraft:moss_carpet');
     const soil = this.materials.landscape || 'minecraft:moss_block';
     const y = box.max_y + 2;
     const x1 = Math.max(box.min_x + 3, Math.floor((box.min_x + box.max_x) / 2) - 4);
@@ -1329,7 +1383,10 @@ export class CSGBuilder {
     const z2 = Math.min(box.max_z - 3, z1 + 6);
     fillBox(grid, x1, y, z1, x2, y, z2, soil, 'roof_garden');
     for (let x = x1; x <= x2; x += 3) {
-      for (let z = z1; z <= z2; z += 3) fillBox(grid, x, y + 1, z, x, y + 1, z, plant, 'roof_garden');
+      for (let z = z1; z <= z2; z += 3) {
+        fillBox(grid, x, y + 1, z, x, y + 1, z, blockAt(plantPalette, x + z, plant), 'roof_garden');
+        if ((x + z) % 2 === 0) fillBox(grid, x + 1, y + 1, z, x + 1, y + 1, z, blockAt(understory, x + z, 'minecraft:moss_carpet'), 'roof_garden');
+      }
     }
   }
 
@@ -1349,8 +1406,16 @@ export class CSGBuilder {
 
   addCanopyCaps(grid, boxes, roofPlan = {}) {
     const block = roofPlan.materials?.garden || this.materials.plant || 'minecraft:oak_leaves[persistent=true]';
+    const palette = blockPalette(roofPlan.materials?.garden_palette, block, this.materials.plant_secondary, 'minecraft:vine', 'minecraft:moss_carpet');
     for (const box of boxes.filter((item) => item.id === 'main' || item.tags?.includes('treehouse'))) {
-      fillBox(grid, box.min_x - 1, box.max_y + 2, box.min_z - 1, box.max_x + 1, box.max_y + 2, box.max_z + 1, block, 'roof_garden');
+      const y = box.max_y + 2;
+      for (let x = box.min_x - 1; x <= box.max_x + 1; x += 1) {
+        for (let z = box.min_z - 1; z <= box.max_z + 1; z += 1) {
+          const edge = x === box.min_x - 1 || x === box.max_x + 1 || z === box.min_z - 1 || z === box.max_z + 1;
+          fillBox(grid, x, y, z, x, y, z, blockAt(palette, edge ? x + z + 1 : x + z, block), 'roof_garden');
+          if (edge && (x + z) % 5 === 0) fillBox(grid, x, y - 1, z, x, y - 1, z, 'minecraft:vine', 'roof_garden');
+        }
+      }
     }
   }
 
@@ -1524,9 +1589,18 @@ export class CSGBuilder {
   addTreeClusters(grid, center, zStart, zEnd, sitePlan = {}) {
     const trunk = this.materials.foundation || 'minecraft:oak_log';
     const leaves = sitePlan.materials?.plant || this.materials.plant || 'minecraft:oak_leaves[persistent=true]';
+    const palette = blockPalette(sitePlan.materials?.plant_palette, leaves, sitePlan.materials?.plant_secondary, this.materials.plant_secondary);
+    const understory = blockPalette(sitePlan.materials?.understory_palette, 'minecraft:moss_carpet', 'minecraft:fern');
     for (const [x, z] of [[center - 8, zStart + 2], [center + 8, zEnd - 1]]) {
       fillBox(grid, x, 1, z, x, 3, z, trunk, 'landscape');
-      fillBox(grid, x - 1, 4, z - 1, x + 1, 4, z + 1, leaves, 'landscape');
+      for (let dx = -1; dx <= 1; dx += 1) {
+        for (let dz = -1; dz <= 1; dz += 1) {
+          fillBox(grid, x + dx, 4, z + dz, x + dx, 4, z + dz, blockAt(palette, dx + dz + x, leaves), 'landscape');
+        }
+      }
+      fillBox(grid, x - 2, 1, z + 1, x - 2, 1, z + 1, blockAt(understory, x + z, 'minecraft:moss_carpet'), 'landscape');
+      fillBox(grid, x + 2, 1, z - 1, x + 2, 1, z - 1, blockAt(understory, x + z + 1, 'minecraft:fern'), 'landscape');
+      fillBox(grid, x, 3, z + 1, x, 3, z + 1, 'minecraft:vine', 'landscape');
     }
   }
 
@@ -1563,12 +1637,13 @@ export class CSGBuilder {
   addPlantingBeds(grid, center, zStart, zEnd, sitePlan = {}) {
     const soil = sitePlan.materials?.landscape || this.materials.landscape || 'minecraft:grass_block';
     const plant = sitePlan.materials?.plant || this.materials.plant || 'minecraft:oak_leaves[persistent=true]';
+    const palette = blockPalette(sitePlan.materials?.plant_palette, plant, sitePlan.materials?.plant_secondary, this.materials.plant_secondary);
     const z1 = Math.min(zEnd, zStart + 2);
     const z2 = Math.min(zEnd, zStart + 5);
     fillBox(grid, center - 9, 0, z1, center - 5, 0, z2, soil, 'planting_bed');
     fillBox(grid, center + 5, 0, z1, center + 9, 0, z2, soil, 'planting_bed');
-    for (let x = center - 9; x <= center - 5; x += 2) fillBox(grid, x, 1, z2, x, 1, z2, plant, 'planting_bed');
-    for (let x = center + 5; x <= center + 9; x += 2) fillBox(grid, x, 1, z2, x, 1, z2, plant, 'planting_bed');
+    for (let x = center - 9; x <= center - 5; x += 2) fillBox(grid, x, 1, z2, x, 1, z2, blockAt(palette, x, plant), 'planting_bed');
+    for (let x = center + 5; x <= center + 9; x += 2) fillBox(grid, x, 1, z2, x, 1, z2, blockAt(palette, x + 1, plant), 'planting_bed');
   }
 
   addOutdoorSeating(grid, center, zStart, sitePlan = {}) {
@@ -1874,6 +1949,25 @@ function blockAt(blocks, index, fallback) {
   if (!Array.isArray(blocks) || !blocks.length) return fallback;
   const normalized = Math.abs(Number(index) || 0) % blocks.length;
   return blocks[normalized] || fallback;
+}
+
+function blockPalette(...values) {
+  return [...new Set(values.flatMap((value) => Array.isArray(value) ? value : [value]).filter(Boolean).map(String))];
+}
+
+function directlyFacesWindow(grid, x, y, z) {
+  return HORIZONTAL_DIRECTIONS.some(([dx, dz]) => grid.get(keyFor(x + dx, y, z + dz))?.module === 'windows');
+}
+
+function hasNearbyWindow(grid, x, y, z, radius = 2) {
+  const limit = Math.max(0, Number(radius) || 0);
+  for (let dx = -limit; dx <= limit; dx += 1) {
+    for (let dz = -limit; dz <= limit; dz += 1) {
+      if (Math.abs(dx) + Math.abs(dz) > limit) continue;
+      if (grid.get(keyFor(x + dx, y, z + dz))?.module === 'windows') return true;
+    }
+  }
+  return false;
 }
 
 function reliefBlockForStyle(family, materials = {}) {

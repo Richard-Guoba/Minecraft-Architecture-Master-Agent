@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { blockCatalogStats, isKnownMinecraft121Block, materialOptionsForFamily, minecraftBlocksForRole } from '../src/construction/agents/minecraftBlockCatalog.js';
+import { blockCatalogStats, blockUsageAtlasStats, blockUsageProfile, isKnownMinecraft121Block, materialOptionsForFamily, minecraftBlockUsageAtlas, minecraftBlocksForRole, partUsagePolicies } from '../src/construction/agents/minecraftBlockCatalog.js';
 import { MaterialPaletteAgent } from '../src/construction/agents/materialPaletteAgent.js';
 
 test('Minecraft 1.21 block catalog exposes a broad validated block set', () => {
@@ -37,6 +37,9 @@ test('MaterialPaletteAgent publishes large role-based material option pools', ()
   assert.ok(palette.material_options.trim.includes('minecraft:waxed_oxidized_copper_bulb'));
   assert.ok(palette.material_options.redstone.includes('minecraft:crafter'));
   assert.ok(palette.material_options.catalog.includes('minecraft:iron_door'));
+  assert.ok(palette.material_options.creative.includes('minecraft:creeper_head'));
+  assert.equal(palette.block_usage_atlas.coverageBlockCount, palette.block_catalog.blockCount);
+  assert.ok(palette.part_usage_policies.length >= 8);
 });
 
 test('catalog role helpers include broad buildable categories', () => {
@@ -48,4 +51,23 @@ test('catalog role helpers include broad buildable categories', () => {
   assert.ok(!plantBlocks.includes('minecraft:grass'));
   assert.ok(plantBlocks.every((block) => isKnownMinecraft121Block(block)));
   assert.ok(minecraftBlocksForRole('door').includes('minecraft:copper_door'));
+});
+
+test('block usage atlas assigns a practical use to every Minecraft 1.21.1 block', () => {
+  const atlas = minecraftBlockUsageAtlas();
+  const stats = blockUsageAtlasStats();
+
+  assert.equal(atlas.length, blockCatalogStats().blockCount);
+  assert.equal(stats.coverageBlockCount, stats.blockCount);
+  assert.ok(partUsagePolicies().some((policy) => policy.part === 'window_system'));
+
+  const creeperHead = blockUsageProfile('minecraft:creeper_head');
+  assert.ok(creeperHead.parts.includes('special_accent'));
+  assert.match(creeperHead.primary_use, /hardware|identity|trophy|accent|marker/i);
+
+  const endRod = blockUsageProfile('minecraft:end_rod');
+  assert.ok(endRod.roles.includes('lighting'));
+
+  const heavyCore = blockUsageProfile('minecraft:heavy_core');
+  assert.ok(heavyCore.parts.includes('special_accent'));
 });

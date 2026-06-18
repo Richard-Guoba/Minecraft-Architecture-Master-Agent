@@ -17,7 +17,7 @@ export class FacadeAgent {
     const flowerBoxes = Boolean(rules.flower_boxes || /花箱|窗台花|flower box|planter/i.test(prompt)) || ['victorian', 'classical', 'cottage'].includes(family);
     const serviceVents = Boolean(rules.service_vents) || family === 'industrial' || /通风|管线|风管|vent|service/i.test(prompt);
     const addressMarker = Boolean(rules.address_marker) || /门牌|信箱|招牌|标识|address|sign|mailbox/i.test(prompt) || neon;
-    const privacyFins = Boolean(rules.privacy_fins || /百叶|格栅|隐私|privacy|fins/i.test(prompt)) || screen || ['modern', 'industrial', 'cyberpunk'].includes(family);
+    const privacyFins = Boolean(rules.privacy_fins || /百叶|隐私鳍片|privacy|fins/i.test(prompt)) || ['industrial', 'cyberpunk'].includes(family);
     const wallRelief = rules.wall_relief !== false;
     const windowSurrounds = rules.window_surrounds !== false;
     const entryDetail = rules.entry_detail !== false;
@@ -25,6 +25,7 @@ export class FacadeAgent {
     const windowWidth = design.window_width || (wide ? 4 : protectedOpenings ? 1 : 2);
     const windowHeight = design.window_height || (wide ? 3 : 2);
     const windowSpacing = design.window_spacing || (wide ? 5 : protectedOpenings ? 8 : 6);
+    const ornamentBudget = ornamentBudgetForFamily(family, { wide, protectedOpenings, prompt, windowWidth, windowSpacing });
     const exteriorDetailKits = exteriorDetailKitsForFamily(family, materials);
     const exteriorBlockPalette = exteriorBlockPaletteForFamily(family, materials);
 
@@ -53,15 +54,41 @@ export class FacadeAgent {
       exterior_detail_kits: exteriorDetailKits,
       exterior_block_palette: exteriorBlockPalette,
       exterior_detail_requirements: {
-        minimum_detail_types: 3,
-        minimum_blocks_per_detail: 3,
-        preferred_non_full_block_types: 8,
+        strategy: 'quality-over-quantity',
+        minimum_detail_types: 0,
+        minimum_blocks_per_detail: 1,
+        preferred_non_full_block_types: 'style-dependent',
+        avoid_window_overlap: true,
+        min_blank_wall_span_for_relief: ornamentBudget.min_blank_wall_span,
+        skip_relief_when_window_gap_under: ornamentBudget.skip_gap_under,
+        max_detail_blocks_per_window: ornamentBudget.max_detail_blocks_per_window,
         core_detail_types: CORE_EXTERIOR_DETAIL_KIT_IDS.slice(0, 3)
+      },
+      composition_strategy: {
+        ornament_budget: ornamentBudget,
+        blank_wall_policy: {
+          place_relief_only_on_blank_bays: true,
+          skip_when_clear_gap_below: ornamentBudget.skip_gap_under,
+          prefer_edges_belts_and_corners: true
+        },
+        window_surround_policy: {
+          pattern: design.window_surround_pattern || rules.window_surround_pattern || surroundPatternForFamily(family, wide, protectedOpenings),
+          keep_glass_plane_clear: true,
+          sill_and_lintel_first: true,
+          side_jambs_need_clear_gap: 4,
+          shutters_only_when_style_explicit: true
+        },
+        material_use_policy: {
+          allow_full_catalog_for_prompted_accents: true,
+          unusual_blocks_are_focal_accents: true,
+          utility_blocks_cluster_in_service_zones: true
+        },
+        part_usage_policies: materialPalette.part_usage_policies || []
       },
       color_bands: colorBandsForFamily(family, materialPalette),
       facade_depth_layers: facadeDepthLayers({ awning, flowerBoxes, serviceVents, privacyFins, wide, wallRelief, windowSurrounds, entryDetail }),
-      relief_density: design.relief_density || 'medium',
-      window_surround_pattern: design.window_surround_pattern || rules.window_surround_pattern || 'standard',
+      relief_density: design.relief_density || ornamentBudget.relief_density,
+      window_surround_pattern: design.window_surround_pattern || rules.window_surround_pattern || surroundPatternForFamily(family, wide, protectedOpenings),
       entry_detail_style: design.entry_detail_style || rules.entry_detail_variant || 'framed-entry',
       creative_signature: architecture.design_directives?.signature || buildSpec.creative_design_signature || 'none',
       room_alignment: {
@@ -87,7 +114,7 @@ export class FacadeAgent {
         render_service_vents: serviceVents,
         render_address_marker: addressMarker,
         render_privacy_fins: privacyFins,
-        render_wall_relief: wallRelief,
+        render_wall_relief: wallRelief && ornamentBudget.relief_density !== 'none',
         render_window_surrounds: windowSurrounds,
         render_entry_detail: entryDetail
       }
@@ -135,6 +162,39 @@ function rhythmForFamily(family, wide, protectedOpenings) {
   if (family === 'japanese' || family === 'chinese-courtyard') return 'screen-grid';
   if (family === 'industrial') return 'warehouse-grid';
   return 'balanced';
+}
+
+function ornamentBudgetForFamily(family, { wide, protectedOpenings, prompt, windowWidth, windowSpacing }) {
+  const explicitOrnament = /浮雕|花纹|雕花|柱廊|外饰|装饰|ornament|relief|pilaster/i.test(prompt);
+  const clearGap = Math.max(0, Number(windowSpacing || 0) - Number(windowWidth || 0));
+  const denseFamilies = ['classical', 'gothic', 'victorian', 'chinese-courtyard'];
+  const naturalFamilies = ['treehouse', 'tropical', 'rustic', 'alpine', 'japanese'];
+  const serviceFamilies = ['industrial', 'cyberpunk'];
+  const low = wide || family === 'modern' || clearGap < 4;
+  const reliefDensity = explicitOrnament || denseFamilies.includes(family)
+    ? 'medium'
+    : serviceFamilies.includes(family)
+      ? 'low'
+      : naturalFamilies.includes(family)
+        ? 'organic-low'
+        : low ? 'low' : 'medium';
+  return {
+    relief_density: protectedOpenings ? 'low' : reliefDensity,
+    min_blank_wall_span: low ? 5 : 4,
+    skip_gap_under: 4,
+    max_detail_blocks_per_window: low ? 2 : denseFamilies.includes(family) ? 5 : 3,
+    clear_gap: clearGap,
+    focus: explicitOrnament ? 'prompted-ornament' : low ? 'edges-and-entry' : 'blank-bay-layering'
+  };
+}
+
+function surroundPatternForFamily(family, wide, protectedOpenings) {
+  if (protectedOpenings) return 'protected-slit-frame';
+  if (wide || family === 'modern' || family === 'futuristic') return 'minimal-sill-lintel';
+  if (family === 'gothic') return 'vertical-tracery-lite';
+  if (family === 'japanese' || family === 'chinese-courtyard') return 'screen-edge';
+  if (family === 'treehouse' || family === 'tropical') return 'organic-wood-sill';
+  return 'sill-lintel-with-optional-jambs';
 }
 
 function colorBandsForFamily(family, materialPalette = {}) {

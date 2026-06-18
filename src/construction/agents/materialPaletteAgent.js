@@ -1,4 +1,4 @@
-import { blockCatalogStats, isKnownMinecraft121Block, materialOptionsForFamily } from './minecraftBlockCatalog.js';
+import { blockCatalogStats, blockUsageAtlasStats, isKnownMinecraft121Block, materialOptionsForFamily, partUsagePolicies } from './minecraftBlockCatalog.js';
 
 const BLOCK_PATTERN = /^minecraft:[a-z0-9_]+(?:\[[a-z0-9_=,]+\])?$/;
 
@@ -45,8 +45,10 @@ const FAMILY_EXTRAS = {
     accent: 'minecraft:stripped_jungle_log',
     railing: 'minecraft:jungle_fence',
     landscape: 'minecraft:moss_block',
-    plant: 'minecraft:oak_leaves[persistent=true]',
-    rope: 'minecraft:chain'
+    plant: 'minecraft:jungle_leaves[persistent=true]',
+    plant_secondary: 'minecraft:azalea_leaves[persistent=true]',
+    rope: 'minecraft:chain',
+    roof_detail: 'minecraft:moss_carpet'
   },
   'greenhouse-house': {
     accent: 'minecraft:oxidized_copper',
@@ -130,21 +132,24 @@ export class MaterialPaletteAgent {
       ...promptDrivenExtras(prompt)
     };
     const materialOptions = materialOptionsForFamily(family, prompt);
+    const rolePalettes = rolePalettesForFamily(family, prompt, materialOptions, extras);
     const repaired = repairInvalidMaterials(normalizeMaterials({
       ...base,
+      roof: extras.roof || base.roof,
       accent: extras.accent || base.trim || base.wall,
       secondary_wall: extras.secondary_wall || base.interior_wall || base.wall,
       railing: extras.railing || base.trim || 'minecraft:iron_bars',
       chimney: extras.chimney || base.foundation || 'minecraft:bricks',
       landscape: extras.landscape || base.path || 'minecraft:grass_block',
       plant: extras.plant || 'minecraft:oak_leaves[persistent=true]',
+      plant_secondary: extras.plant_secondary || rolePalettes.vegetation[1] || extras.plant || 'minecraft:flowering_azalea_leaves[persistent=true]',
       water: extras.water || 'minecraft:water',
       path_light: extras.path_light || base.lamp || 'minecraft:glowstone',
       facade_light: extras.facade_light || extras.neon || base.lamp || 'minecraft:glowstone',
       neon: extras.neon || extras.facade_light || base.lamp || 'minecraft:sea_lantern',
       retaining: extras.retaining || base.foundation || 'minecraft:stone_bricks',
       greenhouse_frame: extras.greenhouse_frame || base.trim || 'minecraft:iron_bars',
-      roof_detail: base.roof_detail || extras.accent || base.trim || base.roof,
+      roof_detail: extras.roof_detail || base.roof_detail || extras.accent || base.trim || base.roof,
       furniture: base.furniture || furnitureForFamily(family),
       awning: extras.awning || base.awning || awningForFamily(family),
       planter: extras.planter || base.planter || extras.plant || 'minecraft:potted_azalea_bush',
@@ -170,6 +175,9 @@ export class MaterialPaletteAgent {
       materials,
       material_options: materialOptions,
       block_catalog: blockCatalogStats(),
+      block_usage_atlas: blockUsageAtlasStats(),
+      part_usage_policies: partUsagePolicies(),
+      role_palettes: rolePalettes,
       roles: Object.keys(materials).sort(),
       option_roles: Object.keys(materialOptions).sort(),
       controllableBlockCount: unique(Object.values(materialOptions).flat()).length,
@@ -198,6 +206,86 @@ function promptDrivenExtras(prompt) {
   if (/火坑|firepit|篝火/i.test(prompt)) extras.firepit = 'minecraft:campfire[lit=false]';
   if (/无障碍|轮椅|accessible|wheelchair/i.test(prompt)) extras.accessibility_marker = 'minecraft:light_blue_carpet';
   return extras;
+}
+
+function rolePalettesForFamily(family, prompt, materialOptions = {}, extras = {}) {
+  const text = String(prompt || '');
+  const naturalVegetation = [
+    extras.plant,
+    extras.plant_secondary,
+    'minecraft:jungle_leaves[persistent=true]',
+    'minecraft:mangrove_leaves[persistent=true]',
+    'minecraft:azalea_leaves[persistent=true]',
+    'minecraft:flowering_azalea_leaves[persistent=true]',
+    'minecraft:vine',
+    'minecraft:moss_carpet',
+    'minecraft:bamboo',
+    'minecraft:potted_azalea_bush'
+  ];
+  const alpineVegetation = [
+    extras.plant,
+    'minecraft:spruce_leaves[persistent=true]',
+    'minecraft:snow',
+    'minecraft:moss_carpet',
+    'minecraft:fern',
+    'minecraft:potted_spruce_sapling'
+  ];
+  const formalVegetation = [
+    extras.plant,
+    'minecraft:oak_leaves[persistent=true]',
+    'minecraft:flowering_azalea_leaves[persistent=true]',
+    'minecraft:potted_azalea_bush',
+    'minecraft:rose_bush',
+    'minecraft:peony'
+  ];
+  const desertVegetation = [
+    extras.plant,
+    'minecraft:potted_cactus',
+    'minecraft:dead_bush',
+    'minecraft:cactus',
+    'minecraft:azalea',
+    'minecraft:flower_pot'
+  ];
+
+  const vegetation = family === 'treehouse' || family === 'tropical'
+    ? naturalVegetation
+    : family === 'alpine' || family === 'nordic'
+      ? alpineVegetation
+      : family === 'desert' || /沙漠|desert/i.test(text)
+        ? desertVegetation
+        : formalVegetation;
+
+  return {
+    vegetation: validPalette(vegetation),
+    understory: validPalette([
+      'minecraft:moss_carpet',
+      'minecraft:fern',
+      'minecraft:grass',
+      'minecraft:short_grass',
+      'minecraft:pink_petals',
+      'minecraft:flower_pot',
+      'minecraft:potted_fern'
+    ]),
+    window_sill: validPalette([
+      materialOptions.slab?.[0],
+      materialOptions.stairs?.[0],
+      extras.accent,
+      'minecraft:smooth_quartz_slab',
+      'minecraft:stone_brick_slab',
+      'minecraft:jungle_slab'
+    ]),
+    facade_relief: validPalette([
+      extras.roof_detail,
+      extras.accent,
+      extras.secondary_wall,
+      materialOptions.exterior_detail?.[0],
+      materialOptions.exterior_detail?.[1],
+      materialOptions.artifact?.[0]
+    ]),
+    artifact_accents: validPalette((materialOptions.artifact || []).slice(0, 24)),
+    technical_details: validPalette((materialOptions.technical_detail || []).slice(0, 24)),
+    creative_catalog_sample: validPalette((materialOptions.creative || []).filter((block) => /head|skull|rod|grate|bulb|vault|heavy_core|decorated_pot|banner|chain|candle/.test(block)).slice(0, 32))
+  };
 }
 
 function normalizeMaterials(materials) {
@@ -276,6 +364,11 @@ function contrastForFamily(family) {
   if (['cyberpunk', 'gothic', 'subterranean'].includes(family)) return 'high';
   if (['japanese', 'treehouse', 'alpine'].includes(family)) return 'natural';
   return 'balanced';
+}
+
+function validPalette(blocks) {
+  return unique(blocks)
+    .filter((block) => validMinecraftBlock(block));
 }
 
 function unique(values) {

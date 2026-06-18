@@ -1,3 +1,5 @@
+import { blockUsageProfile } from './minecraftBlockCatalog.js';
+
 export const CORE_EXTERIOR_DETAIL_KIT_IDS = [
   'window_surround',
   'entry_portal',
@@ -161,18 +163,18 @@ const COMMON_KIT_BLOCKS = {
 
 const FAMILY_KIT_OVERRIDES = {
   modern: {
-    window_surround: ['minecraft:white_stained_glass_pane', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', 'minecraft:end_rod'],
-    wall_relief: ['minecraft:light_gray_carpet', 'minecraft:smooth_quartz_slab[type=bottom]', 'minecraft:iron_bars'],
-    shade_awnings: ['minecraft:white_carpet', 'minecraft:iron_bars', 'minecraft:sea_lantern'],
+    window_surround: ['minecraft:smooth_quartz_slab[type=bottom]', 'minecraft:smooth_quartz_stairs[facing=north,half=bottom]', 'minecraft:light_gray_concrete', 'minecraft:white_stained_glass_pane', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', 'minecraft:end_rod'],
+    wall_relief: ['minecraft:smooth_quartz_slab[type=bottom]', 'minecraft:light_gray_carpet', 'minecraft:light_gray_concrete'],
+    shade_awnings: ['minecraft:white_carpet', 'minecraft:smooth_quartz_slab[type=bottom]', 'minecraft:sea_lantern'],
     privacy_screen: ['minecraft:iron_bars', 'minecraft:white_stained_glass_pane', 'minecraft:end_rod']
   },
   futuristic: {
-    window_surround: ['minecraft:cyan_stained_glass_pane', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', 'minecraft:end_rod'],
+    window_surround: ['minecraft:smooth_quartz_slab[type=bottom]', 'minecraft:smooth_quartz_stairs[facing=north,half=bottom]', 'minecraft:cyan_stained_glass_pane', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', 'minecraft:end_rod'],
     wall_relief: ['minecraft:smooth_quartz_slab[type=bottom]', 'minecraft:cyan_carpet', 'minecraft:sea_lantern'],
     privacy_screen: ['minecraft:iron_bars', 'minecraft:cyan_stained_glass_pane', 'minecraft:end_rod']
   },
   cyberpunk: {
-    window_surround: ['minecraft:cyan_stained_glass_pane', 'minecraft:magenta_carpet', 'minecraft:end_rod', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]'],
+    window_surround: ['minecraft:polished_blackstone_slab[type=bottom]', 'minecraft:polished_blackstone_stairs[facing=north,half=bottom]', 'minecraft:cyan_stained_glass_pane', 'minecraft:end_rod', 'minecraft:magenta_carpet', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]'],
     wall_relief: ['minecraft:gray_carpet', 'minecraft:cyan_carpet', 'minecraft:sea_lantern', 'minecraft:iron_bars'],
     shade_awnings: ['minecraft:cyan_carpet', 'minecraft:magenta_carpet', 'minecraft:sea_lantern', 'minecraft:chain'],
     identity_marker: ['minecraft:sea_lantern', 'minecraft:redstone_lamp', 'minecraft:iron_bars', 'minecraft:chain'],
@@ -250,7 +252,7 @@ const FAMILY_KIT_OVERRIDES = {
     wall_relief: ['minecraft:quartz_slab[type=bottom]', 'minecraft:quartz_stairs[facing=north,half=bottom]', 'minecraft:stone_brick_wall', 'minecraft:stone_button[face=wall,facing=south]']
   },
   treehouse: {
-    window_surround: ['minecraft:jungle_trapdoor[facing=south,half=top,open=false]', 'minecraft:jungle_fence', 'minecraft:vine', 'minecraft:lantern', 'minecraft:chain'],
+    window_surround: ['minecraft:jungle_slab[type=bottom]', 'minecraft:jungle_stairs[facing=north,half=bottom]', 'minecraft:stripped_jungle_log', 'minecraft:jungle_trapdoor[facing=south,half=top,open=false]', 'minecraft:vine', 'minecraft:lantern'],
     entry_portal: ['minecraft:jungle_fence', 'minecraft:jungle_trapdoor[facing=south,half=top,open=false]', 'minecraft:lantern', 'minecraft:chain'],
     wall_relief: ['minecraft:jungle_trapdoor[facing=south,half=top,open=false]', 'minecraft:jungle_fence', 'minecraft:vine', 'minecraft:moss_carpet'],
     plant_boxes: ['minecraft:jungle_trapdoor[facing=south,half=top,open=false]', 'minecraft:oak_leaves[persistent=true]', 'minecraft:moss_carpet', 'minecraft:flower_pot'],
@@ -319,9 +321,53 @@ function buildKit(id, family, materials) {
     label: metadata.label,
     module: metadata.module,
     motifs: [...metadata.motifs],
+    placement_rules: placementRulesForKit(id, family),
     block_count: unique(blocks.map(blockBase)).length,
     non_full_block_count: unique(blocks.filter(isNonFullExteriorBlock).map(blockBase)).length,
+    block_uses: blocks.map((block) => {
+      const profile = blockUsageProfile(block);
+      return {
+        block,
+        primary_use: profile.primary_use,
+        roles: profile.roles,
+        parts: profile.parts
+      };
+    }),
     blocks
+  };
+}
+
+function placementRulesForKit(id, family) {
+  const natural = ['treehouse', 'tropical', 'rustic', 'alpine'].includes(family);
+  const sparse = ['modern', 'futuristic'].includes(family);
+  if (id === 'window_surround') {
+    return {
+      avoid_window_overlap: true,
+      max_blocks_per_opening: sparse ? 2 : natural ? 3 : 4,
+      prefer: 'sill-and-lintel-first',
+      side_jambs_need_clear_gap: 4
+    };
+  }
+  if (id === 'wall_relief') {
+    return {
+      avoid_window_overlap: true,
+      min_clear_blank_span: sparse ? 5 : 4,
+      prefer: 'corners-belts-and-blank-bays',
+      skip_between_close_windows: true
+    };
+  }
+  if (id === 'service_utilities') {
+    return {
+      avoid_window_overlap: true,
+      min_clear_blank_span: 4,
+      prefer: 'clustered-service-bay',
+      use_only_when_prompted_or_style_requires: true
+    };
+  }
+  return {
+    avoid_window_overlap: true,
+    min_clear_blank_span: 3,
+    prefer: 'single-purpose-cluster'
   };
 }
 

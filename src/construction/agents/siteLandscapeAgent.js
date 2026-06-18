@@ -12,6 +12,7 @@ export class SiteLandscapeAgent {
     const pool = Boolean(rules.pool || /泳池|游泳池|pool/i.test(prompt));
     const mailbox = Boolean(rules.mailbox || /信箱|门牌|mailbox|address/i.test(prompt));
     const accessible = Boolean(rules.accessible_route || /无障碍|坡道|轮椅|老人友好|accessible|wheelchair|ramp/i.test(prompt));
+    const rolePalettes = materialPalette.role_palettes || {};
 
     return {
       source: 'local-site-landscape-agent',
@@ -40,6 +41,9 @@ export class SiteLandscapeAgent {
         path: architecture.materials?.path || 'minecraft:gravel',
         landscape: materialPalette.materials?.landscape || 'minecraft:grass_block',
         plant: materialPalette.materials?.plant || 'minecraft:oak_leaves[persistent=true]',
+        plant_secondary: materialPalette.materials?.plant_secondary || rolePalettes.vegetation?.[1],
+        plant_palette: rolePalettes.vegetation || [],
+        understory_palette: rolePalettes.understory || [],
         water: materialPalette.materials?.water || 'minecraft:water',
         light: materialPalette.materials?.path_light || architecture.materials?.lamp || 'minecraft:glowstone',
         fence: materialPalette.materials?.railing || 'minecraft:oak_fence',

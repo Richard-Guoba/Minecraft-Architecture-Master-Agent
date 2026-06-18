@@ -12,6 +12,7 @@ export class RoofAgent {
     const rainHarvest = Boolean(rules.rain_harvest || /雨水|雨链|蓄水|rainwater|rain chain/i.test(prompt));
     const dormers = Number(design.dormers ?? rules.dormers ?? (/老虎窗|屋顶窗|dormer/i.test(prompt) ? 2 : 0));
     const roofAccess = Boolean(rules.roof_access || roofGarden || /屋顶露台|上人屋顶|roof terrace|roof access/i.test(prompt));
+    const rolePalettes = materialPalette.role_palettes || {};
 
     return {
       source: 'local-roof-agent',
@@ -35,6 +36,8 @@ export class RoofAgent {
         roof: architecture.materials?.roof || 'minecraft:dark_oak_planks',
         trim: materialPalette.materials?.roof_detail || architecture.materials?.trim || 'minecraft:smooth_quartz',
         garden: materialPalette.materials?.plant || 'minecraft:oak_leaves[persistent=true]',
+        garden_palette: rolePalettes.vegetation || [],
+        understory_palette: rolePalettes.understory || [],
         light: materialPalette.materials?.facade_light || 'minecraft:glowstone',
         chimney: materialPalette.materials?.chimney || architecture.materials?.foundation || 'minecraft:bricks',
         solar: materialPalette.materials?.solar_panel || 'minecraft:daylight_detector',
