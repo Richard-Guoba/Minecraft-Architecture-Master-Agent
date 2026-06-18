@@ -38,12 +38,16 @@ test('DecoratorAgent adds Gothic ceremonial, armory, and tower furnishings', () 
 });
 
 test('DecoratorAgent furnishes modern sunrooms and garages with functional props', () => {
-  const { shell, decorator } = buildDecorated('建一个现代两层房子，宽31深17，大玻璃窗，阳光房，车库，开放厨房，平屋顶');
+  const { shell, layout, decorator } = buildDecorated('建一个现代两层房子，宽31深17，大玻璃窗，阳光房，车库，开放厨房，平屋顶');
   const modules = moduleCounts(shell.grid);
+  const roomById = new Map(layout.rooms.map((room) => [room.id, room]));
+  const fullFloorAccents = decorator.placements.filter((item) => item.module === 'decor_floor' && isFullFloorAccent(item.block));
 
   assert.equal(decorator.style_family, 'modern');
   assert.ok(modules.decor_furniture > 0);
   assert.ok(modules.decor_plant > 0);
+  assert.ok(fullFloorAccents.length > 0);
+  assert.ok(fullFloorAccents.every((item) => item.at.y === roomById.get(item.room_id).min_y - 1));
   assert.ok(decorator.placements.some((item) => item.type === 'sunroom' && item.block === 'minecraft:composter'));
   assert.ok(decorator.placements.some((item) => item.type === 'sunroom' && item.block === 'minecraft:oak_leaves[persistent=true]'));
   assert.ok(decorator.placements.some((item) => item.room_id === 'garage' && item.block === 'minecraft:smithing_table'));
@@ -235,4 +239,8 @@ function moduleCounts(grid) {
   const counts = {};
   for (const item of grid.values()) counts[item.module] = (counts[item.module] || 0) + 1;
   return counts;
+}
+
+function isFullFloorAccent(block) {
+  return !/_carpet$|_pressure_plate$|_slab$|_trapdoor$/.test(String(block || '').split('[')[0]);
 }

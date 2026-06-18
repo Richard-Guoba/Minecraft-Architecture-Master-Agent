@@ -3,17 +3,19 @@ import { interiorSpecialistCapabilities, specialistDefinitionsForRoom } from './
 export class InteriorDetailAgent {
   run(rooms = [], architecture = {}, buildSpec = {}, topology = {}, materialPalette = {}, stylePreset = {}) {
     const family = String(architecture.style_family || buildSpec.style_family || 'general');
-    const roomDetails = (rooms || []).map((room) => detailForRoom(room, family, materialPalette, architecture));
+    const design = architecture.design_directives?.interior || {};
+    const roomDetails = (rooms || []).map((room) => detailForRoom(room, family, materialPalette, architecture, design));
     const roomSpecialists = interiorSpecialistCapabilities();
     return {
       source: 'local-interior-detail-agent',
       style_family: family,
       preset: stylePreset.id || 'none',
+      creative_signature: architecture.design_directives?.signature || buildSpec.creative_design_signature || 'none',
       room_count: roomDetails.length,
       room_details: roomDetails,
       room_specialists: roomSpecialists,
       lighting_strategy: lightingForFamily(family),
-      comfort_strategy: comfortStrategy(rooms, family, buildSpec),
+      comfort_strategy: comfortStrategy(rooms, family, buildSpec, design),
       storage_strategy: storageStrategy(rooms, family),
       safety_strategy: safetyStrategy(rooms, topology),
       circulation_detail: {
@@ -37,7 +39,7 @@ export class InteriorDetailAgent {
   }
 }
 
-function detailForRoom(room, family, materialPalette = {}, architecture = {}) {
+function detailForRoom(room, family, materialPalette = {}, architecture = {}, design = {}) {
   const materials = materialPalette.materials || architecture.materials || {};
   const specialists = specialistDefinitionsForRoom(room, { styleFamily: family, architecture });
   const blockCounts = specialists.map((specialist) => specialist.capability_blocks.length);
@@ -49,8 +51,11 @@ function detailForRoom(room, family, materialPalette = {}, architecture = {}) {
     accent_block: accentForRoom(room, family, materials),
     task_light: materials.path_light || materials.lamp || 'minecraft:glowstone',
     storage_block: storageForFamily(family),
-    floor_accent: floorAccentForFamily(family),
-    furniture_density: densityForRoom(room),
+    floor_accent: design.floor_accent || floorAccentForFamily(family),
+    furniture_density: design.decor_density || densityForRoom(room),
+    display_strategy: design.display_strategy || 'wall-display',
+    color_story: design.color_story || 'balanced',
+    edge_bias: design.edge_bias || 'edge-anchored',
     specialist_agent: specialists[0]?.source || 'general-room-furnishing',
     specialist_agents: specialists.map((specialist) => specialist.source),
     specialist_block_count: blockCounts.length ? Math.max(...blockCounts) : 0,
@@ -117,14 +122,15 @@ function lightingForFamily(family) {
   return 'room-center-and-task-lighting';
 }
 
-function comfortStrategy(rooms, family, buildSpec = {}) {
+function comfortStrategy(rooms, family, buildSpec = {}, design = {}) {
   const publicRooms = rooms.filter((room) => ['living', 'great_hall', 'dining', 'sunroom'].includes(room.type)).length;
   const privateRooms = rooms.filter((room) => ['bedroom', 'master_bedroom', 'study', 'tatami'].includes(room.type)).length;
   return {
     acoustic_zoning: privateRooms > 0 ? 'quiet-private-rooms-away-from-entry' : 'open-plan',
     thermal_tone: ['alpine', 'rustic', 'subterranean'].includes(family) ? 'warm-lamps-and-soft-rugs' : 'balanced-light-and-planting',
     daylight_balance: publicRooms > 0 ? 'public-rooms-prioritize-daylight' : 'distributed-daylight',
-    density_target: buildSpec.scale === 'large' ? 'rich-but-spaced' : 'compact-layered'
+    density_target: design.decor_density || (buildSpec.scale === 'large' ? 'rich-but-spaced' : 'compact-layered'),
+    color_story: design.color_story || 'style-balanced'
   };
 }
 

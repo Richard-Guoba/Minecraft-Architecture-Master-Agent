@@ -15,6 +15,7 @@ test('AStarPathfinder aligns main door, open-plan routes, attached volumes, and 
   assert.equal(paths.mainDoor.targetRoom, 'entry');
   assert.ok(paths.mainDoor.approachLength >= 3);
   assertEntryApproach(shell.grid, paths.mainDoor);
+  assertDoorLintel(shell.grid, paths.mainDoor);
   assert.equal(paths.pathfinder.stairCoreRoom, 'stairs');
   assert.equal(paths.pathfinder.failedEdgeCount, 0);
   assert.ok(paths.pathfinder.attachedDoorCount >= 2);
@@ -90,6 +91,24 @@ function assertEntryApproach(grid, mainDoor) {
         .some((z) => grid.get(keyFor(x, 0, z))?.module === 'entry_path');
       assert.ok(hasPath, `missing east entry path at x=${x}`);
     }
+  }
+}
+
+function assertDoorLintel(grid, mainDoor) {
+  if (mainDoor.height <= 2) return;
+  const y = 3;
+  if (['north', 'south'].includes(mainDoor.side)) {
+    for (let x = mainDoor.x; x < mainDoor.x + mainDoor.width; x += 1) {
+      const cell = grid.get(keyFor(x, y, mainDoor.z));
+      assert.ok(cell, `missing lintel above door at ${x},${y},${mainDoor.z}`);
+      assert.notEqual(cell.block, 'minecraft:air');
+    }
+    return;
+  }
+  for (let z = mainDoor.z; z < mainDoor.z + mainDoor.width; z += 1) {
+    const cell = grid.get(keyFor(mainDoor.x, y, z));
+    assert.ok(cell, `missing lintel above door at ${mainDoor.x},${y},${z}`);
+    assert.notEqual(cell.block, 'minecraft:air');
   }
 }
 

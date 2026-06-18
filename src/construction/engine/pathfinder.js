@@ -62,6 +62,15 @@ export class AStarPathfinder {
         grid.set(keyFor(x, 1, boundaryZ), cell(doorState(this.materials.door, side, 'lower', hinge), 'door'));
         grid.set(keyFor(x, 2, boundaryZ), cell(doorState(this.materials.door, side, 'upper', hinge), 'door'));
       }
+      addDoorLintel(grid, this.materials, {
+        side,
+        start: startX,
+        end: startX + width - 1,
+        boundary: boundaryZ,
+        insideStep,
+        thickness,
+        height
+      });
       const outsideZ = boundaryZ + (side === 'south' ? 1 : -1);
       const approach = fillExteriorApproach(grid, this.materials, side, startX - 1, startX + width, outsideZ, approachLength);
       clearMainDoorClearance(grid, {
@@ -98,6 +107,15 @@ export class AStarPathfinder {
       grid.set(keyFor(boundaryX, 1, z), cell(doorState(this.materials.door, side, 'lower', hinge), 'door'));
       grid.set(keyFor(boundaryX, 2, z), cell(doorState(this.materials.door, side, 'upper', hinge), 'door'));
     }
+    addDoorLintel(grid, this.materials, {
+      side,
+      start: startZ,
+      end: startZ + width - 1,
+      boundary: boundaryX,
+      insideStep,
+      thickness,
+      height
+    });
     const outsideX = boundaryX + (side === 'east' ? 1 : -1);
     const approach = fillExteriorApproach(grid, this.materials, side, startZ - 1, startZ + width, outsideX, approachLength);
     clearMainDoorClearance(grid, {
@@ -502,6 +520,20 @@ function fillExteriorApproach(grid, materials, side, spanStart, spanEnd, outside
   }
   fillBox(grid, outsideCoordinate - steps + 1, 0, spanStart, outsideCoordinate, 0, spanEnd, pathBlock, 'entry_path');
   return { axis: 'x', from: { x: outsideCoordinate - steps + 1, z: spanStart }, to: { x: outsideCoordinate, z: spanEnd }, length: steps };
+}
+
+function addDoorLintel(grid, materials, { side, start, end, boundary, insideStep, thickness, height }) {
+  if (height <= 2) return;
+  const block = materials.trim || materials.wall || 'minecraft:stone_bricks';
+  for (let y = 3; y <= height; y += 1) {
+    for (let depth = 0; depth < thickness; depth += 1) {
+      const wallCoord = boundary + insideStep * depth;
+      for (let span = start; span <= end; span += 1) {
+        if (['south', 'north'].includes(side)) grid.set(keyFor(span, y, wallCoord), cell(block, 'entry_detail'));
+        else grid.set(keyFor(wallCoord, y, span), cell(block, 'entry_detail'));
+      }
+    }
+  }
 }
 
 function clearMainDoorClearance(grid, { side, spanStart, spanEnd, boundary, height }) {

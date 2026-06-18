@@ -3,7 +3,7 @@ export const COMPREHENSIVE_EVALUATION_PROMPTS = [
     id: 'cmp-modern-glass-family-villa',
     seed: 4101,
     focus: ['modern', 'family', 'glass', 'vibrant-interior'],
-    prompt: '建一个现代两层家庭别墅，宽31深21，大玻璃窗，入口门厅，开放厨房，客厅，餐厅，三间卧室，书房，阳光房和彩色内饰，要有地毯、彩烛、盆栽、展示柜和清晰外部入口路径。'
+    prompt: '建一个现代两层家庭别墅，宽31深21，大玻璃窗，入口门厅，开放厨房，客厅，餐厅，三间卧室，书房，阳光房和彩色内饰，要有地毯、彩烛、盆栽、展示柜和清晰空间层次。'
   },
   {
     id: 'cmp-japanese-courtyard-tea-house',
@@ -33,7 +33,7 @@ export const COMPREHENSIVE_EVALUATION_PROMPTS = [
     id: 'cmp-coastal-stilt-retreat',
     seed: 4106,
     focus: ['coastal', 'stilt', 'deck', 'wind'],
-    prompt: '建一个海滨架空度假住宅，宽33深21，抗风，抬高防潮，大露台，大玻璃客厅，厨房，餐厅，主卧，客房和书房，要求蓝白明亮内饰、户外座椅、信箱、无障碍坡道和清晰入户路径。'
+    prompt: '建一个海滨架空度假住宅，宽33深21，抗风，抬高防潮，大露台，大玻璃客厅，厨房，餐厅，主卧，客房和书房，要求蓝白明亮内饰、户外座椅、信箱、无障碍坡道和遮雨平台。'
   },
   {
     id: 'cmp-subterranean-lightwell-home',
@@ -147,7 +147,7 @@ export const COMPREHENSIVE_EVALUATION_PROMPTS = [
     id: 'cmp-rainforest-canopy-home',
     seed: 4125,
     focus: ['tropical', 'rainforest', 'canopy', 'plants'],
-    prompt: '建一个雨林树冠住宅，宽27深23，高脚结构，宽露台，藤蔓绿植，客厅，厨房，卧室，书房，卫生间和储藏间，要求通风遮阳、彩色灯笼、绿色地毯、盆栽和安全入口路径。'
+    prompt: '建一个雨林树冠住宅，宽27深23，高脚结构，宽露台，藤蔓绿植，客厅，厨房，卧室，书房，卫生间和储藏间，要求通风遮阳、彩色灯笼、绿色地毯、盆栽和安全栏杆。'
   },
   {
     id: 'cmp-mangrove-water-house',
@@ -201,7 +201,7 @@ export const COMPREHENSIVE_EVALUATION_PROMPTS = [
     id: 'cmp-elder-friendly-garden-home',
     seed: 4134,
     focus: ['accessible', 'elderly', 'garden', 'safe-flow'],
-    prompt: '建一个老人友好型花园住宅，宽29深21，一层，入口坡道，宽走廊，客厅，厨房，餐厅，卧室，护理房，卫生间和小菜园，要求路径清楚、灯光充足、内饰温暖缤纷。'
+    prompt: '建一个老人友好型花园住宅，宽29深21，一层，入口坡道，宽走廊，客厅，厨房，餐厅，卧室，护理房，卫生间和小菜园，要求室内动线清楚、灯光充足、内饰温暖缤纷。'
   },
   {
     id: 'cmp-large-multigeneration-house',
@@ -237,7 +237,7 @@ export const COMPREHENSIVE_EVALUATION_PROMPTS = [
     id: 'cmp-hurricane-coastal-house',
     seed: 4140,
     focus: ['coastal', 'wind', 'flood', 'resilience'],
-    prompt: '建一个抗台风海边住宅，宽31深21，抬高防洪，抗风拉结，雨水收集，大玻璃但有遮阳百叶，客厅，厨房，卧室，书房和卫生间，场地有入口路径、种植床和户外座椅。'
+    prompt: '建一个抗台风海边住宅，宽31深21，抬高防洪，抗风拉结，雨水收集，大玻璃但有遮阳百叶，客厅，厨房，卧室，书房和卫生间，场地有种植床、户外座椅和防风细节。'
   },
   {
     id: 'cmp-solar-rainwater-eco-home',
@@ -309,7 +309,7 @@ export const COMPREHENSIVE_EVALUATION_PROMPTS = [
     id: 'cmp-harbor-fisher-house',
     seed: 4152,
     focus: ['coastal', 'harbor', 'storage', 'deck'],
-    prompt: '建一个港口渔夫住宅，宽27深21，木码头，大露台，储物间，厨房，餐厅，客厅，卧室，书房和卫生间，要求外部路径清楚，内饰蓝白缤纷，有鱼具展示、盆栽、地毯和彩烛。'
+    prompt: '建一个港口渔夫住宅，宽27深21，木码头，大露台，储物间，厨房，餐厅，客厅，卧室，书房和卫生间，要求码头过渡清楚，内饰蓝白缤纷，有鱼具展示、盆栽、地毯和彩烛。'
   },
   {
     id: 'cmp-desert-caravanserai-home',
@@ -393,7 +393,7 @@ export const COMPREHENSIVE_EVALUATION_PROMPTS = [
     id: 'cmp-terraced-hillside-home',
     seed: 4166,
     focus: ['hillside', 'terrace', 'deck', 'structure'],
-    prompt: '建一个山坡台地住宅，宽31深23，错落露台，支撑柱，观景平台，客厅，厨房，餐厅，卧室，书房和卫生间，场地有外部路径、种植床和户外座椅，内饰缤纷自然。'
+    prompt: '建一个山坡台地住宅，宽31深23，错落露台，支撑柱，观景平台，客厅，厨房，餐厅，卧室，书房和卫生间，场地有种植床、户外座椅和台地过渡，内饰缤纷自然。'
   },
   {
     id: 'cmp-red-roof-mediterranean-townhouse',
@@ -441,7 +441,7 @@ export const COMPREHENSIVE_EVALUATION_PROMPTS = [
     id: 'cmp-ocean-cliff-glass-house',
     seed: 4174,
     focus: ['coastal', 'cliffside', 'glass', 'deck'],
-    prompt: '建一个海崖玻璃住宅，宽31深21，悬挑观景平台，抗风结构，大玻璃客厅，厨房，餐厅，卧室，书房和卫生间，场地有路径和户外座椅，内饰蓝白缤纷，有盆栽和彩烛。'
+    prompt: '建一个海崖玻璃住宅，宽31深21，悬挑观景平台，抗风结构，大玻璃客厅，厨房，餐厅，卧室，书房和卫生间，场地有户外座椅和安全栏杆，内饰蓝白缤纷，有盆栽和彩烛。'
   },
   {
     id: 'cmp-meadow-cottage-garden',
@@ -477,7 +477,7 @@ export const COMPREHENSIVE_EVALUATION_PROMPTS = [
     id: 'cmp-hilltop-observatory-villa',
     seed: 4180,
     focus: ['hilltop', 'observatory', 'tower', 'view'],
-    prompt: '建一个山顶观景别墅，宽33深23，三层，观景塔，露台，客厅，厨房，餐厅，卧室，书房，卫生间和储藏间，要求入口路径清楚，内饰缤纷，有蓝绿色地毯、盆栽、展示柜和彩烛。'
+    prompt: '建一个山顶观景别墅，宽33深23，三层，观景塔，露台，客厅，厨房，餐厅，卧室，书房，卫生间和储藏间，要求观景流线清楚，内饰缤纷，有蓝绿色地毯、盆栽、展示柜和彩烛。'
   },
   {
     id: 'cmp-family-house-with-sunroom-garage',
@@ -537,7 +537,7 @@ export const COMPREHENSIVE_EVALUATION_PROMPTS = [
     id: 'cmp-floating-inspired-lake-house',
     seed: 4190,
     focus: ['lakeside', 'raised', 'water', 'deck'],
-    prompt: '建一个湖上架空感住宅，宽29深21，木桩平台，水边露台，入口栈道，客厅，厨房，餐厅，卧室，书房和卫生间，要求防潮、清晰路径、户外座椅和蓝绿缤纷内饰。'
+    prompt: '建一个湖上架空感住宅，宽29深21，木桩平台，水边露台，入口栈道，客厅，厨房，餐厅，卧室，书房和卫生间，要求防潮、平台层次、户外座椅和蓝绿缤纷内饰。'
   },
   {
     id: 'cmp-urban-rooftop-loft',
@@ -591,7 +591,7 @@ export const COMPREHENSIVE_EVALUATION_PROMPTS = [
     id: 'cmp-rural-clinic-home',
     seed: 4199,
     focus: ['mixed-use', 'clinic', 'accessible', 'service'],
-    prompt: '建一个乡村诊所兼住宅，宽31深23，一层接待和诊疗室，后部厨房、客厅、卧室、书房和卫生间，入口要无障碍，路径清楚，内饰干净但缤纷，有彩色地毯、盆栽、灯光和储物柜。'
+    prompt: '建一个乡村诊所兼住宅，宽31深23，一层接待和诊疗室，后部厨房、客厅、卧室、书房和卫生间，入口要无障碍，室内动线清楚，内饰干净但缤纷，有彩色地毯、盆栽、灯光和储物柜。'
   },
   {
     id: 'cmp-final-all-rounder-house',

@@ -2,14 +2,15 @@ export class RoofAgent {
   run(prompt = '', architecture = {}, buildSpec = {}, structure = {}, facade = {}, materialPalette = {}, stylePreset = {}) {
     const family = String(architecture.style_family || buildSpec.style_family || 'general');
     const rules = architecture.roof_rules || {};
-    const style = String(rules.style || buildSpec.roof_style || 'gabled');
-    const roofGarden = Boolean(rules.roof_terrace || /屋顶花园|屋顶菜园|绿化屋顶|green roof/i.test(prompt));
-    const skylights = Boolean(rules.skylights || /天窗|采光顶|温室/i.test(prompt));
+    const design = architecture.design_directives?.roof || {};
+    const style = String(design.style || rules.style || buildSpec.roof_style || 'gabled');
+    const roofGarden = Boolean(design.roof_terrace || rules.roof_terrace || /屋顶花园|屋顶菜园|绿化屋顶|green roof/i.test(prompt));
+    const skylights = Boolean(design.skylights || rules.skylights || /天窗|采光顶|温室/i.test(prompt));
     const chimney = shouldHaveChimney(family, prompt);
     const neonSign = family === 'cyberpunk' || /霓虹|招牌|neon|sign/i.test(prompt);
     const solarPanels = Boolean(rules.solar_panels || /太阳能|光伏|solar/i.test(prompt));
     const rainHarvest = Boolean(rules.rain_harvest || /雨水|雨链|蓄水|rainwater|rain chain/i.test(prompt));
-    const dormers = Number(rules.dormers || (/老虎窗|屋顶窗|dormer/i.test(prompt) ? 2 : 0));
+    const dormers = Number(design.dormers ?? rules.dormers ?? (/老虎窗|屋顶窗|dormer/i.test(prompt) ? 2 : 0));
     const roofAccess = Boolean(rules.roof_access || roofGarden || /屋顶露台|上人屋顶|roof terrace|roof access/i.test(prompt));
 
     return {
@@ -17,9 +18,10 @@ export class RoofAgent {
       style_family: family,
       preset: stylePreset.id || 'none',
       style,
-      profile: rules.profile || stylePreset.roof || 'style-default',
+      profile: design.profile || rules.profile || stylePreset.roof || 'style-default',
       roof_height: Number(buildSpec.roof_height || 3),
-      overhang: Number(rules.overhang ?? buildSpec.roof_overhang ?? 1),
+      overhang: Number(design.overhang ?? rules.overhang ?? buildSpec.roof_overhang ?? 1),
+      creative_signature: architecture.design_directives?.signature || buildSpec.creative_design_signature || 'none',
       elements: roofElements({ family, style, roofGarden, skylights, chimney, neonSign, solarPanels, rainHarvest, dormers, roofAccess, rules }),
       drainage: drainageForRoof(style, family),
       edge_treatment: edgeTreatmentForFamily(family, style),

@@ -10,7 +10,8 @@
     "evaluate:habitation": "node src/evaluateHabitationSuite.js",
     "evaluate:decoration": "node src/evaluateDecorationSuite.js",
     "evaluate:living-quality": "node src/evaluateLivingQualitySuite.js",
-    "evaluate:comprehensive": "node src/evaluateComprehensiveSuite.js"
+    "evaluate:comprehensive": "node src/evaluateComprehensiveSuite.js",
+    "evaluate:variation": "node src/evaluateDesignVariation.js"
   },
   "engines": {
     "node": ">=20"

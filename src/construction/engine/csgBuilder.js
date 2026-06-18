@@ -675,11 +675,12 @@ export class CSGBuilder {
     if (facadePlan.engine_hints?.render_privacy_fins) this.addPrivacyFins(grid, mainBox, facadePlan);
   }
 
-  addWallReliefPanels(grid, box) {
+  addWallReliefPanels(grid, box, facadePlan = {}) {
     const family = String(this.architecture?.style_family || this.spec.style_family || 'general');
     const reliefBlock = reliefBlockForStyle(family, this.materials);
     const accentBlock = this.materials.secondary_wall || this.materials.accent || this.materials.trim || 'minecraft:quartz_bricks';
-    const spacing = ['modern', 'industrial', 'futuristic', 'cyberpunk'].includes(family) ? 3 : 4;
+    const density = String(facadePlan.relief_density || 'medium');
+    const spacing = density === 'high' ? 2 : density === 'low' ? 5 : ['modern', 'industrial', 'futuristic', 'cyberpunk'].includes(family) ? 3 : 4;
 
     for (let floor = 0; floor < Math.max(1, box.floors); floor += 1) {
       const floorY = floor * this.spec.floor_height;
@@ -758,12 +759,15 @@ export class CSGBuilder {
     }
   }
 
-  addEntryDetail(grid, box) {
+  addEntryDetail(grid, box, facadePlan = {}) {
     const side = String(this.spec.door_side || this.architecture?.facade_rules?.front_side || 'south');
+    const style = String(facadePlan.entry_detail_style || 'framed-entry');
     const block = this.materials.trim || this.materials.accent || 'minecraft:smooth_quartz';
     const threshold = this.materials.foundation || 'minecraft:stone_bricks';
-    const width = Math.max(2, Number(this.spec.door_width || 2) + 2);
-    const height = Math.max(3, Number(this.spec.door_height || 3));
+    const widthBonus = /wide|double|canopy/.test(style) ? 4 : /recessed|solid/.test(style) ? 2 : 3;
+    const heightBonus = /double-height/.test(style) ? 3 : /canopy/.test(style) ? 2 : 1;
+    const width = Math.max(2, Number(this.spec.door_width || 2) + widthBonus);
+    const height = Math.max(3, Number(this.spec.door_height || 3) + heightBonus);
     const cx = Math.floor((box.min_x + box.max_x) / 2);
     const cz = Math.floor((box.min_z + box.max_z) / 2);
     if (['south', 'north'].includes(side)) {

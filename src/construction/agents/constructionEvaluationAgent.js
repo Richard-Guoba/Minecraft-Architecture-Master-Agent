@@ -1236,6 +1236,7 @@ function placementSupported(ctx, item, roomById) {
   const room = roomById.get(item.room_id);
   const at = item.at || {};
   if (!room || !Number.isFinite(number(at.x, NaN)) || !Number.isFinite(number(at.y, NaN)) || !Number.isFinite(number(at.z, NaN))) return false;
+  if (text(item.module) === 'decor_floor' && number(at.y) === number(room.min_y) - 1) return true;
   if (text(item.module) === 'decor_light' && (number(at.y) >= number(room.max_y) - 1 || /ceiling/i.test(text(item.placement)))) return true;
   const grid = voxelGrid(ctx);
   const support = grid.get(pointKey(number(at.x), number(at.y) - 1, number(at.z)));

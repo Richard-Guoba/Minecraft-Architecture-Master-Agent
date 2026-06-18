@@ -71,6 +71,7 @@ function furnishRoom(room, materials, context) {
     builder.addLighting();
     builder.addStyleAccent();
     builder.addInteriorPlanAccent();
+    builder.addCreativeDesignAccent();
   }
 
   switch (room.type) {
@@ -201,6 +202,24 @@ class RoomFurnishingBuilder {
     this.add('room-accent', this.roomDetail.accent_block, this.room.max_x - 1, this.floorY, this.centerZ, this.roomDetail.mood || 'room-accent', 'decor_detail');
     if (this.roomDetail.task_light && this.width >= 5 && this.depth >= 5) {
       this.add('task-light', this.roomDetail.task_light, this.room.min_x + 1, this.ceilingY, this.room.max_z - 1, 'task-lighting', 'decor_light');
+    }
+  }
+
+  addCreativeDesignAccent() {
+    if (!this.roomDetail || ['bathroom', 'storage', 'utility', 'garage'].includes(this.room.type)) return;
+    const floorAccent = this.roomDetail.floor_accent;
+    if (floorAccent && this.area > 18) this.addCarpetPatch(floorAccent, `creative-${this.roomDetail.color_story || 'color'}-rug`);
+    if (this.area <= 24) return;
+    const display = String(this.roomDetail.display_strategy || '');
+    const accent = this.roomDetail.accent_block || this.materials.accent || this.materials.trim || 'minecraft:smooth_quartz';
+    if (/corner|niche/.test(display)) {
+      this.add('display-niche', accent, this.room.max_x - 1, this.floorY, this.room.max_z - 1, display, 'decor_detail');
+    } else if (/shelves|gallery|display/.test(display)) {
+      this.add('display-shelf', 'minecraft:bookshelf', this.room.min_x + 1, this.floorY, this.room.max_z - 1, display, 'decor_furniture');
+      this.add('display-light', this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials), this.room.min_x + 1, this.ceilingY, this.room.max_z - 1, display, 'decor_light');
+    }
+    if (['layered', 'playful', 'gallery'].includes(String(this.roomDetail.furniture_density || ''))) {
+      this.add('color-candle', 'minecraft:candle', this.room.max_x - 1, this.floorY, this.room.min_z + 1, 'creative-color-edge', 'decor_light');
     }
   }
 
@@ -398,15 +417,22 @@ class RoomFurnishingBuilder {
 function placeBlock(grid, item, room) {
   if (!grid) return true;
   const preferred = preferredDecorPoint(grid, room, item);
-  if (preferred && writePlacement(grid, item, preferred, room)) {
-    item.at = preferred;
+  const preferredPoint = normalizePlacementPoint(item, preferred, room);
+  if (preferredPoint && writePlacement(grid, item, preferredPoint, room)) {
+    item.at = preferredPoint;
     return true;
   }
-  if (writePlacement(grid, item, item.at, room)) return true;
+  const plannedPoint = normalizePlacementPoint(item, item.at, room);
+  if (plannedPoint && writePlacement(grid, item, plannedPoint, room)) {
+    item.at = plannedPoint;
+    return true;
+  }
   const fallback = findDecorFallbackPoint(grid, room, item);
   if (!fallback) return false;
-  item.at = fallback;
-  return writePlacement(grid, item, item.at, room);
+  const fallbackPoint = normalizePlacementPoint(item, fallback, room);
+  if (!fallbackPoint) return false;
+  item.at = fallbackPoint;
+  return writePlacement(grid, item, fallbackPoint, room);
 }
 
 function writePlacement(grid, item, point, room) {
@@ -452,6 +478,14 @@ function canPlaceDecorAt(grid, item, room, point) {
   if (existing && !canOverwrite(existing.module)) return false;
   if (existing && String(existing.module || '').startsWith('decor_')) return false;
   return hasSafeSupport(grid, item, room, point);
+}
+
+function normalizePlacementPoint(item, point, room) {
+  if (!point) return undefined;
+  if (room && item.module === 'decor_floor' && isFullFloorAccent(item.block)) {
+    return { ...point, y: room.min_y - 1 };
+  }
+  return point;
 }
 
 function fallbackYLevels(room, item) {
@@ -518,6 +552,11 @@ function canSupportDecoration(supportBlock = '', decorBlock = '') {
 
 function isNonFullSupport(block) {
   return /_slab$|_stairs$|_carpet$|_pressure_plate$|_trapdoor$|_button$|_pane$|_bars$|lantern$|candle$|flower_pot$|potted_|chain$/.test(block);
+}
+
+function isFullFloorAccent(block) {
+  const base = blockBase(block);
+  return !/_carpet$|_pressure_plate$|_slab$|_trapdoor$/.test(base);
 }
 
 function blockBase(block) {

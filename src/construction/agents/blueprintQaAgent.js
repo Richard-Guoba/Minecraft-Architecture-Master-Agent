@@ -5,6 +5,7 @@ const MAX_FILL_VOLUME = 32768;
 const AGENT_CONTRACTS = [
   ['stylePreset', 'local-style-preset-memory'],
   ['materialPalette', 'local-material-palette'],
+  ['creativeDesign', 'local-creative-design-agent'],
   ['structure', 'fallback-structure'],
   ['facade', 'local-facade-agent'],
   ['roof', 'local-roof-agent'],
@@ -249,21 +250,25 @@ function validateCirculation(blueprint, errors, warnings, checks) {
   const floorOpenings = blueprint.layout?.floorOpenings || [];
   const mainDoor = blueprint.paths?.mainDoor;
   const failedEdgeCount = Number(blueprint.geometry?.pathfinder?.failedEdgeCount || 0);
+  const entryPathCount = Number(blueprint.modules?.entry_path || 0);
+  const hasEntryPath = entryPathCount > 0;
 
   if (!mainDoor) errors.push('缺少主入口门洞。');
   if ((blueprint.modules?.door || 0) <= 0) errors.push('蓝图中没有门模块。');
+  if (!hasEntryPath) errors.push('缺少外部入口步道。');
   if (floors > 1 && !stairs.length) errors.push('多层建筑缺少楼梯。');
   if (floors > 1 && floorOpenings.length < floors - 1) warnings.push('楼板开洞数量少于楼层连接需求。');
   if (failedEdgeCount > 0) errors.push(`A* 存在 ${failedEdgeCount} 条未连通边。`);
   if (unreachableRooms.length) warnings.push(`存在未从入口连通的房间: ${unreachableRooms.join(', ')}`);
 
-  checks.push(check('circulation', Boolean(mainDoor) && failedEdgeCount === 0 && (floors <= 1 || stairs.length > 0), {
+  checks.push(check('circulation', Boolean(mainDoor) && hasEntryPath && failedEdgeCount === 0 && (floors <= 1 || stairs.length > 0), {
     entryId,
     reachableRoomCount: reachable.size,
     unreachableRooms,
     stairCount: stairs.length,
     floorOpeningCount: floorOpenings.length,
-    failedEdgeCount
+    failedEdgeCount,
+    entryPathCount
   }));
 
   return {
@@ -272,7 +277,8 @@ function validateCirculation(blueprint, errors, warnings, checks) {
     unreachableRooms,
     stairCount: stairs.length,
     floorOpeningCount: floorOpenings.length,
-    failedEdgeCount
+    failedEdgeCount,
+    entryPathCount
   };
 }
 

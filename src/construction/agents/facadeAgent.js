@@ -2,8 +2,10 @@ export class FacadeAgent {
   run(prompt = '', architecture = {}, buildSpec = {}, topology = {}, materialPalette = {}, stylePreset = {}) {
     const family = String(architecture.style_family || buildSpec.style_family || 'general');
     const rules = architecture.facade_rules || {};
-    const wide = Boolean(rules.large_glass || buildSpec.facade?.large_glass);
-    const protectedOpenings = String(rules.glazing_ratio || buildSpec.facade?.glazing_ratio) === 'low';
+    const design = architecture.design_directives?.facade || {};
+    const designGlazing = design.glazing_ratio || buildSpec.facade?.glazing_ratio;
+    const wide = Boolean(rules.large_glass || buildSpec.facade?.large_glass || designGlazing === 'high');
+    const protectedOpenings = String(rules.glazing_ratio || designGlazing || buildSpec.facade?.glazing_ratio) === 'low';
     const neon = family === 'cyberpunk' || /霓虹|neon/i.test(prompt);
     const screen = Boolean(rules.screen || buildSpec.facade?.screens);
     const arches = Boolean(rules.arches || rules.pointed_arches || buildSpec.facade?.arches);
@@ -13,11 +15,15 @@ export class FacadeAgent {
     const serviceVents = Boolean(rules.service_vents) || family === 'industrial' || /通风|管线|风管|vent|service/i.test(prompt);
     const addressMarker = Boolean(rules.address_marker) || /门牌|信箱|招牌|标识|address|sign|mailbox/i.test(prompt) || neon || buildSpec.scale === 'large';
     const privacyFins = Boolean(rules.privacy_fins || /百叶|格栅|隐私|privacy|fins/i.test(prompt)) || screen;
-    const wallRelief = Boolean(rules.wall_relief || buildSpec.facade?.wall_relief) ||
+    const wallRelief = Boolean(rules.wall_relief || buildSpec.facade?.wall_relief || design.wall_relief) ||
       ['modern', 'industrial', 'futuristic', 'cyberpunk'].includes(family) ||
       /凹凸|层次|墙面|立面|半砖|切割砖|wall relief|facade relief/i.test(prompt);
     const windowSurrounds = rules.window_surrounds !== false;
     const entryDetail = rules.entry_detail !== false;
+    const windowRhythm = design.window_rhythm || rules.window_rhythm || rhythmForFamily(family, wide, protectedOpenings);
+    const windowWidth = design.window_width || (wide ? 4 : protectedOpenings ? 1 : 2);
+    const windowHeight = design.window_height || (wide ? 3 : 2);
+    const windowSpacing = design.window_spacing || (wide ? 5 : protectedOpenings ? 8 : 6);
 
     return {
       source: 'local-facade-agent',
@@ -25,11 +31,11 @@ export class FacadeAgent {
       preset: stylePreset.id || 'none',
       front_side: rules.front_side || buildSpec.door_side || 'south',
       window_system: {
-        rhythm: rules.window_rhythm || rhythmForFamily(family, wide, protectedOpenings),
-        glazing_ratio: protectedOpenings ? 'low' : wide ? 'high' : 'medium',
-        width: wide ? 4 : protectedOpenings ? 1 : 2,
-        height: wide ? 3 : 2,
-        spacing: wide ? 5 : protectedOpenings ? 8 : 6,
+        rhythm: windowRhythm,
+        glazing_ratio: protectedOpenings ? 'low' : wide ? 'high' : design.glazing_ratio || 'medium',
+        width: windowWidth,
+        height: windowHeight,
+        spacing: windowSpacing,
         trim: materialPalette.materials?.accent || architecture.materials?.trim || 'minecraft:smooth_quartz',
         sill: materialPalette.materials?.roof_detail || architecture.materials?.trim || 'minecraft:smooth_quartz'
       },
@@ -43,6 +49,10 @@ export class FacadeAgent {
       facade_elements: facadeElements({ family, screen, arches, balcony, neon, wide, protectedOpenings, awning, flowerBoxes, serviceVents, addressMarker, privacyFins, wallRelief, windowSurrounds, entryDetail, prompt }),
       color_bands: colorBandsForFamily(family, materialPalette),
       facade_depth_layers: facadeDepthLayers({ awning, flowerBoxes, serviceVents, privacyFins, wide, wallRelief, windowSurrounds, entryDetail }),
+      relief_density: design.relief_density || 'medium',
+      window_surround_pattern: design.window_surround_pattern || rules.window_surround_pattern || 'standard',
+      entry_detail_style: design.entry_detail_style || rules.entry_detail_variant || 'framed-entry',
+      creative_signature: architecture.design_directives?.signature || buildSpec.creative_design_signature || 'none',
       room_alignment: {
         public_rooms_to_glass: wide,
         private_rooms_to_screens: screen,

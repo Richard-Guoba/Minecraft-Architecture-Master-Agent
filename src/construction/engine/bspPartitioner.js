@@ -259,6 +259,10 @@ function chooseAxis(rect, depth, nodes, hints = {}, spec = {}) {
     return ['north', 'south'].includes(String(spec.door_side || 'south')) ? 'z' : 'x';
   }
   if (strategy === 'courtyard-ring' && depth === 0) return ['north', 'south'].includes(spec.door_side) ? 'z' : 'x';
+  if (strategy === 'front-back-bands' && depth <= 1) return ['north', 'south'].includes(spec.door_side) ? 'z' : 'x';
+  if (strategy === 'side-bands' && depth <= 1) return ['north', 'south'].includes(spec.door_side) ? 'x' : 'z';
+  if (strategy === 'cross-axis') return depth % 2 === 0 ? (width >= depthSize ? 'x' : 'z') : (width >= depthSize ? 'z' : 'x');
+  if (strategy === 'view-side-cluster' && depth === 1) return ['north', 'south'].includes(spec.door_side) ? 'x' : 'z';
   if (strategy === 'axis-balanced' && Math.abs(width - depthSize) < 6) return depth % 2 === 0 ? 'x' : 'z';
   if (strategy === 'open-plan-weighted' && nodes.some((node) => node.daylight === 'high')) return width >= depthSize ? 'x' : 'z';
   if (Math.abs(width - depthSize) < 4) return depth % 2 === 0 ? 'x' : 'z';
@@ -315,6 +319,13 @@ function doorForSplit(leftRooms, rightRooms, axis, splitCoord, rect) {
 function orderNodesForFloor(nodes, plannerJson = {}, spec = {}, floor = 0) {
   const strategy = String(plannerJson.bsp_hints?.split_strategy || 'weighted');
   const publicCore = plannerJson.circulation_rules?.public_core;
+  const explicitOrder = explicitRoomOrder(plannerJson.bsp_hints?.room_order_by_floor, floor);
+  if (explicitOrder.length) {
+    return [...nodes].sort((a, b) => {
+      return explicitNodeOrderScore(a, explicitOrder, spec, floor) - explicitNodeOrderScore(b, explicitOrder, spec, floor) ||
+        Number(b.weight || 1) - Number(a.weight || 1);
+    });
+  }
   return [...nodes].sort((a, b) => {
     return nodeOrderScore(a, strategy, publicCore, spec, floor) - nodeOrderScore(b, strategy, publicCore, spec, floor) ||
       Number(b.weight || 1) - Number(a.weight || 1);
@@ -331,6 +342,9 @@ function nodeOrderScore(node, strategy, publicCore, spec, floor) {
   if (node.type === 'corridor') return 2;
   if (strategy === 'courtyard-ring' && ['tatami', 'tea_room'].includes(node.type)) return 3;
   if (strategy === 'open-plan-weighted' && ['living', 'dining', 'kitchen'].includes(node.type)) return 3;
+  if (strategy === 'front-back-bands' && ['living', 'dining'].includes(node.type)) return 3;
+  if (strategy === 'side-bands' && ['kitchen', 'bathroom', 'storage', 'utility'].includes(node.type)) return 3;
+  if (strategy === 'view-side-cluster' && ['living', 'sunroom', 'greenhouse', 'lounge'].includes(node.type)) return 3;
   if (['living', 'great_hall', 'lounge'].includes(node.type)) return 4;
   if (['dining', 'kitchen'].includes(node.type)) return 5;
   if (['bathroom', 'storage', 'utility', 'armory', 'garage'].includes(node.type)) return 6;
@@ -339,9 +353,26 @@ function nodeOrderScore(node, strategy, publicCore, spec, floor) {
 }
 
 function shouldUseSoftBoundary(leftNodes, rightNodes, hints = {}) {
-  if (String(hints.split_strategy || '') !== 'open-plan-weighted') return false;
+  if (!['open-plan-weighted', 'view-side-cluster', 'front-back-bands'].includes(String(hints.split_strategy || ''))) return false;
+  if (String(hints.soft_boundary_bias || '') === 'low') return false;
   const openTypes = new Set(['living', 'dining', 'kitchen', 'lounge', 'sunroom']);
   return leftNodes.some((node) => openTypes.has(node.type)) && rightNodes.some((node) => openTypes.has(node.type));
+}
+
+function explicitRoomOrder(value = {}, floor = 0) {
+  const order = value?.[floor] || value?.[String(floor)];
+  return Array.isArray(order) ? order.map((item) => String(item)) : [];
+}
+
+function explicitNodeOrderScore(node, order, spec, floor) {
+  const frontSide = String(spec.door_side || 'south');
+  const entryOnHighSide = ['south', 'east'].includes(frontSide);
+  if (floor === 0 && (node.id === 'entry' || node.access === 'main-door')) return entryOnHighSide ? 1000 : -1000;
+  if (floor === 0 && node.type === 'stairs') return entryOnHighSide ? 950 : -950;
+  const index = order.indexOf(node.id);
+  if (index >= 0) return index;
+  const typeIndex = order.indexOf(node.type);
+  return typeIndex >= 0 ? typeIndex : 500;
 }
 
 function canSplit(rect, axis) {

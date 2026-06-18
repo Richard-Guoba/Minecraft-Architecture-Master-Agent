@@ -8,6 +8,7 @@ import { ConstructionDecoratorAgent } from '../src/construction/agents/decorator
 import { BlueprintOptimizerAgent } from '../src/construction/agents/blueprintOptimizerAgent.js';
 import { buildFallbackArchitecture } from '../src/construction/agents/architectAgent.js';
 import { buildFallbackTopology } from '../src/construction/agents/plannerAgent.js';
+import { applyCreativeDesign, buildSeededCreativeDesign } from '../src/construction/agents/creativeDesignAgent.js';
 import { StylePresetMemoryAgent } from '../src/construction/agents/stylePresetMemoryAgent.js';
 import { MaterialPaletteAgent } from '../src/construction/agents/materialPaletteAgent.js';
 import { StructureAgent } from '../src/construction/agents/structureAgent.js';
@@ -73,6 +74,18 @@ test('BlueprintQAAgent rejects multi-floor blueprints without stairs', () => {
   assert.equal(validation.checks.find((item) => item.name === 'circulation').ok, false);
 });
 
+test('BlueprintQAAgent rejects missing exterior entry path', () => {
+  const blueprint = buildBlueprintForQa('建一个现代一层房子，宽21深15，大玻璃窗，平屋顶');
+  blueprint.modules.entry_path = 0;
+
+  const validation = new BlueprintQAAgent().run(blueprint);
+
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.some((item) => item.includes('缺少外部入口步道')));
+  assert.equal(validation.stats.circulation.entryPathCount, 0);
+  assert.equal(validation.checks.find((item) => item.name === 'circulation').ok, false);
+});
+
 test('BlueprintQAAgent rejects missing integrated agent contracts', () => {
   const blueprint = buildBlueprintForQa('建一个现代小房子');
   delete blueprint.facade;
@@ -115,8 +128,10 @@ function buildBlueprintForQa(prompt) {
       material_palette: materialPalette.palette
     }
   };
-  const buildSpec = deriveBuildSpec(prompt, architecture);
-  const topology = buildFallbackTopology(prompt, architecture, buildSpec);
+  let buildSpec = deriveBuildSpec(prompt, architecture);
+  let topology = buildFallbackTopology(prompt, architecture, buildSpec);
+  let creativeDesign = buildSeededCreativeDesign(prompt, architecture, buildSpec, topology);
+  ({ architecture, buildSpec, topology, creativeDesign } = applyCreativeDesign({ architecture, buildSpec, topology, creativeDesign, prompt }));
   const structure = new StructureAgent().run(architecture, buildSpec, topology);
   const facade = new FacadeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
   const roof = new RoofAgent().run(prompt, architecture, buildSpec, structure, facade, materialPalette, stylePreset);
@@ -163,6 +178,7 @@ function buildBlueprintForQa(prompt) {
     buildSpec,
     architecture,
     topology,
+    creativeDesign,
     stylePreset,
     materialPalette,
     structure,

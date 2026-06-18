@@ -219,6 +219,7 @@ function renderAgentCapabilityTable(blueprint) {
   const rows = [
     ['StylePreset', blueprint.stylePreset?.signatures?.length || 0, blueprint.stylePreset?.id || '-'],
     ['MaterialPalette', blueprint.materialPalette?.roles?.length || 0, `${blueprint.materialPalette?.controllableBlockCount || 0} blocks`],
+    ['CreativeDesign', blueprint.creativeDesign?.authority?.variable_axes?.length || 0, blueprint.creativeDesign?.signature || '-'],
     ['Structure', (blueprint.structure?.support_elements?.length || 0) + (blueprint.structure?.bracing_elements?.length || 0) + (blueprint.structure?.reinforcement_elements?.length || 0), blueprint.structure?.stability?.lateral_system || '-'],
     ['Facade', blueprint.facade?.facade_elements?.length || 0, blueprint.facade?.window_system?.rhythm || '-'],
     ['Roof', blueprint.roof?.elements?.length || 0, blueprint.roof?.service_strategy?.maintenance_zone || blueprint.roof?.profile || '-'],
@@ -265,6 +266,7 @@ function topModules(blueprint) {
 function agentCapabilityCount(blueprint) {
   return (blueprint.stylePreset?.signatures?.length || 0) +
     (blueprint.materialPalette?.roles?.length || 0) +
+    (blueprint.creativeDesign?.authority?.variable_axes?.length || 0) +
     (blueprint.structure?.support_elements?.length || 0) +
     (blueprint.structure?.bracing_elements?.length || 0) +
     (blueprint.structure?.reinforcement_elements?.length || 0) +

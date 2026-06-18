@@ -2,12 +2,13 @@ export class SiteLandscapeAgent {
   run(prompt = '', architecture = {}, buildSpec = {}, topology = {}, materialPalette = {}, stylePreset = {}) {
     const family = String(architecture.style_family || buildSpec.style_family || 'general');
     const rules = architecture.site_rules || {};
-    const water = Boolean(rules.water_feature || buildSpec.site?.water_feature || /泳池|水池|喷泉|溪流|海边|海景/.test(prompt));
-    const patio = Boolean(rules.patio || buildSpec.site?.patio || /露台|庭院|平台|patio/i.test(prompt));
-    const dryGarden = Boolean(rules.dry_garden || buildSpec.site?.dry_garden);
+    const design = architecture.design_directives?.site || {};
+    const water = Boolean(design.water_feature || rules.water_feature || buildSpec.site?.water_feature || /泳池|水池|喷泉|溪流|海边|海景/.test(prompt));
+    const patio = Boolean(design.patio || rules.patio || buildSpec.site?.patio || /露台|庭院|平台|patio/i.test(prompt));
+    const dryGarden = Boolean(design.dry_garden || rules.dry_garden || buildSpec.site?.dry_garden);
     const enclosed = Boolean(rules.enclosed_courtyard || buildSpec.site?.enclosed_courtyard);
-    const plantingBeds = Boolean(rules.planting_beds || /花坛|菜园|种植床|果园|orchard|vegetable|planting bed/i.test(prompt));
-    const outdoorSeating = Boolean(rules.outdoor_seating || /户外座椅|庭院餐桌|烧烤|火坑|outdoor seating|bbq|firepit/i.test(prompt));
+    const plantingBeds = Boolean(design.planting_beds || rules.planting_beds || /花坛|菜园|种植床|果园|orchard|vegetable|planting bed/i.test(prompt));
+    const outdoorSeating = Boolean(design.outdoor_seating || rules.outdoor_seating || /户外座椅|庭院餐桌|烧烤|火坑|outdoor seating|bbq|firepit/i.test(prompt));
     const pool = Boolean(rules.pool || /泳池|游泳池|pool/i.test(prompt));
     const mailbox = Boolean(rules.mailbox || /信箱|门牌|mailbox|address/i.test(prompt));
     const accessible = Boolean(rules.accessible_route || /无障碍|坡道|轮椅|老人友好|accessible|wheelchair|ramp/i.test(prompt));
@@ -16,7 +17,8 @@ export class SiteLandscapeAgent {
       source: 'local-site-landscape-agent',
       style_family: family,
       preset: stylePreset.id || 'none',
-      mood: rules.landscape_mood || buildSpec.site?.landscape_mood || stylePreset.site || 'simple',
+      mood: design.mood || rules.landscape_mood || buildSpec.site?.landscape_mood || stylePreset.site || 'simple',
+      creative_signature: architecture.design_directives?.signature || buildSpec.creative_design_signature || 'none',
       entry_sequence: {
         side: buildSpec.door_side || architecture.facade_rules?.front_side || 'south',
         path_width: accessible ? Math.max(3, buildSpec.scale === 'large' ? 3 : 2) : buildSpec.scale === 'large' ? 3 : 2,

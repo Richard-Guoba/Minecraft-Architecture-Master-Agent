@@ -39,6 +39,8 @@ test('runs the construction-method workflow as the single active pipeline', asyn
     assert.ok(result.topology.edges.length > 0);
     assert.equal(result.stylePreset.source, 'local-style-preset-memory');
     assert.equal(result.materialPalette.source, 'local-material-palette');
+    assert.equal(result.creativeDesign.source, 'local-creative-design-agent');
+    assert.ok(result.creativeDesign.authority.estimated_llm_decision_share >= 0.7);
     assert.equal(result.structure.source, 'fallback-structure');
     assert.ok(result.structure.support_elements.length > 0);
     assert.equal(result.facade.source, 'local-facade-agent');
@@ -93,6 +95,7 @@ test('runs the construction-method workflow as the single active pipeline', asyn
     assert.match(report, /Seed：1 \(manual\)/);
     assert.match(report, /StructureAgent/);
     assert.match(report, /MaterialPaletteAgent/);
+    assert.match(report, /CreativeDesignAgent/);
     assert.match(report, /FacadeAgent \/ RoofAgent \/ SiteLandscapeAgent/);
     assert.match(report, /OpeningConnectivityAgent/);
     assert.match(report, /InteriorDetailAgent/);
