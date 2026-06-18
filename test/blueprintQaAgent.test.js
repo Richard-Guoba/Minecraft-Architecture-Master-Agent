@@ -29,7 +29,9 @@ test('BlueprintQAAgent passes a complete generated blueprint and reports reachab
   assert.equal(validation.stats.circulation.failedEdgeCount, 0);
   assert.equal(validation.stats.rooms.roomCount, blueprint.layout.rooms.length);
   assert.equal(validation.stats.spatialGeometry.overlappingRooms.length, 0);
+  assert.equal(validation.stats.groundFloorFlatness.headroomIssues.length, 0);
   assert.ok(validation.checks.some((item) => item.name === 'spatial-geometry' && item.ok));
+  assert.ok(validation.checks.some((item) => item.name === 'ground-floor-flatness' && item.ok));
   assert.ok(validation.stats.circulation.reachableRoomCount > 0);
   assert.ok(validation.stats.semantic.hasDecoration);
   assert.equal(validation.stats.agentContracts.missing.length, 0);
@@ -84,6 +86,25 @@ test('BlueprintQAAgent rejects missing exterior entry path', () => {
   assert.ok(validation.errors.some((item) => item.includes('缺少外部入口步道')));
   assert.equal(validation.stats.circulation.entryPathCount, 0);
   assert.equal(validation.checks.find((item) => item.name === 'circulation').ok, false);
+});
+
+test('BlueprintQAAgent rejects a hidden one-block shell slab across ground-floor rooms', () => {
+  const blueprint = buildBlueprintForQa('建一个现代两层大房子，宽31深19，大玻璃窗，开放厨房，客厅，餐厅，三间卧室，书房，阳光房，门在南侧');
+  const room = blueprint.layout.rooms.find((item) => item.id === 'living') || blueprint.layout.rooms.find((item) => item.floor === 0 && item.type !== 'stairs');
+  blueprint.operations.push({
+    kind: 'fill',
+    from: { x: room.min_x, y: room.min_y, z: room.min_z },
+    to: { x: room.max_x, y: room.min_y, z: room.max_z },
+    block: blueprint.architecture.materials.wall || 'minecraft:smooth_sandstone'
+  });
+  blueprint.geometry.exporter.operationCount = blueprint.operations.length;
+
+  const validation = new BlueprintQAAgent().run(blueprint);
+
+  assert.equal(validation.ok, false);
+  assert.ok(validation.errors.some((item) => item.includes('一层房间地面上方被实体大面积占用')));
+  assert.equal(validation.checks.find((item) => item.name === 'ground-floor-flatness').ok, false);
+  assert.ok(validation.stats.groundFloorFlatness.headroomIssues.some((item) => item.startsWith(`${room.id}:`)));
 });
 
 test('BlueprintQAAgent rejects missing integrated agent contracts', () => {

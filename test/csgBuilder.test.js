@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CSGBuilder } from '../src/construction/engine/csgBuilder.js';
+import { CSGBuilder, keyFor } from '../src/construction/engine/csgBuilder.js';
 import { buildFallbackArchitecture } from '../src/construction/agents/architectAgent.js';
 import { buildFallbackTopology } from '../src/construction/agents/plannerAgent.js';
 import { buildFallbackStructure } from '../src/construction/agents/structureAgent.js';
@@ -53,6 +53,36 @@ test('CSGBuilder maps modern glass additions to transparent shells, flat parapet
   assert.ok([...shell.grid.values()].some((item) => item.module === 'sunroom' && item.block === architecture.materials.glass));
   assert.ok(counts.skylight > 0);
   assert.ok(counts.roof_detail > 0);
+});
+
+test('CSGBuilder keeps ground-floor interiors on one flat floor block with clear headroom', () => {
+  const prompt = '建一个现代两层大房子，宽31深19，大玻璃窗，开放厨房，客厅，餐厅，三间卧室，书房，阳光房，门在南侧';
+  const architecture = buildFallbackArchitecture(prompt);
+  const spec = deriveBuildSpec(prompt, architecture);
+  const shell = new CSGBuilder(spec, architecture.materials).generateShell(architecture);
+  const shellModules = new Set(['walls', 'wing', 'sunroom', 'garage', 'gallery', 'tower', 'courtyard']);
+  const floorSupportModules = new Set(['floors', 'foundation']);
+  const groundSpaces = shell.interiorSpaces.filter((space) => Number(space.floor || 0) === 0);
+  const missingFloorSupport = [];
+  const headroomBlockers = [];
+
+  for (const space of groundSpaces) {
+    for (let x = space.min_x; x <= space.max_x; x += 1) {
+      for (let z = space.min_z; z <= space.max_z; z += 1) {
+        const floorCell = shell.grid.get(keyFor(x, space.min_y - 1, z));
+        if (!floorSupportModules.has(floorCell?.module)) missingFloorSupport.push(`${space.source}:${x},${space.min_y - 1},${z}`);
+
+        const headCell = shell.grid.get(keyFor(x, space.min_y, z));
+        if (headCell && shellModules.has(headCell.module)) {
+          headroomBlockers.push(`${space.source}:${x},${space.min_y},${z}:${headCell.module}`);
+        }
+      }
+    }
+  }
+
+  assert.ok(groundSpaces.length >= 2);
+  assert.deepEqual(missingFloorSupport.slice(0, 10), []);
+  assert.deepEqual(headroomBlockers.slice(0, 10), []);
 });
 
 test('CSGBuilder maps style grammar decks and service spines to semantic modules', () => {

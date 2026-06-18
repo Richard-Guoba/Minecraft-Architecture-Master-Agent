@@ -26,6 +26,7 @@ export class BlueprintQAAgent {
     const exporterStats = validateExporter(blueprint, errors, warnings, checks);
     const roomStats = validateRooms(blueprint, errors, warnings, checks);
     const spatialGeometryStats = validateSpatialGeometry(blueprint, errors, warnings, checks);
+    const groundFloorFlatnessStats = validateGroundFloorFlatness(blueprint, errors, warnings, checks);
     const circulationStats = validateCirculation(blueprint, errors, warnings, checks);
     const semanticStats = validateSemanticCompleteness(blueprint, errors, warnings, checks);
     const agentContractStats = validateAgentContracts(blueprint, errors, warnings, checks);
@@ -48,6 +49,7 @@ export class BlueprintQAAgent {
         exporter: exporterStats,
         rooms: roomStats,
         spatialGeometry: spatialGeometryStats,
+        groundFloorFlatness: groundFloorFlatnessStats,
         circulation: circulationStats,
         semantic: semanticStats,
         agentContracts: agentContractStats
@@ -279,6 +281,72 @@ function validateCirculation(blueprint, errors, warnings, checks) {
     floorOpeningCount: floorOpenings.length,
     failedEdgeCount,
     entryPathCount
+  };
+}
+
+function validateGroundFloorFlatness(blueprint, errors, warnings, checks) {
+  const rooms = (blueprint.layout?.rooms || [])
+    .map(normalizeRoomBox)
+    .filter(isValidBox)
+    .filter((room) => Number(room.floor || 0) === 0)
+    .filter((room) => !['corridor', 'stairs', 'balcony', 'porch'].includes(room.type));
+  const occupied = occupiedBlocksByPoint(blueprint.operations || []);
+  const ignoredDecor = ignoredDecoratorPositions(blueprint.decorator?.placements || []);
+  const missingFloorSupport = [];
+  const headroomIssues = [];
+  let checkedCellCount = 0;
+  let blockedCellCount = 0;
+
+  for (const room of rooms) {
+    const floorY = room.min_y - 1;
+    const headY = room.min_y;
+    const headroomScan = insetRoomHeadroomScan(room);
+    const roomCellCount = Math.max(1, (headroomScan.max_x - headroomScan.min_x + 1) * (headroomScan.max_z - headroomScan.min_z + 1));
+    let roomBlockedCells = 0;
+
+    for (let x = room.min_x; x <= room.max_x; x += 1) {
+      for (let z = room.min_z; z <= room.max_z; z += 1) {
+        checkedCellCount += 1;
+        if (!occupied.has(pointKey(x, floorY, z))) missingFloorSupport.push(`${room.id}:${x},${floorY},${z}`);
+      }
+    }
+
+    for (let x = headroomScan.min_x; x <= headroomScan.max_x; x += 1) {
+      for (let z = headroomScan.min_z; z <= headroomScan.max_z; z += 1) {
+        const keyValue = pointKey(x, headY, z);
+        const block = occupied.get(keyValue);
+        if (!block || ignoredDecor.has(keyValue) || isNonBlockingHeadroomBlock(block)) continue;
+        roomBlockedCells += 1;
+        blockedCellCount += 1;
+      }
+    }
+
+    const allowance = Math.max(4, Math.floor(roomCellCount * 0.35));
+    if (roomBlockedCells > allowance) headroomIssues.push(`${room.id}:${roomBlockedCells}/${roomCellCount}`);
+  }
+
+  if (missingFloorSupport.length) {
+    errors.push(`一层房间缺少连续地面支撑: ${missingFloorSupport.slice(0, 12).join(', ')}`);
+  }
+  if (headroomIssues.length) {
+    errors.push(`一层房间地面上方被实体大面积占用: ${headroomIssues.join(', ')}`);
+  }
+
+  const ok = !missingFloorSupport.length && !headroomIssues.length;
+  checks.push(check('ground-floor-flatness', ok, {
+    checkedRoomCount: rooms.length,
+    checkedCellCount,
+    blockedCellCount,
+    missingFloorSupport: missingFloorSupport.slice(0, 24),
+    headroomIssues
+  }));
+
+  return {
+    checkedRoomCount: rooms.length,
+    checkedCellCount,
+    blockedCellCount,
+    missingFloorSupport,
+    headroomIssues
   };
 }
 
@@ -680,6 +748,60 @@ function pointInOpening(opening, x, z) {
 
 function pointInBox2d(box, x, z) {
   return x >= box.min_x && x <= box.max_x && z >= box.min_z && z <= box.max_z;
+}
+
+function insetRoomHeadroomScan(room) {
+  const width = room.max_x - room.min_x + 1;
+  const depth = room.max_z - room.min_z + 1;
+  const insetX = width >= 5 ? 1 : 0;
+  const insetZ = depth >= 5 ? 1 : 0;
+  return {
+    min_x: room.min_x + insetX,
+    max_x: room.max_x - insetX,
+    min_z: room.min_z + insetZ,
+    max_z: room.max_z - insetZ
+  };
+}
+
+function occupiedBlocksByPoint(operations) {
+  const occupied = new Map();
+  for (const operation of operations) {
+    if (!operation?.from || !operation?.to || operationVolume(operation) > MAX_FILL_VOLUME * 2) continue;
+    const minX = Math.min(Number(operation.from.x), Number(operation.to.x));
+    const maxX = Math.max(Number(operation.from.x), Number(operation.to.x));
+    const minY = Math.min(Number(operation.from.y), Number(operation.to.y));
+    const maxY = Math.max(Number(operation.from.y), Number(operation.to.y));
+    const minZ = Math.min(Number(operation.from.z), Number(operation.to.z));
+    const maxZ = Math.max(Number(operation.from.z), Number(operation.to.z));
+    if (![minX, maxX, minY, maxY, minZ, maxZ].every(Number.isFinite)) continue;
+    for (let x = minX; x <= maxX; x += 1) {
+      for (let y = minY; y <= maxY; y += 1) {
+        for (let z = minZ; z <= maxZ; z += 1) occupied.set(pointKey(x, y, z), operation.block);
+      }
+    }
+  }
+  return occupied;
+}
+
+function ignoredDecoratorPositions(placements = []) {
+  const ignored = new Set();
+  for (const placement of placements) {
+    const at = placement?.at || {};
+    const x = Number(at.x);
+    const y = Number(at.y);
+    const z = Number(at.z);
+    if ([x, y, z].every(Number.isFinite)) ignored.add(pointKey(x, y, z));
+  }
+  return ignored;
+}
+
+function isNonBlockingHeadroomBlock(block) {
+  const id = String(block || '').split('[')[0];
+  return /_carpet$|_pressure_plate$|_button$|_torch$|_door$|_trapdoor$|_pane$|_candle$|lantern$|potted_|flower_pot$|chain$|ladder$|vine$/.test(id);
+}
+
+function pointKey(x, y, z) {
+  return `${x},${y},${z}`;
 }
 
 function overlapArea2d(a, b) {

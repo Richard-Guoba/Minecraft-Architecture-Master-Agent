@@ -1,6 +1,9 @@
+import { CORE_EXTERIOR_DETAIL_KIT_IDS, exteriorBlockPaletteForFamily, exteriorDetailKitsForFamily } from './exteriorDetailKits.js';
+
 export class FacadeAgent {
   run(prompt = '', architecture = {}, buildSpec = {}, topology = {}, materialPalette = {}, stylePreset = {}) {
     const family = String(architecture.style_family || buildSpec.style_family || 'general');
+    const materials = materialPalette.materials || architecture.materials || {};
     const rules = architecture.facade_rules || {};
     const design = architecture.design_directives?.facade || {};
     const designGlazing = design.glazing_ratio || buildSpec.facade?.glazing_ratio;
@@ -10,20 +13,20 @@ export class FacadeAgent {
     const screen = Boolean(rules.screen || buildSpec.facade?.screens);
     const arches = Boolean(rules.arches || rules.pointed_arches || buildSpec.facade?.arches);
     const balcony = Boolean(rules.balcony || buildSpec.facade?.balcony || /阳台|露台|观景/.test(prompt));
-    const awning = Boolean(rules.awnings || /遮阳|雨棚|awning|shade/i.test(prompt)) || ['desert', 'mediterranean', 'coastal'].includes(family);
+    const awning = Boolean(rules.awnings || /遮阳|雨棚|awning|shade/i.test(prompt)) || ['desert', 'mediterranean', 'coastal', 'tropical'].includes(family);
     const flowerBoxes = Boolean(rules.flower_boxes || /花箱|窗台花|flower box|planter/i.test(prompt)) || ['victorian', 'classical', 'cottage'].includes(family);
     const serviceVents = Boolean(rules.service_vents) || family === 'industrial' || /通风|管线|风管|vent|service/i.test(prompt);
-    const addressMarker = Boolean(rules.address_marker) || /门牌|信箱|招牌|标识|address|sign|mailbox/i.test(prompt) || neon || buildSpec.scale === 'large';
-    const privacyFins = Boolean(rules.privacy_fins || /百叶|格栅|隐私|privacy|fins/i.test(prompt)) || screen;
-    const wallRelief = Boolean(rules.wall_relief || buildSpec.facade?.wall_relief || design.wall_relief) ||
-      ['modern', 'industrial', 'futuristic', 'cyberpunk'].includes(family) ||
-      /凹凸|层次|墙面|立面|半砖|切割砖|wall relief|facade relief/i.test(prompt);
+    const addressMarker = Boolean(rules.address_marker) || /门牌|信箱|招牌|标识|address|sign|mailbox/i.test(prompt) || neon;
+    const privacyFins = Boolean(rules.privacy_fins || /百叶|格栅|隐私|privacy|fins/i.test(prompt)) || screen || ['modern', 'industrial', 'cyberpunk'].includes(family);
+    const wallRelief = rules.wall_relief !== false;
     const windowSurrounds = rules.window_surrounds !== false;
     const entryDetail = rules.entry_detail !== false;
     const windowRhythm = design.window_rhythm || rules.window_rhythm || rhythmForFamily(family, wide, protectedOpenings);
     const windowWidth = design.window_width || (wide ? 4 : protectedOpenings ? 1 : 2);
     const windowHeight = design.window_height || (wide ? 3 : 2);
     const windowSpacing = design.window_spacing || (wide ? 5 : protectedOpenings ? 8 : 6);
+    const exteriorDetailKits = exteriorDetailKitsForFamily(family, materials);
+    const exteriorBlockPalette = exteriorBlockPaletteForFamily(family, materials);
 
     return {
       source: 'local-facade-agent',
@@ -47,6 +50,14 @@ export class FacadeAgent {
         material: architecture.materials?.door || 'minecraft:dark_oak_door'
       },
       facade_elements: facadeElements({ family, screen, arches, balcony, neon, wide, protectedOpenings, awning, flowerBoxes, serviceVents, addressMarker, privacyFins, wallRelief, windowSurrounds, entryDetail, prompt }),
+      exterior_detail_kits: exteriorDetailKits,
+      exterior_block_palette: exteriorBlockPalette,
+      exterior_detail_requirements: {
+        minimum_detail_types: 3,
+        minimum_blocks_per_detail: 3,
+        preferred_non_full_block_types: 8,
+        core_detail_types: CORE_EXTERIOR_DETAIL_KIT_IDS.slice(0, 3)
+      },
       color_bands: colorBandsForFamily(family, materialPalette),
       facade_depth_layers: facadeDepthLayers({ awning, flowerBoxes, serviceVents, privacyFins, wide, wallRelief, windowSurrounds, entryDetail }),
       relief_density: design.relief_density || 'medium',
