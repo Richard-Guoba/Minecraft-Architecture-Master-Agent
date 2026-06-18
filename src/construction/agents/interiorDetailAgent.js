@@ -1,11 +1,15 @@
 import { interiorSpecialistCapabilities, specialistDefinitionsForRoom } from './interiorRoomAgents.js';
+import { buildInteriorSemanticLibrary, semanticClausesForRoom, summarizeInteriorSemanticPlan } from './interiorSemanticClauses.js';
 
 export class InteriorDetailAgent {
   run(rooms = [], architecture = {}, buildSpec = {}, topology = {}, materialPalette = {}, stylePreset = {}) {
     const family = String(architecture.style_family || buildSpec.style_family || 'general');
     const design = architecture.design_directives?.interior || {};
-    const roomDetails = (rooms || []).map((room) => detailForRoom(room, family, materialPalette, architecture, design));
+    const templateKnowledge = architecture.template_knowledge || buildSpec.template_knowledge || {};
+    const roomDetails = (rooms || []).map((room) => detailForRoom(room, family, materialPalette, architecture, buildSpec, topology, design, templateKnowledge));
     const roomSpecialists = interiorSpecialistCapabilities();
+    const semanticLibrary = buildInteriorSemanticLibrary();
+    const semanticSummary = summarizeInteriorSemanticPlan(roomDetails);
     return {
       source: 'local-interior-detail-agent',
       style_family: family,
@@ -13,6 +17,8 @@ export class InteriorDetailAgent {
       creative_signature: architecture.design_directives?.signature || buildSpec.creative_design_signature || 'none',
       room_count: roomDetails.length,
       room_details: roomDetails,
+      semantic_library: semanticLibrary,
+      semantic_summary: semanticSummary,
       room_specialists: roomSpecialists,
       lighting_strategy: lightingForFamily(family),
       comfort_strategy: comfortStrategy(rooms, family, buildSpec, design),
@@ -39,10 +45,11 @@ export class InteriorDetailAgent {
   }
 }
 
-function detailForRoom(room, family, materialPalette = {}, architecture = {}, design = {}) {
+function detailForRoom(room, family, materialPalette = {}, architecture = {}, buildSpec = {}, topology = {}, design = {}, templateKnowledge = {}) {
   const materials = materialPalette.materials || architecture.materials || {};
   const specialists = specialistDefinitionsForRoom(room, { styleFamily: family, architecture });
   const blockCounts = specialists.map((specialist) => specialist.capability_blocks.length);
+  const semanticClauses = semanticClausesForRoom(room, { family, architecture, buildSpec, topology, materialPalette, templateKnowledge });
   const base = {
     room_id: room.id,
     type: room.type,
@@ -59,7 +66,11 @@ function detailForRoom(room, family, materialPalette = {}, architecture = {}, de
     specialist_agent: specialists[0]?.source || 'general-room-furnishing',
     specialist_agents: specialists.map((specialist) => specialist.source),
     specialist_block_count: blockCounts.length ? Math.max(...blockCounts) : 0,
-    specialist_block_counts: Object.fromEntries(specialists.map((specialist) => [specialist.source, specialist.capability_blocks.length]))
+    specialist_block_counts: Object.fromEntries(specialists.map((specialist) => [specialist.source, specialist.capability_blocks.length])),
+    semantic_clauses: semanticClauses,
+    semantic_clause_ids: semanticClauses.map((clause) => clause.id),
+    semantic_clause_groups: [...new Set(semanticClauses.map((clause) => clause.group))],
+    semantic_budget: semanticBudgetForRoom(room, semanticClauses, design)
   };
   if (['kitchen', 'bathroom', 'garage', 'utility'].includes(room.type)) base.service_wall = materials.secondary_wall || architecture.materials?.interior_wall || 'minecraft:light_gray_concrete';
   if (['living', 'great_hall', 'lounge'].includes(room.type)) base.focal_feature = focalFeatureForFamily(family);
@@ -113,6 +124,23 @@ function densityForRoom(room) {
   if (room.zone === 'service') return 'functional';
   if (room.type === 'great_hall') return 'ceremonial';
   return 'medium';
+}
+
+function semanticBudgetForRoom(room, clauses = [], design = {}) {
+  const area = roomArea(room);
+  if (['corridor', 'stairs'].includes(room.type)) return Math.min(4, clauses.length);
+  if (area <= 18) return Math.min(5, clauses.length);
+  if (area <= 36) return Math.min(8, clauses.length);
+  const density = String(design.decor_density || '');
+  const rich = ['layered', 'gallery', 'formal', 'rich-but-spaced'].includes(density);
+  return Math.min(rich ? 22 : 18, clauses.length);
+}
+
+function roomArea(room = {}) {
+  const width = Number(room.max_x) - Number(room.min_x) + 1;
+  const depth = Number(room.max_z) - Number(room.min_z) + 1;
+  if (!Number.isFinite(width) || !Number.isFinite(depth)) return 0;
+  return Math.max(0, width) * Math.max(0, depth);
 }
 
 function lightingForFamily(family) {

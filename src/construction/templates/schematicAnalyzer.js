@@ -172,7 +172,7 @@ export async function analyzeSchematicFile(filePath, { rootDir = process.cwd(), 
   const text = [title, source.note, page.title, page.description, category].filter(Boolean).join(' ');
   const style = inferStyleFamily(text, category);
   const typology = inferTypology(text, category);
-  const featureTags = inferFeatureTags(text, voxels, category);
+  const featureTags = inferFeatureTags(text, voxels, category, typology);
 
   return {
     file: relativePath,
@@ -402,6 +402,7 @@ function decodePackedBlockStates(longs, paletteLength, expectedLength) {
 function analyzeVoxels(schematic) {
   const counts = {};
   const categories = emptyCategoryCounts();
+  const interiorSignals = emptyInteriorSignalCounts();
   const bounds = {
     minX: Infinity,
     maxX: -Infinity,
@@ -425,6 +426,7 @@ function analyzeVoxels(schematic) {
         counts[block.key] = (counts[block.key] || 0) + 1;
         const category = block.category;
         categories[category] = (categories[category] || 0) + 1;
+        for (const signal of interiorSignalCategories(block)) interiorSignals[signal] = (interiorSignals[signal] || 0) + 1;
         updateBounds(bounds, x, y, z);
         occupiedColumns.add(`${x},${z}`);
         if (x === 0 || z === 0 || x === schematic.width - 1 || z === schematic.length - 1) edgeContact += 1;
@@ -488,6 +490,7 @@ function analyzeVoxels(schematic) {
       natural_ratio: ratio((categories.earth || 0) + (categories.rock || 0) + (categories.vegetation || 0) + (categories.water || 0), nonAir),
       garden_signal: gardenSignal(categories, terrainRange, nonAir)
     },
+    interior_signals: normalizeInteriorSignals(interiorSignals, nonAir),
     vertical_profile: verticalProfile
   };
 }
@@ -607,13 +610,13 @@ function inferTypology(text, category) {
   if (/castle|fort|hogwarts|城堡/.test(value)) return 'castle';
   if (/tower|big ben|eiffel|lighthouse|塔/.test(value)) return 'tower';
   if (/temple|pagoda|parthenon|church|庙|神庙|教堂/.test(value)) return 'temple';
-  if (/arena|colosseum|court|field|lobby|amphitheatre|竞技|球场/.test(value)) return 'arena';
+  if (/arena|colosseum|\bcourt\b|field|lobby|amphitheatre|竞技|球场/.test(value)) return 'arena';
   if (/hotel|hospital|library|apartment|building|金字塔|pyramid/.test(value)) return 'public-building';
   if (/mansion|estate|villa|house|home|tavern|market|住宅|别墅/.test(value)) return 'house';
   return String(category || 'building').toLowerCase();
 }
 
-function inferFeatureTags(text, voxels, category) {
+function inferFeatureTags(text, voxels, category, typology) {
   const value = `${text} ${category}`.toLowerCase();
   const tags = new Set();
   if (/symmetry|classi|colonial|white house|parthenon|colosseum|formal|古典/.test(value)) tags.add('formal-axis');
@@ -627,6 +630,8 @@ function inferFeatureTags(text, voxels, category) {
   if (voxels.detail_metrics.stair_slab_ratio > 0.08) tags.add('micro-block-detailing');
   if (voxels.detail_metrics.fence_ratio > 0.025) tags.add('rail-and-fence-detail');
   if (voxels.detail_metrics.glass_ratio > 0.08) tags.add('glass-emphasis');
+  if (isInteriorLearningTypology(typology, category) && voxels.interior_signals?.furnished_likelihood !== 'low') tags.add('furnished-interior');
+  if (isInteriorLearningTypology(typology, category) && Number(voxels.interior_signals?.richness || 0) >= 6) tags.add('layered-interior');
   return [...tags].sort();
 }
 
@@ -643,6 +648,9 @@ function recommendationsForTemplate({ text, voxels, style, typology, category, t
   if (voxels.detail_metrics.fence_ratio > 0.015) designPriorities.push('add rail/fence rhythm to edges and terraces');
   if (voxels.terrain.integrated) designPriorities.push('treat terrain as part of the composition, not a flat base');
   if (voxels.detail_metrics.garden_signal !== 'none') designPriorities.push('compose garden rooms and foreground scenery');
+  if (isInteriorLearningTypology(typology, category) && voxels.interior_signals?.furnished_likelihood !== 'low') {
+    designPriorities.push('use layered interior grammar: focal walls, storage, textiles, plants, and task zones');
+  }
   if (voxels.vertical_profile.tower_like || typology === 'tower') designPriorities.push('preserve strong vertical silhouette and staged tapering');
 
   return {
@@ -656,6 +664,13 @@ function recommendationsForTemplate({ text, voxels, style, typology, category, t
     source_category: category,
     source_keywords: keywordHints(text)
   };
+}
+
+function isInteriorLearningTypology(typology, category) {
+  const type = String(typology || '').toLowerCase();
+  const group = String(category || '').toLowerCase();
+  if (type === 'arena' || group === 'arenas') return false;
+  return true;
 }
 
 function summarizeCorpus(templates, rawSources = []) {
@@ -820,6 +835,89 @@ function emptyCategoryCounts() {
     opening: 0,
     decor: 0,
     other: 0
+  };
+}
+
+function emptyInteriorSignalCounts() {
+  return {
+    storage: 0,
+    bed: 0,
+    books_library: 0,
+    kitchen_work: 0,
+    workshop: 0,
+    textile: 0,
+    wall_art: 0,
+    potted_plant: 0,
+    light_fixture: 0,
+    seating_shape: 0,
+    table_surface: 0,
+    wet_fixture: 0,
+    music_play: 0,
+    ceremonial: 0,
+    vertical_detail: 0,
+    display_object: 0
+  };
+}
+
+function interiorSignalCategories(block = {}) {
+  const name = String(block.name || block.state || block.key || '').replace(/^minecraft:/, '');
+  const category = block.category || '';
+  const result = [];
+  if (/(chest|barrel|shulker_box|hopper|dropper|dispenser)/.test(name)) result.push('storage');
+  if (/_bed$|^bed$/.test(name)) result.push('bed', 'textile');
+  if (/(bookshelf|lectern|enchanting_table|cartography_table)/.test(name)) result.push('books_library', 'display_object');
+  if (/(furnace|smoker|blast_furnace|crafting_table|cake)/.test(name)) result.push('kitchen_work');
+  if (/(anvil|smithing_table|grindstone|stonecutter|loom|fletching_table|brewing_stand)/.test(name)) result.push('workshop');
+  if (/(carpet|wool|banner|curtain)/.test(name)) result.push('textile');
+  if (/(banner|painting|skull|head)/.test(name)) result.push('wall_art', 'display_object');
+  if (/(flower_pot|potted_)/.test(name)) result.push('potted_plant');
+  if (category === 'light' || /(torch|lantern|candle|lamp|glowstone|sea_lantern|froglight|end_rod|beacon)/.test(name)) result.push('light_fixture');
+  if (category === 'stair' || /stairs?$/.test(name)) result.push('seating_shape');
+  if (category === 'slab' || /(slab|pressure_plate|trapdoor)/.test(name)) result.push('table_surface');
+  if (/(cauldron|water|sponge)/.test(name)) result.push('wet_fixture');
+  if (/(jukebox|note_block|bell)/.test(name)) result.push('music_play', 'display_object');
+  if (/(candle|banner|lectern|bell|chain)/.test(name)) result.push('ceremonial');
+  if (/(chain|iron_bars|fence|wall|pane|rod)/.test(name)) result.push('vertical_detail');
+  if (/(decorated_pot|flower_pot|pot|skull|banner|beacon|end_rod)/.test(name)) result.push('display_object');
+  return [...new Set(result)];
+}
+
+function normalizeInteriorSignals(signals, total) {
+  const counts = Object.fromEntries(Object.entries(signals).map(([key, count]) => [key, count]));
+  const totalHits = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  const richness = Object.values(counts).filter((count) => count > 0).length;
+  const strongSignalKeys = [
+    'storage',
+    'bed',
+    'books_library',
+    'kitchen_work',
+    'workshop',
+    'wall_art',
+    'potted_plant',
+    'light_fixture',
+    'wet_fixture',
+    'music_play',
+    'ceremonial',
+    'display_object'
+  ];
+  const strongHits = strongSignalKeys.reduce((sum, key) => sum + Number(counts[key] || 0), 0);
+  const strongRichness = strongSignalKeys.filter((key) => Number(counts[key] || 0) > 0).length;
+  const ratioValue = ratio(totalHits, total);
+  const strongRatio = ratio(strongHits, total);
+  return {
+    counts,
+    total_hits: totalHits,
+    ratio: ratioValue,
+    strong_hits: strongHits,
+    strong_ratio: strongRatio,
+    richness,
+    strong_richness: strongRichness,
+    furnished_likelihood: strongRatio > 0.012 || strongRichness >= 6 ? 'high' : strongRatio > 0.003 || strongRichness >= 3 ? 'medium' : 'low',
+    dominant_signals: Object.entries(counts)
+      .filter(([, count]) => count > 0)
+      .map(([signal, count]) => ({ signal, count, ratio: ratio(count, total) }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8)
   };
 }
 

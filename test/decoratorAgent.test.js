@@ -80,6 +80,37 @@ test('Interior specialist agents expose at least fifty controllable blocks each'
   }
 });
 
+test('InteriorDetailAgent emits rich semantic clauses for room composition', () => {
+  const { interior } = buildDecorated('建一个现代两层大房子，宽31深17，大玻璃窗，开放厨房，三间卧室，书房，客厅');
+  const living = interior.room_details.find((detail) => detail.type === 'living');
+  const kitchen = interior.room_details.find((detail) => detail.type === 'kitchen');
+  const bedroom = interior.room_details.find((detail) => detail.type === 'bedroom' || detail.type === 'master_bedroom');
+
+  assert.ok(interior.semantic_library.length >= 90);
+  assert.ok(interior.semantic_summary.clause_count >= interior.room_count * 8);
+  assert.ok(living.semantic_clause_ids.includes('living-focal-wall'));
+  assert.ok(living.semantic_clause_ids.includes('living-conversation-cluster'));
+  assert.ok(kitchen.semantic_clause_ids.includes('kitchen-work-wall'));
+  assert.ok(kitchen.semantic_clause_ids.includes('kitchen-task-light'));
+  assert.ok(bedroom.semantic_clause_ids.includes('bedroom-wardrobe-wall'));
+  assert.ok(bedroom.semantic_clause_ids.includes('bedroom-reading-light'));
+});
+
+test('DecoratorAgent writes semantic interior clause layers into rooms', () => {
+  const { decorator } = buildDecorated('建一个现代两层大房子，宽31深17，大玻璃窗，开放厨房，三间卧室，书房，客厅');
+  const semanticPlacements = decorator.placements.filter((item) => item.role.startsWith('semantic-'));
+  const livingPlacements = semanticPlacements.filter((item) => item.type === 'living');
+  const kitchenPlacements = semanticPlacements.filter((item) => item.type === 'kitchen');
+
+  assert.ok(semanticPlacements.length >= 30);
+  assert.ok(livingPlacements.some((item) => item.placement === 'living-focal-wall'));
+  assert.ok(livingPlacements.some((item) => item.placement === 'living-window-seat'));
+  assert.ok(kitchenPlacements.some((item) => item.placement === 'kitchen-work-wall'));
+  assert.ok(kitchenPlacements.some((item) => item.placement === 'kitchen-task-light'));
+  assert.ok(semanticPlacements.some((item) => item.placement === 'style-modern-linear-light'));
+  assert.ok(semanticPlacements.every((item) => !['corridor', 'stairs'].includes(item.type)));
+});
+
 test('DecoratorAgent activates kitchen, living room, bedroom, and study specialists', () => {
   const { decorator, interior } = buildDecorated('建一个现代两层大房子，宽31深17，大玻璃窗，开放厨房，三间卧室，书房，客厅');
   const expected = [

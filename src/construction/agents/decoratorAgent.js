@@ -131,6 +131,7 @@ function furnishRoom(room, materials, context) {
       break;
   }
 
+  builder.addSemanticClauseLayer();
   const specialists = specialistAgentsForRoom(room, context).map((agent) => agent.run(builder));
 
   return { blocks: builder.blocks, specialists, specialist: specialists[0] };
@@ -220,6 +221,102 @@ class RoomFurnishingBuilder {
     }
     if (['layered', 'playful', 'gallery'].includes(String(this.roomDetail.furniture_density || ''))) {
       this.add('color-candle', 'minecraft:candle', this.room.max_x - 1, this.floorY, this.room.min_z + 1, 'creative-color-edge', 'decor_light');
+    }
+  }
+
+  addSemanticClauseLayer() {
+    if (['corridor', 'stairs'].includes(this.room.type)) return;
+    const clauses = Array.isArray(this.roomDetail.semantic_clauses) ? this.roomDetail.semantic_clauses : [];
+    if (!clauses.length) return;
+    const budget = clampInt(this.roomDetail.semantic_budget ?? clauses.length, 0, 22, clauses.length);
+    for (const clause of clauses.slice(0, budget)) this.applySemanticClause(String(clause.id || clause));
+  }
+
+  applySemanticClause(id) {
+    if (!id || id === 'circulation-restraint' || id === 'universal-clear-circulation' || id.endsWith('clear-aisle')) return;
+    const y = this.floorY;
+    const y1 = Math.min(this.floorY + 1, this.ceilingY);
+    const ceiling = this.ceilingY;
+    const north = this.room.min_z + 1;
+    const south = this.room.max_z - 1;
+    const west = this.room.min_x + 1;
+    const east = this.room.max_x - 1;
+    const cx = this.centerX;
+    const cz = this.centerZ;
+    const accent = this.roomDetail.accent_block || this.materials.accent || this.materials.trim || 'minecraft:smooth_quartz';
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+    const storage = this.roomDetail.storage_block || this.materials.furniture || 'minecraft:barrel';
+    const carpet = this.roomDetail.floor_accent || 'minecraft:white_carpet';
+    const seat = seatingBlockForStyle(this.styleFamily);
+
+    if (/threshold|marker|floor-zone|runner|rug|mat|textile|formal-runner|quiet-rug|aisle-runner/.test(id)) {
+      this.add('semantic-floor-zone', carpet, cx, y, cz, id, 'decor_floor');
+      if (this.area > 42 && !['bathroom', 'storage', 'utility'].includes(this.room.type)) {
+        this.add('semantic-floor-zone', carpet, clampInt(cx - 1, west, east, cx), y, cz, id, 'decor_floor');
+        this.add('semantic-floor-zone', carpet, clampInt(cx + 1, west, east, cx), y, cz, id, 'decor_floor');
+      }
+    }
+
+    if (/light|sconce|glow|candle|lantern/.test(id)) {
+      this.add('semantic-light', light, cx, ceiling, cz, id, 'decor_light');
+      if (this.area > 36) this.add('semantic-task-light', light, east, ceiling, north, id, 'decor_light');
+    }
+
+    if (/storage|wardrobe|pantry|archive|sideboard|supply|parts|drop-zone|coat|crate/.test(id)) {
+      this.add('semantic-storage', storage, west, y, north, id, 'decor_storage');
+      if (this.area > 40) this.add('semantic-secondary-storage', 'minecraft:chest', east, y, south, id, 'decor_storage');
+    }
+
+    if (/display|gallery|bookshelf|library|personal|pedestal|tokonoma|ceramic|wall-depth|focal-wall/.test(id)) {
+      const displayBlock = /bookshelf|library/.test(id) ? 'minecraft:bookshelf' : /ceramic|pot/.test(id) ? 'minecraft:decorated_pot' : accent;
+      this.add('semantic-display', displayBlock, east, y, cz, id, 'decor_detail');
+      if (this.area > 36) this.add('semantic-display-light', light, east, ceiling, cz, id, 'decor_light');
+    }
+
+    if (/plant|garden-view|indoor-planter|view-response|view-seat|window-view|water-view/.test(id)) {
+      const plant = this.materials.plant || 'minecraft:potted_azalea_bush';
+      this.add('semantic-plant', blockBase(plant).includes('leaves') ? 'minecraft:potted_azalea_bush' : plant, east, y, south, id, 'decor_plant');
+      if (/seat|view/.test(id) && this.area > 30) this.add('semantic-view-seat', seat, west, y, south, id, 'decor_furniture');
+    }
+
+    if (/bench|seat|conversation|chair|negative-space|low-horizontality/.test(id)) {
+      this.add('semantic-seat', seat, west, y, south, id, 'decor_furniture');
+      if (this.area > 48) this.add('semantic-seat', seat, east, y, south, id, 'decor_furniture');
+    }
+
+    if (/table|breakfast|prep-counter|counter|workbench|desk|altar|dais/.test(id)) {
+      const tableBlock = /desk|altar/.test(id) ? 'minecraft:lectern' : tableBaseBlockForStyle(this.styleFamily);
+      this.add('semantic-table', tableBlock, cx, y, clampInt(north + 1, north, south, cz), id, 'decor_furniture');
+    }
+
+    if (/work-wall|prep|sink|wet-wall|wet-or-mechanical|utility-counter|service-spine/.test(id)) {
+      const utilityBlock = /sink|wet/.test(id) ? 'minecraft:cauldron' : /vent|spine/.test(id) ? 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]' : 'minecraft:crafting_table';
+      this.add('semantic-utility', utilityBlock, west, y, north, id, 'decor_utility');
+      if (/kitchen|prep|work-wall/.test(id)) this.add('semantic-utility-storage', 'minecraft:barrel', west + 1, y, north, id, 'decor_storage');
+    }
+
+    if (/sleep|bedside/.test(id)) {
+      this.add('semantic-bedside', 'minecraft:barrel', west, y, south, id, 'decor_storage');
+      this.add('semantic-bedside-light', light, west, Math.min(y1, ceiling), south, id, 'decor_light');
+    }
+
+    if (/screen|privacy|rail|rack|ironwork|metal|rope|vertical-detail|guard-rail/.test(id)) {
+      const block = /iron|metal|rail|rack/.test(id) ? 'minecraft:iron_bars' : this.materials.railing || 'minecraft:oak_fence';
+      this.add('semantic-screen-or-rail', block, east, y, cz, id, 'decor_detail');
+    }
+
+    if (/banner|art|symmetry|paired|ceremonial|chapel|gothic|classical/.test(id)) {
+      this.add('semantic-banner-left', 'minecraft:red_banner', west, y1, cz, id, 'decor_detail');
+      if (this.area > 36) this.add('semantic-banner-right', 'minecraft:blue_banner', east, y1, cz, id, 'decor_detail');
+    }
+
+    if (/hearth|warm|fire|forge/.test(id)) {
+      this.add('semantic-hearth', 'minecraft:campfire[lit=false]', cx, y, north, id, 'decor_detail');
+    }
+
+    if (/music|media|cyberpunk/.test(id)) {
+      this.add('semantic-media', 'minecraft:jukebox', east, y, north, id, 'decor_detail');
+      if (this.styleFamily === 'cyberpunk') this.add('semantic-neon', 'minecraft:sea_lantern', east, ceiling, north, id, 'decor_light');
     }
   }
 
