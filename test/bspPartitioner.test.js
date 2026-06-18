@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CSGBuilder } from '../src/construction/engine/csgBuilder.js';
-import { BSPPartitioner } from '../src/construction/engine/bspPartitioner.js';
+import { BSPPartitioner, sanitizeInteriorDoors } from '../src/construction/engine/bspPartitioner.js';
 import { buildFallbackArchitecture } from '../src/construction/agents/architectAgent.js';
 import { buildFallbackTopology } from '../src/construction/agents/plannerAgent.js';
 import { deriveBuildSpec } from '../src/construction/workflow.js';
@@ -64,6 +64,27 @@ test('BSPPartitioner maps modern garage and sunroom nodes to attached volumes an
   assert.ok(layout.interiorDoors.some((door) => door.kind === 'attached-volume' && door.connects.includes('sunroom')));
 });
 
+test('BSPPartitioner keeps every recorded interior door touching its connected rooms', () => {
+  const { layout } = buildLayout('建一个现代湖边别墅，带非平坦自然地形、前景花园、水边平台、大玻璃和屋顶露台');
+  assertInteriorDoorsTouchRooms(layout);
+});
+
+test('sanitizeInteriorDoors removes stale LLM-normalized doors that no longer touch both rooms', () => {
+  const rooms = [
+    { id: 'study', floor: 0, min_x: 1, max_x: 8, min_z: 1, max_z: 5 },
+    { id: 'living', floor: 0, min_x: 11, max_x: 20, min_z: 12, max_z: 18 },
+    { id: 'kitchen', floor: 0, min_x: 11, max_x: 20, min_z: 1, max_z: 5 }
+  ];
+  const doors = [
+    { kind: 'bsp-door', floor: 0, axis: 'x', at: { x: 10, z: 3 }, connects: ['study', 'living'] },
+    { kind: 'bsp-door', floor: 0, axis: 'x', at: { x: 10, z: 3 }, connects: ['study', 'kitchen'] }
+  ];
+
+  sanitizeInteriorDoors(rooms, doors, { tolerance: 2 });
+
+  assert.deepEqual(doors.map((door) => door.connects), [['study', 'kitchen']]);
+});
+
 function buildLayout(prompt) {
   const architecture = buildFallbackArchitecture(prompt);
   const spec = deriveBuildSpec(prompt, architecture);
@@ -79,4 +100,25 @@ function roomIds(layout) {
 
 function rangesOverlap(aMin, aMax, bMin, bMax) {
   return Math.max(aMin, bMin) <= Math.min(aMax, bMax);
+}
+
+function assertInteriorDoorsTouchRooms(layout) {
+  const roomById = new Map(layout.rooms.map((room) => [room.id, room]));
+  for (const door of layout.interiorDoors) {
+    for (const id of door.connects || []) {
+      assert.ok(doorTouchesRoom(door, roomById.get(id)), `${door.connects?.join('<->')} should touch ${id}`);
+    }
+  }
+}
+
+function doorTouchesRoom(door, room, tolerance = 2) {
+  assert.ok(room, `missing room for door ${door.connects?.join('<->')}`);
+  if (door.axis === 'x') {
+    return rangesOverlap(door.at.z - 1, door.at.z + 1, room.min_z, room.max_z) &&
+      door.at.x >= room.min_x - tolerance &&
+      door.at.x <= room.max_x + tolerance;
+  }
+  return rangesOverlap(door.at.x - 1, door.at.x + 1, room.min_x, room.max_x) &&
+    door.at.z >= room.min_z - tolerance &&
+    door.at.z <= room.max_z + tolerance;
 }

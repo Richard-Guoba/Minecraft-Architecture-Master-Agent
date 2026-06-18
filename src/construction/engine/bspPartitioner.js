@@ -30,6 +30,7 @@ export class BSPPartitioner {
     rooms.push(...mainRooms, ...attachedRooms);
     this.connectAttachedRooms(shell.grid, attachedRooms, mainRooms, mainBox, interiorDoors);
     normalizeRoomIdsAndDoors(rooms, interiorDoors);
+    sanitizeInteriorDoors(rooms, interiorDoors, { tolerance: clampInt(this.spec.shell_thickness || 1, 1, 3) + 1 });
 
     const roomIds = new Set(rooms.map((room) => room.id));
     const unassignedPlannerNodes = nodes
@@ -125,14 +126,16 @@ export class BSPPartitioner {
       const leftRooms = this.partition(grid, { ...rect, max_x: splitX - 1 }, leftNodes, depth + 1, interiorDoors, hints);
       const rightRooms = this.partition(grid, { ...rect, min_x: splitX + 1 }, rightNodes, depth + 1, interiorDoors, hints);
       const door = doorForSplit(leftRooms, rightRooms, axis, splitX, rect);
-      if (!softBoundary) carveOpening(grid, splitX, rect.min_y, door.at.z, axis);
-      interiorDoors.push({
-        kind: softBoundary ? 'open-plan-threshold' : 'bsp-door',
-        floor: rect.floor,
-        axis,
-        at: door.at,
-        connects: door.connects
-      });
+      if (door) {
+        if (!softBoundary) carveOpening(grid, splitX, rect.min_y, door.at.z, axis);
+        interiorDoors.push({
+          kind: softBoundary ? 'open-plan-threshold' : 'bsp-door',
+          floor: rect.floor,
+          axis,
+          at: door.at,
+          connects: door.connects
+        });
+      }
       rooms.push(...leftRooms, ...rightRooms);
       return rooms;
     }
@@ -142,14 +145,16 @@ export class BSPPartitioner {
     const leftRooms = this.partition(grid, { ...rect, max_z: splitZ - 1 }, leftNodes, depth + 1, interiorDoors, hints);
     const rightRooms = this.partition(grid, { ...rect, min_z: splitZ + 1 }, rightNodes, depth + 1, interiorDoors, hints);
     const door = doorForSplit(leftRooms, rightRooms, axis, splitZ, rect);
-    if (!softBoundary) carveOpening(grid, door.at.x, rect.min_y, splitZ, axis);
-    interiorDoors.push({
-      kind: softBoundary ? 'open-plan-threshold' : 'bsp-door',
-      floor: rect.floor,
-      axis,
-      at: door.at,
-      connects: door.connects
-    });
+    if (door) {
+      if (!softBoundary) carveOpening(grid, door.at.x, rect.min_y, splitZ, axis);
+      interiorDoors.push({
+        kind: softBoundary ? 'open-plan-threshold' : 'bsp-door',
+        floor: rect.floor,
+        axis,
+        at: door.at,
+        connects: door.connects
+      });
+    }
     rooms.push(...leftRooms, ...rightRooms);
     return rooms;
   }
@@ -287,33 +292,32 @@ function doorForSplit(leftRooms, rightRooms, axis, splitCoord, rect) {
         const overlapStart = Math.max(left.min_z, right.min_z);
         const overlapEnd = Math.min(left.max_z, right.max_z);
         if (overlapStart > overlapEnd) continue;
-        const boundaryGap = Math.abs((splitCoord - 1) - left.max_x) + Math.abs(right.min_x - (splitCoord + 1));
+        const leftGap = Math.abs((splitCoord - 1) - left.max_x);
+        const rightGap = Math.abs(right.min_x - (splitCoord + 1));
+        if (leftGap > 0 || rightGap > 0) continue;
         candidates.push({
           at: { x: splitCoord, z: Math.floor((overlapStart + overlapEnd) / 2) },
           connects: [left.id, right.id].filter(Boolean),
-          score: boundaryGap * 100 - (overlapEnd - overlapStart + 1)
+          score: -(overlapEnd - overlapStart + 1)
         });
       } else {
         const overlapStart = Math.max(left.min_x, right.min_x);
         const overlapEnd = Math.min(left.max_x, right.max_x);
         if (overlapStart > overlapEnd) continue;
-        const boundaryGap = Math.abs((splitCoord - 1) - left.max_z) + Math.abs(right.min_z - (splitCoord + 1));
+        const leftGap = Math.abs((splitCoord - 1) - left.max_z);
+        const rightGap = Math.abs(right.min_z - (splitCoord + 1));
+        if (leftGap > 0 || rightGap > 0) continue;
         candidates.push({
           at: { x: Math.floor((overlapStart + overlapEnd) / 2), z: splitCoord },
           connects: [left.id, right.id].filter(Boolean),
-          score: boundaryGap * 100 - (overlapEnd - overlapStart + 1)
+          score: -(overlapEnd - overlapStart + 1)
         });
       }
     }
   }
 
   if (candidates.length) return candidates.sort((a, b) => a.score - b.score)[0];
-  return {
-    at: axis === 'x'
-      ? { x: splitCoord, z: Math.floor((rect.min_z + rect.max_z) / 2) }
-      : { x: Math.floor((rect.min_x + rect.max_x) / 2), z: splitCoord },
-    connects: [leftRooms[0]?.id, rightRooms[0]?.id].filter(Boolean)
-  };
+  return undefined;
 }
 
 function orderNodesForFloor(nodes, plannerJson = {}, spec = {}, floor = 0) {
@@ -678,6 +682,25 @@ function doorReachesRoom(door, room, tolerance = 2) {
   return rangesOverlap(door.at.x - 1, door.at.x + 1, room.min_x, room.max_x) &&
     door.at.z >= room.min_z - tolerance &&
     door.at.z <= room.max_z + tolerance;
+}
+
+export function sanitizeInteriorDoors(rooms = [], interiorDoors = [], { tolerance = 2 } = {}) {
+  const roomById = new Map(rooms.map((room) => [room.id, room]));
+  const validDoors = interiorDoors.filter((door) => interiorDoorTouchesRooms(door, roomById, tolerance));
+  interiorDoors.splice(0, interiorDoors.length, ...validDoors);
+  return interiorDoors;
+}
+
+function interiorDoorTouchesRooms(door, roomById, tolerance) {
+  if (!door?.at || !Number.isFinite(Number(door.at.x)) || !Number.isFinite(Number(door.at.z))) return false;
+  if (!['x', 'z'].includes(String(door.axis))) return false;
+  const connects = Array.isArray(door.connects) ? uniqueStrings(door.connects.filter(Boolean)) : [];
+  if (connects.length < 2) return false;
+  const rooms = connects.map((id) => roomById.get(id));
+  if (rooms.some((room) => !room)) return false;
+  const floor = Number.isFinite(Number(door.floor)) ? Number(door.floor) : Number(rooms[0].floor || 0);
+  if (rooms.some((room) => Number(room.floor || 0) !== floor)) return false;
+  return rooms.every((room) => doorReachesRoom(door, room, tolerance));
 }
 
 function normalizeRoomIdsAndDoors(rooms, interiorDoors) {
