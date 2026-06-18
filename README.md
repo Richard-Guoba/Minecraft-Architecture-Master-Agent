@@ -60,6 +60,40 @@ npm install
 npm start -- "建一个欧式大房子"
 ```
 
+如果本地存在 `mc_templates/analysis/template_index.json`，生成流程会自动启用模板知识检索：先从你收集的高质量 `.schematic` 样本里找相似建筑，再把地形、园林、屋顶/立面细节密度等建议注入 Site/CSG 管线。
+
+## 高质量模板语料
+
+把下载的模板放在：
+
+```text
+mc_templates/<分类>/*.schematic
+```
+
+每个分类目录可以放一个 `data.txt`，每行写标题和来源网址或备注：
+
+```text
+Villa - (mcbuild_org) https://mcbuild.org/schematics/18669:villa
+The Sky City of Athalux - (mcbuild_org) 没有介绍页，这是一个末地紫晶风格的超大型城堡庙宇
+```
+
+刷新语料分析：
+
+```powershell
+npm run analyze:templates
+```
+
+输出在：
+
+```text
+mc_templates/analysis/
+├── template_index.json       # 每个模板的尺寸、材料、地形、园林、细节密度和检索建议
+├── labels.generated.jsonl    # 自动生成的标签初稿
+└── template_gap_report.md    # 当前生成器与顶级模板的差距报告
+```
+
+分析器支持经典 MCEdit `.schematic`、Sponge palette/blockdata 和 Regions/BlockStatePalette 结构。网页抓取失败不会中断，本地文件和备注仍会参与分析。
+
 不传 `--seed` 时会自动随机一个设计 seed，并在命令行、`blueprint.json` 和 `run_report.md` 里记录。想复现同一次默认变体，可以显式传回这个 seed：
 
 ```powershell

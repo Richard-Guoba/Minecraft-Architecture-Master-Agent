@@ -282,7 +282,7 @@ const MATERIAL_PRESETS = {
 
 const STYLE_PROFILES = [
   ...STYLE_GRAMMAR_PROFILES,
-  profile('欧式', /欧式|欧洲|古典|法式|巴洛克|洛可可|庄园|别墅|宫殿/, {
+  profile('欧式', /欧式|欧洲|古典|法式|巴洛克|洛可可|庄园|宫殿/, {
     family: 'classical',
     defaultFootprint: 'winged',
     defaultRoof: 'gabled',

@@ -13,6 +13,18 @@ export class SiteLandscapeAgent {
     const mailbox = Boolean(rules.mailbox || /信箱|门牌|mailbox|address/i.test(prompt));
     const accessible = Boolean(rules.accessible_route || /无障碍|坡道|轮椅|老人友好|accessible|wheelchair|ramp/i.test(prompt));
     const rolePalettes = materialPalette.role_palettes || {};
+    const templateRecommendations = architecture.template_knowledge?.recommendations || {};
+    const templateFeatures = new Set([
+      ...normalizeStringArray(templateRecommendations.landscape_features),
+      ...normalizeStringArray(rules.template_landscape_features),
+      ...normalizeStringArray(buildSpec.site?.template_landscape_features)
+    ]);
+    const templateTerrainProfile = String(rules.template_terrain_profile || buildSpec.site?.template_terrain_profile || templateRecommendations.terrain_profile || 'flat-or-built-platform');
+    const templateTerrain = Boolean(rules.terrain_layers || templateFeatures.has('layered-terrain') || templateTerrainProfile !== 'flat-or-built-platform');
+    const templateGarden = Boolean(rules.garden_composition || templateFeatures.has('garden-composition'));
+    const templateRockBase = Boolean(rules.rock_base || templateFeatures.has('rock-and-earth-base') || templateFeatures.has('layered-terrain'));
+    const templateWaterEdge = Boolean(templateFeatures.has('water-edge'));
+    const templateTrees = Boolean(templateFeatures.has('tree-and-shrub-clusters'));
 
     return {
       source: 'local-site-landscape-agent',
@@ -27,11 +39,18 @@ export class SiteLandscapeAgent {
         grade: accessible ? 'gentle-ramped' : 'stepped-or-flat',
         wayfinding: mailbox ? 'address-marker-at-entry' : 'direct-path'
       },
-      zones: siteZones({ family, water, patio, dryGarden, enclosed, plantingBeds, outdoorSeating, pool, mailbox, accessible, prompt }),
+      zones: siteZones({ family, water: water || templateWaterEdge, patio, dryGarden, enclosed, plantingBeds: plantingBeds || templateGarden, outdoorSeating, pool, mailbox, accessible, prompt, templateTerrain, templateGarden, templateRockBase }),
       boundary: boundaryForFamily(family, enclosed),
-      terrain_response: terrainResponseForFamily(family),
+      terrain_response: templateTerrain ? templateTerrainProfile : terrainResponseForFamily(family),
+      template_guidance: {
+        active: Boolean(architecture.template_knowledge?.active),
+        terrain_profile: templateTerrainProfile,
+        landscape_features: [...templateFeatures],
+        detail_density: templateRecommendations.detail_density || 'unknown',
+        retrieved: architecture.template_knowledge?.retrieved?.map((item) => item.title) || []
+      },
       outdoor_program: {
-        planting_beds: plantingBeds,
+        planting_beds: plantingBeds || templateGarden,
         outdoor_seating: outdoorSeating,
         pool,
         mailbox,
@@ -45,6 +64,11 @@ export class SiteLandscapeAgent {
         plant_palette: rolePalettes.vegetation || [],
         understory_palette: rolePalettes.understory || [],
         water: materialPalette.materials?.water || 'minecraft:water',
+        earth: materialPalette.materials?.earth || 'minecraft:dirt',
+        rock: materialPalette.materials?.retaining || materialPalette.materials?.landscape || 'minecraft:stone',
+        grass: materialPalette.materials?.grass || 'minecraft:grass_block',
+        path_secondary: materialPalette.materials?.path_secondary || 'minecraft:cobblestone',
+        garden_edge: materialPalette.materials?.garden_edge || materialPalette.materials?.railing || 'minecraft:oak_fence',
         light: materialPalette.materials?.path_light || architecture.materials?.lamp || 'minecraft:glowstone',
         fence: materialPalette.materials?.railing || 'minecraft:oak_fence',
         pool_edge: materialPalette.materials?.pool_edge || 'minecraft:smooth_quartz',
@@ -57,22 +81,25 @@ export class SiteLandscapeAgent {
         render_entry_path: true,
         render_path_lights: family === 'cyberpunk' || /灯|夜景|霓虹/i.test(prompt),
         render_boundary: enclosed || ['classical', 'gothic', 'japanese', 'chinese-courtyard'].includes(family),
-        render_tree_clusters: ['treehouse', 'rustic', 'alpine', 'japanese', 'chinese-courtyard'].includes(family),
-        render_rock_edges: ['cliffside', 'alpine', 'subterranean'].includes(family),
-        render_water_edge: water,
+        render_tree_clusters: templateTrees || ['treehouse', 'rustic', 'alpine', 'japanese', 'chinese-courtyard'].includes(family),
+        render_rock_edges: templateRockBase || ['cliffside', 'alpine', 'subterranean'].includes(family),
+        render_water_edge: water || templateWaterEdge,
         render_sunken_court: family === 'subterranean',
         render_deck_transition: patio || /deck|平台|露台|观景/.test(prompt),
-        render_planting_beds: plantingBeds,
+        render_planting_beds: plantingBeds || templateGarden,
         render_outdoor_seating: outdoorSeating,
         render_pool: pool,
         render_mailbox: mailbox,
-        render_accessible_markers: accessible
+        render_accessible_markers: accessible,
+        render_layered_terrain: templateTerrain,
+        render_garden_composition: templateGarden,
+        render_terrain_retaining: templateTerrain || templateRockBase
       }
     };
   }
 }
 
-function siteZones({ family, water, patio, dryGarden, enclosed, plantingBeds, outdoorSeating, pool, mailbox, accessible, prompt }) {
+function siteZones({ family, water, patio, dryGarden, enclosed, plantingBeds, outdoorSeating, pool, mailbox, accessible, prompt, templateTerrain, templateGarden, templateRockBase }) {
   const zones = ['entry-path'];
   if (water) zones.push('water-edge');
   if (patio) zones.push('patio-transition');
@@ -87,6 +114,9 @@ function siteZones({ family, water, patio, dryGarden, enclosed, plantingBeds, ou
   if (family === 'subterranean') zones.push('sunken-lightwell-court');
   if (family === 'cliffside') zones.push('rocky-overlook');
   if (/花园|garden/i.test(prompt)) zones.push('planting-beds');
+  if (templateTerrain) zones.push('layered-terrain');
+  if (templateGarden) zones.push('garden-composition');
+  if (templateRockBase) zones.push('rock-and-earth-base');
   return [...new Set(zones)];
 }
 
@@ -105,4 +135,9 @@ function terrainResponseForFamily(family) {
   if (family === 'coastal') return 'sand-to-deck-transition';
   if (family === 'alpine') return 'snow-and-stone-base';
   return 'flat-lot';
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item) => item !== undefined && item !== null).map(String);
 }

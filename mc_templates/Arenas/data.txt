@@ -1,0 +1,11 @@
+Amphitheatre Arena - (mcbuild_org)  https://mcbuild.org/schematics/14495:amphitheatre-arena
+
+Colosseum - (mcbuild_org) https://mcbuild.org/schematics/18513:colosseum
+
+Skywars Lobby - (mcbuild_org) https://mcbuild.org/schematics/18533:skywars-lobby
+
+The Colosseum - (mcbuild_org) 没有介绍页
+
+Baseball Field - (mcbuild_org) https://mcbuild.org/schematics/18655:baseball-field
+
+Tennis Court - (mcbuild_org) https://mcbuild.org/schematics/18651:tennis-court

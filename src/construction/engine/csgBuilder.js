@@ -1535,6 +1535,8 @@ export class CSGBuilder {
       });
     }
     if (sitePlan.engine_hints.render_path_lights) this.addPathLights(grid, center, zStart, zEnd, sitePlan);
+    if (sitePlan.engine_hints.render_layered_terrain) this.addLayeredTerrain(grid, center, zStart, zEnd, sitePlan);
+    if (sitePlan.engine_hints.render_terrain_retaining) this.addTerrainRetaining(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_boundary) this.addSiteBoundary(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_tree_clusters) this.addTreeClusters(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_rock_edges) this.addRockEdges(grid, center, zStart, zEnd, sitePlan);
@@ -1542,10 +1544,45 @@ export class CSGBuilder {
     if (sitePlan.engine_hints.render_sunken_court) this.addSunkenCourtMarkers(grid, center, zStart, sitePlan);
     if (sitePlan.engine_hints.render_deck_transition) this.addDeckTransitionRail(grid, center, zStart, sitePlan);
     if (sitePlan.engine_hints.render_planting_beds) this.addPlantingBeds(grid, center, zStart, zEnd, sitePlan);
+    if (sitePlan.engine_hints.render_garden_composition) this.addGardenComposition(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_pool) this.addPool(grid, center, zStart, sitePlan);
     if (sitePlan.engine_hints.render_outdoor_seating) this.addOutdoorSeating(grid, center, zStart, sitePlan);
     if (sitePlan.engine_hints.render_mailbox) this.addMailbox(grid, center, zStart, sitePlan);
     if (sitePlan.engine_hints.render_accessible_markers) this.addAccessibleMarkers(grid, center, zStart, zEnd, sitePlan);
+  }
+
+  addLayeredTerrain(grid, center, zStart, zEnd, sitePlan = {}) {
+    const earth = sitePlan.materials?.earth || this.materials.earth || 'minecraft:dirt';
+    const grass = sitePlan.materials?.grass || this.materials.landscape || 'minecraft:grass_block';
+    const rock = sitePlan.materials?.rock || this.materials.retaining || 'minecraft:stone';
+    const left = center - 12;
+    const right = center + 12;
+    const far = zEnd + 2;
+    for (let z = zStart - 1; z <= far; z += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const fromPath = Math.abs(x - center);
+        if (fromPath <= 2) continue;
+        const edgeRise = Math.max(0, Math.floor((fromPath - 5) / 3));
+        const depthRise = z > zStart + 4 ? 1 : 0;
+        const height = Math.min(3, edgeRise + depthRise);
+        const surface = height >= 2 && (x + z) % 3 === 0 ? rock : grass;
+        fillBox(grid, x, -1, z, x, -1, z, earth, 'terrain_fill');
+        fillBox(grid, x, 0, z, x, 0, z, surface, 'terrain_surface');
+        if (height >= 1) fillBox(grid, x, 1, z, x, 1, z, height >= 2 ? rock : earth, 'terrain_slope');
+        if (height >= 2 && (x + z) % 2 === 0) fillBox(grid, x, 2, z, x, 2, z, rock, 'terrain_rock');
+      }
+    }
+  }
+
+  addTerrainRetaining(grid, center, zStart, zEnd, sitePlan = {}) {
+    const block = sitePlan.materials?.rock || sitePlan.materials?.path_secondary || this.materials.retaining || 'minecraft:stone_bricks';
+    const left = center - 8;
+    const right = center + 8;
+    const terraceZ = Math.min(zEnd, zStart + 4);
+    fillBox(grid, left, 1, terraceZ, center - 3, 1, terraceZ, block, 'retaining_edge');
+    fillBox(grid, center + 3, 1, terraceZ, right, 1, terraceZ, block, 'retaining_edge');
+    fillBox(grid, left, 1, zStart, left, 2, zEnd, block, 'retaining_edge');
+    fillBox(grid, right, 1, zStart, right, 2, zEnd, block, 'retaining_edge');
   }
 
   addEntryPath(grid, { side = 'south', width = 2, length = 6, block, module }) {
@@ -1644,6 +1681,43 @@ export class CSGBuilder {
     fillBox(grid, center + 5, 0, z1, center + 9, 0, z2, soil, 'planting_bed');
     for (let x = center - 9; x <= center - 5; x += 2) fillBox(grid, x, 1, z2, x, 1, z2, blockAt(palette, x, plant), 'planting_bed');
     for (let x = center + 5; x <= center + 9; x += 2) fillBox(grid, x, 1, z2, x, 1, z2, blockAt(palette, x + 1, plant), 'planting_bed');
+  }
+
+  addGardenComposition(grid, center, zStart, zEnd, sitePlan = {}) {
+    const path = sitePlan.materials?.path_secondary || sitePlan.materials?.path || this.materials.path || 'minecraft:gravel';
+    const edge = sitePlan.materials?.garden_edge || sitePlan.materials?.fence || this.materials.railing || 'minecraft:oak_fence';
+    const soil = sitePlan.materials?.grass || sitePlan.materials?.landscape || this.materials.landscape || 'minecraft:grass_block';
+    const plant = sitePlan.materials?.plant || this.materials.plant || 'minecraft:oak_leaves[persistent=true]';
+    const palette = blockPalette(sitePlan.materials?.plant_palette, plant, sitePlan.materials?.plant_secondary, 'minecraft:flowering_azalea_leaves[persistent=true]', 'minecraft:fern');
+    const water = sitePlan.materials?.water || this.materials.water || 'minecraft:water';
+    const zMid = Math.floor((zStart + zEnd) / 2);
+    const left1 = center - 10;
+    const left2 = center - 5;
+    const right1 = center + 5;
+    const right2 = center + 10;
+
+    fillBox(grid, center - 1, 0, zStart, center + 1, 0, zEnd, path, 'garden_axis');
+    fillBox(grid, center - 10, 0, zMid, center + 10, 0, zMid, path, 'garden_cross_path');
+    fillBox(grid, left1, 0, zStart + 1, left2, 0, zMid - 1, soil, 'garden_room');
+    fillBox(grid, right1, 0, zStart + 1, right2, 0, zMid - 1, soil, 'garden_room');
+    fillBox(grid, left1, 0, zMid + 1, left2, 0, zEnd, soil, 'garden_room');
+    fillBox(grid, right1, 0, zMid + 1, right2, 0, zEnd, soil, 'garden_room');
+
+    for (const [x1, x2] of [[left1, left2], [right1, right2]]) {
+      fillBox(grid, x1, 1, zStart + 1, x2, 1, zStart + 1, edge, 'garden_hedge');
+      fillBox(grid, x1, 1, zEnd, x2, 1, zEnd, edge, 'garden_hedge');
+      for (let z = zStart + 2; z <= zEnd - 1; z += 3) {
+        fillBox(grid, x1, 1, z, x1, 1, z, blockAt(palette, x1 + z, plant), 'garden_planting');
+        fillBox(grid, x2, 1, z, x2, 1, z, blockAt(palette, x2 + z, plant), 'garden_planting');
+      }
+    }
+
+    this.addContainedWaterRect(grid, center - 2, zMid - 1, center + 2, zMid + 1, {
+      edge: sitePlan.materials?.pool_edge || this.materials.foundation || 'minecraft:stone_bricks',
+      water,
+      edgeModule: 'garden_water_edge',
+      waterModule: 'garden_water'
+    });
   }
 
   addOutdoorSeating(grid, center, zStart, sitePlan = {}) {

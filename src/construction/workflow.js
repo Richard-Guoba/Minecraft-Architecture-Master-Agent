@@ -16,6 +16,7 @@ import { ConstructionDecoratorAgent } from './agents/decoratorAgent.js';
 import { BlueprintOptimizerAgent } from './agents/blueprintOptimizerAgent.js';
 import { BlueprintQAAgent } from './agents/blueprintQaAgent.js';
 import { VisualizationAgent } from './agents/visualizationAgent.js';
+import { TemplateKnowledgeAgent, applyTemplateKnowledgeToArchitecture, applyTemplateKnowledgeToBuildSpec } from './agents/templateKnowledgeAgent.js';
 import { CSGBuilder, computeBounds } from './engine/csgBuilder.js';
 import { BSPPartitioner } from './engine/bspPartitioner.js';
 import { AStarPathfinder } from './engine/pathfinder.js';
@@ -56,6 +57,9 @@ export async function runConstructionWorkflow({
     }
   };
   let buildSpec = deriveBuildSpec(prompt, architecture, seed);
+  const templateKnowledge = new TemplateKnowledgeAgent({ cwd }).run(prompt, architecture, buildSpec);
+  architecture = applyTemplateKnowledgeToArchitecture(architecture, templateKnowledge);
+  buildSpec = applyTemplateKnowledgeToBuildSpec(buildSpec, templateKnowledge);
   let topology = await new ConstructionPlannerAgent({ llmClient, mode }).run(prompt, architecture, buildSpec);
   let creativeDesign = await new CreativeDesignAgent({ llmClient, mode }).run(prompt, architecture, buildSpec, topology);
   ({ architecture, buildSpec, topology, creativeDesign } = applyCreativeDesign({ architecture, buildSpec, topology, creativeDesign, prompt }));
@@ -109,6 +113,7 @@ export async function runConstructionWorkflow({
     creativeDesign,
     stylePreset,
     materialPalette,
+    templateKnowledge,
     structure,
     facade,
     roof,
@@ -160,6 +165,7 @@ export async function runConstructionWorkflow({
     creativeDesign,
     stylePreset,
     materialPalette,
+    templateKnowledge,
     buildSpec,
     structure,
     facade,
@@ -348,7 +354,7 @@ function createSeedVariation(seed, context = {}) {
   };
 }
 
-function buildBlueprint({ prompt, architecture, topology, creativeDesign, stylePreset, materialPalette, structure, facade, roof, site, opening, interior, repair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
+function buildBlueprint({ prompt, architecture, topology, creativeDesign, stylePreset, materialPalette, templateKnowledge, structure, facade, roof, site, opening, interior, repair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
   return {
     version: 4,
     workflow: 'construction_method_v1',
@@ -365,6 +371,7 @@ function buildBlueprint({ prompt, architecture, topology, creativeDesign, styleP
     creativeDesign,
     stylePreset,
     materialPalette,
+    templateKnowledge,
     structure,
     facade,
     roof,

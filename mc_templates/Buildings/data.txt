@@ -1,0 +1,13 @@
+Grand Hotel - (mcbuild_org) https://mcbuild.org/schematics/18518:grand-hotel
+
+Futuristic Building - (mcbuild_org) https://mcbuild.org/schematics/18519:futuristic-building
+
+Modern Apartment Building - (mcbuild_org) https://mcbuild.org/schematics/18539:modern-apartment-building
+
+Great Library  - (mcbuild_org) https://mcbuild.org/schematics/18540:great-library
+
+Great Pyramid - (mcbuild_org) https://mcbuild.org/schematics/18555:great-pyramid
+
+Giant Church - (mcbuild_org) https://mcbuild.org/schematics/18597:giant-church
+
+Beach Hotel - (mcbuild_org) https://mcbuild.org/schematics/18650:beach-hotel

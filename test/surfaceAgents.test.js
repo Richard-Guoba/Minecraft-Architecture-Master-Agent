@@ -12,6 +12,7 @@ import { OpeningConnectivityAgent } from '../src/construction/agents/openingConn
 import { InteriorDetailAgent } from '../src/construction/agents/interiorDetailAgent.js';
 import { ConstraintRepairAgent } from '../src/construction/agents/constraintRepairAgent.js';
 import { ConstructionDecoratorAgent } from '../src/construction/agents/decoratorAgent.js';
+import { applyTemplateKnowledgeToArchitecture, applyTemplateKnowledgeToBuildSpec } from '../src/construction/agents/templateKnowledgeAgent.js';
 import { deriveBuildSpec } from '../src/construction/workflow.js';
 import { CSGBuilder } from '../src/construction/engine/csgBuilder.js';
 import { BSPPartitioner } from '../src/construction/engine/bspPartitioner.js';
@@ -100,6 +101,46 @@ test('expanded agents route utility, resilience, and landscape features into rea
   ]) {
     assert.ok(counts[module] > 0, `expected ${module} module`);
   }
+});
+
+test('template-guided sites render terrain layers and composed gardens', () => {
+  const prompt = '建一个现代湖边别墅，带花园和自然地形';
+  let architecture = buildFallbackArchitecture(prompt);
+  const stylePreset = new StylePresetMemoryAgent().run(prompt, architecture);
+  const materialPalette = new MaterialPaletteAgent().run(prompt, architecture, stylePreset);
+  architecture = { ...architecture, materials: materialPalette.materials };
+  let buildSpec = deriveBuildSpec(prompt, architecture);
+  const templateKnowledge = {
+    active: true,
+    retrieved: [{ title: 'Lakehouse', file: 'House/Lakehouse.schematic' }],
+    recommendations: {
+      terrain_profile: 'non-flat-integrated',
+      landscape_features: ['layered-terrain', 'rock-and-earth-base', 'garden-composition', 'water-edge', 'tree-and-shrub-clusters'],
+      detail_density: 'high',
+      design_priorities: ['treat terrain as part of the composition, not a flat base']
+    },
+    gap_priorities: ['replace flat-lot assumption with terrain-aware bases']
+  };
+  architecture = applyTemplateKnowledgeToArchitecture(architecture, templateKnowledge);
+  buildSpec = applyTemplateKnowledgeToBuildSpec(buildSpec, templateKnowledge);
+
+  const topology = buildFallbackTopology(prompt, architecture, buildSpec);
+  const structure = new StructureAgent().run(architecture, buildSpec, topology);
+  const facade = new FacadeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
+  const roof = new RoofAgent().run(prompt, architecture, buildSpec, structure, facade, materialPalette, stylePreset);
+  const site = new SiteLandscapeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
+  const shell = new CSGBuilder(buildSpec, architecture.materials).generateShell(architecture, { structure, facade, roof, site });
+  const counts = moduleCounts(shell.grid);
+
+  assert.equal(site.engine_hints.render_layered_terrain, true);
+  assert.equal(site.engine_hints.render_garden_composition, true);
+  assert.equal(site.engine_hints.render_terrain_retaining, true);
+  assert.ok(counts.terrain_surface > 0);
+  assert.ok(counts.terrain_rock > 0);
+  assert.ok(counts.retaining_edge > 0);
+  assert.ok(counts.garden_axis > 0);
+  assert.ok(counts.garden_room > 0);
+  assert.ok(counts.garden_water > 0);
 });
 
 test('opening, interior, and repair agents complete the post-layout contract', () => {
