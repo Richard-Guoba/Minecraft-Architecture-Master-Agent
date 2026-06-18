@@ -10,7 +10,7 @@ test('BSPPartitioner preserves Japanese room semantics and courtyard-oriented me
   const { layout } = buildLayout('建一个日式一层町屋，木格栅，榻榻米，茶室，枯山水小庭院，宽二十三深十九');
 
   assert.equal(layout.bsp.splitStrategy, 'courtyard-ring');
-  assert.deepEqual([...roomIds(layout)].sort(), ['entry', 'kitchen', 'living', 'tatami', 'tea-room']);
+  assert.deepEqual([...roomIds(layout)].sort(), ['entry', 'guest-bath', 'kitchen', 'living', 'tatami', 'tea-room']);
   assert.equal(layout.bsp.unassignedPlannerNodes.length, 0);
   assert.ok(layout.rooms.find((room) => room.id === 'entry').max_z > layout.rooms.find((room) => room.id === 'living').max_z);
   assert.equal(layout.rooms.find((room) => room.id === 'tatami').orientation, 'courtyard');
@@ -31,6 +31,20 @@ test('BSPPartitioner assigns castle tower rooms to tower volume while keeping th
   assert.equal(layout.rooms.find((room) => room.id === 'tower-stair').source, 'main');
   assert.equal(layout.rooms.some((room) => room.source === 'corner-tower' && room.assigned_node === false), false);
   assert.ok(layout.interiorDoors.some((door) => door.kind === 'attached-volume' && door.connects.includes('tower-room')));
+});
+
+test('BSPPartitioner keeps diagonal tower attached doors touching both rooms', () => {
+  const { layout } = buildLayout('建一个黑石堡垒住宅，宽33深27，厚墙，塔楼，防御门厅，大厅，厨房，餐厅，卧室，书房和储藏室');
+  const towerRoom = layout.rooms.find((room) => room.id === 'tower-room');
+  const towerDoor = layout.interiorDoors.find((door) => door.kind === 'attached-volume' && door.connects.includes('tower-room'));
+  const mainRoom = layout.rooms.find((room) => towerDoor.connects.includes(room.id) && room.id !== 'tower-room');
+
+  assert.ok(towerRoom);
+  assert.ok(towerDoor);
+  assert.ok(mainRoom);
+  assert.equal(towerDoor.axis, 'z');
+  assert.ok(rangesOverlap(towerDoor.at.x - 1, towerDoor.at.x + 1, towerRoom.min_x, towerRoom.max_x));
+  assert.ok(rangesOverlap(towerDoor.at.x - 1, towerDoor.at.x + 1, mainRoom.min_x, mainRoom.max_x));
 });
 
 test('BSPPartitioner maps modern garage and sunroom nodes to attached volumes and keeps open-plan soft boundaries', () => {
@@ -61,4 +75,8 @@ function buildLayout(prompt) {
 
 function roomIds(layout) {
   return layout.rooms.map((room) => room.id);
+}
+
+function rangesOverlap(aMin, aMax, bMin, bMax) {
+  return Math.max(aMin, bMin) <= Math.min(aMax, bMax);
 }

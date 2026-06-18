@@ -685,6 +685,11 @@ function buildFacadeRules(prompt, profile, scale, intents) {
     bay_windows: Boolean(profile.facade.bay_windows || /凸窗|飘窗/.test(prompt)),
     balcony: /阳台|露台|挑台/.test(prompt) || intents.cliff_deck || intents.coastal_deck || intents.treehouse || (scale === 'large' && ['欧式', '维多利亚'].includes(profile.style)),
     window_rhythm: profile.facade.windowRhythm || 'balanced',
+    awnings: Boolean(intents.privacy || /遮阳|雨棚|awning|shade/i.test(prompt)),
+    flower_boxes: /花箱|窗台花|窗台盆栽|flower box|planter/i.test(prompt),
+    service_vents: profile.family === 'industrial' || /通风|风管|管线|vent|service/i.test(prompt),
+    address_marker: /门牌|信箱|招牌|标识|address|sign|mailbox/i.test(prompt),
+    privacy_fins: /隐私|私密|百叶|格栅|privacy|fins/i.test(prompt),
     facade_motifs: [...profile.motifs, ...intents.extra_motifs]
   };
 }
@@ -699,6 +704,9 @@ function buildRoofRules(prompt, profile, scale, roofStyle, intents) {
       : 0,
     skylights: /天窗|采光顶/.test(prompt) || intents.greenhouse || intents.underground || profile.family === 'greenhouse-house',
     roof_terrace: /露台|屋顶花园|屋顶平台/.test(prompt) || profile.family === 'mediterranean' || intents.roof_garden || intents.cliff_deck || intents.coastal_deck,
+    solar_panels: Boolean(intents.solar_roof),
+    rain_harvest: Boolean(intents.rain_harvest),
+    roof_access: Boolean(intents.roof_garden || /上人屋顶|屋顶露台|屋顶平台|roof access|roof terrace/i.test(prompt)),
     vertical_accent: intents.tower || intents.treehouse || intents.neon || profile.family === 'gothic',
     eave_treatment: profile.family === 'chinese-courtyard' || profile.family === 'japanese'
       ? 'deep-layered-eaves'
@@ -716,6 +724,11 @@ function buildSiteRules(prompt, profile, scale, intents) {
     enclosed_courtyard: Boolean(profile.site.enclosed_courtyard || intents.underground || /四合院|合院|小院|内院/.test(prompt)),
     central_path: Boolean(profile.site.central_path || profile.site.formal_garden),
     veranda: Boolean(intents.veranda || /廊|回廊|缘侧|veranda/i.test(prompt)),
+    planting_beds: Boolean(intents.planting_beds),
+    outdoor_seating: Boolean(intents.outdoor_living),
+    pool: Boolean(intents.pool),
+    mailbox: /信箱|门牌|mailbox|address/i.test(prompt),
+    accessible_route: Boolean(intents.accessibility),
     landscape_mood: landscapeMood(profile, prompt)
   };
 }
@@ -755,6 +768,13 @@ function buildStructuralRules(prompt, profile, materials, intents) {
     span_strategy: openSpan ? 'long-span-public-core' : 'room-scale-spans',
     wall_strategy: intents.underground ? 'retaining-earth-shelter-walls' : intents.thick_walls ? 'thick-thermal-masonry' : 'standard-shell-wall',
     frame_expression: ['现代', '工业', '未来', '赛博朋克', '温室住宅', '悬崖'].includes(profile.style) ? 'expressed-frame-or-grid' : 'implicit-in-walls',
+    resilience_flags: {
+      seismic: Boolean(intents.seismic_resilience),
+      high_wind: Boolean(intents.wind_resilience || profile.family === 'coastal' || profile.family === 'alpine' || profile.family === 'cliffside'),
+      firebreak: Boolean(intents.fire_resilience || profile.family === 'industrial' || profile.family === 'alpine'),
+      flood: Boolean(intents.flood_resilience || profile.family === 'coastal' || profile.family === 'tropical'),
+      service_platform: Boolean(intents.solar_roof || intents.rain_harvest || intents.service_roof)
+    },
     buildability_notes: [
       'semantic structural rules are advisory for downstream geometry agents',
       'current CSG engine consumes compatible shell/material fields first'
@@ -790,6 +810,18 @@ function collectArchitecturalIntents(prompt, profile, scale, typology, grammar =
   const greenhouse = Boolean(features.greenhouse || profile.family === 'greenhouse-house' || /温室|花房|greenhouse/i.test(prompt));
   const roofGarden = Boolean(features.roof_garden || /屋顶花园|屋顶菜园|绿化屋顶|green roof/i.test(prompt));
   const snowLodge = Boolean(features.snow_lodge || profile.family === 'alpine');
+  const solarRoof = Boolean(features.solar_roof || /太阳能|光伏|solar/i.test(prompt));
+  const rainHarvest = Boolean(features.rain_harvest || /雨水|雨链|蓄水|rainwater|rain chain/i.test(prompt));
+  const pool = Boolean(features.pool || /泳池|游泳池|pool/i.test(prompt));
+  const plantingBeds = Boolean(features.planting_beds || /菜园|花坛|种植床|果园|orchard|vegetable|planting bed/i.test(prompt));
+  const outdoorLiving = Boolean(features.outdoor_living || /户外座椅|庭院餐桌|火坑|烧烤|outdoor seating|firepit|bbq/i.test(prompt));
+  const accessibility = Boolean(features.accessibility || /无障碍|轮椅|坡道|老人友好|accessible|wheelchair|ramp/i.test(prompt));
+  const privacy = Boolean(features.privacy || /私密|隐私|遮阳|百叶|privacy|awning|shade/i.test(prompt));
+  const seismicResilience = /抗震|地震|seismic|earthquake/i.test(prompt);
+  const windResilience = Boolean(features.wind_resilience || /抗风|台风|强风|大风|wind|hurricane/i.test(prompt));
+  const fireResilience = Boolean(features.fire_resilience || /防火|消防|逃生|fire|egress/i.test(prompt));
+  const floodResilience = Boolean(features.flood_resilience || /防洪|抬高|潮湿|洪水|flood|raised/i.test(prompt));
+  const serviceRoof = Boolean(features.service_roof || /设备平台|屋顶设备|机房|service platform|roof equipment/i.test(prompt));
 
   return {
     style_grammar: {
@@ -806,6 +838,18 @@ function collectArchitecturalIntents(prompt, profile, scale, typology, grammar =
     neon,
     roof_garden: roofGarden,
     snow_lodge: snowLodge,
+    solar_roof: solarRoof,
+    rain_harvest: rainHarvest,
+    pool,
+    planting_beds: plantingBeds,
+    outdoor_living: outdoorLiving,
+    accessibility,
+    privacy,
+    seismic_resilience: seismicResilience,
+    wind_resilience: windResilience,
+    fire_resilience: fireResilience,
+    flood_resilience: floodResilience,
+    service_roof: serviceRoof,
     tower: /塔|尖塔|钟楼|城堡|tower|turret/i.test(prompt) || profile.family === 'gothic' || treehouse || neon,
     veranda: /廊|回廊|前廊|缘侧|veranda|porch/i.test(prompt) || treehouse || coastalDeck,
     gallery: /连廊|回廊|廊/.test(prompt) || profile.family === 'chinese-courtyard' || cliffDeck || coastalDeck || treehouse,

@@ -167,3 +167,20 @@ npm run evaluate:prompts
 ```
 
 输出会写到 `out/evaluation-<时间戳>/`，包含 `evaluation_summary.json` 和 `evaluation_report.md`，用于查看每条 prompt 的分数、房间数、内饰装饰数量、弱项和完整评价指标。
+
+批量评价 100 条居住功能性 prompt：
+
+```powershell
+npm run evaluate:habitation
+```
+
+输出会写到 `out/habitation-evaluation-<时间戳>/`，包含 `habitation_summary.json`、`habitation_report.md` 和 `habitation_table.csv`。这套评价重点检查人类居住合理性：主入口能否从外界找到、门外步道是否对齐、外壳/屋顶/地板覆盖、房间是否全连通、卧室/卫生间/厨房/储物是否齐全，以及采光、照明和基础家具密度。
+
+批量评价 10 条装饰合理性 prompt：
+
+```powershell
+npm run evaluate:decoration -- --mode auto
+npm run evaluate:decoration -- --mode llm
+```
+
+输出会写到 `out/decoration-evaluation-<时间戳>/`，包含 `decoration_summary.json`、`decoration_report.md` 和 `decoration_table.csv`。这套评价重点检查装饰美观且不突兀：房间覆盖、丰富度、拥挤度、调色板均衡、缤纷分布、模块层次、房间功能匹配、走廊楼梯克制、摆放锚点和风格专家一致性。

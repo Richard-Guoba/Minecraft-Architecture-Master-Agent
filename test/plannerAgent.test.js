@@ -53,6 +53,46 @@ test('planner aligns modern public rooms to glass frontage and preserves normali
   }
 });
 
+test('planner supplies a compact bathroom for residential prompts even when omitted', () => {
+  const prompt = '建一个北欧一层紧凑小木屋，宽17深13，客厅，开放厨房，一间卧室，彩色地毯和盆栽';
+  const architecture = buildFallbackArchitecture(prompt);
+  const buildSpec = deriveBuildSpec(prompt, architecture);
+  const topology = buildFallbackTopology(prompt, architecture, buildSpec);
+
+  assert.ok(topology.nodes.some((node) => node.type === 'bathroom' && node.floor === 0));
+  assert.ok(topology.zoning.service.some((id) => topology.nodes.find((node) => node.id === id)?.type === 'bathroom'));
+  assert.equal(topology.bsp_hints.wet_rooms_near_service_core, true);
+});
+
+test('planner normalization infers LLM room types from ids when type is generic room', () => {
+  const fallback = buildFallbackTopology(
+    '建一个现代紧凑一层住宅，宽17深15，一间卧室，一个卫生间，客厅，厨房，餐厅，玄关和储藏间',
+    buildFallbackArchitecture('建一个现代紧凑一层住宅，宽17深15，一间卧室，一个卫生间，客厅，厨房，餐厅，玄关和储藏间'),
+    { floors: 1, scale: 'small', style_family: 'modern', door_side: 'south' }
+  );
+  const raw = {
+    nodes: [
+      { id: 'entry', label: '玄关', type: 'room', floor: 0, weight: 1, privacy: 'public' },
+      { id: 'living', label: '客厅', type: 'room', floor: 0, weight: 2, privacy: 'public' },
+      { id: 'kitchen', label: '厨房', type: 'room', floor: 0, weight: 1, privacy: 'service' },
+      { id: 'bathroom', label: '卫生间', type: 'room', floor: 0, weight: 1, privacy: 'service' },
+      { id: 'storage', label: '储藏间', type: 'room', floor: 0, weight: 1, privacy: 'service' }
+    ],
+    edges: []
+  };
+
+  const topology = normalizeTopology(raw, 'llm', fallback, { floors: 1 });
+  const typeCounts = new Map(topology.nodes.map((node) => [node.type, (topology.nodes.filter((item) => item.type === node.type)).length]));
+
+  assert.equal(topology.nodes.find((node) => node.id === 'living').type, 'living');
+  assert.equal(topology.nodes.find((node) => node.id === 'kitchen').type, 'kitchen');
+  assert.equal(topology.nodes.find((node) => node.id === 'bathroom').type, 'bathroom');
+  assert.equal(topology.nodes.find((node) => node.id === 'storage').type, 'storage');
+  assert.equal(typeCounts.get('living'), 1);
+  assert.equal(typeCounts.get('kitchen'), 1);
+  assert.equal(typeCounts.get('bathroom'), 1);
+});
+
 test('planner normalization repairs duplicate LLM room ids before geometry', () => {
   const raw = {
     nodes: [
@@ -83,4 +123,28 @@ test('planner normalization repairs duplicate LLM room ids before geometry', () 
   assert.ok(topology.edges.every((edge) => ids.includes(edge.from) && ids.includes(edge.to)));
   assert.ok(topology.floor_program[1].private.includes('living-floor-1'));
   assert.ok(topology.floor_program[1].service.includes('kitchen-floor-1'));
+});
+
+test('planner normalization shifts one-based LLM floors to zero-based floors', () => {
+  const raw = {
+    nodes: [
+      { id: 'entry', label: '一层门厅', type: 'entry', floor: 1, weight: 1, privacy: 'public', zone: 'public' },
+      { id: 'living', label: '一层客厅', type: 'living', floor: 1, weight: 2, privacy: 'public', zone: 'public' },
+      { id: 'stairs', label: '楼梯', type: 'stairs', floor: 1, weight: 0.7, privacy: 'circulation', zone: 'circulation' },
+      { id: 'corridor', label: '二层走廊', type: 'corridor', floor: 2, weight: 0.7, privacy: 'circulation', zone: 'circulation' },
+      { id: 'bedroom', label: '二层卧室', type: 'bedroom', floor: 2, weight: 1, privacy: 'private', zone: 'private' }
+    ],
+    floor_program: [
+      { floor: 1, public: ['entry', 'living'], circulation: ['stairs'] },
+      { floor: 2, private: ['bedroom'], circulation: ['corridor'] }
+    ]
+  };
+
+  const topology = normalizeTopology(raw, 'llm', {}, { floors: 3 });
+
+  assert.equal(topology.nodes.find((node) => node.id === 'entry').floor, 0);
+  assert.equal(topology.nodes.find((node) => node.id === 'corridor').floor, 1);
+  assert.ok(topology.floor_program[0].public.includes('entry'));
+  assert.ok(topology.floor_program[1].private.includes('bedroom'));
+  assert.ok(topology.edges.some((edge) => edge.from === 'stairs' && edge.to === 'corridor'));
 });

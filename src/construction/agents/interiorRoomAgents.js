@@ -381,7 +381,12 @@ const STYLE_BLOCKS = {
     'minecraft:black_concrete',
     'minecraft:glass',
     'minecraft:flower_pot',
-    'minecraft:potted_azalea_bush'
+    'minecraft:potted_azalea_bush',
+    'minecraft:calcite',
+    'minecraft:polished_tuff',
+    'minecraft:end_rod',
+    'minecraft:quartz_bricks',
+    'minecraft:lightning_rod'
   ],
   japanese: [
     'minecraft:bamboo_slab[type=bottom]',
@@ -547,11 +552,11 @@ const ROOM_SPECIALISTS = [
   roomSpecialist('garage-decoration-agent', 'local-garage-decoration-agent', '车库装饰 Agent', ['garage'], 'garage', 'garage'),
   roomSpecialist('sunroom-decoration-agent', 'local-sunroom-decoration-agent', '阳光房/温室装饰 Agent', ['sunroom', 'greenhouse'], 'sunroom', 'sunroom'),
   roomSpecialist('circulation-decoration-agent', 'local-circulation-decoration-agent', '走廊/楼梯导视 Agent', ['corridor', 'stairs'], 'circulation', 'circulation'),
-  roomSpecialist('generic-room-decoration-agent', 'local-generic-room-decoration-agent', '通用房间装饰 Agent', ['room', 'storage', 'utility', 'atrium'], 'generic', 'generic')
+  roomSpecialist('generic-room-decoration-agent', 'local-generic-room-decoration-agent', '通用/储藏/设备/工坊装饰 Agent', ['room', 'storage', 'utility', 'workshop', 'atrium'], 'generic', 'generic')
 ];
 
 const STYLE_SPECIALISTS = [
-  styleSpecialist('modern-interior-style-agent', 'local-modern-interior-style-agent', '现代内饰风格 Agent', ['modern', 'industrial', 'futuristic'], 'modern'),
+  styleSpecialist('modern-interior-style-agent', 'local-modern-interior-style-agent', '现代内饰风格 Agent', ['modern', 'minimalist', 'industrial', 'futuristic'], 'modern'),
   styleSpecialist('japanese-interior-style-agent', 'local-japanese-interior-style-agent', '日式内饰风格 Agent', ['japanese'], 'japanese'),
   styleSpecialist('gothic-interior-style-agent', 'local-gothic-interior-style-agent', '哥特内饰风格 Agent', ['gothic'], 'gothic'),
   styleSpecialist('cyberpunk-interior-style-agent', 'local-cyberpunk-interior-style-agent', '赛博朋克内饰风格 Agent', ['cyberpunk'], 'cyberpunk'),
@@ -608,8 +613,12 @@ export function interiorSpecialistCapabilities() {
 export function specialistDefinitionsForRoom(room = {}, context = {}) {
   const type = String(room.type || 'room');
   const family = styleFamilyFromContext(context);
+  const area = roomArea(room);
   return SPECIALIST_DEFINITIONS.filter((definition) => {
+    if (definition.scope === 'room' && area <= 24 && type === 'great_hall') return false;
     if (definition.scope === 'room') return definition.target_types.includes(type);
+    if (['corridor', 'stairs'].includes(type)) return false;
+    if (definition.scope === 'style' && area <= 24 && ['bathroom', 'storage', 'utility', 'workshop'].includes(type)) return false;
     if (definition.scope === 'style') return definition.style_families.includes(family);
     return false;
   });
@@ -687,7 +696,7 @@ function placeSpecialist(builder, definition) {
 
 function placeEntry(builder, definition) {
   const { y, y1, ceiling, north, south, west, east, cx, cz } = anchors(builder);
-  add(builder, definition, 'entry-runner', 'minecraft:red_carpet', cx, y, cz, 'arrival-axis', 'decor_floor');
+  add(builder, definition, 'vibrant-entry-runner', 'minecraft:red_carpet', cx, y, cz, 'arrival-axis', 'decor_floor');
   add(builder, definition, 'shoe-bench', 'minecraft:spruce_stairs[facing=east,half=bottom]', west, y, cz, 'entry-bench', 'decor_furniture');
   add(builder, definition, 'coat-storage', 'minecraft:barrel', east, y, north, 'coat-corner', 'decor_storage');
   add(builder, definition, 'parcel-chest', 'minecraft:chest', east, y1, north, 'coat-corner', 'decor_storage');
@@ -697,44 +706,50 @@ function placeEntry(builder, definition) {
 
 function placeKitchen(builder, definition) {
   const { y, y1, ceiling, north, south, west, east, cx, cz } = anchors(builder);
+  const compact = isCompactDecorRoom(builder);
   add(builder, definition, 'smoker', 'minecraft:smoker', west + 3, y, north, 'hot-line', 'decor_utility');
-  add(builder, definition, 'blast-furnace', 'minecraft:blast_furnace', west + 4, y, north, 'hot-line', 'decor_utility');
+  if (!compact) add(builder, definition, 'blast-furnace', 'minecraft:blast_furnace', west + 4, y, north, 'hot-line', 'decor_utility');
   add(builder, definition, 'range-hood', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', west + 3, y1, north, 'over-stove-hood', 'decor_detail');
   add(builder, definition, 'prep-counter', 'minecraft:smooth_quartz_slab[type=bottom]', west + 5, y, north, 'prep-line', 'decor_furniture');
   add(builder, definition, 'cutting-station', 'minecraft:stonecutter', east, y, north + 1, 'prep-corner', 'decor_utility');
   add(builder, definition, 'upper-cabinet', 'minecraft:barrel', west + 1, y1, north, 'upper-storage', 'decor_storage');
-  add(builder, definition, 'pantry-chest', 'minecraft:chest', west + 2, y1, north, 'upper-storage', 'decor_storage');
+  if (!compact) add(builder, definition, 'pantry-chest', 'minecraft:chest', west + 2, y1, north, 'upper-storage', 'decor_storage');
   add(builder, definition, 'water-basin', 'minecraft:water', east, y1, north, 'sink-water', 'decor_utility');
-  add(builder, definition, 'service-tile', 'minecraft:polished_andesite', east - 1, y, north, 'service-counter', 'decor_furniture');
-  add(builder, definition, 'compost-bin', 'minecraft:composter', west, y, south, 'waste-corner', 'decor_utility');
-  add(builder, definition, 'dry-storage', 'minecraft:hay_block', west + 1, y, south, 'pantry-floor', 'decor_storage');
-  add(builder, definition, 'kelp-crate', 'minecraft:dried_kelp_block', west + 2, y, south, 'pantry-floor', 'decor_storage');
-  add(builder, definition, 'cake-display', 'minecraft:cake', cx, y1, north + 1, 'counter-display', 'decor_detail');
-  add(builder, definition, 'breakfast-bar', 'minecraft:quartz_block', cx, y, cz + 1, 'island-base', 'decor_furniture');
-  add(builder, definition, 'bar-counter', 'minecraft:smooth_quartz_slab[type=bottom]', cx, y1, cz + 1, 'island-top', 'decor_furniture');
-  add(builder, definition, 'bar-stool', 'minecraft:spruce_stairs[facing=south,half=bottom]', cx - 1, y, cz + 2, 'island-seat', 'decor_furniture');
-  add(builder, definition, 'bar-stool', 'minecraft:spruce_stairs[facing=south,half=bottom]', cx + 1, y, cz + 2, 'island-seat', 'decor_furniture');
+  if (!compact) add(builder, definition, 'service-tile', 'minecraft:polished_andesite', east - 1, y, north, 'service-counter', 'decor_furniture');
+  if (!compact) add(builder, definition, 'compost-bin', 'minecraft:composter', west, y, south, 'waste-corner', 'decor_utility');
+  if (!compact) add(builder, definition, 'dry-storage', 'minecraft:hay_block', west + 1, y, south, 'pantry-floor', 'decor_storage');
+  if (!compact) {
+    add(builder, definition, 'kelp-crate', 'minecraft:dried_kelp_block', west + 2, y, south, 'pantry-floor', 'decor_storage');
+    add(builder, definition, 'cake-display', 'minecraft:cake', cx, y1, north + 1, 'counter-display', 'decor_detail');
+    add(builder, definition, 'breakfast-bar', 'minecraft:quartz_block', cx, y, cz + 1, 'island-base', 'decor_furniture');
+    add(builder, definition, 'bar-counter', 'minecraft:smooth_quartz_slab[type=bottom]', cx, y1, cz + 1, 'island-top', 'decor_furniture');
+    add(builder, definition, 'bar-stool', 'minecraft:spruce_stairs[facing=south,half=bottom]', cx - 1, y, cz + 2, 'island-seat', 'decor_furniture');
+    add(builder, definition, 'bar-stool', 'minecraft:spruce_stairs[facing=south,half=bottom]', cx + 1, y, cz + 2, 'island-seat', 'decor_furniture');
+  }
   add(builder, definition, 'work-light', 'minecraft:redstone_lamp', cx, ceiling, north + 1, 'work-lighting', 'decor_light');
-  add(builder, definition, 'floor-runner', 'minecraft:light_gray_carpet', cx - 1, y, cz, 'kitchen-runner', 'decor_floor');
-  add(builder, definition, 'counter-plate', 'minecraft:oak_pressure_plate', cx + 1, y1, cz + 1, 'serving-detail', 'decor_detail');
+  if (!compact) add(builder, definition, 'floor-runner', 'minecraft:light_gray_carpet', cx - 1, y, cz, 'kitchen-runner', 'decor_floor');
+  if (!compact) add(builder, definition, 'counter-plate', 'minecraft:oak_pressure_plate', cx + 1, y1, cz + 1, 'serving-detail', 'decor_detail');
 }
 
 function placeLivingRoom(builder, definition) {
   const { y, y1, ceiling, north, south, west, east, cx, cz } = anchors(builder);
+  const compact = isCompactDecorRoom(builder);
   const seatBlock = builder.styleFamily === 'modern'
     ? 'minecraft:smooth_quartz_stairs[facing=north,half=bottom]'
     : 'minecraft:spruce_stairs[facing=north,half=bottom]';
-  addRug(builder, definition, 'living-rug', builder.styleFamily === 'modern' ? 'minecraft:cyan_carpet' : 'minecraft:red_carpet', cx, cz, 2, 1);
-  add(builder, definition, 'sectional-seat', seatBlock, cx - 2, y, south, 'sofa-run', 'decor_furniture');
-  add(builder, definition, 'sectional-seat', seatBlock, cx + 2, y, south, 'sofa-run', 'decor_furniture');
+  addRug(builder, definition, 'living-rug', builder.styleFamily === 'modern' ? 'minecraft:cyan_carpet' : 'minecraft:red_carpet', cx, cz, compact ? 1 : 2, compact ? 0 : 1);
+  add(builder, definition, 'sectional-seat', seatBlock, compact ? cx : cx - 2, y, south, 'sofa-run', 'decor_furniture');
+  if (!compact) add(builder, definition, 'sectional-seat', seatBlock, cx + 2, y, south, 'sofa-run', 'decor_furniture');
   add(builder, definition, 'coffee-table-base', 'minecraft:oak_fence', cx, y, cz + 1, 'coffee-table', 'decor_furniture');
   add(builder, definition, 'coffee-table-top', 'minecraft:oak_pressure_plate', cx, y1, cz + 1, 'coffee-table', 'decor_furniture');
   add(builder, definition, 'media-wall', 'minecraft:black_concrete', cx, y, north, 'feature-wall', 'decor_detail');
-  add(builder, definition, 'media-light', 'minecraft:sea_lantern', cx + 1, y, north, 'feature-wall', 'decor_light');
-  add(builder, definition, 'chiseled-bookcase', 'minecraft:chiseled_bookshelf', west, y1, north, 'library-corner', 'decor_furniture');
-  add(builder, definition, 'music-corner', 'minecraft:jukebox', east, y, north, 'music-corner', 'decor_detail');
-  add(builder, definition, 'note-block', 'minecraft:note_block', east, y, north + 1, 'music-corner', 'decor_detail');
-  add(builder, definition, 'feature-hearth', 'minecraft:campfire[lit=false]', cx, y, north + 1, 'hearth-line', 'decor_detail');
+  if (!compact) add(builder, definition, 'media-light', 'minecraft:sea_lantern', cx + 1, y, north, 'feature-wall', 'decor_light');
+  if (!compact) add(builder, definition, 'chiseled-bookcase', 'minecraft:chiseled_bookshelf', west, y1, north, 'library-corner', 'decor_furniture');
+  if (!compact) {
+    add(builder, definition, 'music-corner', 'minecraft:jukebox', east, y, north, 'music-corner', 'decor_detail');
+    add(builder, definition, 'note-block', 'minecraft:note_block', east, y, north + 1, 'music-corner', 'decor_detail');
+    add(builder, definition, 'feature-hearth', 'minecraft:campfire[lit=false]', cx, y, north + 1, 'hearth-line', 'decor_detail');
+  }
   add(builder, definition, 'plant-pot', 'minecraft:potted_azalea_bush', east, y, south, 'green-corner', 'decor_plant');
   add(builder, definition, 'ceiling-glow', 'minecraft:glowstone', cx, ceiling, cz, 'ceiling-feature', 'decor_light');
 }
@@ -748,47 +763,60 @@ function placeDining(builder, definition) {
   add(builder, definition, 'china-chest', 'minecraft:chest', east, y1, north, 'serving-wall', 'decor_storage');
   add(builder, definition, 'table-candle', 'minecraft:candle', cx, y1, cz, 'table-detail', 'decor_light');
   add(builder, definition, 'dessert-display', 'minecraft:cake', cx + 1, y1, cz, 'table-detail', 'decor_detail');
-  add(builder, definition, 'dining-runner', 'minecraft:white_carpet', cx, y, cz + 1, 'dining-rug', 'decor_floor');
+  add(builder, definition, 'vibrant-dining-runner', 'minecraft:white_carpet', cx, y, cz + 1, 'dining-rug', 'decor_floor');
   add(builder, definition, 'dining-light', 'minecraft:lantern', cx, ceiling, cz, 'table-light', 'decor_light');
   add(builder, definition, 'side-plant', 'minecraft:flower_pot', west, y, south, 'dining-corner', 'decor_plant');
 }
 
 function placeBedroom(builder, definition) {
   const { y, y1, ceiling, north, south, west, east, cx, cz } = anchors(builder);
-  addRug(builder, definition, 'bedroom-rug', 'minecraft:light_blue_carpet', cx, cz, 1, 2);
-  add(builder, definition, 'second-bed-foot', 'minecraft:white_bed[facing=south,part=foot]', west + 1, y, north + 1, 'expanded-sleeping-zone', 'decor_furniture');
-  add(builder, definition, 'second-bed-head', 'minecraft:white_bed[facing=south,part=head]', west + 1, y, north + 2, 'expanded-sleeping-zone', 'decor_furniture');
-  add(builder, definition, 'guest-bed-foot', 'minecraft:blue_bed[facing=south,part=foot]', west + 2, y, north + 1, 'expanded-sleeping-zone', 'decor_furniture');
-  add(builder, definition, 'guest-bed-head', 'minecraft:blue_bed[facing=south,part=head]', west + 2, y, north + 2, 'expanded-sleeping-zone', 'decor_furniture');
+  const compact = isCompactDecorRoom(builder);
+  addRug(builder, definition, 'bedroom-rug', 'minecraft:light_blue_carpet', cx, cz, 1, compact ? 0 : 2);
+  if (!compact) {
+    add(builder, definition, 'second-bed-foot', 'minecraft:white_bed[facing=south,part=foot]', west + 1, y, north + 1, 'expanded-sleeping-zone', 'decor_furniture');
+    add(builder, definition, 'second-bed-head', 'minecraft:white_bed[facing=south,part=head]', west + 1, y, north + 2, 'expanded-sleeping-zone', 'decor_furniture');
+    add(builder, definition, 'guest-bed-foot', 'minecraft:blue_bed[facing=south,part=foot]', west + 2, y, north + 1, 'expanded-sleeping-zone', 'decor_furniture');
+    add(builder, definition, 'guest-bed-head', 'minecraft:blue_bed[facing=south,part=head]', west + 2, y, north + 2, 'expanded-sleeping-zone', 'decor_furniture');
+  }
   add(builder, definition, 'wardrobe', 'minecraft:barrel', east - 1, y, north, 'wardrobe-wall', 'decor_storage');
-  add(builder, definition, 'wardrobe-upper', 'minecraft:chest', east, y1, north, 'wardrobe-wall', 'decor_storage');
-  add(builder, definition, 'linen-chest', 'minecraft:trapped_chest', east, y, north + 1, 'wardrobe-wall', 'decor_storage');
-  add(builder, definition, 'dresser', 'minecraft:spruce_slab[type=bottom]', cx, y, south, 'dresser-wall', 'decor_furniture');
-  add(builder, definition, 'vanity-top', 'minecraft:oak_slab[type=bottom]', cx + 1, y, south, 'dresser-wall', 'decor_furniture');
+  if (!compact) {
+    add(builder, definition, 'wardrobe-upper', 'minecraft:chest', east, y1, north, 'wardrobe-wall', 'decor_storage');
+    add(builder, definition, 'linen-chest', 'minecraft:trapped_chest', east, y, north + 1, 'wardrobe-wall', 'decor_storage');
+  }
+  if (!compact) {
+    add(builder, definition, 'dresser', 'minecraft:spruce_slab[type=bottom]', cx, y, south, 'dresser-wall', 'decor_furniture');
+    add(builder, definition, 'vanity-top', 'minecraft:oak_slab[type=bottom]', cx + 1, y, south, 'dresser-wall', 'decor_furniture');
+  }
   add(builder, definition, 'reading-seat', 'minecraft:spruce_stairs[facing=north,half=bottom]', east, y, south, 'reading-corner', 'decor_furniture');
-  add(builder, definition, 'bookcase', 'minecraft:bookshelf', east - 1, y, south, 'reading-corner', 'decor_furniture');
-  add(builder, definition, 'plant-pot', 'minecraft:potted_poppy', east, y1, south, 'window-plant', 'decor_plant');
+  if (!compact) add(builder, definition, 'bookcase', 'minecraft:bookshelf', east - 1, y, south, 'reading-corner', 'decor_furniture');
+  if (!compact) add(builder, definition, 'plant-pot', 'minecraft:potted_poppy', east, y1, south, 'window-plant', 'decor_plant');
   add(builder, definition, 'bedside-candle', 'minecraft:candle', west, y1, north + 2, 'bedside-light', 'decor_light');
-  add(builder, definition, 'private-lantern', 'minecraft:lantern', cx, ceiling, south, 'soft-ceiling-light', 'decor_light');
-  add(builder, definition, 'canopy-post', 'minecraft:spruce_fence', west, y1, north, 'canopy-corner', 'decor_detail');
-  add(builder, definition, 'canopy-top', 'minecraft:dark_oak_trapdoor[facing=south,half=bottom,open=false]', west, Math.min(y1 + 1, ceiling), north, 'canopy-top', 'decor_detail');
+  if (!compact) add(builder, definition, 'private-lantern', 'minecraft:lantern', cx, ceiling, south, 'soft-ceiling-light', 'decor_light');
+  if (!compact) {
+    add(builder, definition, 'canopy-post', 'minecraft:spruce_fence', west, y1, north, 'canopy-corner', 'decor_detail');
+    add(builder, definition, 'canopy-top', 'minecraft:dark_oak_trapdoor[facing=south,half=bottom,open=false]', west, Math.min(y1 + 1, ceiling), north, 'canopy-top', 'decor_detail');
+  }
 }
 
 function placeStudy(builder, definition) {
   const { y, y1, ceiling, north, south, west, east, cx, cz } = anchors(builder);
-  addRug(builder, definition, 'study-rug', 'minecraft:green_carpet', cx, cz, 1, 1);
+  const compact = isCompactDecorRoom(builder);
+  addRug(builder, definition, 'study-rug', 'minecraft:green_carpet', cx, cz, compact ? 0 : 1, compact ? 0 : 1);
   add(builder, definition, 'main-lectern', 'minecraft:lectern', cx, y, north, 'desk-line', 'decor_furniture');
-  add(builder, definition, 'desk-slab', 'minecraft:dark_oak_slab[type=bottom]', cx - 1, y, north, 'desk-line', 'decor_furniture');
   add(builder, definition, 'desk-chair', 'minecraft:oak_stairs[facing=north,half=bottom]', cx, y, north + 1, 'desk-seat', 'decor_furniture');
+  add(builder, definition, 'archive-barrel', 'minecraft:barrel', west, y, north, 'archive-wall', 'decor_storage');
+  add(builder, definition, 'reading-lamp', 'minecraft:redstone_lamp', cx + 1, y1, north + 1, 'task-lighting', 'decor_light');
+  if (compact) return;
+
+  add(builder, definition, 'desk-slab', 'minecraft:dark_oak_slab[type=bottom]', cx - 1, y, north, 'desk-line', 'decor_furniture');
   add(builder, definition, 'reading-chair', 'minecraft:spruce_stairs[facing=north,half=bottom]', east, y, south, 'reading-corner', 'decor_furniture');
   add(builder, definition, 'library-shelf-upper', 'minecraft:bookshelf', west, y1, south, 'library-wall', 'decor_furniture');
   add(builder, definition, 'chiseled-shelf', 'minecraft:chiseled_bookshelf', west + 1, y, south, 'library-wall', 'decor_furniture');
   add(builder, definition, 'cartography-table', 'minecraft:cartography_table', east, y, north, 'map-station', 'decor_furniture');
-  add(builder, definition, 'archive-barrel', 'minecraft:barrel', west, y, north, 'archive-wall', 'decor_storage');
   add(builder, definition, 'enchanting-reference', 'minecraft:enchanting_table', cx + 2, y, cz, 'reference-table', 'decor_detail');
   add(builder, definition, 'brewing-stand', 'minecraft:brewing_stand', cx - 2, y1, cz, 'experiment-corner', 'decor_detail');
   add(builder, definition, 'potted-bamboo', 'minecraft:potted_bamboo', east, y1, south, 'quiet-plant', 'decor_plant');
-  add(builder, definition, 'reading-lamp', 'minecraft:redstone_lamp', cx + 2, y1, north + 1, 'task-lighting', 'decor_light');
+  add(builder, definition, 'secondary-reading-lamp', 'minecraft:redstone_lamp', cx + 2, y1, north + 1, 'task-lighting', 'decor_light');
   add(builder, definition, 'cool-task-light', 'minecraft:sea_lantern', cx + 1, ceiling, north + 1, 'task-lighting', 'decor_light');
 }
 
@@ -798,14 +826,15 @@ function placeBathroom(builder, definition) {
   add(builder, definition, 'vanity-counter', 'minecraft:smooth_quartz_slab[type=bottom]', west + 1, y, north, 'wet-counter', 'decor_furniture');
   add(builder, definition, 'mirror-light', 'minecraft:sea_lantern', west + 1, y1, north, 'mirror-light', 'decor_light');
   add(builder, definition, 'shower-screen', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', east, y1, north, 'screen-detail', 'decor_detail');
-  add(builder, definition, 'bath-mat', 'minecraft:light_blue_carpet', cx, y, cz, 'bath-mat', 'decor_floor');
+  add(builder, definition, 'vibrant-bath-mat', 'minecraft:light_blue_carpet', cx, y, cz, 'bath-mat', 'decor_floor');
   add(builder, definition, 'linen-storage', 'minecraft:barrel', east, y, south, 'linen-corner', 'decor_storage');
   add(builder, definition, 'small-plant', 'minecraft:flower_pot', west, y1, south, 'fresh-corner', 'decor_plant');
 }
 
 function placeTatamiSpecialist(builder, definition) {
   const { y, y1, ceiling, north, south, west, east, cx, cz } = anchors(builder);
-  addRug(builder, definition, 'specialist-tatami-grid', 'minecraft:lime_carpet', cx, cz, 2, 2);
+  const compact = isCompactDecorRoom(builder);
+  addRug(builder, definition, 'specialist-tatami-grid', 'minecraft:lime_carpet', cx, cz, compact ? 1 : 2, compact ? 0 : 2);
   add(builder, definition, 'tokonoma-shelf', 'minecraft:bamboo_slab[type=bottom]', west, y, north, 'display-alcove', 'decor_furniture');
   add(builder, definition, 'bamboo-screen', 'minecraft:bamboo_fence', east, y, cz, 'screen-line', 'decor_detail');
   add(builder, definition, 'floor-lantern', 'minecraft:lantern', west, y, south, 'quiet-light', 'decor_light');
@@ -864,12 +893,15 @@ function placeGarageSpecialist(builder, definition) {
 
 function placeSunroomSpecialist(builder, definition) {
   const { y, y1, ceiling, north, south, west, east, cx, cz } = anchors(builder);
-  addRug(builder, definition, 'greenhouse-moss-floor', 'minecraft:moss_block', cx, cz, 1, 1);
+  const compact = isCompactDecorRoom(builder);
+  addRug(builder, definition, 'greenhouse-moss-floor', 'minecraft:moss_block', cx, cz, 1, compact ? 0 : 1);
   add(builder, definition, 'compost-planter', 'minecraft:composter', west, y, north, 'planting-line', 'decor_plant');
   add(builder, definition, 'leaf-cluster', 'minecraft:oak_leaves[persistent=true]', cx, y1, cz, 'leaf-cluster', 'decor_plant');
   add(builder, definition, 'azalea-pot', 'minecraft:potted_azalea_bush', east, y, south, 'sunny-corner', 'decor_plant');
-  add(builder, definition, 'water-tray', 'minecraft:water', west + 1, y1, north, 'watering-tray', 'decor_utility');
-  add(builder, definition, 'grow-light', 'minecraft:sea_lantern', cx, ceiling, south, 'grow-light', 'decor_light');
+  if (!compact) {
+    add(builder, definition, 'water-tray', 'minecraft:water', west + 1, y1, north, 'watering-tray', 'decor_utility');
+    add(builder, definition, 'grow-light', 'minecraft:sea_lantern', cx, ceiling, south, 'grow-light', 'decor_light');
+  }
 }
 
 function placeCirculationSpecialist(builder, definition) {
@@ -877,7 +909,9 @@ function placeCirculationSpecialist(builder, definition) {
   add(builder, definition, 'path-runner', 'minecraft:gray_carpet', cx, y, cz, 'circulation-runner', 'decor_floor');
   add(builder, definition, 'wayfinding-light', 'minecraft:sea_lantern', cx, ceiling, cz, 'wayfinding-light', 'decor_light');
   add(builder, definition, 'threshold-plate', 'minecraft:oak_pressure_plate', cx, y, north, 'threshold-marker', 'decor_detail');
-  add(builder, definition, 'small-storage', 'minecraft:barrel', cx, y, south, 'hall-storage', 'decor_storage');
+  if (builder.width >= 7 && builder.depth >= 5) {
+    add(builder, definition, 'small-storage', 'minecraft:barrel', cx, y, south, 'hall-storage', 'decor_storage');
+  }
 }
 
 function placeGenericSpecialist(builder, definition) {
@@ -898,19 +932,32 @@ function placeStyleSignature(builder, definition) {
   const light = firstBlock(blocks, /lantern|glowstone|sea_lantern|redstone_lamp|candle/) || 'minecraft:lantern';
   const carpet = firstBlock(blocks, /_carpet/) || 'minecraft:white_carpet';
   const plant = firstBlock(blocks, /potted|leaves|moss_block|cactus/) || 'minecraft:flower_pot';
+  const compact = builder.width * builder.depth <= 30;
 
   add(builder, definition, `${definition.style_key}-style-accent`, accent, east, y, cz, 'style-accent-wall', 'decor_detail');
-  add(builder, definition, `${definition.style_key}-style-seat`, stair, west, y, south, 'style-seat', 'decor_furniture');
-  add(builder, definition, `${definition.style_key}-style-shelf`, slab, cx - 1, y, south, 'style-shelf', 'decor_furniture');
   add(builder, definition, `${definition.style_key}-style-carpet`, carpet, cx + 1, y, cz, 'style-floor-accent', 'decor_floor');
   add(builder, definition, `${definition.style_key}-style-light`, light, cx, ceiling, south, 'style-light', 'decor_light');
+  if (compact) return;
+
+  add(builder, definition, `${definition.style_key}-style-seat`, stair, west, y, south, 'style-seat', 'decor_furniture');
+  add(builder, definition, `${definition.style_key}-style-shelf`, slab, cx - 1, y, south, 'style-shelf', 'decor_furniture');
   add(builder, definition, `${definition.style_key}-style-plant`, plant, west, y1, north, 'style-plant', 'decor_plant');
+  if (definition.style_key === 'modern' && builder.area >= 36) {
+    add(builder, definition, 'modern-style-calcite-plinth', 'minecraft:calcite', east, y, north, 'minimal-material-accent', 'decor_detail');
+    add(builder, definition, 'modern-style-tuff-plinth', 'minecraft:polished_tuff', west, y, north, 'minimal-material-accent', 'decor_detail');
+    add(builder, definition, 'modern-style-end-rod', 'minecraft:end_rod', east, y1, north, 'minimal-linear-light', 'decor_light');
+    add(builder, definition, 'modern-style-quartz-bricks', 'minecraft:quartz_bricks', west, y, south, 'minimal-material-accent', 'decor_detail');
+    add(builder, definition, 'modern-style-lightning-rod', 'minecraft:lightning_rod[facing=up]', east, y1, south, 'minimal-linear-detail', 'decor_detail');
+  }
 }
 
 function placeVibrantLayer(builder, definition) {
   const { y, y1, ceiling, north, south, west, east, cx, cz } = anchors(builder);
   const palette = vibrantPaletteFor(definition, builder.styleFamily);
   const offset = hashKey(definition.source || definition.id) % 13;
+  const area = builder.width * builder.depth;
+  const compact = area <= 30;
+  const moderate = area > 30 && area <= 48;
   const floorPoints = uniquePoints([
     [cx, cz],
     [cx - 1, cz],
@@ -948,7 +995,8 @@ function placeVibrantLayer(builder, definition) {
     [east, south]
   ]);
 
-  palette.rugs.forEach((block, index) => {
+  const rugLimit = compact ? 2 : moderate ? 3 : palette.rugs.length;
+  palette.rugs.slice(0, rugLimit).forEach((block, index) => {
     const [x, z] = pointAt(floorPoints, offset + index);
     add(builder, definition, `vibrant-rug-${index + 1}`, block, x, y, z, `${palette.key}-rug-mosaic`, 'decor_floor');
   });
@@ -965,21 +1013,29 @@ function placeVibrantLayer(builder, definition) {
   const [lightX, lightZ] = pointAt(ceilingPoints, offset + 2);
 
   add(builder, definition, 'vibrant-banner-left', palette.banners[0], bannerX1, y1, bannerZ1, `${palette.key}-wall-color`, 'decor_detail');
-  add(builder, definition, 'vibrant-banner-right', palette.banners[1], bannerX2, y1, bannerZ2, `${palette.key}-wall-color`, 'decor_detail');
   add(builder, definition, 'vibrant-candle-left', palette.candles[0], candleX1, y, candleZ1, `${palette.key}-colored-candles`, 'decor_light');
-  add(builder, definition, 'vibrant-candle-right', palette.candles[1], candleX2, y, candleZ2, `${palette.key}-colored-candles`, 'decor_light');
   add(builder, definition, 'vibrant-planter', palette.planter, plantX, y, plantZ, `${palette.key}-plant-color`, 'decor_plant');
   add(builder, definition, 'vibrant-display-pot', palette.display, displayX, y, displayZ, `${palette.key}-ceramic-display`, 'decor_detail');
+  add(builder, definition, 'vibrant-ceiling-light', palette.light, lightX, ceiling, lightZ, `${palette.key}-ceiling-color`, 'decor_light');
+  if (compact) return;
+
+  add(builder, definition, 'vibrant-candle-right', palette.candles[1], candleX2, y, candleZ2, `${palette.key}-colored-candles`, 'decor_light');
   add(builder, definition, 'vibrant-storage-cube', palette.storage, storageX, y, storageZ, `${palette.key}-color-storage`, 'decor_storage');
   add(builder, definition, 'vibrant-glazed-tile', palette.tile, tileX, y, tileZ, `${palette.key}-glazed-tile`, 'decor_floor');
+  if (moderate) return;
+
+  add(builder, definition, 'vibrant-banner-right', palette.banners[1], bannerX2, y1, bannerZ2, `${palette.key}-wall-color`, 'decor_detail');
   add(builder, definition, 'vibrant-glass-screen', palette.screen, screenX, y1, screenZ, `${palette.key}-glass-screen`, 'decor_detail');
-  add(builder, definition, 'vibrant-ceiling-light', palette.light, lightX, ceiling, lightZ, `${palette.key}-ceiling-color`, 'decor_light');
 }
 
 function runSpecialist(builder, definition, place) {
   const before = builder.blocks.length;
   place(builder, definition);
-  placeVibrantLayer(builder, definition);
+  const compactStyleRoom = definition.scope === 'style' && builder.width * builder.depth <= 30;
+  const compactFunctionalRoom = definition.scope === 'room' &&
+    builder.width * builder.depth <= 24 &&
+    ['bathroom', 'storage', 'utility', 'workshop', 'entry'].includes(builder.room?.type);
+  if (!['corridor', 'stairs'].includes(builder.room?.type) && !compactStyleRoom && !compactFunctionalRoom) placeVibrantLayer(builder, definition);
   return {
     agent_id: definition.source,
     id: definition.id,
@@ -1007,6 +1063,18 @@ function addRug(builder, definition, placement, block, centerX, centerZ, radiusX
 function addTableSet(builder, definition, x, y, z, placement) {
   add(builder, definition, 'table-base', 'minecraft:oak_fence', x, y, z, placement, 'decor_furniture');
   add(builder, definition, 'table-top', 'minecraft:oak_pressure_plate', x, y + 1, z, placement, 'decor_furniture');
+}
+
+function isCompactDecorRoom(builder) {
+  const area = builder.area || builder.width * builder.depth;
+  return area <= 50 || Math.min(builder.width, builder.depth) <= 4;
+}
+
+function roomArea(room = {}) {
+  const width = Number(room.max_x) - Number(room.min_x) + 1;
+  const depth = Number(room.max_z) - Number(room.min_z) + 1;
+  if (!Number.isFinite(width) || !Number.isFinite(depth)) return 0;
+  return Math.max(0, width) * Math.max(0, depth);
 }
 
 function vibrantPaletteFor(definition, styleFamily) {

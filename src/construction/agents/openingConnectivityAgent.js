@@ -7,6 +7,13 @@ export class OpeningConnectivityAgent {
     const largeEntry = /大门|双开门|宽门|门厅|玻璃门/.test(prompt) || buildSpec.scale === 'large' || architecture.facade_rules?.arches;
     const width = Math.max(Number(buildSpec.door_width || 1), largeEntry ? 2 : 1);
     const height = Math.max(Number(buildSpec.door_height || 2), architecture.facade_rules?.arches ? 4 : 2);
+    const accessible = /无障碍|轮椅|坡道|老人友好|accessible|wheelchair|ramp/i.test(prompt);
+    const fireSafety = /防火|逃生|安全出口|fire|egress|emergency/i.test(prompt) || floorCount > 2;
+    const daylightRooms = rooms
+      .filter((room) => Number(room.floor || 0) === 0 || ['living', 'study', 'bedroom', 'sunroom', 'greenhouse'].includes(room.type))
+      .filter((room) => !['bathroom', 'storage', 'utility'].includes(room.type))
+      .map((room) => room.id)
+      .slice(0, 12);
 
     return {
       source: 'local-opening-connectivity-agent',
@@ -17,7 +24,14 @@ export class OpeningConnectivityAgent {
         target_room: selectEntryRoom(rooms)?.id || 'entry',
         strategy: architecture.facade_rules?.arches ? 'ceremonial-arched-entry' : 'direct-entry'
       },
+      secondary_exits: secondaryExits(rooms, frontSide, fireSafety),
+      emergency_egress: {
+        enabled: fireSafety,
+        preferred_rooms: rooms.filter((room) => ['bedroom', 'master_bedroom', 'study', 'workshop'].includes(room.type)).map((room) => room.id),
+        strategy: fireSafety ? 'opposite-side-exit-or-large-egress-window' : 'main-entry-plus-windows'
+      },
       window_openings: plannedWindows(rooms, facade, buildSpec),
+      daylight_targets: daylightRooms,
       interior_thresholds: doors.map((door) => ({
         kind: door.kind,
         floor: door.floor,
@@ -33,12 +47,16 @@ export class OpeningConnectivityAgent {
       safety_clearances: {
         protect_modules: ['structural_frame', 'bracing', 'retaining_wall', 'foundation_anchor'],
         min_door_height: height,
-        min_route_width: width >= 3 ? 2 : 1
+        min_route_width: accessible ? 2 : width >= 3 ? 2 : 1,
+        accessible_turning_rooms: accessible ? rooms.filter((room) => ['entry', 'living', 'bathroom'].includes(room.type)).map((room) => room.id) : []
       },
       engine_hints: {
         prefer_wide_entry: width >= 2,
         use_facade_side: frontSide,
         protect_structural_modules: true,
+        prefer_accessible_routes: accessible,
+        protect_egress_routes: fireSafety,
+        planned_daylight_room_count: daylightRooms.length,
         planned_opening_count: 1 + doors.length + (floorCount > 1 ? floorCount - 1 : 0)
       }
     };
@@ -63,4 +81,27 @@ function plannedWindows(rooms, facade = {}, buildSpec = {}) {
     rhythm: facade.window_system?.rhythm || 'balanced',
     glazing_ratio: highGlazing ? 'high' : facade.window_system?.glazing_ratio || 'medium'
   }];
+}
+
+function secondaryExits(rooms, frontSide, enabled) {
+  if (!enabled) return [];
+  const side = oppositeSide(frontSide);
+  return rooms
+    .filter((room) => Number(room.floor || 0) === 0)
+    .filter((room) => ['living', 'kitchen', 'workshop', 'garage', 'corridor'].includes(room.type))
+    .slice(0, 2)
+    .map((room) => ({
+      target_room: room.id,
+      side,
+      type: room.type === 'garage' ? 'service-exit' : 'egress-door'
+    }));
+}
+
+function oppositeSide(side) {
+  return {
+    north: 'south',
+    south: 'north',
+    east: 'west',
+    west: 'east'
+  }[String(side || 'south')] || 'north';
 }

@@ -38,6 +38,38 @@ test('VisualizationAgent escapes prompt and room labels in static HTML', () => {
   assert.doesNotMatch(html, /<script>alert/);
 });
 
+test('VisualizationAgent renders expanded agent capability summaries', () => {
+  const { blueprint, validation } = buildPreviewData('建一个现代小房子，太阳能屋顶，雨水回收，无障碍坡道');
+  Object.assign(blueprint, {
+    stylePreset: { id: 'resilient-family-upgrade', signatures: ['solar', 'rain', 'accessible'] },
+    materialPalette: { roles: ['wall', 'roof', 'trim', 'glass', 'solar', 'rain', 'pool', 'plant'], controllableBlockCount: 72 },
+    structure: {
+      support_elements: [{}, {}],
+      bracing_elements: [{}],
+      reinforcement_elements: [{}],
+      stability: { lateral_system: 'bearing-wall-box-action' }
+    },
+    facade: { facade_elements: ['awning', 'flower-box', 'privacy-fin'], window_system: { rhythm: 'layered' } },
+    roof: { elements: [{}, {}, {}], service_strategy: { maintenance_zone: 'reserved-roof-service-strip' } },
+    site: { zones: ['pool', 'planting-beds', 'outdoor-living'], terrain_response: 'garden-ready' },
+    opening: { daylight_targets: ['living'], secondary_exits: ['back-door'], emergency_egress: { strategy: 'two-way-egress' } },
+    interior: { room_specialists: ['kitchen', 'living'], comfort_strategy: { density_target: 'rich' } },
+    repair: { checks: [{}, {}], ok: true },
+    geometry: {
+      ...blueprint.geometry,
+      exporter: { ...blueprint.geometry.exporter, moduleTypeCount: 20, operationCount: 123 }
+    }
+  });
+  const html = new VisualizationAgent().render({ prompt: blueprint.prompt, blueprint, validation });
+
+  assert.match(html, /Agent能力项/);
+  assert.match(html, /能力项/);
+  assert.match(html, /MaterialPalette/);
+  assert.match(html, /72 blocks/);
+  assert.match(html, /reserved-roof-service-strip/);
+  assert.match(html, /two-way-egress/);
+});
+
 function buildPreviewData(prompt) {
   const architecture = buildFallbackArchitecture(prompt);
   const buildSpec = deriveBuildSpec(prompt, architecture);

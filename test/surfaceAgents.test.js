@@ -49,6 +49,59 @@ test('CSG consumes facade, roof, and site plans as real modules', () => {
   assert.equal(context.shell.csg.sitePlan.zoneCount > 0, true);
 });
 
+test('expanded agents route utility, resilience, and landscape features into real modules', () => {
+  const context = buildAgentContext('建一个工业风三层家庭住宅，宽31深21，太阳能屋顶，雨链，上人屋顶，老虎窗，遮阳棚，花箱，隐私格栅，通风管线，门牌，泳池，菜园，户外座椅，信箱，无障碍坡道，防火抗风');
+  const counts = moduleCounts(context.shell.grid);
+
+  assert.equal(context.stylePreset.id, 'industrial-loft-frame');
+  assert.equal(context.architecture.roof_rules.solar_panels, true);
+  assert.equal(context.architecture.roof_rules.rain_harvest, true);
+  assert.equal(context.architecture.site_rules.accessible_route, true);
+  assert.equal(context.architecture.structural_rules.resilience_flags.high_wind, true);
+  assert.equal(context.architecture.structural_rules.resilience_flags.firebreak, true);
+  assert.equal(context.facade.engine_hints.render_awnings, true);
+  assert.equal(context.facade.engine_hints.render_flower_boxes, true);
+  assert.equal(context.facade.engine_hints.render_service_vents, true);
+  assert.equal(context.facade.engine_hints.render_address_marker, true);
+  assert.equal(context.facade.engine_hints.render_privacy_fins, true);
+  assert.equal(context.roof.engine_hints.render_solar_panels, true);
+  assert.equal(context.roof.engine_hints.render_rain_collectors, true);
+  assert.equal(context.roof.engine_hints.render_roof_access, true);
+  assert.equal(context.roof.engine_hints.render_dormers, true);
+  assert.equal(context.site.engine_hints.render_pool, true);
+  assert.equal(context.site.engine_hints.render_planting_beds, true);
+  assert.equal(context.site.engine_hints.render_outdoor_seating, true);
+  assert.equal(context.site.engine_hints.render_mailbox, true);
+  assert.equal(context.site.engine_hints.render_accessible_markers, true);
+  assert.equal(context.structure.engine_hints.render_wind_ties, true);
+  assert.equal(context.structure.engine_hints.render_firebreaks, true);
+  assert.equal(context.structure.engine_hints.render_service_platform_frame, true);
+
+  for (const module of [
+    'awning',
+    'flower_box',
+    'service_vent',
+    'address_marker',
+    'privacy_fin',
+    'solar_panel',
+    'rain_chain',
+    'rain_cistern',
+    'roof_access',
+    'dormer',
+    'pool_edge',
+    'pool_water',
+    'planting_bed',
+    'outdoor_living',
+    'mailbox',
+    'accessible_marker',
+    'wind_tie',
+    'firebreak',
+    'roof_service_frame'
+  ]) {
+    assert.ok(counts[module] > 0, `expected ${module} module`);
+  }
+});
+
 test('opening, interior, and repair agents complete the post-layout contract', () => {
   const context = buildAgentContext('建一个悬崖边的现代住宅，悬挑观景平台，大玻璃，双开门');
   const layout = new BSPPartitioner(context.buildSpec, context.architecture.materials).fitRooms(context.shell, context.topology);

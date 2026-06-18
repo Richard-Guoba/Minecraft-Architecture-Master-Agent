@@ -6,6 +6,11 @@ export class SiteLandscapeAgent {
     const patio = Boolean(rules.patio || buildSpec.site?.patio || /露台|庭院|平台|patio/i.test(prompt));
     const dryGarden = Boolean(rules.dry_garden || buildSpec.site?.dry_garden);
     const enclosed = Boolean(rules.enclosed_courtyard || buildSpec.site?.enclosed_courtyard);
+    const plantingBeds = Boolean(rules.planting_beds || /花坛|菜园|种植床|果园|orchard|vegetable|planting bed/i.test(prompt));
+    const outdoorSeating = Boolean(rules.outdoor_seating || /户外座椅|庭院餐桌|烧烤|火坑|outdoor seating|bbq|firepit/i.test(prompt));
+    const pool = Boolean(rules.pool || /泳池|游泳池|pool/i.test(prompt));
+    const mailbox = Boolean(rules.mailbox || /信箱|门牌|mailbox|address/i.test(prompt));
+    const accessible = Boolean(rules.accessible_route || /无障碍|坡道|轮椅|老人友好|accessible|wheelchair|ramp/i.test(prompt));
 
     return {
       source: 'local-site-landscape-agent',
@@ -14,19 +19,33 @@ export class SiteLandscapeAgent {
       mood: rules.landscape_mood || buildSpec.site?.landscape_mood || stylePreset.site || 'simple',
       entry_sequence: {
         side: buildSpec.door_side || architecture.facade_rules?.front_side || 'south',
-        path_width: buildSpec.scale === 'large' ? 3 : 2,
-        lighting: family === 'cyberpunk' || /灯|霓虹|夜景/i.test(prompt) ? 'lit' : 'subtle'
+        path_width: accessible ? Math.max(3, buildSpec.scale === 'large' ? 3 : 2) : buildSpec.scale === 'large' ? 3 : 2,
+        lighting: family === 'cyberpunk' || /灯|霓虹|夜景/i.test(prompt) ? 'lit' : 'subtle',
+        grade: accessible ? 'gentle-ramped' : 'stepped-or-flat',
+        wayfinding: mailbox ? 'address-marker-at-entry' : 'direct-path'
       },
-      zones: siteZones({ family, water, patio, dryGarden, enclosed, prompt }),
+      zones: siteZones({ family, water, patio, dryGarden, enclosed, plantingBeds, outdoorSeating, pool, mailbox, accessible, prompt }),
       boundary: boundaryForFamily(family, enclosed),
       terrain_response: terrainResponseForFamily(family),
+      outdoor_program: {
+        planting_beds: plantingBeds,
+        outdoor_seating: outdoorSeating,
+        pool,
+        mailbox,
+        accessible_route: accessible
+      },
       materials: {
         path: architecture.materials?.path || 'minecraft:gravel',
         landscape: materialPalette.materials?.landscape || 'minecraft:grass_block',
         plant: materialPalette.materials?.plant || 'minecraft:oak_leaves[persistent=true]',
         water: materialPalette.materials?.water || 'minecraft:water',
         light: materialPalette.materials?.path_light || architecture.materials?.lamp || 'minecraft:glowstone',
-        fence: materialPalette.materials?.railing || 'minecraft:oak_fence'
+        fence: materialPalette.materials?.railing || 'minecraft:oak_fence',
+        pool_edge: materialPalette.materials?.pool_edge || 'minecraft:smooth_quartz',
+        outdoor_seat: materialPalette.materials?.outdoor_seat || 'minecraft:spruce_stairs[facing=north,half=bottom]',
+        mailbox: materialPalette.materials?.mailbox || 'minecraft:barrel',
+        firepit: materialPalette.materials?.firepit || 'minecraft:campfire[lit=false]',
+        accessibility_marker: materialPalette.materials?.accessibility_marker || 'minecraft:light_blue_carpet'
       },
       engine_hints: {
         render_entry_path: true,
@@ -36,18 +55,28 @@ export class SiteLandscapeAgent {
         render_rock_edges: ['cliffside', 'alpine', 'subterranean'].includes(family),
         render_water_edge: water,
         render_sunken_court: family === 'subterranean',
-        render_deck_transition: patio || /deck|平台|露台|观景/.test(prompt)
+        render_deck_transition: patio || /deck|平台|露台|观景/.test(prompt),
+        render_planting_beds: plantingBeds,
+        render_outdoor_seating: outdoorSeating,
+        render_pool: pool,
+        render_mailbox: mailbox,
+        render_accessible_markers: accessible
       }
     };
   }
 }
 
-function siteZones({ family, water, patio, dryGarden, enclosed, prompt }) {
+function siteZones({ family, water, patio, dryGarden, enclosed, plantingBeds, outdoorSeating, pool, mailbox, accessible, prompt }) {
   const zones = ['entry-path'];
   if (water) zones.push('water-edge');
   if (patio) zones.push('patio-transition');
   if (dryGarden) zones.push('dry-garden');
   if (enclosed) zones.push('courtyard-boundary');
+  if (plantingBeds) zones.push('planting-beds');
+  if (outdoorSeating) zones.push('outdoor-living');
+  if (pool) zones.push('pool-deck');
+  if (mailbox) zones.push('address-marker');
+  if (accessible) zones.push('accessible-route');
   if (family === 'treehouse') zones.push('forest-understory');
   if (family === 'subterranean') zones.push('sunken-lightwell-court');
   if (family === 'cliffside') zones.push('rocky-overlook');

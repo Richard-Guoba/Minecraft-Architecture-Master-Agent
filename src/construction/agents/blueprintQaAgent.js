@@ -284,6 +284,7 @@ function validateSemanticCompleteness(blueprint, errors, warnings, checks) {
   const hasRoof = (modules.roof || 0) + (modules.roof_detail || 0) > 0;
   const hasInterior = rooms.length > 0 && (modules.interior || 0) > 0;
   const hasDecoration = Boolean(decorator.enabled) && Number(decorator.placementCount || 0) > 0;
+  const advancedModuleCount = countAdvancedModules(modules);
 
   if (!hasShell) errors.push('缺少建筑外壳模块。');
   if (!hasRoof) warnings.push('缺少屋顶模块。');
@@ -295,7 +296,8 @@ function validateSemanticCompleteness(blueprint, errors, warnings, checks) {
     hasRoof,
     hasInterior,
     hasDecoration,
-    decoratorPlacements: decorator.placementCount || 0
+    decoratorPlacements: decorator.placementCount || 0,
+    advancedModuleCount
   }));
 
   return {
@@ -303,8 +305,35 @@ function validateSemanticCompleteness(blueprint, errors, warnings, checks) {
     hasRoof,
     hasInterior,
     hasDecoration,
-    decoratorPlacements: decorator.placementCount || 0
+    decoratorPlacements: decorator.placementCount || 0,
+    advancedModuleCount
   };
+}
+
+function countAdvancedModules(modules = {}) {
+  return [
+    'awning',
+    'flower_box',
+    'service_vent',
+    'address_marker',
+    'privacy_fin',
+    'solar_panel',
+    'rain_chain',
+    'rain_cistern',
+    'roof_access',
+    'dormer',
+    'planting_bed',
+    'outdoor_living',
+    'pool_edge',
+    'pool_water',
+    'mailbox',
+    'accessible_marker',
+    'shear_wall',
+    'wind_tie',
+    'firebreak',
+    'flood_vent',
+    'roof_service_frame'
+  ].reduce((sum, module) => sum + Number(modules[module] || 0), 0);
 }
 
 function validateAgentContracts(blueprint, errors, warnings, checks) {

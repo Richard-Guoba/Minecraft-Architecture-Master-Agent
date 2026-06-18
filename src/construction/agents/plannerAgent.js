@@ -28,6 +28,32 @@ const ROOM_TYPES = new Set([
   'room'
 ]);
 
+const SUPPLEMENTAL_TOPOLOGY_TYPES = new Set([
+  'entry',
+  'living',
+  'great_hall',
+  'dining',
+  'kitchen',
+  'stairs',
+  'corridor',
+  'bedroom',
+  'master_bedroom',
+  'study',
+  'bathroom',
+  'utility',
+  'storage',
+  'garage',
+  'lounge',
+  'tea_room',
+  'tatami',
+  'workshop',
+  'greenhouse',
+  'sunroom',
+  'tower',
+  'chapel',
+  'armory'
+]);
+
 export class ConstructionPlannerAgent {
   constructor({ llmClient, mode = 'auto' } = {}) {
     this.llmClient = llmClient;
@@ -130,8 +156,10 @@ export function normalizeTopology(value, source, fallback = {}, buildSpec = {}) 
   const raw = value && typeof value === 'object' ? value : {};
   const maxFloor = Math.max(0, Number(buildSpec.floors || 3) - 1);
   const nodes = normalizeNodes(raw.nodes, fallback.nodes, maxFloor);
+  const floorShift = normalizeOneBasedFloors(nodes, maxFloor);
+  const supplements = supplementFallbackProgramNodes(nodes, fallback.nodes, maxFloor);
   const idNormalization = uniquifyNodeIds(nodes);
-  const rebuildDerivedTopology = idNormalization.renamed.length > 0;
+  const rebuildDerivedTopology = floorShift > 0 || idNormalization.renamed.length > 0 || supplements.added.length > 0;
   return {
     source,
     nodes,
@@ -165,6 +193,7 @@ function addGroundFloor(nodes, context) {
       room('armory', '武备间', 'armory', 0, 0.8, 'service', { zone: 'service' }),
       room('kitchen', '后厨', 'kitchen', 0, 1.0, 'service', { zone: 'service' })
     );
+    addRequestedGroundFloorEssentials(nodes, context);
     return;
   }
 
@@ -175,6 +204,8 @@ function addGroundFloor(nodes, context) {
       room('kitchen', '厨房', 'kitchen', 0, 0.85, 'service', { zone: 'service' }),
       room('tea-room', '茶室', 'tea_room', 0, 0.75, 'semi-private', { zone: 'private', orientation: 'garden' })
     );
+    if (shouldHaveDining(context)) nodes.push(room('dining', '餐厅', 'dining', 0, 0.8, 'public', { zone: 'public' }));
+    addRequestedGroundFloorEssentials(nodes, context);
     return;
   }
 
@@ -184,6 +215,8 @@ function addGroundFloor(nodes, context) {
       room('kitchen', '开放厨房', 'kitchen', 0, 1.0, 'service', { zone: 'service' }),
       room('workshop', '工作间', 'workshop', 0, 1.0, 'service', { zone: 'service' })
     );
+    if (shouldHaveDining(context)) nodes.push(room('dining', '餐厅', 'dining', 0, 0.85, 'public', { zone: 'public' }));
+    addRequestedGroundFloorEssentials(nodes, context);
     return;
   }
 
@@ -195,9 +228,19 @@ function addGroundFloor(nodes, context) {
 
   if (shouldHaveDining(context)) nodes.push(room('dining', '餐厅', 'dining', 0, 1.0, 'public', { zone: 'public' }));
   if (footprint === 'winged') nodes.push(room('lounge', '侧厅', 'lounge', 0, 0.9, 'public', { zone: 'public', tags: ['wing-room'] }));
-  if (requested.bathrooms || buildSpec.scale === 'large') nodes.push(room('guest-bath', '客卫', 'bathroom', 0, 0.45, 'service', { zone: 'service' }));
+  if (shouldHaveBathroom(context)) nodes.push(room('guest-bath', '客卫', 'bathroom', 0, 0.45, 'service', { zone: 'service' }));
   if (requested.bedrooms > 0 && Number(buildSpec.floors || 1) <= 1) {
     nodes.push(room('bedroom', '卧室', 'bedroom', 0, 1.1, 'private', { zone: 'private' }));
+  }
+}
+
+function addRequestedGroundFloorEssentials(nodes, context) {
+  const { buildSpec, requested } = context;
+  if (shouldHaveBathroom(context)) {
+    nodes.push(room(nodes.some((node) => node.id === 'guest-bath') ? 'guest-bath-2' : 'guest-bath', '客卫', 'bathroom', 0, 0.45, 'service', { zone: 'service' }));
+  }
+  if (requested.bedrooms > 0 && Number(buildSpec.floors || 1) <= 1) {
+    nodes.push(room(nodes.some((node) => node.id === 'bedroom') ? 'bedroom-2' : 'bedroom', '卧室', 'bedroom', 0, 1.05, 'private', { zone: 'private' }));
   }
 }
 
@@ -365,7 +408,7 @@ function normalizeNodes(value, fallback = [], maxFloor = 2) {
   const source = Array.isArray(value) && value.length ? value : Array.isArray(fallback) ? fallback : [];
   const nodes = source.map((item, index) => {
     const raw = item && typeof item === 'object' ? item : {};
-    const type = normalizeRoomType(raw.type || raw.id);
+    const type = normalizeRoomType([raw.type, raw.id, raw.label, raw.name].filter(Boolean).join(' '));
     return room(
       normalizeId(raw.id || raw.type || `room-${index}`),
       String(raw.label || raw.name || raw.id || `房间 ${index + 1}`),
@@ -383,6 +426,17 @@ function normalizeNodes(value, fallback = [], maxFloor = 2) {
     );
   });
   return nodes.length ? nodes : [room('living', '起居', 'living', 0, 1, 'public', { zone: 'public' })];
+}
+
+function normalizeOneBasedFloors(nodes, maxFloor) {
+  const floors = nodes.map((node) => Number(node.floor || 0)).filter(Number.isFinite);
+  if (!floors.length || floors.includes(0)) return 0;
+  const minFloor = Math.min(...floors);
+  if (minFloor <= 0) return 0;
+  for (const node of nodes) {
+    node.floor = clampInt(Number(node.floor || 0) - minFloor, 0, maxFloor, 0);
+  }
+  return minFloor;
 }
 
 function normalizeEdges(value, nodes, fallback = []) {
@@ -448,12 +502,13 @@ function normalizeSiteConnections(value, nodes, fallback = []) {
 }
 
 function room(id, label, type, floor, weight, privacy, extra = {}) {
+  const normalizedWeight = Math.max(Number(weight) || 1, minimumWeightForType(type));
   return dropUndefined({
     id,
     label,
     type,
     floor,
-    weight,
+    weight: normalizedWeight,
     privacy,
     zone: normalizeZone(extra.zone || zoneForType(type)),
     orientation: extra.orientation,
@@ -461,6 +516,13 @@ function room(id, label, type, floor, weight, privacy, extra = {}) {
     daylight: extra.daylight,
     tags: extra.tags?.length ? extra.tags : undefined
   });
+}
+
+function minimumWeightForType(type) {
+  if (type === 'bathroom') return 0.75;
+  if (type === 'entry') return 0.7;
+  if (['kitchen', 'dining', 'study', 'storage', 'utility'].includes(type)) return 0.65;
+  return 0.2;
 }
 
 function connection(from, to, relation) {
@@ -504,6 +566,16 @@ function parseNumberToken(value) {
 
 function shouldHaveDining({ prompt, style, buildSpec, requested }) {
   return requested.dining || buildSpec.scale === 'large' || style === '欧式' || /餐厅|餐区|厨房/.test(prompt);
+}
+
+function shouldHaveBathroom({ prompt, typology, buildSpec, requested }) {
+  if (requested.bathrooms > 0 || buildSpec.scale === 'large') return true;
+  return isResidentialProgram(prompt, typology);
+}
+
+function isResidentialProgram(prompt, typology) {
+  if (['house', 'villa', 'manor', 'cabin', 'courtyard-house', 'castle'].includes(typology)) return true;
+  return /房子|住宅|家|别墅|卧室|主卧|客厅|家庭|公寓|loft|小屋|木屋|庄园|合院|城堡|home|house|villa|cabin|lodge|retreat|rowhouse|apartment|family/i.test(prompt);
 }
 
 function splitStrategy(style, styleFamily, typology, footprint) {
@@ -576,6 +648,47 @@ function compactBuildSpec(buildSpec) {
 
 function ensureUniqueIds(nodes) {
   uniquifyNodeIds(nodes);
+}
+
+function supplementFallbackProgramNodes(nodes, fallbackNodes = [], maxFloor = 0) {
+  const added = [];
+  const desiredByKey = {};
+
+  for (const fallbackNode of Array.isArray(fallbackNodes) ? fallbackNodes : []) {
+    if (!shouldSupplementFallbackNode(fallbackNode, maxFloor)) continue;
+    const key = supplementKey(fallbackNode.type);
+    desiredByKey[key] = (desiredByKey[key] || 0) + 1;
+    if (countSupplementKey(nodes, key) >= desiredByKey[key]) continue;
+
+    const supplement = {
+      ...fallbackNode,
+      tags: [...normalizeStringArray(fallbackNode.tags), 'llm-program-supplement']
+    };
+    nodes.push(supplement);
+    added.push(supplement.id);
+  }
+
+  return { added };
+}
+
+function shouldSupplementFallbackNode(node = {}, maxFloor = 0) {
+  const type = String(node.type || 'room');
+  const floor = Number(node.floor || 0);
+  return SUPPLEMENTAL_TOPOLOGY_TYPES.has(type) &&
+    Number.isFinite(floor) &&
+    floor >= 0 &&
+    floor <= maxFloor;
+}
+
+function countSupplementKey(nodes, key) {
+  return nodes.filter((node) => supplementKey(node.type) === key).length;
+}
+
+function supplementKey(type) {
+  if (['bedroom', 'master_bedroom'].includes(type)) return 'sleeping';
+  if (['living', 'great_hall', 'lounge'].includes(type)) return 'public-core';
+  if (['sunroom', 'greenhouse'].includes(type)) return 'green-room';
+  return String(type || 'room');
 }
 
 function uniquifyNodeIds(nodes) {

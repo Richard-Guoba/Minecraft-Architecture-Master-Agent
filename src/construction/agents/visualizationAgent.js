@@ -77,6 +77,7 @@ th { color: var(--muted); font-weight: 600; background: #fafafa; }
   ${metric(`${blueprint.geometry.exporter.compressionRatio}x`, '导出压缩')}
   ${metric(`${validation.stats.circulation.reachableRoomCount}/${validation.stats.rooms.roomCount}`, '入口可达房间')}
   ${metric(`${blueprint.decorator.placementCount || 0}`, '装饰物件')}
+  ${metric(`${agentCapabilityCount(blueprint)}`, 'Agent能力项')}
 </section>
 <main>
   <section class="section">
@@ -99,6 +100,7 @@ th { color: var(--muted); font-weight: 600; background: #fafafa; }
       ${renderModuleTable(moduleLegend)}
       ${renderRoomTable(blueprint.layout.rooms)}
       ${renderExporterTable(blueprint.geometry.exporter)}
+      ${renderAgentCapabilityTable(blueprint)}
     </div>
   </section>
   <section class="section">
@@ -213,6 +215,26 @@ function renderExporterTable(exporter) {
 </table>`;
 }
 
+function renderAgentCapabilityTable(blueprint) {
+  const rows = [
+    ['StylePreset', blueprint.stylePreset?.signatures?.length || 0, blueprint.stylePreset?.id || '-'],
+    ['MaterialPalette', blueprint.materialPalette?.roles?.length || 0, `${blueprint.materialPalette?.controllableBlockCount || 0} blocks`],
+    ['Structure', (blueprint.structure?.support_elements?.length || 0) + (blueprint.structure?.bracing_elements?.length || 0) + (blueprint.structure?.reinforcement_elements?.length || 0), blueprint.structure?.stability?.lateral_system || '-'],
+    ['Facade', blueprint.facade?.facade_elements?.length || 0, blueprint.facade?.window_system?.rhythm || '-'],
+    ['Roof', blueprint.roof?.elements?.length || 0, blueprint.roof?.service_strategy?.maintenance_zone || blueprint.roof?.profile || '-'],
+    ['Site', blueprint.site?.zones?.length || 0, blueprint.site?.terrain_response || '-'],
+    ['Opening', (blueprint.opening?.daylight_targets?.length || 0) + (blueprint.opening?.secondary_exits?.length || 0), blueprint.opening?.emergency_egress?.strategy || '-'],
+    ['Interior', blueprint.interior?.room_specialists?.length || 0, blueprint.interior?.comfort_strategy?.density_target || '-'],
+    ['Decorator', blueprint.decorator?.capability_profile?.active_specialists || 0, `${blueprint.decorator?.capability_profile?.module_layers?.length || 0} layers`],
+    ['Repair', blueprint.repair?.checks?.length || 0, blueprint.repair?.ok ? 'ok' : 'attention'],
+    ['Optimizer', blueprint.geometry?.exporter?.moduleTypeCount || 0, `${blueprint.geometry?.exporter?.operationCount || 0} ops`]
+  ];
+  return `<table>
+  <thead><tr><th>Agent</th><th>能力项</th><th>摘要</th></tr></thead>
+  <tbody>${rows.map(([name, count, note]) => `<tr><td>${escapeHtml(name)}</td><td>${count}</td><td>${escapeHtml(note)}</td></tr>`).join('')}</tbody>
+</table>`;
+}
+
 function renderCheck(item) {
   const status = item.ok ? '<span class="ok">通过</span>' : '<span class="bad">失败</span>';
   return `<div class="check"><strong>${escapeHtml(item.name)}</strong>${status}<div class="small">${escapeHtml(compactDetails(item.details))}</div></div>`;
@@ -238,6 +260,21 @@ function topModules(blueprint) {
   return Object.entries(blueprint.modules || {})
     .sort((a, b) => b[1] - a[1])
     .map(([name, count]) => ({ name, count }));
+}
+
+function agentCapabilityCount(blueprint) {
+  return (blueprint.stylePreset?.signatures?.length || 0) +
+    (blueprint.materialPalette?.roles?.length || 0) +
+    (blueprint.structure?.support_elements?.length || 0) +
+    (blueprint.structure?.bracing_elements?.length || 0) +
+    (blueprint.structure?.reinforcement_elements?.length || 0) +
+    (blueprint.facade?.facade_elements?.length || 0) +
+    (blueprint.roof?.elements?.length || 0) +
+    (blueprint.site?.zones?.length || 0) +
+    (blueprint.opening?.daylight_targets?.length || 0) +
+    (blueprint.interior?.room_specialists?.length || 0) +
+    (blueprint.decorator?.capability_profile?.module_layers?.length || 0) +
+    (blueprint.repair?.checks?.length || 0);
 }
 
 function roomFloor(roomId, blueprint) {

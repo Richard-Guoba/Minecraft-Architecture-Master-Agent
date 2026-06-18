@@ -2,6 +2,16 @@ import { blockCatalogStats, isKnownMinecraft121Block, materialOptionsForFamily }
 
 const BLOCK_PATTERN = /^minecraft:[a-z0-9_]+(?:\[[a-z0-9_=,]+\])?$/;
 
+const BLOCK_ALIASES = {
+  'minecraft:wool': 'minecraft:white_wool',
+  'minecraft:stained_glass': 'minecraft:white_stained_glass',
+  'minecraft:stained_glass_pane': 'minecraft:white_stained_glass_pane',
+  'minecraft:terracotta_block': 'minecraft:terracotta',
+  'minecraft:wood': 'minecraft:oak_planks',
+  'minecraft:planks': 'minecraft:oak_planks',
+  'minecraft:stonebrick': 'minecraft:stone_bricks'
+};
+
 const FAMILY_EXTRAS = {
   coastal: {
     accent: 'minecraft:dark_prismarine',
@@ -82,6 +92,32 @@ const FAMILY_EXTRAS = {
     railing: 'minecraft:smooth_quartz',
     chimney: 'minecraft:bricks',
     landscape: 'minecraft:grass_block'
+  },
+  desert: {
+    accent: 'minecraft:orange_terracotta',
+    railing: 'minecraft:acacia_fence',
+    chimney: 'minecraft:smooth_sandstone',
+    landscape: 'minecraft:sand',
+    plant: 'minecraft:potted_cactus',
+    water: 'minecraft:water',
+    awning: 'minecraft:orange_carpet'
+  },
+  victorian: {
+    accent: 'minecraft:white_concrete',
+    railing: 'minecraft:dark_oak_fence',
+    chimney: 'minecraft:bricks',
+    landscape: 'minecraft:grass_block',
+    awning: 'minecraft:red_carpet',
+    planter: 'minecraft:potted_azalea_bush'
+  },
+  industrial: {
+    accent: 'minecraft:iron_bars',
+    railing: 'minecraft:iron_bars',
+    chimney: 'minecraft:bricks',
+    landscape: 'minecraft:gravel',
+    secondary_wall: 'minecraft:gray_concrete',
+    facade_light: 'minecraft:redstone_lamp',
+    service_vent: 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]'
   }
 };
 
@@ -93,7 +129,8 @@ export class MaterialPaletteAgent {
       ...(FAMILY_EXTRAS[family] || {}),
       ...promptDrivenExtras(prompt)
     };
-    const materials = normalizeMaterials({
+    const materialOptions = materialOptionsForFamily(family, prompt);
+    const repaired = repairInvalidMaterials(normalizeMaterials({
       ...base,
       accent: extras.accent || base.trim || base.wall,
       secondary_wall: extras.secondary_wall || base.interior_wall || base.wall,
@@ -108,10 +145,22 @@ export class MaterialPaletteAgent {
       retaining: extras.retaining || base.foundation || 'minecraft:stone_bricks',
       greenhouse_frame: extras.greenhouse_frame || base.trim || 'minecraft:iron_bars',
       roof_detail: base.roof_detail || extras.accent || base.trim || base.roof,
-      furniture: base.furniture || furnitureForFamily(family)
-    });
+      furniture: base.furniture || furnitureForFamily(family),
+      awning: extras.awning || base.awning || awningForFamily(family),
+      planter: extras.planter || base.planter || extras.plant || 'minecraft:potted_azalea_bush',
+      flower_box: extras.flower_box || base.flower_box || 'minecraft:flower_pot',
+      solar_panel: extras.solar_panel || base.solar_panel || 'minecraft:daylight_detector',
+      rain_chain: extras.rain_chain || base.rain_chain || 'minecraft:chain',
+      drainage: extras.drainage || base.drainage || 'minecraft:cauldron',
+      pool_edge: extras.pool_edge || base.pool_edge || 'minecraft:smooth_quartz',
+      outdoor_seat: extras.outdoor_seat || base.outdoor_seat || seatingForFamily(family),
+      service_vent: extras.service_vent || base.service_vent || 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]',
+      accessibility_marker: extras.accessibility_marker || base.accessibility_marker || 'minecraft:blue_carpet',
+      mailbox: extras.mailbox || base.mailbox || 'minecraft:barrel',
+      firepit: extras.firepit || base.firepit || 'minecraft:campfire[lit=false]'
+    }), materialOptions);
+    const materials = repaired.materials;
 
-    const materialOptions = materialOptionsForFamily(family, prompt);
     const invalid = Object.entries(materials).filter(([, block]) => !validMinecraftBlock(block));
     return {
       source: 'local-material-palette',
@@ -125,7 +174,10 @@ export class MaterialPaletteAgent {
       option_roles: Object.keys(materialOptions).sort(),
       controllableBlockCount: unique(Object.values(materialOptions).flat()).length,
       contrast: contrastForFamily(family),
-      warnings: invalid.map(([role, block]) => `Invalid block for ${role}: ${block}`),
+      warnings: [
+        ...repaired.warnings,
+        ...invalid.map(([role, block]) => `Invalid block for ${role}: ${block}`)
+      ],
       valid: invalid.length === 0
     };
   }
@@ -139,6 +191,12 @@ function promptDrivenExtras(prompt) {
   if (/铜|copper/i.test(prompt)) extras.accent = 'minecraft:oxidized_copper';
   if (/雪|snow/i.test(prompt)) extras.landscape = 'minecraft:snow_block';
   if (/苔藓|moss/i.test(prompt)) extras.landscape = 'minecraft:moss_block';
+  if (/太阳能|光伏|solar/i.test(prompt)) extras.solar_panel = 'minecraft:daylight_detector';
+  if (/雨链|雨水|rain chain|rainwater/i.test(prompt)) extras.rain_chain = 'minecraft:chain';
+  if (/遮阳|棚|awning|shade/i.test(prompt)) extras.awning = 'minecraft:white_carpet';
+  if (/泳池|pool/i.test(prompt)) extras.pool_edge = 'minecraft:smooth_quartz';
+  if (/火坑|firepit|篝火/i.test(prompt)) extras.firepit = 'minecraft:campfire[lit=false]';
+  if (/无障碍|轮椅|accessible|wheelchair/i.test(prompt)) extras.accessibility_marker = 'minecraft:light_blue_carpet';
   return extras;
 }
 
@@ -151,6 +209,38 @@ function normalizeMaterials(materials) {
   return normalized;
 }
 
+function repairInvalidMaterials(materials, materialOptions = {}) {
+  const repaired = {};
+  const warnings = [];
+  for (const [role, rawBlock] of Object.entries(materials)) {
+    const aliased = BLOCK_ALIASES[String(rawBlock)] || String(rawBlock);
+    if (validMinecraftBlock(aliased)) {
+      repaired[role] = aliased;
+      if (aliased !== rawBlock) warnings.push(`Replaced block alias for ${role}: ${rawBlock} -> ${aliased}`);
+      continue;
+    }
+    const fallback = fallbackBlockForRole(role, materialOptions);
+    repaired[role] = fallback;
+    warnings.push(`Replaced invalid block for ${role}: ${rawBlock} -> ${fallback}`);
+  }
+  return { materials: repaired, warnings };
+}
+
+function fallbackBlockForRole(role, materialOptions = {}) {
+  const options = materialOptions[role] || materialOptions[role.replace(/_/g, '-')] || [];
+  const validOption = options.find(validMinecraftBlock);
+  if (validOption) return validOption;
+  if (role.includes('glass')) return 'minecraft:glass';
+  if (role.includes('carpet')) return 'minecraft:white_carpet';
+  if (role.includes('light') || role.includes('lamp')) return 'minecraft:glowstone';
+  if (role.includes('roof')) return 'minecraft:oak_planks';
+  if (role.includes('wall')) return 'minecraft:white_concrete';
+  if (role.includes('floor')) return 'minecraft:oak_planks';
+  if (role.includes('door')) return 'minecraft:oak_door';
+  if (role.includes('plant')) return 'minecraft:oak_leaves[persistent=true]';
+  return 'minecraft:stone_bricks';
+}
+
 function validMinecraftBlock(block) {
   return BLOCK_PATTERN.test(String(block || '')) && isKnownMinecraft121Block(block);
 }
@@ -161,6 +251,21 @@ function furnitureForFamily(family) {
   if (family === 'japanese' || family === 'chinese-courtyard') return 'minecraft:bamboo_slab[type=bottom]';
   if (family === 'gothic' || family === 'subterranean') return 'minecraft:stone_brick_slab[type=bottom]';
   return 'minecraft:oak_slab[type=bottom]';
+}
+
+function seatingForFamily(family) {
+  if (family === 'modern' || family === 'cyberpunk') return 'minecraft:smooth_quartz_stairs[facing=north,half=bottom]';
+  if (family === 'desert') return 'minecraft:sandstone_stairs[facing=north,half=bottom]';
+  if (family === 'industrial') return 'minecraft:stone_brick_stairs[facing=north,half=bottom]';
+  if (family === 'treehouse' || family === 'tropical') return 'minecraft:jungle_stairs[facing=north,half=bottom]';
+  return 'minecraft:spruce_stairs[facing=north,half=bottom]';
+}
+
+function awningForFamily(family) {
+  if (family === 'desert') return 'minecraft:orange_carpet';
+  if (family === 'cyberpunk') return 'minecraft:cyan_carpet';
+  if (family === 'victorian') return 'minecraft:red_carpet';
+  return 'minecraft:white_carpet';
 }
 
 function paletteNameForFamily(family) {

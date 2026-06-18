@@ -6,7 +6,11 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test",
-    "evaluate:prompts": "node src/evaluatePromptSuite.js"
+    "evaluate:prompts": "node src/evaluatePromptSuite.js",
+    "evaluate:habitation": "node src/evaluateHabitationSuite.js",
+    "evaluate:decoration": "node src/evaluateDecorationSuite.js",
+    "evaluate:living-quality": "node src/evaluateLivingQualitySuite.js",
+    "evaluate:comprehensive": "node src/evaluateComprehensiveSuite.js"
   },
   "engines": {
     "node": ">=20"

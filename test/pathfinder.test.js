@@ -13,6 +13,8 @@ test('AStarPathfinder aligns main door, open-plan routes, attached volumes, and 
 
   assert.equal(paths.mainDoor.side, 'east');
   assert.equal(paths.mainDoor.targetRoom, 'entry');
+  assert.ok(paths.mainDoor.approachLength >= 3);
+  assertEntryApproach(shell.grid, paths.mainDoor);
   assert.equal(paths.pathfinder.stairCoreRoom, 'stairs');
   assert.equal(paths.pathfinder.failedEdgeCount, 0);
   assert.ok(paths.pathfinder.attachedDoorCount >= 2);
@@ -78,6 +80,16 @@ function assertStairsMeetUpperFloors(grid, spec, paths) {
     assert.ok(landingCell, `stair landing should be solid at ${landing.x},${topStep.y},${landing.z}`);
     assert.equal(pointInOpening(opening, landing.x, landing.z), false);
     assert.equal(pointInOpening(opening, topStep.x, topStep.z), true);
+  }
+}
+
+function assertEntryApproach(grid, mainDoor) {
+  if (mainDoor.side === 'east') {
+    for (let x = mainDoor.x + 1; x <= mainDoor.x + mainDoor.approachLength; x += 1) {
+      const hasPath = [mainDoor.z - 1, mainDoor.z, mainDoor.z + 1, mainDoor.z + 2]
+        .some((z) => grid.get(keyFor(x, 0, z))?.module === 'entry_path');
+      assert.ok(hasPath, `missing east entry path at x=${x}`);
+    }
   }
 }
 

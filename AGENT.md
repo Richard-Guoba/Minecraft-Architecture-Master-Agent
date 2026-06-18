@@ -48,6 +48,8 @@
 
 - 运行测试：`npm test`
 - 运行 20 条覆盖式 prompt 批量评价：`npm run evaluate:prompts`
+- 运行 100 条居住功能性 prompt 批量评价：`npm run evaluate:habitation`
+- 运行 10 条装饰合理性 prompt 批量评价：`npm run evaluate:decoration -- --mode auto` 或 `npm run evaluate:decoration -- --mode llm`
 - 生成演示输出：`npm start -- "建一个欧式大房子"`
 - 安装到世界：`npm start -- --world "世界名" "建一个欧式大房子"`
 - 强制使用规则兜底模式：`npm start -- --mode mock "建一个欧式大房子"`

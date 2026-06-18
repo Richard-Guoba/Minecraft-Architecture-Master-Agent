@@ -16,8 +16,12 @@ export function buildFallbackStructure(architecture = {}, buildSpec = {}, topolo
   const supports = String(buildSpec.structural?.supports || architecture.structural_rules?.primary_supports || 'load-bearing-walls');
   const system = String(buildSpec.structural?.system || architecture.structural_rules?.system || 'standard-shell');
   const spanStrategy = String(buildSpec.structural?.span_strategy || architecture.structural_rules?.span_strategy || 'room-scale-spans');
+  const resilienceFlags = architecture.structural_rules?.resilience_flags || buildSpec.structural?.resilience_flags || {};
+  const roofRules = architecture.roof_rules || buildSpec.roof || {};
+  const siteRules = architecture.site_rules || buildSpec.site || {};
   const volumes = Array.isArray(architecture.volumes) ? architecture.volumes : [];
   const volumeText = volumes.map((item) => `${item.id || ''} ${item.role || ''} ${(item.tags || []).join(' ')} ${item.facade_role || ''}`).join(' ').toLowerCase();
+  const resilienceText = activeSemanticText(resilienceFlags, roofRules, siteRules);
   const floors = Math.max(1, Number(buildSpec.floors || 1));
   const width = Math.max(1, Number(buildSpec.width || 19));
   const depth = Math.max(1, Number(buildSpec.depth || 15));
@@ -32,7 +36,12 @@ export function buildFallbackStructure(architecture = {}, buildSpec = {}, topolo
     treehouse: family === 'treehouse' || /treehouse|support-trunk|trunk-core/.test(volumeText),
     greenhouse: family === 'greenhouse-house' || /greenhouse|sunroom|transparent|glass/.test(volumeText),
     neon_spine: family === 'cyberpunk' || /neon|service-core/.test(volumeText),
-    alpine: family === 'alpine'
+    alpine: family === 'alpine',
+    seismic: Boolean(resilienceFlags.seismic) || /抗震|地震|seismic|earthquake/i.test(`${supports} ${system} ${volumeText} ${resilienceText}`) || floors >= 3,
+    high_wind: Boolean(resilienceFlags.high_wind) || /抗风|台风|海滨|风|wind|hurricane/i.test(`${supports} ${system} ${volumeText} ${resilienceText}`) || ['coastal', 'alpine', 'cliffside'].includes(family),
+    firebreak: Boolean(resilienceFlags.firebreak) || /防火|fire|壁炉|厨房安全/i.test(`${supports} ${system} ${volumeText} ${resilienceText}`) || ['industrial', 'alpine'].includes(family),
+    flood: Boolean(resilienceFlags.flood) || /防洪|抬高|潮湿|flood|raised/i.test(`${supports} ${system} ${volumeText} ${resilienceText}`) || ['coastal', 'tropical'].includes(family),
+    service_platform: Boolean(resilienceFlags.service_platform || roofRules.solar_panels || roofRules.rain_harvest) || /太阳能|光伏|雨水|设备|solar|rainwater|service/.test(`${volumeText} ${resilienceText}`) || ['industrial', 'cyberpunk'].includes(family)
   };
 
   const supportElements = [
@@ -90,6 +99,32 @@ export function buildFallbackStructure(architecture = {}, buildSpec = {}, topolo
       reinforcement('retaining-wall-ribs', 'retaining-ribs', 'main', { module: 'retaining_wall', spacing: 4, shell_thickness: shellThickness }),
       reinforcement('lightwell-ring-beam', 'lightwell-ring', 'lightwell-court', { module: 'structural_frame' })
     );
+  }
+
+  if (signals.seismic) {
+    bracingElements.push(bracing('seismic-shear-wall-pair', 'shear-wall', 'main', { anchor: 'foundation', module: 'structural_frame' }));
+  }
+
+  if (signals.high_wind) {
+    bracingElements.push(bracing('wind-tie-downs', 'tie-down', 'roof-to-foundation', { anchor: 'eaves', module: 'bracing' }));
+  }
+
+  if (signals.firebreak) {
+    reinforcementElements.push(reinforcement('service-firebreak-wall', 'firebreak-wall', 'service-core', { module: 'firebreak' }));
+  }
+
+  if (signals.flood) {
+    reinforcementElements.push(reinforcement('raised-plinth-vents', 'flood-vented-plinth', 'foundation', { module: 'foundation_anchor' }));
+  }
+
+  if (signals.service_platform) {
+    roofElements.push({
+      id: 'roof-service-platform-frame',
+      kind: 'service-platform-frame',
+      target: 'main-roof',
+      module: 'roof_frame',
+      pitch: 'flat-service-strip'
+    });
   }
 
   if (floors > 1 || shellThickness > 1 || signals.long_span || signals.retaining) {
@@ -151,6 +186,13 @@ export function buildFallbackStructure(architecture = {}, buildSpec = {}, topolo
       moisture_strategy: signals.retaining ? 'drained-retaining-walls-and-lightwell' : 'standard',
       redundancy: floors > 2 || signals.long_span ? 'enhanced' : 'normal'
     },
+    resilience: {
+      seismic: signals.seismic ? 'shear-wall-pair-and-ring-beams' : 'standard',
+      wind: signals.high_wind ? 'roof-to-foundation-tie-downs' : 'standard',
+      fire: signals.firebreak ? 'service-core-firebreak' : 'standard',
+      water: signals.flood ? 'raised-plinth-and-vented-base' : signals.retaining ? 'retaining-drainage' : 'standard',
+      service_loads: signals.service_platform ? 'roof-service-strip-framed' : 'standard'
+    },
     engine_hints: {
       render_column_grid: hasKind(supportElements, 'column-grid'),
       render_buttresses: signals.buttress,
@@ -161,7 +203,12 @@ export function buildFallbackStructure(architecture = {}, buildSpec = {}, topolo
       render_ring_beams: reinforcementElements.some((item) => item.kind === 'ring-beams'),
       render_roof_frame: roofElements.length > 0,
       render_glass_ribs: signals.greenhouse,
-      render_service_braces: signals.neon_spine
+      render_service_braces: signals.neon_spine,
+      render_shear_walls: signals.seismic,
+      render_wind_ties: signals.high_wind,
+      render_firebreaks: signals.firebreak,
+      render_flood_vents: signals.flood,
+      render_service_platform_frame: signals.service_platform
     }
   };
 }
@@ -190,6 +237,8 @@ function foundationNotes(signals) {
   if (signals.cantilever) notes.push('anchor view decks back to main mass');
   if (signals.treehouse) notes.push('separate trunk core from lightweight living deck');
   if (signals.greenhouse) notes.push('keep glass spans on light rib frame');
+  if (signals.high_wind) notes.push('tie roof edges back to foundation');
+  if (signals.flood) notes.push('raise vulnerable base above wet ground');
   return notes.length ? notes : ['continuous bearing under exterior shell'];
 }
 
@@ -201,6 +250,8 @@ function buildLoadPaths({ signals, floors, hasDeck, hasTower }) {
   if (hasDeck) paths.push({ id: 'deck-to-anchor', from: 'view_deck', through: 'knee_braces', to: 'main_foundation' });
   if (hasTower) paths.push({ id: 'tower-to-core', from: 'vertical_core', through: 'core_walls', to: 'foundation' });
   if (signals.retaining) paths.push({ id: 'earth-pressure-to-ribs', from: 'retained_soil', through: 'retaining_ribs', to: 'slab_and_side_walls' });
+  if (signals.high_wind) paths.push({ id: 'wind-uplift-to-ties', from: 'roof_edges', through: 'tie_downs', to: 'foundation' });
+  if (signals.service_platform) paths.push({ id: 'roof-service-loads', from: 'roof_equipment', through: 'service_platform_frame', to: 'ring_beams' });
   return paths;
 }
 
@@ -215,6 +266,14 @@ function lateralSystem(signals, family) {
 
 function hasKind(items, kind) {
   return items.some((item) => item.kind === kind);
+}
+
+function activeSemanticText(...objects) {
+  return objects.flatMap((object) => Object.entries(object || {})
+    .filter(([, value]) => Boolean(value))
+    .map(([key, value]) => typeof value === 'boolean' ? key : `${key}:${value}`))
+    .join(' ')
+    .toLowerCase();
 }
 
 function uniqueById(items) {

@@ -8,6 +8,11 @@ export class FacadeAgent {
     const screen = Boolean(rules.screen || buildSpec.facade?.screens);
     const arches = Boolean(rules.arches || rules.pointed_arches || buildSpec.facade?.arches);
     const balcony = Boolean(rules.balcony || buildSpec.facade?.balcony || /阳台|露台|观景/.test(prompt));
+    const awning = Boolean(rules.awnings || /遮阳|雨棚|awning|shade/i.test(prompt)) || ['desert', 'mediterranean', 'coastal'].includes(family);
+    const flowerBoxes = Boolean(rules.flower_boxes || /花箱|窗台花|flower box|planter/i.test(prompt)) || ['victorian', 'classical', 'cottage'].includes(family);
+    const serviceVents = Boolean(rules.service_vents) || family === 'industrial' || /通风|管线|风管|vent|service/i.test(prompt);
+    const addressMarker = Boolean(rules.address_marker) || /门牌|信箱|招牌|标识|address|sign|mailbox/i.test(prompt) || neon || buildSpec.scale === 'large';
+    const privacyFins = Boolean(rules.privacy_fins || /百叶|格栅|隐私|privacy|fins/i.test(prompt)) || screen;
 
     return {
       source: 'local-facade-agent',
@@ -30,13 +35,16 @@ export class FacadeAgent {
         height: Number(buildSpec.door_height || 2),
         material: architecture.materials?.door || 'minecraft:dark_oak_door'
       },
-      facade_elements: facadeElements({ family, screen, arches, balcony, neon, wide, protectedOpenings, prompt }),
+      facade_elements: facadeElements({ family, screen, arches, balcony, neon, wide, protectedOpenings, awning, flowerBoxes, serviceVents, addressMarker, privacyFins, prompt }),
       color_bands: colorBandsForFamily(family, materialPalette),
+      facade_depth_layers: facadeDepthLayers({ awning, flowerBoxes, serviceVents, privacyFins, wide }),
       room_alignment: {
         public_rooms_to_glass: wide,
         private_rooms_to_screens: screen,
         entry_as_focal_point: true,
-        outdoor_rooms_to_balcony: balcony
+        outdoor_rooms_to_balcony: balcony,
+        service_rooms_to_vents: serviceVents,
+        private_rooms_to_privacy_fins: privacyFins
       },
       engine_hints: {
         render_window_trim: true,
@@ -47,13 +55,18 @@ export class FacadeAgent {
         render_balcony_rail: balcony,
         render_neon_trim: neon,
         render_protected_slits: protectedOpenings,
-        render_view_glass_frame: wide
+        render_view_glass_frame: wide,
+        render_awnings: awning,
+        render_flower_boxes: flowerBoxes,
+        render_service_vents: serviceVents,
+        render_address_marker: addressMarker,
+        render_privacy_fins: privacyFins
       }
     };
   }
 }
 
-function facadeElements({ family, screen, arches, balcony, neon, wide, protectedOpenings, prompt }) {
+function facadeElements({ family, screen, arches, balcony, neon, wide, protectedOpenings, awning, flowerBoxes, serviceVents, addressMarker, privacyFins, prompt }) {
   const elements = ['window-trim', 'entry-frame'];
   if (screen) elements.push('screen-panels');
   if (arches) elements.push('archivolts');
@@ -61,8 +74,23 @@ function facadeElements({ family, screen, arches, balcony, neon, wide, protected
   if (neon) elements.push('neon-trim', 'roof-sign');
   if (wide) elements.push('view-glass-frame');
   if (protectedOpenings) elements.push('protected-slit-windows');
+  if (awning) elements.push('entry-awning', 'window-awnings');
+  if (flowerBoxes) elements.push('flower-boxes');
+  if (serviceVents) elements.push('service-vents');
+  if (addressMarker) elements.push('address-marker');
+  if (privacyFins) elements.push('privacy-fins');
   if (/柱廊|柱|pilaster|column/i.test(prompt) || family === 'classical') elements.push('pilaster-rhythm');
   return [...new Set(elements)];
+}
+
+function facadeDepthLayers({ awning, flowerBoxes, serviceVents, privacyFins, wide }) {
+  const layers = ['wall-plane', 'window-trim'];
+  if (wide) layers.push('deep-glass-frame');
+  if (privacyFins) layers.push('screen-or-fin-layer');
+  if (awning) layers.push('shade-canopy-layer');
+  if (flowerBoxes) layers.push('planting-sill-layer');
+  if (serviceVents) layers.push('service-utility-layer');
+  return layers;
 }
 
 function rhythmForFamily(family, wide, protectedOpenings) {

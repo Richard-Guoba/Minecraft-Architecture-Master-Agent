@@ -44,7 +44,8 @@ export class AStarPathfinder {
     const width = clampInt(openingPlan.main_entry?.width || this.spec.door_width || 2, 1, 4);
     const height = clampInt(openingPlan.main_entry?.height || this.spec.door_height || 3, 2, 6);
     const thickness = clampInt(this.spec.shell_thickness || 1, 1, 3);
-    const targetRoom = selectEntryRoom(rooms);
+    const approachLength = exteriorApproachLength(this.spec);
+    const targetRoom = selectEntryRoom(rooms, mainBox, side, thickness, openingPlan.main_entry?.target_room);
     const target = targetRoom ? center(targetRoom) : centerBox(mainBox);
 
     if (['south', 'north'].includes(side)) {
@@ -62,8 +63,19 @@ export class AStarPathfinder {
         grid.set(keyFor(x, 2, boundaryZ), cell(doorState(this.materials.door, side, 'upper', hinge), 'door'));
       }
       const outsideZ = boundaryZ + (side === 'south' ? 1 : -1);
-      fillBox(grid, startX - 1, 0, outsideZ, startX + width, 0, outsideZ, this.materials.path || 'minecraft:gravel', 'door');
-      return { side, x: startX, z: boundaryZ, width, height, targetRoom: targetRoom?.id, throughThickness: thickness, doorBlock: doorState(this.materials.door, side, 'lower', 'left') };
+      const approach = fillExteriorApproach(grid, this.materials, side, startX - 1, startX + width, outsideZ, approachLength);
+      return {
+        side,
+        x: startX,
+        z: boundaryZ,
+        width,
+        height,
+        targetRoom: targetRoom?.id,
+        throughThickness: thickness,
+        approachLength: approach.length,
+        approach,
+        doorBlock: doorState(this.materials.door, side, 'lower', 'left')
+      };
     }
 
     const boundaryX = side === 'east' ? mainBox.max_x : mainBox.min_x;
@@ -80,8 +92,19 @@ export class AStarPathfinder {
       grid.set(keyFor(boundaryX, 2, z), cell(doorState(this.materials.door, side, 'upper', hinge), 'door'));
     }
     const outsideX = boundaryX + (side === 'east' ? 1 : -1);
-    fillBox(grid, outsideX, 0, startZ - 1, outsideX, 0, startZ + width, this.materials.path || 'minecraft:gravel', 'door');
-    return { side, x: boundaryX, z: startZ, width, height, targetRoom: targetRoom?.id, throughThickness: thickness, doorBlock: doorState(this.materials.door, side, 'lower', 'left') };
+    const approach = fillExteriorApproach(grid, this.materials, side, startZ - 1, startZ + width, outsideX, approachLength);
+    return {
+      side,
+      x: boundaryX,
+      z: startZ,
+      width,
+      height,
+      targetRoom: targetRoom?.id,
+      throughThickness: thickness,
+      approachLength: approach.length,
+      approach,
+      doorBlock: doorState(this.materials.door, side, 'lower', 'left')
+    };
   }
 
   openTopologyEdges(grid, rooms, edges, shell, existingDoors = []) {
@@ -139,7 +162,7 @@ export class AStarPathfinder {
     if (this.spec.floors <= 1) return { stairs: [], floorOpenings: [], stairCoreRoom: undefined };
     const stairs = [];
     const floorOpenings = [];
-    const stairCoreRoom = selectStairCoreRoom(rooms, plannerJson);
+    const stairCoreRoom = selectStairCoreRoom(rooms, plannerJson, this.spec);
     const anchor = stairAnchor(stairCoreRoom, mainBox, this.spec);
     const stairBlock = stairState(this.materials.stairs, anchor.facing);
     const floorBlock = this.materials.floor || 'minecraft:spruce_planks';
@@ -165,19 +188,54 @@ export class AStarPathfinder {
   }
 }
 
-function selectEntryRoom(rooms) {
-  return rooms.find((room) => room.id === 'entry' && room.floor === 0) ||
-    rooms.find((room) => room.type === 'entry' && room.floor === 0) ||
-    rooms.find((room) => room.access === 'main-door' && room.floor === 0) ||
-    rooms.find((room) => room.zone === 'public' && room.floor === 0);
+function selectEntryRoom(rooms, mainBox, side = 'south', thickness = 1, preferredId) {
+  const groundRooms = rooms.filter((room) => Number(room.floor || 0) === 0);
+  const boundaryRooms = groundRooms.filter((room) => roomTouchesBoundary(room, mainBox, side, thickness + 1));
+  const preferred = boundaryRooms.find((room) => room.id === preferredId);
+  if (preferred) return preferred;
+
+  const candidates = boundaryRooms.length ? boundaryRooms : groundRooms;
+  return [...candidates].sort((a, b) => entryRoomScore(b) - entryRoomScore(a))[0];
 }
 
-function selectStairCoreRoom(rooms, plannerJson = {}) {
+function entryRoomScore(room) {
+  let score = 0;
+  if (room.id === 'entry') score += 100;
+  if (room.type === 'entry') score += 90;
+  if (room.access === 'main-door') score += 80;
+  if (room.source === 'main') score += 60;
+  if (room.zone === 'public') score += 40;
+  if (['living', 'great_hall', 'lounge', 'dining'].includes(room.type)) score += 20;
+  if (['sunroom', 'greenhouse', 'garage', 'bathroom', 'storage'].includes(room.type)) score -= 20;
+  return score;
+}
+
+function roomTouchesBoundary(room, mainBox, side, tolerance) {
+  if (!mainBox) return true;
+  if (side === 'south') return mainBox.max_z >= room.min_z - tolerance && mainBox.max_z <= room.max_z + tolerance;
+  if (side === 'north') return mainBox.min_z >= room.min_z - tolerance && mainBox.min_z <= room.max_z + tolerance;
+  if (side === 'east') return mainBox.max_x >= room.min_x - tolerance && mainBox.max_x <= room.max_x + tolerance;
+  return mainBox.min_x >= room.min_x - tolerance && mainBox.min_x <= room.max_x + tolerance;
+}
+
+function selectStairCoreRoom(rooms, plannerJson = {}, spec = {}) {
   const verticalCoreId = plannerJson.circulation_rules?.vertical_core;
-  return rooms.find((room) => room.id === verticalCoreId && room.floor === 0) ||
-    rooms.find((room) => room.type === 'stairs' && room.floor === 0) ||
-    rooms.find((room) => room.tags?.includes('vertical-core') && room.floor === 0) ||
-    rooms.find((room) => room.type === 'corridor' && room.floor === 0);
+  const ranked = [
+    rooms.find((room) => room.id === verticalCoreId && room.floor === 0),
+    rooms.find((room) => room.type === 'stairs' && room.floor === 0),
+    rooms.find((room) => room.tags?.includes('vertical-core') && room.floor === 0),
+    rooms.find((room) => room.type === 'corridor' && room.floor === 0),
+    rooms.find((room) => room.type === 'entry' && room.floor === 0),
+    rooms.find((room) => ['living', 'lounge', 'great_hall'].includes(room.type) && room.floor === 0)
+  ].filter(Boolean);
+  return ranked.find((room) => roomCanHostStairs(room, spec));
+}
+
+function roomCanHostStairs(room, spec = {}) {
+  const runLength = clampInt(spec.floor_height || 5, 4, 8);
+  const width = Number(room.max_x) - Number(room.min_x) + 1;
+  const depth = Number(room.max_z) - Number(room.min_z) + 1;
+  return (depth >= runLength && width >= 2) || (width >= runLength && depth >= 2);
 }
 
 function stairAnchor(room, mainBox, spec) {
@@ -195,9 +253,9 @@ function stairAnchor(room, mainBox, spec) {
   const minZ = fallbackRoom.min_z;
   const maxZ = fallbackRoom.max_z;
 
-  if (depth >= runLength + 2) {
-    const x = clampInt(minX + 1, minX, Math.max(minX, maxX - 1));
-    const startZ = clampInt(maxZ - 1, minZ + runLength - 1, maxZ);
+  if (depth >= runLength && width >= 2) {
+    const x = clampInt(minX, minX, Math.max(minX, maxX - 1));
+    const startZ = clampInt(maxZ, minZ + runLength - 1, maxZ);
     return {
       axis: 'z',
       facing: 'north',
@@ -209,9 +267,9 @@ function stairAnchor(room, mainBox, spec) {
     };
   }
 
-  if (width >= runLength + 2) {
-    const z = clampInt(minZ + 1, minZ, Math.max(minZ, maxZ - 1));
-    const startX = clampInt(maxX - 1, minX + runLength - 1, maxX);
+  if (width >= runLength && depth >= 2) {
+    const z = clampInt(minZ, minZ, Math.max(minZ, maxZ - 1));
+    const startX = clampInt(maxX, minX + runLength - 1, maxX);
     return {
       axis: 'x',
       facing: 'west',
@@ -247,7 +305,7 @@ function openingForAnchor(anchor, floor, y, room) {
   if (anchor.axis === 'x') {
     const x1 = Math.min(anchor.start.x, anchor.end.x);
     const x2 = Math.max(anchor.start.x, anchor.end.x);
-    return {
+    return clampOpeningToRoom({
       floor,
       sourceRoom,
       axis: anchor.axis,
@@ -256,11 +314,11 @@ function openingForAnchor(anchor, floor, y, room) {
       y,
       min_z: anchor.start.z - 1,
       max_z: anchor.start.z + 2
-    };
+    }, room);
   }
   const z1 = Math.min(anchor.start.z, anchor.end.z);
   const z2 = Math.max(anchor.start.z, anchor.end.z);
-  return {
+  return clampOpeningToRoom({
     floor,
     sourceRoom,
     axis: anchor.axis,
@@ -269,6 +327,17 @@ function openingForAnchor(anchor, floor, y, room) {
     y,
     min_z: z1,
     max_z: z2
+  }, room);
+}
+
+function clampOpeningToRoom(opening, room) {
+  if (!room) return opening;
+  return {
+    ...opening,
+    min_x: Math.max(opening.min_x, room.min_x),
+    max_x: Math.min(opening.max_x, room.max_x),
+    min_z: Math.max(opening.min_z, room.min_z),
+    max_z: Math.min(opening.max_z, room.max_z)
   };
 }
 
@@ -400,6 +469,29 @@ function stairState(block = 'minecraft:spruce_stairs', facing) {
 
 function cell(block, module) {
   return { block, module };
+}
+
+function fillExteriorApproach(grid, materials, side, spanStart, spanEnd, outsideCoordinate, length) {
+  const pathBlock = materials.path || 'minecraft:gravel';
+  const steps = Math.max(1, length);
+  if (side === 'south') {
+    fillBox(grid, spanStart, 0, outsideCoordinate, spanEnd, 0, outsideCoordinate + steps - 1, pathBlock, 'entry_path');
+    return { axis: 'z', from: { x: spanStart, z: outsideCoordinate }, to: { x: spanEnd, z: outsideCoordinate + steps - 1 }, length: steps };
+  }
+  if (side === 'north') {
+    fillBox(grid, spanStart, 0, outsideCoordinate - steps + 1, spanEnd, 0, outsideCoordinate, pathBlock, 'entry_path');
+    return { axis: 'z', from: { x: spanStart, z: outsideCoordinate - steps + 1 }, to: { x: spanEnd, z: outsideCoordinate }, length: steps };
+  }
+  if (side === 'east') {
+    fillBox(grid, outsideCoordinate, 0, spanStart, outsideCoordinate + steps - 1, 0, spanEnd, pathBlock, 'entry_path');
+    return { axis: 'x', from: { x: outsideCoordinate, z: spanStart }, to: { x: outsideCoordinate + steps - 1, z: spanEnd }, length: steps };
+  }
+  fillBox(grid, outsideCoordinate - steps + 1, 0, spanStart, outsideCoordinate, 0, spanEnd, pathBlock, 'entry_path');
+  return { axis: 'x', from: { x: outsideCoordinate - steps + 1, z: spanStart }, to: { x: outsideCoordinate, z: spanEnd }, length: steps };
+}
+
+function exteriorApproachLength(spec = {}) {
+  return clampInt(spec.garden_depth || spec.lot?.front_setback || 4, 3, 18, 4);
 }
 
 function clampInt(value, min, max, fallback = min) {

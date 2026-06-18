@@ -13,9 +13,13 @@ export class InteriorDetailAgent {
       room_details: roomDetails,
       room_specialists: roomSpecialists,
       lighting_strategy: lightingForFamily(family),
+      comfort_strategy: comfortStrategy(rooms, family, buildSpec),
+      storage_strategy: storageStrategy(rooms, family),
+      safety_strategy: safetyStrategy(rooms, topology),
       circulation_detail: {
         vertical_core: topology.circulation_rules?.vertical_core || 'none',
-        wayfinding: buildSpec.floors > 1 ? 'lit-stair-and-corridor' : 'entry-to-public-core'
+        wayfinding: buildSpec.floors > 1 ? 'lit-stair-and-corridor' : 'entry-to-public-core',
+        accessible_route_hint: buildSpec.floors > 1 ? 'ground-floor-daily-functions' : 'single-floor-clearances'
       },
       engine_hints: {
         apply_room_accents: true,
@@ -24,7 +28,10 @@ export class InteriorDetailAgent {
         add_style_storage: true,
         use_room_specialist_agents: true,
         minimum_blocks_per_specialist: 50,
-        add_vibrant_accent_layers: true
+        add_vibrant_accent_layers: true,
+        add_comfort_layers: true,
+        add_safety_wayfinding: true,
+        add_storage_by_room_type: true
       }
     };
   }
@@ -108,4 +115,35 @@ function lightingForFamily(family) {
   if (family === 'subterranean') return 'warm-recessed-light';
   if (family === 'gothic') return 'lantern-and-candle';
   return 'room-center-and-task-lighting';
+}
+
+function comfortStrategy(rooms, family, buildSpec = {}) {
+  const publicRooms = rooms.filter((room) => ['living', 'great_hall', 'dining', 'sunroom'].includes(room.type)).length;
+  const privateRooms = rooms.filter((room) => ['bedroom', 'master_bedroom', 'study', 'tatami'].includes(room.type)).length;
+  return {
+    acoustic_zoning: privateRooms > 0 ? 'quiet-private-rooms-away-from-entry' : 'open-plan',
+    thermal_tone: ['alpine', 'rustic', 'subterranean'].includes(family) ? 'warm-lamps-and-soft-rugs' : 'balanced-light-and-planting',
+    daylight_balance: publicRooms > 0 ? 'public-rooms-prioritize-daylight' : 'distributed-daylight',
+    density_target: buildSpec.scale === 'large' ? 'rich-but-spaced' : 'compact-layered'
+  };
+}
+
+function storageStrategy(rooms, family) {
+  const roomTypes = new Set(rooms.map((room) => room.type));
+  return {
+    entry_storage: roomTypes.has('entry') ? 'bench-barrel-and-drop-zone' : 'wall-barrel',
+    kitchen_storage: roomTypes.has('kitchen') ? 'pantry-upper-cabinets-and-crates' : 'general-cabinet',
+    bedroom_storage: roomTypes.has('bedroom') || roomTypes.has('master_bedroom') ? 'wardrobe-chest-and-nightstand' : 'minimal',
+    style_storage_block: storageForFamily(family)
+  };
+}
+
+function safetyStrategy(rooms, topology = {}) {
+  const floors = new Set(rooms.map((room) => Number(room.floor || 0))).size;
+  return {
+    stair_visibility: floors > 1 ? 'lit-and-marked' : 'not-required',
+    wet_room_marking: rooms.some((room) => room.type === 'bathroom') ? 'bath-mat-and-light' : 'not-present',
+    kitchen_heat_clearance: rooms.some((room) => room.type === 'kitchen') ? 'work-wall-kept-open' : 'not-present',
+    graph_intent: topology.circulation_rules?.connect_all_rooms ? 'all-rooms-connected' : 'local-flow'
+  };
 }

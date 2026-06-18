@@ -60,6 +60,46 @@ const PRESETS = [
     site: 'snow-lodge-path'
   },
   {
+    id: 'desert-oasis-courtyard',
+    families: ['desert', 'mediterranean'],
+    pattern: /沙漠|砂岩|绿洲|摩洛哥|desert|oasis|adobe/i,
+    signatures: ['cool-courtyard', 'arcade-shade', 'oasis-water', 'terracotta-accents'],
+    palette: 'sand-terracotta-water',
+    facade: 'small-shaded-openings-with-arches',
+    roof: 'flat-terrace-with-parapet',
+    site: 'oasis-courtyard'
+  },
+  {
+    id: 'industrial-loft-frame',
+    families: ['industrial', 'modern'],
+    pattern: /工业|loft|仓库|红砖|钢梁|industrial|warehouse/i,
+    signatures: ['warehouse-windows', 'expressed-frame', 'mezzanine', 'service-spine'],
+    palette: 'brick-steel-concrete',
+    facade: 'warehouse-grid-with-service-vents',
+    roof: 'flat-utility-roof',
+    site: 'hardscape-yard'
+  },
+  {
+    id: 'classical-manor-axis',
+    families: ['classical', 'victorian'],
+    pattern: /古典|维多利亚|庄园|柱廊|victorian|classical|manor|villa/i,
+    signatures: ['formal-axis', 'columned-entry', 'bay-window', 'garden-path'],
+    palette: 'stone-brick-garden',
+    facade: 'formal-bays-with-ornament',
+    roof: 'hipped-or-gabled-with-dormers',
+    site: 'formal-garden-axis'
+  },
+  {
+    id: 'resilient-family-upgrade',
+    families: ['general', 'modern', 'classical', 'industrial'],
+    pattern: /太阳能|雨水|无障碍|坡道|老人|儿童|家庭|solar|rainwater|accessible|family/i,
+    signatures: ['solar-roof', 'rain-harvest', 'accessible-entry', 'family-program'],
+    palette: 'utility-comfort-balanced',
+    facade: 'comfortable-shaded-openings',
+    roof: 'service-ready-roof',
+    site: 'accessible-garden-path'
+  },
+  {
     id: 'courtyard-calm',
     families: ['japanese', 'chinese-courtyard'],
     pattern: /日式|江南|四合院|合院|庭院|枯山水|水乡|町屋/,
@@ -115,5 +155,7 @@ function agentFocusForPreset(preset) {
   const focus = ['material-palette', 'facade', 'roof', 'site'];
   if (preset.signatures.some((item) => /deck|cantilever|trunk|retaining/.test(item))) focus.push('structure', 'opening-connectivity');
   if (preset.signatures.some((item) => /hearth|courtyard|canopy/.test(item))) focus.push('interior-detail');
+  if (preset.signatures.some((item) => /solar|rain|accessible|service|frame|column|wind|fire|flood/.test(item))) focus.push('structure', 'opening-connectivity', 'constraint-repair');
+  if (preset.signatures.some((item) => /family|comfort|garden|oasis/.test(item))) focus.push('interior-detail', 'decorator');
   return focus;
 }

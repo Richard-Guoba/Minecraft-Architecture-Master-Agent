@@ -43,6 +43,27 @@ test('StructureAgent derives cantilever and service-spine bracing for hybrid sty
   assert.equal(structure.engine_hints.render_service_braces, true);
 });
 
+test('StructureAgent consumes resilience flags for wind, fire, flood, and roof services', () => {
+  const structure = structureFor('建一个海滨三层住宅，抗风防火，抬高防洪，屋顶太阳能和雨水回收');
+  const bracing = kindSet(structure.bracing_elements);
+  const reinforcement = kindSet(structure.reinforcement_elements);
+  const roofFrameKinds = kindSet(structure.roof_frame.elements);
+
+  assert.ok(bracing.has('shear-wall'));
+  assert.ok(bracing.has('tie-down'));
+  assert.ok(reinforcement.has('firebreak-wall'));
+  assert.ok(reinforcement.has('flood-vented-plinth'));
+  assert.ok(roofFrameKinds.has('service-platform-frame'));
+  assert.equal(structure.engine_hints.render_shear_walls, true);
+  assert.equal(structure.engine_hints.render_wind_ties, true);
+  assert.equal(structure.engine_hints.render_firebreaks, true);
+  assert.equal(structure.engine_hints.render_flood_vents, true);
+  assert.equal(structure.engine_hints.render_service_platform_frame, true);
+  assert.equal(structure.resilience.wind, 'roof-to-foundation-tie-downs');
+  assert.equal(structure.resilience.fire, 'service-core-firebreak');
+  assert.equal(structure.resilience.water, 'raised-plinth-and-vented-base');
+});
+
 test('StructureAgent run accepts context objects and positional arguments', () => {
   const prompt = '建一个现代两层房子，大玻璃，平屋顶';
   const architecture = buildFallbackArchitecture(prompt);

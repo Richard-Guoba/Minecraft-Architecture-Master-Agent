@@ -42,6 +42,24 @@ test('BlueprintOptimizerAgent splits fills that would exceed Minecraft volume li
   assert.ok(result.operations.every((operation) => volume(operation) <= 32768));
 });
 
+test('BlueprintOptimizerAgent summarizes module groups and execution hints for expanded agents', () => {
+  const grid = new Map();
+  fill(grid, 0, 0, 0, 2, 0, 2, 'minecraft:white_concrete', 'walls');
+  fill(grid, 0, 1, 0, 2, 1, 0, 'minecraft:daylight_detector', 'solar_panel');
+  fill(grid, 3, 0, 0, 3, 2, 0, 'minecraft:chain', 'rain_chain');
+  fill(grid, 0, 0, 4, 4, 0, 6, 'minecraft:water', 'pool_water');
+  fill(grid, 5, 1, 0, 5, 3, 0, 'minecraft:iron_bars', 'wind_tie');
+  const result = new BlueprintOptimizerAgent().run(grid);
+
+  assert.equal(result.optimizer.coverageOk, true);
+  assert.ok(result.optimizer.moduleGroups.shell > 0);
+  assert.ok(result.optimizer.moduleGroups.structure > 0);
+  assert.ok(result.optimizer.moduleGroups.site > 0);
+  assert.ok(result.optimizer.commandComplexity.smallModules.includes('solar_panel'));
+  assert.ok(result.optimizer.executionHints.includes('water modules present; run in creative or allow source updates'));
+  assert.ok(result.optimizer.executionHints.includes('roof utility modules included'));
+});
+
 function fill(grid, minX, minY, minZ, maxX, maxY, maxZ, block, module) {
   for (let x = minX; x <= maxX; x += 1) {
     for (let y = minY; y <= maxY; y += 1) {

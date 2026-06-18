@@ -36,7 +36,7 @@ export class ConstructionDecoratorAgent {
       });
 
       for (const item of plan.blocks) {
-        if (placeBlock(grid, item)) placements.push(item);
+        if (placeBlock(grid, item, room)) placements.push(item);
       }
     }
 
@@ -53,6 +53,7 @@ export class ConstructionDecoratorAgent {
       placementCount: placements.length,
       roomCount: suggestions.length,
       stats: placementStats(placements),
+      capability_profile: decoratorCapabilityProfile({ placements, suggestions, specialistAgents, activeSpecialists }),
       placements: placements.map(serializablePlacement),
       suggestions
     };
@@ -62,10 +63,15 @@ export class ConstructionDecoratorAgent {
 function furnishRoom(room, materials, context) {
   const builder = new RoomFurnishingBuilder(room, materials, context);
   if (!builder.usable) return { blocks: [] };
+  const circulationRoom = ['corridor', 'stairs'].includes(room.type);
 
-  builder.addLighting();
-  builder.addStyleAccent();
-  builder.addInteriorPlanAccent();
+  if (circulationRoom) {
+    builder.addCirculation();
+  } else {
+    builder.addLighting();
+    builder.addStyleAccent();
+    builder.addInteriorPlanAccent();
+  }
 
   switch (room.type) {
     case 'entry':
@@ -118,7 +124,6 @@ function furnishRoom(room, materials, context) {
       break;
     case 'corridor':
     case 'stairs':
-      builder.addCirculation();
       break;
     default:
       builder.addGenericRoom();
@@ -139,7 +144,11 @@ class RoomFurnishingBuilder {
     this.blocks = [];
     this.width = room.max_x - room.min_x + 1;
     this.depth = room.max_z - room.min_z + 1;
-    this.usable = this.width >= 3 && this.depth >= 3 && room.max_y >= room.min_y;
+    this.area = this.width * this.depth;
+    const compactDecorRoom = !['corridor', 'stairs', 'balcony'].includes(room.type);
+    const standardUsable = this.width >= 3 && this.depth >= 3;
+    const compactUsable = compactDecorRoom && Math.min(this.width, this.depth) >= 2 && Math.max(this.width, this.depth) >= 4 && this.area >= 8;
+    this.usable = (standardUsable || compactUsable) && room.max_y >= room.min_y;
   }
 
   get styleFamily() {
@@ -172,6 +181,8 @@ class RoomFurnishingBuilder {
   }
 
   addStyleAccent() {
+    if (this.area <= 24) return;
+    if (['bathroom', 'storage', 'utility', 'workshop'].includes(this.room.type)) return;
     if (this.styleFamily === 'japanese') {
       this.add('plant', 'minecraft:potted_bamboo', this.room.max_x - 1, this.floorY, this.room.max_z - 1, 'quiet-corner', 'decor_plant');
     } else if (this.styleFamily === 'gothic') {
@@ -186,6 +197,7 @@ class RoomFurnishingBuilder {
   addInteriorPlanAccent() {
     if (!this.roomDetail || !this.roomDetail.accent_block) return;
     if (['corridor', 'stairs'].includes(this.room.type)) return;
+    if (this.area <= 36) return;
     this.add('room-accent', this.roomDetail.accent_block, this.room.max_x - 1, this.floorY, this.centerZ, this.roomDetail.mood || 'room-accent', 'decor_detail');
     if (this.roomDetail.task_light && this.width >= 5 && this.depth >= 5) {
       this.add('task-light', this.roomDetail.task_light, this.room.min_x + 1, this.ceilingY, this.room.max_z - 1, 'task-lighting', 'decor_light');
@@ -208,8 +220,10 @@ class RoomFurnishingBuilder {
 
   addGreatHall() {
     this.addTable(this.centerX, this.floorY, this.centerZ);
-    this.add('banner', 'minecraft:red_banner', this.room.min_x + 1, this.floorY, this.centerZ, 'ceremonial-side', 'decor_detail');
-    this.add('banner', 'minecraft:blue_banner', this.room.max_x - 1, this.floorY, this.centerZ, 'ceremonial-side', 'decor_detail');
+    if (this.area > 20) {
+      this.add('banner', 'minecraft:red_banner', this.room.min_x + 1, this.floorY, this.centerZ, 'ceremonial-side', 'decor_detail');
+      this.add('banner', 'minecraft:blue_banner', this.room.max_x - 1, this.floorY, this.centerZ, 'ceremonial-side', 'decor_detail');
+    }
     this.add('hearth', 'minecraft:campfire[lit=false]', this.centerX, this.floorY, this.room.min_z + 1, 'great-hall-hearth', 'decor_detail');
   }
 
@@ -235,13 +249,18 @@ class RoomFurnishingBuilder {
   addStudy() {
     this.add('desk', 'minecraft:lectern', this.centerX, this.floorY, this.room.min_z + 1, 'study-desk', 'decor_furniture');
     this.add('books', 'minecraft:bookshelf', this.room.min_x + 1, this.floorY, this.room.max_z - 1, 'book-wall', 'decor_furniture');
+    if (this.area <= 24) {
+      this.add('reading-lamp', 'minecraft:redstone_lamp', this.centerX, Math.min(this.floorY + 1, this.ceilingY), this.room.min_z + 2, 'compact-study-light', 'decor_light');
+      this.add('archive-barrel', 'minecraft:barrel', this.room.max_x - 1, this.floorY, this.room.max_z - 1, 'compact-study-storage', 'decor_storage');
+      return;
+    }
     this.add('books', 'minecraft:bookshelf', this.room.min_x + 2, this.floorY, this.room.max_z - 1, 'book-wall', 'decor_furniture');
   }
 
   addBathroom() {
     this.add('basin', 'minecraft:cauldron', this.room.min_x + 1, this.floorY, this.room.min_z + 1, 'wet-corner', 'decor_utility');
     this.add('counter', 'minecraft:smooth_quartz_slab[type=bottom]', this.room.min_x + 2, this.floorY, this.room.min_z + 1, 'wet-wall', 'decor_furniture');
-    this.add('mat', 'minecraft:light_blue_carpet', this.centerX, this.floorY, this.centerZ, 'floor-mat', 'decor_floor');
+    if (this.area > 18) this.add('mat', 'minecraft:light_blue_carpet', this.centerX, this.floorY, this.centerZ, 'floor-mat', 'decor_floor');
   }
 
   addTatami() {
@@ -292,12 +311,34 @@ class RoomFurnishingBuilder {
   }
 
   addGenericRoom() {
+    if (this.room.type === 'storage') {
+      this.add('vibrant-storage-barrel', 'minecraft:barrel', this.room.min_x + 1, this.floorY, this.room.min_z + 1, 'storage-wall', 'decor_storage');
+      this.add('storage-chest', 'minecraft:chest', this.room.max_x - 1, this.floorY, this.room.min_z + 1, 'storage-wall', 'decor_storage');
+      if (this.area > 18) this.add('inventory-light', lightBlockForStyle(this.styleFamily, this.materials), this.centerX, this.ceilingY, this.centerZ, 'storage-light', 'decor_light');
+      return;
+    }
+    if (this.room.type === 'utility') {
+      this.add('utility-counter', 'minecraft:smooth_quartz_slab[type=bottom]', this.room.min_x + 1, this.floorY, this.room.min_z + 1, 'utility-counter', 'decor_furniture');
+      this.add('utility-workbench', 'minecraft:crafting_table', this.room.min_x + 2, this.floorY, this.room.min_z + 1, 'utility-workbench', 'decor_utility');
+      this.add('utility-storage', 'minecraft:barrel', this.room.max_x - 1, this.floorY, this.room.max_z - 1, 'utility-storage', 'decor_storage');
+      return;
+    }
+    if (this.room.type === 'workshop') {
+      this.add('workbench', 'minecraft:crafting_table', this.room.min_x + 1, this.floorY, this.room.min_z + 1, 'workbench-wall', 'decor_utility');
+      this.add('tool-rack', 'minecraft:smithing_table', this.room.min_x + 2, this.floorY, this.room.min_z + 1, 'tool-wall', 'decor_utility');
+      this.add('parts-storage', 'minecraft:barrel', this.room.max_x - 1, this.floorY, this.room.max_z - 1, 'parts-storage', 'decor_storage');
+      return;
+    }
     this.add('storage', this.roomDetail.storage_block || this.materials.furniture || 'minecraft:bookshelf', this.room.min_x + 1, this.floorY, this.room.min_z + 1, 'general-corner', 'decor_furniture');
   }
 
   addSofa() {
     const block = seatingBlockForStyle(this.styleFamily);
     const z = this.room.max_z - 1;
+    if (this.area <= 24) {
+      this.add('seat', block, this.centerX, this.floorY, z, 'seating-edge', 'decor_furniture');
+      return;
+    }
     for (let x = this.centerX - 1; x <= this.centerX + 1; x += 1) this.add('seat', block, x, this.floorY, z, 'seating-edge', 'decor_furniture');
   }
 
@@ -316,10 +357,11 @@ class RoomFurnishingBuilder {
   }
 
   addCarpetPatch(block, placement) {
+    const radiusZ = this.area <= 36 ? 0 : 1;
     const x1 = Math.max(this.room.min_x + 1, this.centerX - 1);
     const x2 = Math.min(this.room.max_x - 1, this.centerX + 1);
-    const z1 = Math.max(this.room.min_z + 1, this.centerZ - 1);
-    const z2 = Math.min(this.room.max_z - 1, this.centerZ + 1);
+    const z1 = Math.max(this.room.min_z + 1, this.centerZ - radiusZ);
+    const z2 = Math.min(this.room.max_z - 1, this.centerZ + radiusZ);
     for (let x = x1; x <= x2; x += 1) {
       for (let z = z1; z <= z2; z += 1) this.add('floor-accent', block, x, this.floorY, z, placement, 'decor_floor');
     }
@@ -353,13 +395,77 @@ class RoomFurnishingBuilder {
   }
 }
 
-function placeBlock(grid, item) {
+function placeBlock(grid, item, room) {
   if (!grid) return true;
-  const key = keyFor(item.at.x, item.at.y, item.at.z);
+  if (writePlacement(grid, item, item.at)) return true;
+  const fallback = findDecorFallbackPoint(grid, room, item);
+  if (!fallback) return false;
+  item.at = fallback;
+  return writePlacement(grid, item, item.at);
+}
+
+function writePlacement(grid, item, point) {
+  if (!point) return false;
+  const key = keyFor(point.x, point.y, point.z);
   const existing = grid.get(key);
   if (existing && !canOverwrite(existing.module)) return false;
   grid.set(key, { block: item.block, module: item.module });
   return true;
+}
+
+function findDecorFallbackPoint(grid, room, item) {
+  if (!room || !item?.at) return undefined;
+  const yCandidates = fallbackYLevels(room, item);
+  const xCandidates = interiorCoordinates(room.min_x, room.max_x);
+  const zCandidates = interiorCoordinates(room.min_z, room.max_z);
+  const candidates = [];
+
+  for (const y of yCandidates) {
+    for (const x of xCandidates) {
+      for (const z of zCandidates) {
+        candidates.push({ x, y, z, distance: manhattan(item.at, { x, y, z }) });
+      }
+    }
+  }
+
+  candidates.sort((a, b) => a.distance - b.distance || a.y - b.y || a.x - b.x || a.z - b.z);
+  for (const candidate of candidates) {
+    const point = { x: candidate.x, y: candidate.y, z: candidate.z };
+    const existing = grid.get(keyFor(point.x, point.y, point.z));
+    if (existing && !canOverwrite(existing.module)) continue;
+    if (existing && String(existing.module || '').startsWith('decor_')) continue;
+    return point;
+  }
+  return undefined;
+}
+
+function fallbackYLevels(room, item) {
+  const y = clampInt(item.at.y, room.min_y, room.max_y);
+  if (item.module === 'decor_light' || item.placement?.includes('ceiling')) {
+    return uniqueNumbers([y, room.max_y, room.max_y - 1]).filter((value) => value >= room.min_y && value <= room.max_y);
+  }
+  return uniqueNumbers([y, room.min_y]).filter((value) => value >= room.min_y && value <= room.max_y);
+}
+
+function interiorCoordinates(min, max) {
+  if (max - min + 1 <= 3) {
+    return range(min, max);
+  }
+  return range(min + 1, max - 1);
+}
+
+function range(min, max) {
+  const values = [];
+  for (let value = min; value <= max; value += 1) values.push(value);
+  return values;
+}
+
+function uniqueNumbers(values) {
+  return [...new Set(values.filter(Number.isFinite))];
+}
+
+function manhattan(a, b) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) + Math.abs(a.z - b.z);
 }
 
 function canOverwrite(module) {
@@ -432,6 +538,24 @@ function placementStats(placements) {
     if (item.agent_id) byAgent[item.agent_id] = (byAgent[item.agent_id] || 0) + 1;
   }
   return { byRole, byModule, byRoomType, byAgent };
+}
+
+function decoratorCapabilityProfile({ placements, suggestions, specialistAgents, activeSpecialists }) {
+  const modules = new Set(placements.map((item) => item.module).filter(Boolean));
+  const rooms = new Set(placements.map((item) => item.room_id).filter(Boolean));
+  const vibrant = placements.filter((item) => String(item.role || '').startsWith('vibrant'));
+  const functional = placements.filter((item) => ['decor_furniture', 'decor_storage', 'decor_utility'].includes(item.module));
+  return {
+    registered_specialists: specialistAgents.length,
+    active_specialists: new Set(activeSpecialists.map((item) => item.agent_id)).size,
+    decorated_rooms: rooms.size,
+    suggested_rooms: suggestions.length,
+    module_layers: [...modules].sort(),
+    functional_placement_count: functional.length,
+    vibrant_placement_count: vibrant.length,
+    supports_style_specialists: activeSpecialists.some((item) => String(item.agent_id || '').includes('interior-style-agent')),
+    supports_room_specialists: activeSpecialists.some((item) => String(item.agent_id || '').includes('decoration-agent'))
+  };
 }
 
 function serializablePlacement(item) {

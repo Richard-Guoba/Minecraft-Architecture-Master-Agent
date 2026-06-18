@@ -29,6 +29,7 @@ export class BSPPartitioner {
 
     rooms.push(...mainRooms, ...attachedRooms);
     this.connectAttachedRooms(shell.grid, attachedRooms, mainRooms, mainBox, interiorDoors);
+    normalizeRoomIdsAndDoors(rooms, interiorDoors);
 
     const roomIds = new Set(rooms.map((room) => room.id));
     const unassignedPlannerNodes = nodes
@@ -57,6 +58,7 @@ export class BSPPartitioner {
     const boxById = new Map(shell.volumeBoxes.map((box) => [box.id, box]));
     const spaces = shell.interiorSpaces
       .filter((space) => space.source !== 'main')
+      .filter((space) => isHabitableAttachedVolume(boxById.get(space.source) || { id: space.source }))
       .filter((space) => spanSize(space.min_x, space.max_x) >= 3 && spanSize(space.min_z, space.max_z) >= 3)
       .sort((a, b) => volumeSortScore(boxById.get(a.source)) - volumeSortScore(boxById.get(b.source)) ||
         a.floor - b.floor ||
@@ -70,7 +72,8 @@ export class BSPPartitioner {
       if (!node && !shouldCreateFallbackAttachedRoom(box)) continue;
       if (node) assignedNodeIds.add(node.id);
       const fallback = fallbackNodeForSpace(space, box);
-      const room = trimAttachedRoomOutsideMain(roomFromSpace(space, node || fallback, box, Boolean(node)), mainBox, this.spec);
+      const outsideRoom = trimAttachedRoomOutsideMain(roomFromSpace(space, node || fallback, box, Boolean(node)), mainBox, this.spec);
+      const room = trimAttachedRoomAgainstExisting(outsideRoom, rooms);
       if (spanSize(room.min_x, room.max_x) < 3 || spanSize(room.min_z, room.max_z) < 3) continue;
       rooms.push(room);
     }
@@ -158,11 +161,11 @@ export class BSPPartitioner {
     const width = rect.max_x - rect.min_x + 1;
     const depthSize = rect.max_z - rect.min_z + 1;
     const axis = width >= depthSize ? 'x' : 'z';
-    const minSpan = 3;
     const totalSpan = axis === 'x' ? width : depthSize;
-    if (totalSpan < nodes.length * minSpan + nodes.length - 1) {
-      return nodes.map((node) => ({ ...roomFromRect(rect, node), overlaps_layout: true }));
-    }
+    const tightMode = totalSpan < nodes.length * 3 + nodes.length - 1;
+    const minSpan = tightMode ? (totalSpan >= nodes.length * 2 ? 2 : 1) : 3;
+    const gap = tightMode ? 0 : 1;
+    if (totalSpan < nodes.length * minSpan + gap * (nodes.length - 1)) return this.partitionPackedGrid(rect, nodes);
 
     const wallBlock = this.materials.interior_wall || 'minecraft:birch_planks';
     const maxCoord = axis === 'x' ? rect.max_x : rect.max_z;
@@ -174,7 +177,7 @@ export class BSPPartitioner {
       const node = nodes[index];
       const remainingNodes = nodes.length - index - 1;
       const available = maxCoord - cursor + 1;
-      const maxRoomSpan = available - remainingNodes * (minSpan + 1);
+      const maxRoomSpan = available - remainingNodes * (minSpan + gap);
       const desired = Math.round(available * Number(node.weight || 1) / Math.max(0.1, remainingWeight));
       const span = index === nodes.length - 1 ? available : clampInt(desired, minSpan, Math.max(minSpan, maxRoomSpan));
       const end = Math.min(maxCoord, cursor + span - 1);
@@ -185,38 +188,54 @@ export class BSPPartitioner {
       remainingWeight -= Number(node.weight || 1);
 
       if (index < nodes.length - 1) {
-        const wall = end + 1;
+        const wall = gap ? end + 1 : end;
         const softBoundary = shouldUseSoftBoundary([node], [nodes[index + 1]], hints);
         if (axis === 'x') {
-          if (!softBoundary) {
+          if (!softBoundary && gap) {
             fillBox(grid, wall, rect.min_y, rect.min_z, wall, rect.max_y, rect.max_z, wallBlock, 'interior');
             carveOpening(grid, wall, rect.min_y, Math.floor((rect.min_z + rect.max_z) / 2), axis);
           }
           interiorDoors.push({
-            kind: softBoundary ? 'open-plan-threshold' : 'bsp-door',
+            kind: softBoundary || tightMode ? 'open-plan-threshold' : 'bsp-door',
             floor: rect.floor,
             axis,
             at: { x: wall, z: Math.floor((rect.min_z + rect.max_z) / 2) },
             connects: [node.id, nodes[index + 1]?.id].filter(Boolean)
           });
         } else {
-          if (!softBoundary) {
+          if (!softBoundary && gap) {
             fillBox(grid, rect.min_x, rect.min_y, wall, rect.max_x, rect.max_y, wall, wallBlock, 'interior');
             carveOpening(grid, Math.floor((rect.min_x + rect.max_x) / 2), rect.min_y, wall, axis);
           }
           interiorDoors.push({
-            kind: softBoundary ? 'open-plan-threshold' : 'bsp-door',
+            kind: softBoundary || tightMode ? 'open-plan-threshold' : 'bsp-door',
             floor: rect.floor,
             axis,
             at: { x: Math.floor((rect.min_x + rect.max_x) / 2), z: wall },
             connects: [node.id, nodes[index + 1]?.id].filter(Boolean)
           });
         }
-        cursor = wall + 1;
+        cursor = end + gap + 1;
       }
     }
 
     return rooms;
+  }
+
+  partitionPackedGrid(rect, nodes) {
+    const columns = Math.ceil(Math.sqrt(nodes.length));
+    const rows = Math.ceil(nodes.length / columns);
+    const cellWidth = Math.max(1, Math.floor((rect.max_x - rect.min_x + 1) / columns));
+    const cellDepth = Math.max(1, Math.floor((rect.max_z - rect.min_z + 1) / rows));
+    return nodes.map((node, index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const minX = rect.min_x + column * cellWidth;
+      const minZ = rect.min_z + row * cellDepth;
+      const maxX = column === columns - 1 ? rect.max_x : Math.min(rect.max_x, minX + cellWidth - 1);
+      const maxZ = row === rows - 1 ? rect.max_z : Math.min(rect.max_z, minZ + cellDepth - 1);
+      return roomFromRect({ ...rect, min_x: minX, max_x: maxX, min_z: minZ, max_z: maxZ }, node);
+    });
   }
 }
 
@@ -392,6 +411,25 @@ function trimAttachedRoomOutsideMain(room, mainBox, spec = {}) {
   return trimmed;
 }
 
+function trimAttachedRoomAgainstExisting(room, existingRooms = []) {
+  let trimmed = { ...room };
+  for (const existing of existingRooms) {
+    if (Number(existing.floor || 0) !== Number(trimmed.floor || 0)) continue;
+    if (overlapArea(trimmed, existing) <= 0) continue;
+    const candidates = [];
+    if (existing.min_x > trimmed.min_x) candidates.push({ ...trimmed, max_x: existing.min_x - 1 });
+    if (existing.max_x < trimmed.max_x) candidates.push({ ...trimmed, min_x: existing.max_x + 1 });
+    if (existing.min_z > trimmed.min_z) candidates.push({ ...trimmed, max_z: existing.min_z - 1 });
+    if (existing.max_z < trimmed.max_z) candidates.push({ ...trimmed, min_z: existing.max_z + 1 });
+    const viable = candidates
+      .filter((candidate) => spanSize(candidate.min_x, candidate.max_x) >= 3 && spanSize(candidate.min_z, candidate.max_z) >= 3)
+      .sort((a, b) => rectArea(b) - rectArea(a));
+    if (!viable.length) return { ...trimmed, max_x: trimmed.min_x - 1 };
+    trimmed = viable[0];
+  }
+  return trimmed;
+}
+
 function rectFromSpace(space, source) {
   return {
     floor: Number(space.floor || 0),
@@ -484,9 +522,17 @@ function fallbackTypeForVolume(box) {
 
 function shouldCreateFallbackAttachedRoom(box = {}) {
   if (box.module === 'tower') return false;
+  if (!isHabitableAttachedVolume(box)) return false;
   const tags = normalizeStringArray(box.tags).join(' ');
   const text = `${box.id || ''} ${box.role || ''} ${box.purpose || ''} ${tags}`.toLowerCase();
   return !/vertical-core|service-core|trunk-core|support|structural|anchor/.test(text);
+}
+
+function isHabitableAttachedVolume(box = {}) {
+  const tags = normalizeStringArray(box.tags).join(' ');
+  const text = `${box.id || ''} ${box.role || ''} ${box.purpose || ''} ${box.facade_role || ''} ${tags}`.toLowerCase();
+  if (/chimney|flue|vent|lightwell|采光井|path|walkway|driveway|stilt|stilts|trunk|support|structural|anchor|retaining|foundation|main-shell/.test(text)) return false;
+  return ['tower', 'sunroom', 'garage', 'gallery', 'wing', 'courtyard'].includes(String(box.module || ''));
 }
 
 function fallbackLabelForVolume(box, type) {
@@ -517,7 +563,7 @@ function attachedDoorForRoom(room, mainBox, spec) {
   const y2 = Math.min(room.max_y, y1 + 2);
   const thickness = clampInt(spec.shell_thickness || 1, 1, 3);
   if (room.min_z < mainBox.min_z) {
-    const x = clampInt(center(room).x, mainBox.min_x + thickness + 1, mainBox.max_x - thickness - 1);
+    const x = clampInt(center(room).x, mainBox.min_x + thickness, mainBox.max_x - thickness);
     return {
       axis: 'z',
       at: { x, z: mainBox.min_z },
@@ -530,7 +576,7 @@ function attachedDoorForRoom(room, mainBox, spec) {
     };
   }
   if (room.min_x > mainBox.max_x) {
-    const z = clampInt(center(room).z, mainBox.min_z + thickness + 1, mainBox.max_z - thickness - 1);
+    const z = clampInt(center(room).z, mainBox.min_z + thickness, mainBox.max_z - thickness);
     return {
       axis: 'x',
       at: { x: mainBox.max_x, z },
@@ -543,7 +589,7 @@ function attachedDoorForRoom(room, mainBox, spec) {
     };
   }
   if (room.max_x < mainBox.min_x) {
-    const z = clampInt(center(room).z, mainBox.min_z + thickness + 1, mainBox.max_z - thickness - 1);
+    const z = clampInt(center(room).z, mainBox.min_z + thickness, mainBox.max_z - thickness);
     return {
       axis: 'x',
       at: { x: mainBox.min_x, z },
@@ -556,7 +602,7 @@ function attachedDoorForRoom(room, mainBox, spec) {
     };
   }
   if (room.min_z > mainBox.max_z) {
-    const x = clampInt(center(room).x, mainBox.min_x + thickness + 1, mainBox.max_x - thickness - 1);
+    const x = clampInt(center(room).x, mainBox.min_x + thickness, mainBox.max_x - thickness);
     return {
       axis: 'z',
       at: { x, z: mainBox.max_z },
@@ -601,6 +647,92 @@ function doorReachesRoom(door, room, tolerance = 2) {
   return rangesOverlap(door.at.x - 1, door.at.x + 1, room.min_x, room.max_x) &&
     door.at.z >= room.min_z - tolerance &&
     door.at.z <= room.max_z + tolerance;
+}
+
+function normalizeRoomIdsAndDoors(rooms, interiorDoors) {
+  const used = new Set();
+  for (const room of rooms) {
+    const originalId = String(room.id || 'room');
+    const uniqueId = uniqueRoomId(room, used);
+    if (uniqueId !== originalId) room.original_id = originalId;
+    room.id = uniqueId;
+    used.add(uniqueId);
+  }
+
+  const roomsByReference = new Map();
+  for (const room of rooms) {
+    addRoomReference(roomsByReference, room.id, room);
+    if (room.original_id) addRoomReference(roomsByReference, room.original_id, room);
+  }
+
+  for (const door of interiorDoors) {
+    const chosen = [];
+    const resolved = (Array.isArray(door.connects) ? door.connects : [])
+      .map((id) => resolveDoorRoom(id, door, roomsByReference, chosen))
+      .filter(Boolean);
+    door.connects = uniqueStrings(resolved.map((room) => room.id));
+    if (resolved.length >= 2 && resolved.every((room) => room.floor === resolved[0].floor)) {
+      door.floor = resolved[0].floor;
+    }
+  }
+}
+
+function uniqueRoomId(room, used) {
+  const original = slugId(room.id || room.type || 'room');
+  if (!used.has(original)) return original;
+  const source = slugId(room.source || room.volume?.id || '');
+  const type = slugId(room.type || 'room');
+  const floor = Number(room.floor || 0);
+  const bases = [
+    source && `${source}-${type}`,
+    `${type}-floor-${floor}`,
+    `${original}-floor-${floor}`
+  ].filter(Boolean);
+
+  for (const base of bases) {
+    if (!used.has(base)) return base;
+  }
+  let index = 2;
+  while (used.has(`${original}-${index}`)) index += 1;
+  return `${original}-${index}`;
+}
+
+function resolveDoorRoom(id, door, roomsByReference, chosen) {
+  let candidates = roomsByReference.get(String(id || '')) || [];
+  candidates = candidates.filter((room) => !chosen.includes(room));
+  if (!candidates.length) return undefined;
+
+  const doorFloor = Number.isFinite(Number(door.floor)) ? Number(door.floor) : undefined;
+  const sameFloor = doorFloor === undefined ? candidates : candidates.filter((room) => Number(room.floor || 0) === doorFloor);
+  if (sameFloor.length) candidates = sameFloor;
+  const touching = candidates.filter((room) => doorReachesRoom(door, room, 2));
+  if (touching.length) candidates = touching;
+
+  const point = door.at ? { x: Number(door.at.x), z: Number(door.at.z) } : undefined;
+  const selected = point
+    ? [...candidates].sort((a, b) => distance(point, center(a)) - distance(point, center(b)))[0]
+    : candidates[0];
+  if (selected) chosen.push(selected);
+  return selected;
+}
+
+function addRoomReference(map, id, room) {
+  if (!id) return;
+  if (!map.has(id)) map.set(id, []);
+  map.get(id).push(room);
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function slugId(value) {
+  const slug = String(value || 'room')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'room';
 }
 
 function nearestRoom(room, candidates) {

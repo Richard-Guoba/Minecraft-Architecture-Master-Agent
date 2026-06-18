@@ -35,7 +35,10 @@ export class BlueprintOptimizerAgent {
         oversizedSplitCount: split.oversizedSplitCount,
         largestOperationVolume: operations.reduce((max, operation) => Math.max(max, operationVolume(operation)), 0),
         topBlocks: topCounts(blockCounts, 12),
-        topModules: topCounts(moduleCounts, 16)
+        topModules: topCounts(moduleCounts, 16),
+        moduleGroups: summarizeModuleGroups(moduleCounts),
+        commandComplexity: commandComplexity({ operations, inputCellCount, moduleCounts }),
+        executionHints: executionHints({ operations, moduleCounts })
       }
     };
   }
@@ -208,6 +211,41 @@ function topCounts(counts, limit) {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, limit)
     .map(([name, count]) => ({ name, count }));
+}
+
+function summarizeModuleGroups(moduleCounts) {
+  const groups = {
+    shell: ['walls', 'wing', 'tower', 'sunroom', 'garage', 'porch'],
+    structure: ['foundation', 'foundation_anchor', 'structural_frame', 'bracing', 'buttress', 'retaining_wall', 'shear_wall', 'wind_tie', 'firebreak', 'flood_vent'],
+    surface: ['roof', 'roof_detail', 'roof_frame', 'facade_trim', 'facade_detail', 'facade_light', 'awning', 'flower_box', 'service_vent', 'privacy_fin'],
+    site: ['garden', 'landscape', 'landscape_path', 'path_light', 'water_feature', 'pool_edge', 'pool_water', 'planting_bed', 'outdoor_living', 'mailbox'],
+    interior: ['interior', 'floors', 'stairs', 'door', 'windows', 'skylight', 'decor_floor', 'decor_light', 'decor_furniture', 'decor_detail', 'decor_plant', 'decor_storage', 'decor_utility']
+  };
+  const summary = {};
+  for (const [name, modules] of Object.entries(groups)) {
+    summary[name] = modules.reduce((sum, module) => sum + Number(moduleCounts[module] || 0), 0);
+  }
+  return summary;
+}
+
+function commandComplexity({ operations, inputCellCount, moduleCounts }) {
+  const setblockLikely = Object.entries(moduleCounts)
+    .filter(([, count]) => Number(count) <= 8)
+    .map(([name]) => name);
+  return {
+    density: Math.round((operations.length / Math.max(1, inputCellCount)) * 1000) / 1000,
+    smallModuleCount: setblockLikely.length,
+    smallModules: setblockLikely.slice(0, 20)
+  };
+}
+
+function executionHints({ operations, moduleCounts }) {
+  const hints = [];
+  if (operations.length > 6000) hints.push('consider splitting build function by vertical bands');
+  if ((moduleCounts.water_feature || 0) + (moduleCounts.pool_water || 0) > 0) hints.push('water modules present; run in creative or allow source updates');
+  if ((moduleCounts.redstone || 0) > 0 || (moduleCounts.facade_light || 0) > 0) hints.push('lighting modules included');
+  if ((moduleCounts.solar_panel || 0) > 0 || (moduleCounts.rain_chain || 0) > 0) hints.push('roof utility modules included');
+  return hints;
 }
 
 function ratio(before, after) {
