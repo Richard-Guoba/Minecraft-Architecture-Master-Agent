@@ -6,8 +6,14 @@ export class FacadeAgent {
     const materials = materialPalette.materials || architecture.materials || {};
     const rules = architecture.facade_rules || {};
     const design = architecture.design_directives?.facade || {};
+    const compositionStrategy = rules.template_composition_strategy ||
+      architecture.generation_hints?.template_composition_strategy ||
+      architecture.template_knowledge?.recommendations?.composition_strategy ||
+      buildSpec.design?.template_composition_strategy ||
+      {};
+    const compositionDirectives = compositionStrategy.directives || {};
     const designGlazing = design.glazing_ratio || buildSpec.facade?.glazing_ratio;
-    const wide = Boolean(rules.large_glass || buildSpec.facade?.large_glass || designGlazing === 'high');
+    const wide = Boolean(rules.large_glass || buildSpec.facade?.large_glass || designGlazing === 'high' || compositionDirectives.use_large_view_glass);
     const protectedOpenings = String(rules.glazing_ratio || designGlazing || buildSpec.facade?.glazing_ratio) === 'low';
     const neon = family === 'cyberpunk' || /霓虹|neon/i.test(prompt);
     const screen = Boolean(rules.screen || buildSpec.facade?.screens);
@@ -18,10 +24,10 @@ export class FacadeAgent {
     const serviceVents = Boolean(rules.service_vents) || family === 'industrial' || /通风|管线|风管|vent|service/i.test(prompt);
     const addressMarker = Boolean(rules.address_marker) || /门牌|信箱|招牌|标识|address|sign|mailbox/i.test(prompt) || neon;
     const privacyFins = Boolean(rules.privacy_fins || /百叶|隐私鳍片|privacy|fins/i.test(prompt)) || ['industrial', 'cyberpunk'].includes(family);
-    const wallRelief = rules.wall_relief !== false;
+    const wallRelief = rules.wall_relief !== false || Boolean(compositionDirectives.use_facade_depth);
     const windowSurrounds = rules.window_surrounds !== false;
     const entryDetail = rules.entry_detail !== false;
-    const windowRhythm = design.window_rhythm || rules.window_rhythm || rhythmForFamily(family, wide, protectedOpenings);
+    const windowRhythm = design.window_rhythm || rules.template_facade_rhythm || compositionDirectives.preferred_facade_rhythm || rules.window_rhythm || rhythmForFamily(family, wide, protectedOpenings);
     const windowWidth = design.window_width || (wide ? 4 : protectedOpenings ? 1 : 2);
     const windowHeight = design.window_height || (wide ? 3 : 2);
     const windowSpacing = design.window_spacing || (wide ? 5 : protectedOpenings ? 8 : 6);
@@ -65,6 +71,7 @@ export class FacadeAgent {
         core_detail_types: CORE_EXTERIOR_DETAIL_KIT_IDS.slice(0, 3)
       },
       composition_strategy: {
+        template_guidance: compositionStrategy,
         ornament_budget: ornamentBudget,
         blank_wall_policy: {
           place_relief_only_on_blank_bays: true,

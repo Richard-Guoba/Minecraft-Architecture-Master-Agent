@@ -267,6 +267,22 @@ const UNIVERSAL_CLAUSES = [
   'universal-window-view-response'
 ];
 
+const TEMPLATE_PATTERN_CLAUSES = [
+  'template-work-wall',
+  'template-sleep-niche',
+  'template-library-wall',
+  'template-storage-wall',
+  'template-wet-wall',
+  'template-workbench-wall',
+  'template-display-wall',
+  'template-focal-wall',
+  'template-conversation-cluster',
+  'template-clear-center',
+  'template-lighting-layer',
+  'template-plant-corner',
+  'template-circulation-spine'
+];
+
 const CLAUSE_METADATA = buildClauseMetadata();
 
 export function buildInteriorSemanticLibrary() {
@@ -280,7 +296,7 @@ export function semanticClausesForRoom(room = {}, context = {}) {
     ...UNIVERSAL_CLAUSES,
     ...(ROOM_CLAUSES[type] || ROOM_CLAUSES.room),
     ...(STYLE_CLAUSES[family] || []),
-    ...templateInteriorClauses(context.templateKnowledge)
+    ...templateInteriorClauses(context.templateKnowledge, room)
   ];
 
   return unique(clauses)
@@ -300,7 +316,7 @@ export function summarizeInteriorSemanticPlan(roomDetails = []) {
   };
 }
 
-function templateInteriorClauses(templateKnowledge = {}) {
+function templateInteriorClauses(templateKnowledge = {}, room = {}) {
   if (!templateKnowledge?.active) return [];
   const recommendations = templateKnowledge.recommendations || {};
   const detailDensity = recommendations.detail_density;
@@ -311,7 +327,37 @@ function templateInteriorClauses(templateKnowledge = {}) {
   }
   if ((recommendations.landscape_features || []).includes('garden-composition')) clauses.push('template-garden-view-response');
   if ((recommendations.landscape_features || []).includes('water-edge')) clauses.push('template-water-view-calm');
+  const roomType = normalizeRoomType(room.type);
+  for (const guidance of recommendations.room_pattern_guidance || []) {
+    if (!guidanceAppliesToRoom(guidance, roomType)) continue;
+    clauses.push(...(guidance.clauses || []));
+  }
+  for (const clause of recommendations.room_pattern_clauses || []) {
+    if (genericTemplateClauseApplies(clause, roomType)) clauses.push(clause);
+  }
   return clauses;
+}
+
+function guidanceAppliesToRoom(guidance = {}, roomType) {
+  const guidanceRoom = normalizeRoomType(guidance.room_type);
+  if (guidanceRoom === roomType) return true;
+  if (roomType === 'master_bedroom' && guidanceRoom === 'bedroom') return true;
+  if (roomType === 'entry' && guidanceRoom === 'entry_or_lobby') return true;
+  if (roomType === 'living' && ['living_or_hall', 'great_hall'].includes(guidanceRoom)) return true;
+  if (roomType === 'corridor' && guidanceRoom === 'corridor_or_gallery') return true;
+  return false;
+}
+
+function genericTemplateClauseApplies(clause, roomType) {
+  const id = String(clause || '');
+  if (/work-wall|prep|pantry/.test(id)) return roomType === 'kitchen' || roomType === 'workshop';
+  if (/sleep|bedside|wardrobe/.test(id)) return roomType === 'bedroom' || roomType === 'master_bedroom';
+  if (/library|study|archive/.test(id)) return roomType === 'study';
+  if (/wet|bathroom/.test(id)) return roomType === 'bathroom';
+  if (/storage|shelving|barrel/.test(id)) return ['storage', 'bedroom', 'master_bedroom', 'entry'].includes(roomType);
+  if (/circulation|threshold/.test(id)) return ['entry', 'corridor', 'stairs', 'tower'].includes(roomType);
+  if (/conversation|focal|display|clear-center|lighting|plant/.test(id)) return !['bathroom', 'storage', 'utility', 'garage'].includes(roomType);
+  return true;
 }
 
 function clauseApplies(clause, room, context) {
@@ -334,7 +380,8 @@ function buildClauseMetadata() {
       'template-display-density',
       'template-storage-rhythm',
       'template-garden-view-response',
-      'template-water-view-calm'
+      'template-water-view-calm',
+      ...TEMPLATE_PATTERN_CLAUSES
     ].map((id) => makeClause(id, 'template-reference', ['template'], sentenceFor(id)))
   ];
   return Object.fromEntries(entries.map((entry) => [entry.id, entry]));
@@ -357,6 +404,16 @@ function roomGroup(type) {
   if (['bedroom', 'master_bedroom', 'study', 'tatami', 'tea_room'].includes(type)) return 'private';
   if (['chapel', 'armory', 'tower'].includes(type)) return 'special';
   return 'room-program';
+}
+
+function normalizeRoomType(roomType) {
+  return {
+    entry_or_lobby: 'entry',
+    living_or_hall: 'living',
+    great_hall: 'living',
+    corridor_or_gallery: 'corridor',
+    tower_room: 'tower'
+  }[roomType] || roomType || 'room';
 }
 
 function sentenceFor(id) {

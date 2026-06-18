@@ -132,6 +132,7 @@ function furnishRoom(room, materials, context) {
   }
 
   builder.addSemanticClauseLayer();
+  builder.addTemplatePatternLayer();
   const specialists = specialistAgentsForRoom(room, context).map((agent) => agent.run(builder));
 
   return { blocks: builder.blocks, specialists, specialist: specialists[0] };
@@ -230,6 +231,87 @@ class RoomFurnishingBuilder {
     if (!clauses.length) return;
     const budget = clampInt(this.roomDetail.semantic_budget ?? clauses.length, 0, 22, clauses.length);
     for (const clause of clauses.slice(0, budget)) this.applySemanticClause(String(clause.id || clause));
+  }
+
+  addTemplatePatternLayer() {
+    const guidance = this.roomDetail.template_room_patterns?.guidance || [];
+    if (!guidance.length) return;
+    const budget = clampInt(this.roomDetail.template_pattern_strength === 'high' ? 4 : 3, 0, 5, 3);
+    for (const pattern of guidance.slice(0, budget)) this.applyTemplatePattern(String(pattern.pattern_type || ''), pattern);
+  }
+
+  applyTemplatePattern(patternType, pattern = {}) {
+    const y = this.floorY;
+    const ceiling = this.ceilingY;
+    const north = this.room.min_z + 1;
+    const south = this.room.max_z - 1;
+    const west = this.room.min_x + 1;
+    const east = this.room.max_x - 1;
+    const cx = this.centerX;
+    const cz = this.centerZ;
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+    const seat = seatingBlockForStyle(this.styleFamily);
+    const storage = this.roomDetail.storage_block || this.materials.furniture || 'minecraft:barrel';
+    const anchor = pattern.anchor?.wall || preferredPatternWall(patternType, this.room);
+    const edge = anchorPointForWall(this.room, anchor);
+
+    switch (patternType) {
+      case 'kitchen_work_wall':
+        this.add('template-pattern-range', 'minecraft:furnace', west, y, north, 'template-work-wall', 'decor_utility');
+        this.add('template-pattern-prep', 'minecraft:crafting_table', clampInt(west + 1, west, east, west), y, north, 'template-work-wall', 'decor_utility');
+        this.add('template-pattern-pantry', 'minecraft:barrel', clampInt(west + 2, west, east, east), y, north, 'template-work-wall', 'decor_storage');
+        this.add('template-pattern-task-light', light, clampInt(west + 1, west, east, cx), ceiling, north, 'template-work-wall', 'decor_light');
+        break;
+      case 'sleep_niche':
+        this.addBed();
+        this.add('template-pattern-bedside', 'minecraft:barrel', west, y, south, 'template-sleep-niche', 'decor_storage');
+        this.add('template-pattern-reading-light', light, west, Math.min(y + 1, ceiling), south, 'template-sleep-niche', 'decor_light');
+        this.add('template-pattern-wardrobe', storage, east, y, north, 'template-sleep-niche', 'decor_storage');
+        break;
+      case 'library_focus_wall':
+        this.add('template-pattern-library', 'minecraft:bookshelf', edge.x, y, edge.z, 'template-library-wall', 'decor_furniture');
+        this.add('template-pattern-desk', 'minecraft:lectern', cx, y, anchor === 'north' ? north + 1 : north, 'template-library-wall', 'decor_furniture');
+        this.add('template-pattern-reading-light', light, edge.x, ceiling, edge.z, 'template-library-wall', 'decor_light');
+        break;
+      case 'storage_wall':
+        this.add('template-pattern-storage', storage, west, y, north, 'template-storage-wall', 'decor_storage');
+        this.add('template-pattern-storage', 'minecraft:chest', clampInt(west + 1, west, east, east), y, north, 'template-storage-wall', 'decor_storage');
+        if (this.area > 24) this.add('template-pattern-inventory-light', light, cx, ceiling, cz, 'template-storage-wall', 'decor_light');
+        break;
+      case 'wet_wall':
+        this.add('template-pattern-basin', 'minecraft:cauldron', west, y, north, 'template-wet-wall', 'decor_utility');
+        this.add('template-pattern-counter', 'minecraft:smooth_quartz_slab[type=bottom]', clampInt(west + 1, west, east, east), y, north, 'template-wet-wall', 'decor_furniture');
+        this.add('template-pattern-mirror-light', light, west, ceiling, north, 'template-wet-wall', 'decor_light');
+        break;
+      case 'workshop_bench_wall':
+        this.add('template-pattern-workbench', 'minecraft:crafting_table', west, y, north, 'template-workbench-wall', 'decor_utility');
+        this.add('template-pattern-tool-rack', 'minecraft:smithing_table', clampInt(west + 1, west, east, east), y, north, 'template-workbench-wall', 'decor_utility');
+        this.add('template-pattern-parts-storage', 'minecraft:barrel', east, y, south, 'template-workbench-wall', 'decor_storage');
+        break;
+      case 'display_wall':
+        this.add('template-pattern-display', this.roomDetail.accent_block || 'minecraft:decorated_pot', edge.x, y, edge.z, 'template-display-wall', 'decor_detail');
+        this.add('template-pattern-display-light', light, edge.x, ceiling, edge.z, 'template-display-wall', 'decor_light');
+        break;
+      case 'social_cluster':
+        this.add('template-pattern-seat', seat, west, y, south, 'template-conversation-cluster', 'decor_furniture');
+        if (this.area > 36) this.add('template-pattern-seat', seat, east, y, south, 'template-conversation-cluster', 'decor_furniture');
+        this.addTable(cx, y, cz);
+        this.add('template-pattern-rug', this.roomDetail.floor_accent || 'minecraft:white_carpet', cx, y, cz, 'template-conversation-cluster', 'decor_floor');
+        break;
+      case 'layered_lighting':
+        this.add('template-pattern-layered-light', light, cx, ceiling, cz, 'template-lighting-layer', 'decor_light');
+        if (this.area > 32) this.add('template-pattern-corner-light', light, east, ceiling, north, 'template-lighting-layer', 'decor_light');
+        break;
+      case 'plant_corner':
+        this.add('template-pattern-plant', this.materials.plant || 'minecraft:potted_azalea_bush', east, y, south, 'template-plant-corner', 'decor_plant');
+        break;
+      case 'circulation_spine':
+        this.add('template-pattern-wayfinding-light', light, cx, ceiling, cz, 'template-circulation-spine', 'decor_light');
+        this.add('template-pattern-rail-marker', this.materials.railing || 'minecraft:oak_fence', edge.x, y, edge.z, 'template-circulation-spine', 'decor_detail');
+        break;
+      default:
+        break;
+    }
   }
 
   applySemanticClause(id) {
@@ -627,6 +709,26 @@ function shouldPreferWallPlacement(item, room) {
   return ['decor_furniture', 'decor_storage', 'decor_utility', 'decor_detail', 'decor_plant'].includes(item.module);
 }
 
+function preferredPatternWall(patternType, room = {}) {
+  if (patternType === 'sleep_niche') return 'south';
+  if (patternType === 'kitchen_work_wall' || patternType === 'wet_wall' || patternType === 'workshop_bench_wall') return 'north';
+  if (patternType === 'library_focus_wall' || patternType === 'display_wall') return room.max_x - room.min_x >= room.max_z - room.min_z ? 'east' : 'south';
+  return 'north';
+}
+
+function anchorPointForWall(room, wall) {
+  const cx = Math.floor((room.min_x + room.max_x) / 2);
+  const cz = Math.floor((room.min_z + room.max_z) / 2);
+  const west = room.min_x + 1;
+  const east = room.max_x - 1;
+  const north = room.min_z + 1;
+  const south = room.max_z - 1;
+  if (wall === 'west') return { x: west, z: cz };
+  if (wall === 'east') return { x: east, z: cz };
+  if (wall === 'south') return { x: cx, z: south };
+  return { x: cx, z: north };
+}
+
 function hasSafeSupport(grid, item, room, point) {
   if (!room) return true;
   if (item.module === 'decor_light' && (item.placement?.includes('ceiling') || point.y >= room.max_y - 1)) return true;
@@ -759,6 +861,7 @@ function decoratorCapabilityProfile({ placements, suggestions, specialistAgents,
   const rooms = new Set(placements.map((item) => item.room_id).filter(Boolean));
   const vibrant = placements.filter((item) => String(item.role || '').startsWith('vibrant'));
   const functional = placements.filter((item) => ['decor_furniture', 'decor_storage', 'decor_utility'].includes(item.module));
+  const templatePatternPlacements = placements.filter((item) => String(item.role || '').startsWith('template-pattern-'));
   return {
     registered_specialists: specialistAgents.length,
     active_specialists: new Set(activeSpecialists.map((item) => item.agent_id)).size,
@@ -767,6 +870,8 @@ function decoratorCapabilityProfile({ placements, suggestions, specialistAgents,
     module_layers: [...modules].sort(),
     functional_placement_count: functional.length,
     vibrant_placement_count: vibrant.length,
+    template_pattern_placement_count: templatePatternPlacements.length,
+    supports_template_room_patterns: templatePatternPlacements.length > 0,
     supports_style_specialists: activeSpecialists.some((item) => String(item.agent_id || '').includes('interior-style-agent')),
     supports_room_specialists: activeSpecialists.some((item) => String(item.agent_id || '').includes('decoration-agent'))
   };

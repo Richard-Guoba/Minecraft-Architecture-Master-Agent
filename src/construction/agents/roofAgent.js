@@ -3,9 +3,16 @@ export class RoofAgent {
     const family = String(architecture.style_family || buildSpec.style_family || 'general');
     const rules = architecture.roof_rules || {};
     const design = architecture.design_directives?.roof || {};
-    const style = String(design.style || rules.style || buildSpec.roof_style || 'gabled');
-    const roofGarden = Boolean(design.roof_terrace || rules.roof_terrace || /屋顶花园|屋顶菜园|绿化屋顶|green roof/i.test(prompt));
-    const skylights = Boolean(design.skylights || rules.skylights || /天窗|采光顶|温室/i.test(prompt));
+    const compositionStrategy = rules.template_composition_strategy ||
+      architecture.generation_hints?.template_composition_strategy ||
+      architecture.template_knowledge?.recommendations?.composition_strategy ||
+      buildSpec.design?.template_composition_strategy ||
+      {};
+    const compositionDirectives = compositionStrategy.directives || {};
+    const templateProfile = rules.template_roof_profile || compositionDirectives.preferred_roof_profile;
+    const style = String(design.style || roofStyleForTemplateProfile(templateProfile) || rules.style || buildSpec.roof_style || 'gabled');
+    const roofGarden = Boolean(design.roof_terrace || rules.roof_terrace || templateProfile === 'thin-parapet-terrace' || /屋顶花园|屋顶菜园|绿化屋顶|green roof/i.test(prompt));
+    const skylights = Boolean(design.skylights || rules.skylights || templateProfile === 'stepped-flat-with-light-slot' || /天窗|采光顶|温室/i.test(prompt));
     const chimney = shouldHaveChimney(family, prompt);
     const neonSign = family === 'cyberpunk' || /霓虹|招牌|neon|sign/i.test(prompt);
     const solarPanels = Boolean(rules.solar_panels || /太阳能|光伏|solar/i.test(prompt));
@@ -19,9 +26,9 @@ export class RoofAgent {
       style_family: family,
       preset: stylePreset.id || 'none',
       style,
-      profile: design.profile || rules.profile || stylePreset.roof || 'style-default',
+      profile: design.profile || templateProfile || rules.profile || stylePreset.roof || 'style-default',
       roof_height: Number(buildSpec.roof_height || 3),
-      overhang: Number(design.overhang ?? rules.overhang ?? buildSpec.roof_overhang ?? 1),
+      overhang: Number(design.overhang ?? rules.overhang ?? (compositionDirectives.use_layered_roof_edges ? 2 : undefined) ?? buildSpec.roof_overhang ?? 1),
       creative_signature: architecture.design_directives?.signature || buildSpec.creative_design_signature || 'none',
       elements: roofElements({ family, style, roofGarden, skylights, chimney, neonSign, solarPanels, rainHarvest, dormers, roofAccess, rules }),
       drainage: drainageForRoof(style, family),
@@ -32,6 +39,7 @@ export class RoofAgent {
         safe_roof_access: roofAccess,
         maintenance_zone: roofGarden || solarPanels || rainHarvest ? 'reserved-roof-service-strip' : 'eave-only'
       },
+      template_guidance: compositionStrategy,
       materials: {
         roof: architecture.materials?.roof || 'minecraft:dark_oak_planks',
         trim: materialPalette.materials?.roof_detail || architecture.materials?.trim || 'minecraft:smooth_quartz',
@@ -60,6 +68,12 @@ export class RoofAgent {
       }
     };
   }
+}
+
+function roofStyleForTemplateProfile(profile) {
+  if (profile === 'thin-parapet-terrace' || profile === 'stepped-flat-with-light-slot') return 'flat';
+  if (profile === 'low-layered-eaves') return 'hipped';
+  return undefined;
 }
 
 function roofElements({ family, style, roofGarden, skylights, chimney, neonSign, solarPanels, rainHarvest, dormers, roofAccess, rules }) {

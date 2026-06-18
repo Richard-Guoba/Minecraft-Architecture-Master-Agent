@@ -162,10 +162,11 @@ export class CreativeDesignAgent {
 export function buildSeededCreativeDesign(prompt = '', architecture = {}, buildSpec = {}, topology = {}) {
   const rng = seededRng(`${prompt}|${buildSpec.seed ?? 'none'}|creative-design-v2`);
   const seedIndex = seedIndexFor(prompt, buildSpec.seed);
-  const massing = pickByIndex(MASSING_VARIANTS, seedIndex);
-  const roof = pickByIndex(ROOF_VARIANTS, seedIndex + 1);
-  const facade = pickByIndex(FACADE_VARIANTS, seedIndex + 2);
-  const site = pickByIndex(SITE_VARIANTS, seedIndex + 3);
+  const templateComposition = templateCompositionStrategyFor(architecture, buildSpec);
+  let massing = templateMassingVariant(templateComposition, seedIndex) || pickByIndex(MASSING_VARIANTS, seedIndex);
+  let roof = templateRoofVariant(templateComposition, seedIndex + 1) || pickByIndex(ROOF_VARIANTS, seedIndex + 1);
+  let facade = templateFacadeVariant(templateComposition, seedIndex + 2) || pickByIndex(FACADE_VARIANTS, seedIndex + 2);
+  let site = templateSiteVariant(templateComposition, seedIndex + 3) || pickByIndex(SITE_VARIANTS, seedIndex + 3);
   const interior = pickByIndex(INTERIOR_VARIANTS, seedIndex + 4);
   const floors = Math.max(1, Number(buildSpec.floors || 1));
   const roomOrder = {};
@@ -251,7 +252,11 @@ export function buildSeededCreativeDesign(prompt = '', architecture = {}, buildS
 }
 
 export function applyCreativeDesign({ architecture = {}, buildSpec = {}, topology = {}, creativeDesign = {}, prompt = '' } = {}) {
-  const design = normalizeCreativeDesign(creativeDesign, creativeDesign.decision_source || 'seeded-local');
+  const design = applyTemplateCompositionToCreativeDesign(
+    normalizeCreativeDesign(creativeDesign, creativeDesign.decision_source || 'seeded-local'),
+    architecture,
+    buildSpec
+  );
   const nextArchitecture = {
     ...architecture,
     volumes: applyVolumeDirectives(architecture.volumes || [], design.volume_directives || []),
@@ -410,6 +415,179 @@ export function normalizeCreativeDesign(value = {}, decisionSource = 'seeded-loc
       soft_boundary_bias: String(topology.soft_boundary_bias || 'medium')
     }
   };
+}
+
+function applyTemplateCompositionToCreativeDesign(design = {}, architecture = {}, buildSpec = {}) {
+  const strategy = templateCompositionStrategyFor(architecture, buildSpec);
+  const directives = strategy.directives || {};
+  if (!strategy || !directives || Object.keys(directives).length === 0) return design;
+  const explicitComposition = Boolean(directives.prompt_signals?.explicit_composition_request);
+
+  const variant = design.design_axes?.massing_variant || directives.preferred_massing_variant;
+  const volumeDirectives = mergeTemplateVolumeDirectives(design.volume_directives || [], directives);
+  return {
+    ...design,
+    signature: design.signature.includes('template-composition') ? design.signature : `${design.signature}+template-composition`,
+    authority: {
+      ...(design.authority || {}),
+      variable_axes: [...new Set([...(design.authority?.variable_axes || []), 'template-composition-grammar'])]
+    },
+    design_axes: {
+      ...(design.design_axes || {}),
+      massing_variant: variant,
+      massing_label: labelForMassingVariant(variant) || design.design_axes?.massing_label,
+      composition_bias: directives.use_wings ? 'template-guided-wings'
+        : directives.use_vertical_accent ? 'template-guided-vertical'
+          : directives.use_foreground_garden_sequence ? 'template-guided-approach'
+            : design.design_axes?.composition_bias || 'balanced',
+      template_composition_readiness: strategy.readiness || 'unknown'
+    },
+    volume_directives: volumeDirectives,
+    facade: {
+      ...(design.facade || {}),
+      window_rhythm: design.facade?.window_rhythm === 'balanced' ? directives.preferred_facade_rhythm || design.facade?.window_rhythm : design.facade?.window_rhythm,
+      glazing_ratio: directives.use_large_view_glass ? 'high' : design.facade?.glazing_ratio,
+      wall_relief: directives.use_facade_depth || design.facade?.wall_relief,
+      relief_density: explicitComposition && directives.use_facade_depth ? 'high' : design.facade?.relief_density,
+      window_surround_pattern: explicitComposition && directives.use_facade_depth ? 'varied-depth' : design.facade?.window_surround_pattern
+    },
+    roof: {
+      ...(design.roof || {}),
+      ...roofPatchForTemplate(directives, design.roof || {})
+    },
+    site: {
+      ...(design.site || {}),
+      mood: design.site?.mood === 'simple' ? directives.preferred_site_mood || design.site?.mood : design.site?.mood,
+      patio: Boolean(design.site?.patio || directives.use_courtyard_or_patio_void || directives.use_waterfront_transition),
+      planting_beds: Boolean(design.site?.planting_beds || directives.use_foreground_garden_sequence),
+      outdoor_seating: Boolean(design.site?.outdoor_seating || directives.use_waterfront_transition),
+      water_feature: Boolean(design.site?.water_feature || directives.use_waterfront_transition),
+      dry_garden: Boolean(design.site?.dry_garden)
+    },
+    topology: {
+      ...(design.topology || {}),
+      public_core_position: directives.use_waterfront_transition ? 'view-facing' : design.topology?.public_core_position,
+      soft_boundary_bias: directives.use_large_view_glass || directives.use_courtyard_or_patio_void ? 'high' : design.topology?.soft_boundary_bias
+    },
+    template_composition_strategy: strategy
+  };
+}
+
+function templateCompositionStrategyFor(architecture = {}, buildSpec = {}) {
+  return architecture.generation_hints?.template_composition_strategy ||
+    architecture.massing_rules?.template_composition_strategy ||
+    architecture.detail_rules?.template_composition_strategy ||
+    buildSpec.design?.template_composition_strategy ||
+    architecture.template_knowledge?.recommendations?.composition_strategy ||
+    buildSpec.template_knowledge?.recommendations?.composition_strategy ||
+    {};
+}
+
+function templateMassingVariant(strategy = {}, seedIndex = 0) {
+  return pickTemplateVariant(MASSING_VARIANTS, templateVariantIds('massing', strategy.directives?.preferred_massing_variant, strategy.directives), seedIndex);
+}
+
+function templateRoofVariant(strategy = {}, seedIndex = 0) {
+  return pickTemplateVariant(ROOF_VARIANTS, templateVariantIds('roof', strategy.directives?.preferred_roof_profile, strategy.directives), seedIndex, 'profile');
+}
+
+function templateFacadeVariant(strategy = {}, seedIndex = 0) {
+  return pickTemplateVariant(FACADE_VARIANTS, templateVariantIds('facade', strategy.directives?.preferred_facade_rhythm, strategy.directives), seedIndex, 'rhythm');
+}
+
+function templateSiteVariant(strategy = {}, seedIndex = 0) {
+  return pickTemplateVariant(SITE_VARIANTS, templateVariantIds('site', strategy.directives?.preferred_site_mood, strategy.directives), seedIndex, 'mood');
+}
+
+function variantById(items, id) {
+  if (!id) return undefined;
+  return items.find((item) => item.id === id);
+}
+
+function pickTemplateVariant(items, ids, seedIndex, key = 'id') {
+  const candidates = (ids || [])
+    .map((id) => items.find((item) => item[key] === id))
+    .filter(Boolean);
+  if (!candidates.length) return undefined;
+  return pickByIndex(candidates, seedIndex);
+}
+
+function templateVariantIds(group, preferred, directives = {}) {
+  if (!directives.prompt_signals?.explicit_composition_request) {
+    if (group === 'massing') return MASSING_VARIANTS.map((item) => item.id);
+    if (group === 'facade') return FACADE_VARIANTS.map((item) => item.rhythm);
+    if (group === 'roof') return ROOF_VARIANTS.map((item) => item.profile);
+    if (group === 'site') return SITE_VARIANTS.map((item) => item.mood);
+  }
+  const maps = {
+    massing: {
+      'east-offset-glass-wing': ['east-offset-glass-wing', 'compact-patio-bar', 'dual-wing-balanced'],
+      'front-back-gallery': ['front-back-gallery', 'compact-patio-bar', 'west-service-wing'],
+      'corner-vertical-accent': ['corner-vertical-accent', 'dual-wing-balanced', 'front-back-gallery'],
+      'dual-wing-balanced': ['dual-wing-balanced', 'east-offset-glass-wing', 'west-service-wing'],
+      'compact-patio-bar': ['compact-patio-bar', 'east-offset-glass-wing', 'front-back-gallery']
+    },
+    facade: {
+      'horizontal-ribbon-breaks': ['horizontal-ribbon-breaks', 'corner-window-bands', 'asymmetric-panels', 'irregular-studio-grid'],
+      'vertical-slot-grid': ['vertical-slot-grid', 'quiet-punched-windows', 'irregular-studio-grid'],
+      'quiet-punched-windows': ['quiet-punched-windows', 'vertical-slot-grid', 'asymmetric-panels'],
+      'irregular-studio-grid': ['irregular-studio-grid', 'asymmetric-panels', 'corner-window-bands']
+    },
+    roof: {
+      'thin-parapet-terrace': ['thin-parapet-terrace', 'stepped-flat-with-light-slot', 'service-flat-roof'],
+      'low-layered-eaves': ['low-layered-eaves', 'deep-hipped-shelter', 'split-gable-modernized'],
+      'stepped-flat-with-light-slot': ['stepped-flat-with-light-slot', 'service-flat-roof', 'thin-parapet-terrace']
+    },
+    site: {
+      'reflecting-water-edge': ['reflecting-water-edge', 'lush-side-garden', 'ordered-entry-court'],
+      'ordered-entry-court': ['ordered-entry-court', 'lush-side-garden', 'dry-modern-court', 'open-family-yard'],
+      'terrain-forecourt': ['ordered-entry-court', 'lush-side-garden', 'open-family-yard']
+    }
+  };
+  return maps[group]?.[preferred] || (preferred ? [preferred] : []);
+}
+
+function labelForMassingVariant(id) {
+  return variantById(MASSING_VARIANTS, id)?.label;
+}
+
+function roofPatchForTemplate(directives = {}, current = {}) {
+  const profile = current.profile && current.profile !== 'style-default' ? current.profile : directives.preferred_roof_profile;
+  if (profile === 'thin-parapet-terrace') {
+    return { style: 'flat', profile, overhang: 0, roof_terrace: true, skylights: current.skylights };
+  }
+  if (profile === 'low-layered-eaves') {
+    return { style: current.style === 'pagoda' ? 'pagoda' : 'hipped', profile, overhang: Math.max(2, Number(current.overhang || 1)), skylights: current.skylights };
+  }
+  if (profile === 'stepped-flat-with-light-slot') {
+    return { style: 'flat', profile, overhang: Math.max(1, Number(current.overhang || 1)), skylights: true, roof_terrace: current.roof_terrace };
+  }
+  if (directives.use_layered_roof_edges) {
+    return { overhang: Math.max(2, Number(current.overhang || 1)) };
+  }
+  return {};
+}
+
+function mergeTemplateVolumeDirectives(existing = [], directives = {}) {
+  if (!directives.prompt_signals?.explicit_composition_request) return existing;
+  const result = [...existing];
+  const add = (volume) => {
+    if (result.some((item) => item.id === volume.id)) return;
+    result.push(volume);
+  };
+  if (directives.use_wings) {
+    add(designVolume('template-side-gallery', 'add', [0.28, 0.62, 0.48], 'attached-east', ['wing', 'template-composition', 'side-gallery']));
+  }
+  if (directives.use_vertical_accent) {
+    add(designVolume('template-lookout-tower', 'add', [0.22, 1.24, 0.22], 'attached-north-east', ['tower', 'vertical-accent', 'template-composition'], 'flat'));
+  }
+  if (directives.use_courtyard_or_patio_void || directives.use_foreground_garden_sequence) {
+    add(designVolume('template-entry-forecourt', 'add', [0.42, 0.34, 0.18], 'front-center', ['porch', 'entry-focus', 'template-composition'], 'flat'));
+  }
+  if (directives.use_waterfront_transition) {
+    add(designVolume('template-view-deck', 'add', [0.5, 0.22, 0.22], 'attached-south', ['gallery', 'deck', 'view-platform', 'template-composition'], 'flat'));
+  }
+  return result;
 }
 
 function applyVolumeDirectives(volumes, directives) {

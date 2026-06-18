@@ -1,6 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parseNbt } from './nbt.js';
+import { buildTemplateCaseProfile, renderCaseIndexReport, summarizeCaseIndex } from './templateCaseProfile.js';
+import { analyzeTemplateComposition } from './templateCompositionMiner.js';
+import { analyzeSpatialLayout } from './templateSpatialAnalyzer.js';
 
 const MCBUILD_URL_PATTERN = /https?:\/\/\S+/i;
 const AIR_IDS = new Set([0]);
@@ -145,16 +148,25 @@ export async function analyzeTemplateCorpus({
   }
 
   const corpus = summarizeCorpus(templates, sources.unmatched);
+  const caseIndex = {
+    generated_at: new Date().toISOString(),
+    root: rootDir,
+    summary: summarizeCaseIndex(templates),
+    cases: templates.map((template) => template.case_profile)
+  };
   const labels = templates.map((template) => makeGeneratedLabel(template));
   const report = renderGapReport(corpus, templates);
   await fs.mkdir(absoluteOutput, { recursive: true });
   await fs.writeFile(path.join(absoluteOutput, 'template_index.json'), `${JSON.stringify({ generated_at: new Date().toISOString(), root: rootDir, corpus, templates }, null, 2)}\n`, 'utf8');
+  await fs.writeFile(path.join(absoluteOutput, 'case_index.json'), `${JSON.stringify(caseIndex, null, 2)}\n`, 'utf8');
+  await fs.writeFile(path.join(absoluteOutput, 'case_index.md'), renderCaseIndexReport(caseIndex), 'utf8');
   await fs.writeFile(path.join(absoluteOutput, 'labels.generated.jsonl'), `${labels.map((item) => JSON.stringify(item)).join('\n')}\n`, 'utf8');
   await fs.writeFile(path.join(absoluteOutput, 'template_gap_report.md'), report, 'utf8');
 
   return {
     outputDir: absoluteOutput,
     corpus,
+    caseIndex,
     templates,
     fetchedPages: fetched,
     pageCache
@@ -166,6 +178,10 @@ export async function analyzeSchematicFile(filePath, { rootDir = process.cwd(), 
   const parsed = parseNbt(buffer);
   const schematic = normalizeSchematicRoot(parsed.value);
   const voxels = analyzeVoxels(schematic);
+  voxels.spatial_layout = analyzeSpatialLayout(schematic, {
+    blockAt: (index) => blockAt(schematic, index),
+    interiorSignalCategories
+  });
   const relativePath = path.relative(rootDir, filePath).replaceAll('\\', '/');
   const category = relativePath.split('/')[0] || 'uncategorized';
   const title = source.title || page.title || path.basename(filePath, path.extname(filePath));
@@ -173,8 +189,16 @@ export async function analyzeSchematicFile(filePath, { rootDir = process.cwd(), 
   const style = inferStyleFamily(text, category);
   const typology = inferTypology(text, category);
   const featureTags = inferFeatureTags(text, voxels, category, typology);
+  voxels.composition_grammar = analyzeTemplateComposition(schematic, {
+    blockAt: (index) => blockAt(schematic, index),
+    analysis: voxels,
+    text,
+    styleFamily: style,
+    typology,
+    tags: featureTags
+  });
 
-  return {
+  const template = {
     file: relativePath,
     title,
     category,
@@ -196,6 +220,8 @@ export async function analyzeSchematicFile(filePath, { rootDir = process.cwd(), 
     analysis: voxels,
     recommendations: recommendationsForTemplate({ text, voxels, style, typology, category, tags: featureTags })
   };
+  template.case_profile = buildTemplateCaseProfile(template);
+  return template;
 }
 
 export async function readTemplateSources(rootDir) {
@@ -725,10 +751,32 @@ function makeGeneratedLabel(template) {
     typology: template.typology,
     quality: 5,
     tags: template.tags,
+    quality_tags: template.case_profile?.quality_tags || [],
+    learning_roles: (template.case_profile?.learning_roles || []).map((role) => role.role),
+    phase2_room_mining_priority: template.case_profile?.phase2_room_mining_priority || 'unknown',
+    spatial_pattern_mining_readiness: template.case_profile?.phase2_spatial_evidence?.pattern_mining_readiness || 'skip',
+    spatial_room_candidate_count: template.case_profile?.phase2_spatial_evidence?.room_candidate_count || 0,
+    spatial_detected_room_types: template.case_profile?.phase2_spatial_evidence?.detected_room_types || {},
+    furniture_pattern_readiness: template.case_profile?.phase3_pattern_evidence?.furniture_pattern_readiness || 'skip',
+    furniture_group_count: template.case_profile?.phase3_pattern_evidence?.furniture_group_count || 0,
+    detected_furniture_patterns: template.case_profile?.phase3_pattern_evidence?.detected_furniture_patterns || {},
+    composition_readiness: template.analysis.composition_grammar?.readiness || 'skip',
+    composition_patterns: compositionPatternSummary(template.analysis.composition_grammar),
+    room_reference_candidates: (template.case_profile?.room_reference_candidates || []).map((room) => room.room_type),
     front_side: 'unknown',
     has_interior: template.analysis.dimensions.density < 0.55,
     source: template.source?.url || template.source?.note || 'local-schematic',
     generated_from: ['data.txt', 'schematic-analysis']
+  };
+}
+
+function compositionPatternSummary(grammar = {}) {
+  return {
+    massing: (grammar.massing_patterns || []).slice(0, 4).map((item) => item.pattern_type),
+    approach: (grammar.approach_sequence || []).slice(0, 4).map((item) => item.pattern_type),
+    facade: (grammar.facade_rhythm || []).slice(0, 4).map((item) => item.pattern_type),
+    roof: (grammar.roof_composition || []).slice(0, 4).map((item) => item.pattern_type),
+    site: (grammar.site_composition || []).slice(0, 4).map((item) => item.pattern_type)
   };
 }
 
@@ -874,7 +922,7 @@ function interiorSignalCategories(block = {}) {
   if (category === 'light' || /(torch|lantern|candle|lamp|glowstone|sea_lantern|froglight|end_rod|beacon)/.test(name)) result.push('light_fixture');
   if (category === 'stair' || /stairs?$/.test(name)) result.push('seating_shape');
   if (category === 'slab' || /(slab|pressure_plate|trapdoor)/.test(name)) result.push('table_surface');
-  if (/(cauldron|water|sponge)/.test(name)) result.push('wet_fixture');
+  if (/(cauldron|sink|basin)/.test(name)) result.push('wet_fixture');
   if (/(jukebox|note_block|bell)/.test(name)) result.push('music_play', 'display_object');
   if (/(candle|banner|lectern|bell|chain)/.test(name)) result.push('ceremonial');
   if (/(chain|iron_bars|fence|wall|pane|rod)/.test(name)) result.push('vertical_detail');

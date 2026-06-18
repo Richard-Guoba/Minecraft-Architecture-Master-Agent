@@ -623,6 +623,11 @@ function renderReport({ prompt, blueprint, validation, mcVersion, autoBuild, dat
   const installLine = installedDatapackDir ? `- 已安装到世界：${installedDatapackDir}\n` : '';
   const materialCatalogCount = blueprint.materialPalette?.block_catalog?.blockCount || 0;
   const materialControllableCount = blueprint.materialPalette?.controllableBlockCount || 0;
+  const templateComposition = blueprint.templateKnowledge?.recommendations?.composition_strategy || {};
+  const templateCompositionDirectives = templateComposition.directives || {};
+  const templateCompositionLine = templateComposition.readiness
+    ? `- 模板构图策略：${templateComposition.readiness}，体块 ${templateCompositionDirectives.preferred_massing_variant || 'auto'}，立面 ${templateCompositionDirectives.preferred_facade_rhythm || 'auto'}，屋顶 ${templateCompositionDirectives.preferred_roof_profile || 'auto'}，场地 ${templateCompositionDirectives.preferred_site_mood || 'auto'}`
+    : '- 模板构图策略：未启用';
   const usage = [
     '1. 如果刚复制或更新了数据包，先运行 /reload。这个命令只刷新数据包，不会建造。',
     '2. 站在目标位置运行 /function architect:run。它会自动 clear + build。'
@@ -677,6 +682,7 @@ ${prompt}
 - 估算设计选择权：${Math.round(Number(blueprint.creativeDesign?.authority?.estimated_llm_decision_share || 0) * 100)}%
 - 体块变体：${blueprint.creativeDesign?.design_axes?.massing_variant || 'unknown'}
 - 平面切分：${blueprint.creativeDesign?.topology?.split_strategy || topology.bsp_hints?.split_strategy || 'weighted'}
+${templateCompositionLine}
 
 ## 结构框架 JSON
 

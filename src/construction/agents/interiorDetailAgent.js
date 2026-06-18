@@ -35,6 +35,7 @@ export class InteriorDetailAgent {
         add_task_lighting: true,
         add_style_storage: true,
         use_room_specialist_agents: true,
+        use_template_room_patterns: Boolean(templateKnowledge?.active),
         minimum_blocks_per_specialist: 50,
         add_vibrant_accent_layers: true,
         add_comfort_layers: true,
@@ -50,6 +51,7 @@ function detailForRoom(room, family, materialPalette = {}, architecture = {}, bu
   const specialists = specialistDefinitionsForRoom(room, { styleFamily: family, architecture });
   const blockCounts = specialists.map((specialist) => specialist.capability_blocks.length);
   const semanticClauses = semanticClausesForRoom(room, { family, architecture, buildSpec, topology, materialPalette, templateKnowledge });
+  const templateRoomPatterns = templatePatternsForRoom(room, templateKnowledge);
   const base = {
     room_id: room.id,
     type: room.type,
@@ -70,12 +72,50 @@ function detailForRoom(room, family, materialPalette = {}, architecture = {}, bu
     semantic_clauses: semanticClauses,
     semantic_clause_ids: semanticClauses.map((clause) => clause.id),
     semantic_clause_groups: [...new Set(semanticClauses.map((clause) => clause.group))],
-    semantic_budget: semanticBudgetForRoom(room, semanticClauses, design)
+    semantic_budget: semanticBudgetForRoom(room, semanticClauses, design),
+    template_room_patterns: templateRoomPatterns,
+    template_pattern_strength: templateRoomPatterns.strength
   };
   if (['kitchen', 'bathroom', 'garage', 'utility'].includes(room.type)) base.service_wall = materials.secondary_wall || architecture.materials?.interior_wall || 'minecraft:light_gray_concrete';
   if (['living', 'great_hall', 'lounge'].includes(room.type)) base.focal_feature = focalFeatureForFamily(family);
   if (room.type === 'sunroom' || room.type === 'greenhouse') base.planting = materials.plant || 'minecraft:oak_leaves[persistent=true]';
   return base;
+}
+
+function templatePatternsForRoom(room = {}, templateKnowledge = {}) {
+  if (!templateKnowledge?.active) {
+    return { strength: 'none', guidance: [], clauses: [] };
+  }
+  const recommendations = templateKnowledge.recommendations || {};
+  const roomType = normalizeRoomType(room.type);
+  const guidance = (recommendations.room_pattern_guidance || [])
+    .filter((item) => guidanceMatchesRoom(item, roomType))
+    .sort((a, b) => Number(b.confidence || 0) - Number(a.confidence || 0))
+    .slice(0, 5);
+  return {
+    strength: guidance.length ? recommendations.template_interior_pattern_strength || 'medium' : 'none',
+    strategy: recommendations.room_pattern_strategy || {},
+    guidance,
+    clauses: [...new Set(guidance.flatMap((item) => item.clauses || []))]
+  };
+}
+
+function guidanceMatchesRoom(guidance = {}, roomType) {
+  const sourceType = normalizeRoomType(guidance.room_type);
+  if (sourceType === roomType) return true;
+  if (roomType === 'master_bedroom' && sourceType === 'bedroom') return true;
+  if (roomType === 'living' && ['lounge', 'great_hall'].includes(sourceType)) return true;
+  return false;
+}
+
+function normalizeRoomType(roomType) {
+  return {
+    entry_or_lobby: 'entry',
+    living_or_hall: 'living',
+    great_hall: 'living',
+    corridor_or_gallery: 'corridor',
+    tower_room: 'tower'
+  }[roomType] || roomType || 'room';
 }
 
 function moodForRoom(room, family) {

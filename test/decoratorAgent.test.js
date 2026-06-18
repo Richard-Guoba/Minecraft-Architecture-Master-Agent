@@ -111,6 +111,69 @@ test('DecoratorAgent writes semantic interior clause layers into rooms', () => {
   assert.ok(semanticPlacements.every((item) => !['corridor', 'stairs'].includes(item.type)));
 });
 
+test('InteriorDetailAgent and DecoratorAgent consume template furniture pattern guidance', () => {
+  const rooms = [
+    { id: 'kitchen', type: 'kitchen', min_x: 0, max_x: 8, min_y: 1, max_y: 4, min_z: 0, max_z: 7, zone: 'service' },
+    { id: 'bedroom', type: 'bedroom', min_x: 10, max_x: 17, min_y: 1, max_y: 4, min_z: 0, max_z: 7, zone: 'private' },
+    { id: 'living', type: 'living', min_x: 0, max_x: 11, min_y: 1, max_y: 4, min_z: 9, max_z: 17, zone: 'public' }
+  ];
+  const templateKnowledge = {
+    active: true,
+    recommendations: {
+      detail_density: 'high',
+      template_interior_pattern_strength: 'high',
+      room_pattern_clauses: ['template-work-wall', 'template-sleep-niche', 'template-conversation-cluster'],
+      room_pattern_guidance: [
+        {
+          source_title: 'Tavern',
+          room_type: 'kitchen',
+          pattern_type: 'kitchen_work_wall',
+          confidence: 90,
+          anchor: { wall: 'north', zone: 'wall' },
+          clauses: ['template-work-wall', 'kitchen-work-wall', 'kitchen-task-light']
+        },
+        {
+          source_title: 'A Small Modern House',
+          room_type: 'bedroom',
+          pattern_type: 'sleep_niche',
+          confidence: 86,
+          anchor: { wall: 'south', zone: 'corner' },
+          clauses: ['template-sleep-niche', 'bedroom-bedside-pair', 'bedroom-reading-light']
+        },
+        {
+          source_title: 'Lakehouse',
+          room_type: 'living',
+          pattern_type: 'social_cluster',
+          confidence: 84,
+          anchor: { zone: 'center_with_open_edges' },
+          clauses: ['template-conversation-cluster', 'template-clear-center']
+        }
+      ]
+    }
+  };
+  const architecture = {
+    style_family: 'modern',
+    materials: { lamp: 'minecraft:sea_lantern', accent: 'minecraft:smooth_quartz', furniture: 'minecraft:barrel' },
+    template_knowledge: templateKnowledge
+  };
+  const interior = new InteriorDetailAgent().run(rooms, architecture, { style_family: 'modern' }, {}, { materials: architecture.materials }, {});
+  const decorator = new ConstructionDecoratorAgent().run(rooms, architecture.materials, {
+    architecture,
+    buildSpec: { style_family: 'modern' },
+    interior
+  });
+  const kitchen = interior.room_details.find((detail) => detail.room_id === 'kitchen');
+  const bedroom = interior.room_details.find((detail) => detail.room_id === 'bedroom');
+
+  assert.equal(interior.engine_hints.use_template_room_patterns, true);
+  assert.ok(kitchen.semantic_clause_ids.includes('template-work-wall'));
+  assert.ok(bedroom.template_room_patterns.guidance.some((item) => item.pattern_type === 'sleep_niche'));
+  assert.ok(decorator.capability_profile.supports_template_room_patterns);
+  assert.ok(decorator.placements.some((item) => item.role === 'template-pattern-range'));
+  assert.ok(decorator.placements.some((item) => item.role === 'template-pattern-bedside'));
+  assert.ok(decorator.placements.some((item) => item.role === 'template-pattern-seat'));
+});
+
 test('DecoratorAgent activates kitchen, living room, bedroom, and study specialists', () => {
   const { decorator, interior } = buildDecorated('建一个现代两层大房子，宽31深17，大玻璃窗，开放厨房，三间卧室，书房，客厅');
   const expected = [

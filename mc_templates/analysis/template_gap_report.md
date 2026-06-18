@@ -1,13 +1,13 @@
 # MC Template Corpus Gap Report
 
-Generated: 2026-06-18T11:03:29.046Z
+Generated: 2026-06-18T13:42:36.708Z
 
 ## Corpus
 
 - Templates: 64
 - Categories: Arenas=6, Buildings=7, Castles=8, House=30, Temples=6, Tower=7
-- Styles: classical=10, general=7, modern=18, gothic=3, desert=2, medieval=14, fantasy=1, coastal=2, japanese=7
-- Typologies: arena=6, tower=10, public-building=8, temple=6, castle=8, house=26
+- Styles: classical=8, general=9, modern=17, gothic=3, desert=2, medieval=13, fantasy=1, coastal=4, japanese=7
+- Typologies: arena=6, public-building=6, temple=6, castle=8, house=30, tower=8
 - Average size: 105 x 66 x 103
 - Terrain-integrated templates: 58 (91%)
 - Garden/scene templates: 47 (73%)
@@ -29,7 +29,7 @@ Generated: 2026-06-18T11:03:29.046Z
 - Tennis Court: terrain range 10; 580 water blocks; landscape-composition, rail-and-fence-detail, terrain-integrated
 - The Colosseum - (mcbuild_org): terrain range 35; 24091 vegetation blocks; 36 water blocks; formal-axis, landscape-composition, terrain-integrated
 - Beach Hotel: terrain range 99; 2 vegetation blocks; 600 water blocks; furnished-interior, glass-emphasis, layered-interior
-- Futuristic Building: terrain range 92; 1562 vegetation blocks; 197 water blocks; furnished-interior, landscape-composition, large-glass-or-panel-grid
+- Futuristic Building: terrain range 92; 1562 vegetation blocks; 197 water blocks; landscape-composition, large-glass-or-panel-grid, layered-interior
 - Giant Church: terrain range 21; 89527 water blocks; furnished-interior, landscape-composition, layered-interior
 - Grand Hotel: terrain range 37; 3113 vegetation blocks; 3190 water blocks; furnished-interior, glass-emphasis, landscape-composition
 - Great Pyramid: terrain range 10; 23 vegetation blocks; 264 water blocks; furnished-interior, layered-interior, terrain-integrated
@@ -41,7 +41,7 @@ Generated: 2026-06-18T11:03:29.046Z
 - Skywars Lobby: terrain range 19; 1461 vegetation blocks; 124 water blocks; landscape-composition, terrain-integrated, water-edge
 - Tennis Court: terrain range 10; 580 water blocks; landscape-composition, rail-and-fence-detail, terrain-integrated
 - The Colosseum - (mcbuild_org): terrain range 35; 24091 vegetation blocks; 36 water blocks; formal-axis, landscape-composition, terrain-integrated
-- Futuristic Building: terrain range 92; 1562 vegetation blocks; 197 water blocks; furnished-interior, landscape-composition, large-glass-or-panel-grid
+- Futuristic Building: terrain range 92; 1562 vegetation blocks; 197 water blocks; landscape-composition, large-glass-or-panel-grid, layered-interior
 - Giant Church: terrain range 21; 89527 water blocks; furnished-interior, landscape-composition, layered-interior
 - Grand Hotel: terrain range 37; 3113 vegetation blocks; 3190 water blocks; furnished-interior, glass-emphasis, landscape-composition
 - Modern Apartment Building: terrain range 40; 776 vegetation blocks; 24 water blocks; furnished-interior, landscape-composition, large-glass-or-panel-grid
@@ -51,7 +51,7 @@ Generated: 2026-06-18T11:03:29.046Z
 
 - Small_Medium Castle: detail=high, tags=furnished-interior, layered-interior, micro-block-detailing, rail-and-fence-detail, stone-massing
 - Japanese temple - (mcbuild_org): detail=high, tags=furnished-interior, landscape-composition, layered-eaves, layered-interior, micro-block-detailing, rail-and-fence-detail, terrain-integrated, vertical-icon, water-edge
-- A Small Modern House: detail=high, tags=furnished-interior, glass-emphasis, landscape-composition, large-glass-or-panel-grid, layered-eaves, layered-interior, micro-block-detailing, terrain-integrated
+- A Small Modern House: detail=high, tags=furnished-interior, glass-emphasis, landscape-composition, large-glass-or-panel-grid, layered-interior, micro-block-detailing, terrain-integrated
 - Great Library: detail=high, tags=furnished-interior, glass-emphasis, layered-interior, micro-block-detailing, rail-and-fence-detail, vertical-icon
 - Wood Modern House: detail=high, tags=furnished-interior, landscape-composition, large-glass-or-panel-grid, layered-interior, micro-block-detailing, rail-and-fence-detail, terrain-integrated
 - Market with the villagers: detail=high, tags=furnished-interior, landscape-composition, layered-interior, micro-block-detailing, rail-and-fence-detail, terrain-integrated

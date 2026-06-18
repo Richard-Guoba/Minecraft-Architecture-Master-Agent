@@ -3,8 +3,10 @@ export class SiteLandscapeAgent {
     const family = String(architecture.style_family || buildSpec.style_family || 'general');
     const rules = architecture.site_rules || {};
     const design = architecture.design_directives?.site || {};
+    const plannedMood = design.mood || rules.template_site_mood || rules.landscape_mood || buildSpec.site?.landscape_mood || stylePreset.site || 'simple';
     const water = Boolean(design.water_feature || rules.water_feature || buildSpec.site?.water_feature || /泳池|水池|喷泉|溪流|海边|海景/.test(prompt));
-    const patio = Boolean(design.patio || rules.patio || buildSpec.site?.patio || /露台|庭院|平台|patio/i.test(prompt));
+    const requestedPatio = /露台|庭院|平台|patio/i.test(prompt);
+    const patio = Boolean((plannedMood !== 'compact-urban-strip' || requestedPatio) && (design.patio || rules.patio || buildSpec.site?.patio || requestedPatio));
     const dryGarden = Boolean(design.dry_garden || rules.dry_garden || buildSpec.site?.dry_garden);
     const enclosed = Boolean(rules.enclosed_courtyard || buildSpec.site?.enclosed_courtyard);
     const plantingBeds = Boolean(design.planting_beds || rules.planting_beds || /花坛|菜园|种植床|果园|orchard|vegetable|planting bed/i.test(prompt));
@@ -14,23 +16,34 @@ export class SiteLandscapeAgent {
     const accessible = Boolean(rules.accessible_route || /无障碍|坡道|轮椅|老人友好|accessible|wheelchair|ramp/i.test(prompt));
     const rolePalettes = materialPalette.role_palettes || {};
     const templateRecommendations = architecture.template_knowledge?.recommendations || {};
-    const templateFeatures = new Set([
+    const compositionStrategy = rules.template_composition_strategy ||
+      architecture.generation_hints?.template_composition_strategy ||
+      templateRecommendations.composition_strategy ||
+      buildSpec.design?.template_composition_strategy ||
+      {};
+    const compositionDirectives = compositionStrategy.directives || {};
+    const hasCompositionDirectives = Object.keys(compositionDirectives).length > 0;
+    const explicitTemplateSite = !hasCompositionDirectives || Boolean(compositionDirectives.prompt_signals?.explicit_composition_request);
+    const templateFeatures = new Set(explicitTemplateSite ? [
       ...normalizeStringArray(templateRecommendations.landscape_features),
       ...normalizeStringArray(rules.template_landscape_features),
       ...normalizeStringArray(buildSpec.site?.template_landscape_features)
-    ]);
-    const templateTerrainProfile = String(rules.template_terrain_profile || buildSpec.site?.template_terrain_profile || templateRecommendations.terrain_profile || 'flat-or-built-platform');
-    const templateTerrain = Boolean(rules.terrain_layers || templateFeatures.has('layered-terrain') || templateTerrainProfile !== 'flat-or-built-platform');
-    const templateGarden = Boolean(rules.garden_composition || templateFeatures.has('garden-composition'));
+    ] : []);
+    const templateTerrainProfile = explicitTemplateSite
+      ? String(rules.template_terrain_profile || buildSpec.site?.template_terrain_profile || templateRecommendations.terrain_profile || 'flat-or-built-platform')
+      : 'flat-or-built-platform';
+    const templateTerrain = Boolean(rules.terrain_layers || templateFeatures.has('layered-terrain') || templateTerrainProfile !== 'flat-or-built-platform' || compositionDirectives.use_layered_terrain_base);
+    const templateGarden = Boolean(rules.garden_composition || templateFeatures.has('garden-composition') || compositionDirectives.use_foreground_garden_sequence);
     const templateRockBase = Boolean(rules.rock_base || templateFeatures.has('rock-and-earth-base') || templateFeatures.has('layered-terrain'));
-    const templateWaterEdge = Boolean(templateFeatures.has('water-edge'));
+    const templateWaterEdge = Boolean(templateFeatures.has('water-edge') || compositionDirectives.use_waterfront_transition);
     const templateTrees = Boolean(templateFeatures.has('tree-and-shrub-clusters'));
+    const templateApproach = Boolean(compositionDirectives.use_foreground_garden_sequence || compositionDirectives.use_waterfront_transition || compositionDirectives.use_layered_terrain_base);
 
     return {
       source: 'local-site-landscape-agent',
       style_family: family,
       preset: stylePreset.id || 'none',
-      mood: design.mood || rules.landscape_mood || buildSpec.site?.landscape_mood || stylePreset.site || 'simple',
+      mood: design.mood || rules.template_site_mood || compositionDirectives.preferred_site_mood || rules.landscape_mood || buildSpec.site?.landscape_mood || stylePreset.site || 'simple',
       creative_signature: architecture.design_directives?.signature || buildSpec.creative_design_signature || 'none',
       entry_sequence: {
         side: buildSpec.door_side || architecture.facade_rules?.front_side || 'south',
@@ -39,7 +52,7 @@ export class SiteLandscapeAgent {
         grade: accessible ? 'gentle-ramped' : 'stepped-or-flat',
         wayfinding: mailbox ? 'address-marker-at-entry' : 'direct-path'
       },
-      zones: siteZones({ family, water: water || templateWaterEdge, patio, dryGarden, enclosed, plantingBeds: plantingBeds || templateGarden, outdoorSeating, pool, mailbox, accessible, prompt, templateTerrain, templateGarden, templateRockBase }),
+      zones: siteZones({ family, water: water || templateWaterEdge, patio, dryGarden, enclosed, plantingBeds: plantingBeds || templateGarden, outdoorSeating, pool, mailbox, accessible, prompt, templateTerrain, templateGarden, templateRockBase, templateApproach }),
       boundary: boundaryForFamily(family, enclosed),
       terrain_response: templateTerrain ? templateTerrainProfile : terrainResponseForFamily(family),
       template_guidance: {
@@ -47,7 +60,8 @@ export class SiteLandscapeAgent {
         terrain_profile: templateTerrainProfile,
         landscape_features: [...templateFeatures],
         detail_density: templateRecommendations.detail_density || 'unknown',
-        retrieved: architecture.template_knowledge?.retrieved?.map((item) => item.title) || []
+        retrieved: architecture.template_knowledge?.retrieved?.map((item) => item.title) || [],
+        composition_strategy: compositionStrategy
       },
       outdoor_program: {
         planting_beds: plantingBeds || templateGarden,
@@ -93,13 +107,15 @@ export class SiteLandscapeAgent {
         render_accessible_markers: accessible,
         render_layered_terrain: templateTerrain,
         render_garden_composition: templateGarden,
-        render_terrain_retaining: templateTerrain || templateRockBase
+        render_terrain_retaining: templateTerrain || templateRockBase,
+        render_template_approach_sequence: templateApproach,
+        render_template_view_frame: Boolean(compositionDirectives.use_waterfront_transition || compositionDirectives.use_large_view_glass)
       }
     };
   }
 }
 
-function siteZones({ family, water, patio, dryGarden, enclosed, plantingBeds, outdoorSeating, pool, mailbox, accessible, prompt, templateTerrain, templateGarden, templateRockBase }) {
+function siteZones({ family, water, patio, dryGarden, enclosed, plantingBeds, outdoorSeating, pool, mailbox, accessible, prompt, templateTerrain, templateGarden, templateRockBase, templateApproach }) {
   const zones = ['entry-path'];
   if (water) zones.push('water-edge');
   if (patio) zones.push('patio-transition');
@@ -117,6 +133,7 @@ function siteZones({ family, water, patio, dryGarden, enclosed, plantingBeds, ou
   if (templateTerrain) zones.push('layered-terrain');
   if (templateGarden) zones.push('garden-composition');
   if (templateRockBase) zones.push('rock-and-earth-base');
+  if (templateApproach) zones.push('template-approach-sequence');
   return [...new Set(zones)];
 }
 

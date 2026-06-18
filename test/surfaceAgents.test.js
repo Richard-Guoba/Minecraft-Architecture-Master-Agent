@@ -13,6 +13,7 @@ import { InteriorDetailAgent } from '../src/construction/agents/interiorDetailAg
 import { ConstraintRepairAgent } from '../src/construction/agents/constraintRepairAgent.js';
 import { ConstructionDecoratorAgent } from '../src/construction/agents/decoratorAgent.js';
 import { applyTemplateKnowledgeToArchitecture, applyTemplateKnowledgeToBuildSpec } from '../src/construction/agents/templateKnowledgeAgent.js';
+import { buildSeededCreativeDesign, applyCreativeDesign } from '../src/construction/agents/creativeDesignAgent.js';
 import { deriveBuildSpec } from '../src/construction/workflow.js';
 import { CSGBuilder } from '../src/construction/engine/csgBuilder.js';
 import { BSPPartitioner } from '../src/construction/engine/bspPartitioner.js';
@@ -141,6 +142,65 @@ test('template-guided sites render terrain layers and composed gardens', () => {
   assert.ok(counts.garden_axis > 0);
   assert.ok(counts.garden_room > 0);
   assert.ok(counts.garden_water > 0);
+});
+
+test('template composition strategy biases massing, facade, roof, and site modules', () => {
+  const prompt = '建一个现代湖边别墅，带前景花园、水边平台、大玻璃和屋顶露台';
+  let architecture = buildFallbackArchitecture(prompt);
+  const stylePreset = new StylePresetMemoryAgent().run(prompt, architecture);
+  const materialPalette = new MaterialPaletteAgent().run(prompt, architecture, stylePreset);
+  architecture = { ...architecture, materials: materialPalette.materials };
+  let buildSpec = deriveBuildSpec(prompt, architecture, 42);
+  const templateKnowledge = {
+    active: true,
+    retrieved: [{ title: 'Modern Lake Villa', file: 'House/Modern Lake Villa.schematic' }],
+    recommendations: {
+      terrain_profile: 'non-flat-integrated',
+      landscape_features: ['layered-terrain', 'rock-and-earth-base', 'garden-composition', 'water-edge'],
+      detail_density: 'high',
+      composition_strategy: {
+        source: 'template-composition-strategy-v1',
+        readiness: 'high',
+        directives: {
+          preferred_massing_variant: 'east-offset-glass-wing',
+          preferred_facade_rhythm: 'horizontal-ribbon-breaks',
+          preferred_roof_profile: 'thin-parapet-terrace',
+          preferred_site_mood: 'reflecting-water-edge',
+          use_large_view_glass: true,
+          use_facade_depth: true,
+          use_waterfront_transition: true,
+          use_foreground_garden_sequence: true,
+          use_layered_terrain_base: true,
+          use_wings: true
+        }
+      },
+      design_priorities: ['compose foreground garden rooms before the main facade']
+    },
+    gap_priorities: ['learn whole-building composition']
+  };
+  architecture = applyTemplateKnowledgeToArchitecture(architecture, templateKnowledge);
+  buildSpec = applyTemplateKnowledgeToBuildSpec(buildSpec, templateKnowledge);
+  let topology = buildFallbackTopology(prompt, architecture, buildSpec);
+  let creativeDesign = buildSeededCreativeDesign(prompt, architecture, buildSpec, topology);
+  ({ architecture, buildSpec, topology, creativeDesign } = applyCreativeDesign({ architecture, buildSpec, topology, creativeDesign, prompt }));
+
+  const structure = new StructureAgent().run(architecture, buildSpec, topology);
+  const facade = new FacadeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
+  const roof = new RoofAgent().run(prompt, architecture, buildSpec, structure, facade, materialPalette, stylePreset);
+  const site = new SiteLandscapeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
+  const shell = new CSGBuilder(buildSpec, architecture.materials).generateShell(architecture, { structure, facade, roof, site });
+  const counts = moduleCounts(shell.grid);
+
+  assert.ok(creativeDesign.signature.includes('template-composition'));
+  assert.ok(['east-offset-glass-wing', 'compact-patio-bar', 'dual-wing-balanced'].includes(creativeDesign.design_axes.massing_variant));
+  assert.ok(['horizontal-ribbon-breaks', 'corner-window-bands', 'asymmetric-panels', 'irregular-studio-grid'].includes(facade.window_system.rhythm));
+  assert.equal(facade.window_system.glazing_ratio, 'high');
+  assert.ok(['thin-parapet-terrace', 'stepped-flat-with-light-slot', 'service-flat-roof'].includes(roof.profile));
+  assert.equal(site.engine_hints.render_template_approach_sequence, true);
+  assert.equal(site.engine_hints.render_template_view_frame, true);
+  assert.ok(counts.template_approach_path > 0);
+  assert.ok(counts.template_entry_frame > 0);
+  assert.ok(counts.template_view_frame > 0);
 });
 
 test('opening, interior, and repair agents complete the post-layout contract', () => {
