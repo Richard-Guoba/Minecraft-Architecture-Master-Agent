@@ -218,7 +218,7 @@ export class CSGBuilder {
       fillBox(grid, box.min_x, 0, box.min_z, box.max_x, 0, box.max_z, this.materials.foundation || 'minecraft:stone_bricks', module);
       if (box.module === 'porch') continue;
       for (let level = 0; level < box.floors; level += 1) {
-        const y = level * this.spec.floor_height + 1;
+        const y = level * this.spec.floor_height;
         if (y > box.max_y) continue;
         fillBox(grid, box.min_x + thickness, y, box.min_z + thickness, box.max_x - thickness, y, box.max_z - thickness, this.materials.floor || 'minecraft:spruce_planks', 'floors');
       }
@@ -656,20 +656,148 @@ export class CSGBuilder {
   addFacadeDetails(grid, boxes, facadeRules, facadePlan = {}) {
     const mainBox = boxes.find((box) => box.id === 'main') || boxes[0];
     if (!mainBox) return;
+    if (facadePlan.engine_hints?.render_wall_relief) this.addWallReliefPanels(grid, mainBox, facadePlan);
     if (facadeRules.screen || this.spec.facade?.screens) this.addScreenFacade(grid, mainBox);
     if (facadeRules.arches || facadeRules.pointed_arches || this.spec.facade?.arches) this.addEntryArch(grid, mainBox, Boolean(facadeRules.pointed_arches));
     if (facadeRules.balcony || this.spec.facade?.balcony) this.addBalcony(grid, mainBox);
     if (facadeRules.bay_windows) this.addBayWindow(grid, mainBox);
     if (facadePlan.engine_hints?.render_window_trim) this.addWindowTrimBands(grid, mainBox, facadePlan);
+    if (facadePlan.engine_hints?.render_window_surrounds) this.addWindowSurrounds(grid, mainBox, facadePlan);
     if (facadePlan.engine_hints?.render_shutters) this.addShutters(grid, mainBox, facadePlan);
     if (facadePlan.engine_hints?.render_neon_trim) this.addNeonTrim(grid, mainBox, facadePlan);
     if (facadePlan.engine_hints?.render_balcony_rail) this.addBalconyRail(grid, mainBox, facadePlan);
     if (facadePlan.engine_hints?.render_protected_slits) this.addProtectedSlitFrames(grid, mainBox, facadePlan);
+    if (facadePlan.engine_hints?.render_entry_detail) this.addEntryDetail(grid, mainBox, facadePlan);
     if (facadePlan.engine_hints?.render_awnings) this.addAwnings(grid, mainBox, facadePlan);
     if (facadePlan.engine_hints?.render_flower_boxes) this.addFlowerBoxes(grid, mainBox, facadePlan);
     if (facadePlan.engine_hints?.render_service_vents) this.addServiceVents(grid, mainBox, facadePlan);
     if (facadePlan.engine_hints?.render_address_marker) this.addAddressMarker(grid, mainBox, facadePlan);
     if (facadePlan.engine_hints?.render_privacy_fins) this.addPrivacyFins(grid, mainBox, facadePlan);
+  }
+
+  addWallReliefPanels(grid, box) {
+    const family = String(this.architecture?.style_family || this.spec.style_family || 'general');
+    const reliefBlock = reliefBlockForStyle(family, this.materials);
+    const accentBlock = this.materials.secondary_wall || this.materials.accent || this.materials.trim || 'minecraft:quartz_bricks';
+    const spacing = ['modern', 'industrial', 'futuristic', 'cyberpunk'].includes(family) ? 3 : 4;
+
+    for (let floor = 0; floor < Math.max(1, box.floors); floor += 1) {
+      const floorY = floor * this.spec.floor_height;
+      const minY = floorY + 1;
+      const maxY = Math.min(box.max_y - 1, (floor + 1) * this.spec.floor_height - 1);
+      if (minY > maxY) continue;
+      const yFor = (value, offset = 0) => clampInt(minY + 1 + ((value + floor + offset) % Math.max(2, maxY - minY + 1)), minY, maxY, minY);
+
+      for (let x = box.min_x + 2; x <= box.max_x - 2; x += spacing) {
+        this.placeFacadeCell(grid, x, yFor(x), box.max_z + 1, reliefBlock, 'facade_relief');
+        this.placeFacadeCell(grid, x, yFor(x, 1), box.min_z - 1, reliefBlock, 'facade_relief');
+        if ((x + floor) % 2 === 0) {
+          this.placeFacadeCell(grid, x + 1, minY, box.max_z + 1, accentBlock, 'facade_relief');
+          this.placeFacadeCell(grid, x - 1, maxY, box.min_z - 1, accentBlock, 'facade_relief');
+        }
+      }
+
+      for (let z = box.min_z + 2; z <= box.max_z - 2; z += spacing) {
+        this.placeFacadeCell(grid, box.min_x - 1, yFor(z), z, reliefBlock, 'facade_relief');
+        this.placeFacadeCell(grid, box.max_x + 1, yFor(z, 1), z, reliefBlock, 'facade_relief');
+        if ((z + floor) % 2 === 1) {
+          this.placeFacadeCell(grid, box.min_x - 1, minY, z + 1, accentBlock, 'facade_relief');
+          this.placeFacadeCell(grid, box.max_x + 1, maxY, z - 1, accentBlock, 'facade_relief');
+        }
+      }
+    }
+  }
+
+  addWindowSurrounds(grid, box, facadePlan = {}) {
+    const block = facadePlan.window_system?.trim || this.materials.accent || this.materials.trim || 'minecraft:smooth_quartz';
+    const planned = facadePlan.window_system || {};
+    const wide = Boolean(this.architecture?.facade_rules?.large_glass || this.spec.facade?.large_glass);
+    const glazingRatio = String(this.architecture?.facade_rules?.glazing_ratio || this.spec.facade?.glazing_ratio || planned.glazing_ratio || 'medium');
+    const narrow = glazingRatio === 'low';
+    const windowWidth = clampInt(planned.width || (wide ? 4 : narrow ? 1 : 2), 1, 5, wide ? 4 : 2);
+    const windowHeight = clampInt(planned.height || (wide ? 3 : 2), 1, 4, wide ? 3 : 2);
+    const spacing = clampInt(planned.spacing || (wide ? 5 : narrow ? 8 : 6), 3, 10, wide ? 5 : 6);
+    const xs = windowPositions(box.min_x, box.max_x, windowWidth, spacing);
+    const zs = windowPositions(box.min_z, box.max_z, windowWidth, spacing);
+
+    for (let level = 0; level < Math.max(1, box.floors); level += 1) {
+      const baseY = level * this.spec.floor_height + 2;
+      const maxWindowY = Math.min(box.max_y - 1, (level + 1) * this.spec.floor_height - 1);
+      const actualWindowHeight = Math.min(windowHeight, maxWindowY - baseY + 1);
+      if (actualWindowHeight < 1) continue;
+      for (const x of xs) {
+        this.addWindowFrameZ(grid, x, x + windowWidth - 1, box.min_z - 1, baseY, actualWindowHeight, block);
+        this.addWindowFrameZ(grid, x, x + windowWidth - 1, box.max_z + 1, baseY, actualWindowHeight, block);
+      }
+      for (const z of zs) {
+        this.addWindowFrameX(grid, box.min_x - 1, z, z + windowWidth - 1, baseY, actualWindowHeight, block);
+        this.addWindowFrameX(grid, box.max_x + 1, z, z + windowWidth - 1, baseY, actualWindowHeight, block);
+      }
+    }
+  }
+
+  addWindowFrameZ(grid, x1, x2, z, baseY, height, block) {
+    for (let x = x1 - 1; x <= x2 + 1; x += 1) {
+      this.placeFacadeCell(grid, x, baseY - 1, z, block, 'facade_detail');
+      this.placeFacadeCell(grid, x, baseY + height, z, block, 'facade_detail');
+    }
+    for (let y = baseY; y <= baseY + height - 1; y += 1) {
+      this.placeFacadeCell(grid, x1 - 1, y, z, block, 'facade_detail');
+      this.placeFacadeCell(grid, x2 + 1, y, z, block, 'facade_detail');
+    }
+  }
+
+  addWindowFrameX(grid, x, z1, z2, baseY, height, block) {
+    for (let z = z1 - 1; z <= z2 + 1; z += 1) {
+      this.placeFacadeCell(grid, x, baseY - 1, z, block, 'facade_detail');
+      this.placeFacadeCell(grid, x, baseY + height, z, block, 'facade_detail');
+    }
+    for (let y = baseY; y <= baseY + height - 1; y += 1) {
+      this.placeFacadeCell(grid, x, y, z1 - 1, block, 'facade_detail');
+      this.placeFacadeCell(grid, x, y, z2 + 1, block, 'facade_detail');
+    }
+  }
+
+  addEntryDetail(grid, box) {
+    const side = String(this.spec.door_side || this.architecture?.facade_rules?.front_side || 'south');
+    const block = this.materials.trim || this.materials.accent || 'minecraft:smooth_quartz';
+    const threshold = this.materials.foundation || 'minecraft:stone_bricks';
+    const width = Math.max(2, Number(this.spec.door_width || 2) + 2);
+    const height = Math.max(3, Number(this.spec.door_height || 3));
+    const cx = Math.floor((box.min_x + box.max_x) / 2);
+    const cz = Math.floor((box.min_z + box.max_z) / 2);
+    if (['south', 'north'].includes(side)) {
+      const z = side === 'south' ? box.max_z + 1 : box.min_z - 1;
+      const x1 = cx - Math.floor(width / 2);
+      const x2 = cx + Math.floor(width / 2);
+      for (let y = 1; y <= height; y += 1) {
+        this.placeFacadeCell(grid, x1, y, z, block, 'entry_detail');
+        this.placeFacadeCell(grid, x2, y, z, block, 'entry_detail');
+      }
+      for (let x = x1; x <= x2; x += 1) {
+        this.placeFacadeCell(grid, x, height + 1, z, block, 'entry_detail');
+        this.placeFacadeCell(grid, x, 0, z, threshold, 'entry_detail');
+      }
+      return;
+    }
+    const x = side === 'east' ? box.max_x + 1 : box.min_x - 1;
+    const z1 = cz - Math.floor(width / 2);
+    const z2 = cz + Math.floor(width / 2);
+    for (let y = 1; y <= height; y += 1) {
+      this.placeFacadeCell(grid, x, y, z1, block, 'entry_detail');
+      this.placeFacadeCell(grid, x, y, z2, block, 'entry_detail');
+    }
+    for (let z = z1; z <= z2; z += 1) {
+      this.placeFacadeCell(grid, x, height + 1, z, block, 'entry_detail');
+      this.placeFacadeCell(grid, x, 0, z, threshold, 'entry_detail');
+    }
+  }
+
+  placeFacadeCell(grid, x, y, z, block, module) {
+    if (y < 0) return;
+    const existing = grid.get(keyFor(x, y, z));
+    if (existing && ['door', 'entry_path', 'stairs'].includes(existing.module)) return;
+    grid.set(keyFor(x, y, z), cell(block, module));
   }
 
   addScreenFacade(grid, box) {
@@ -987,9 +1115,12 @@ export class CSGBuilder {
     }
     if (siteRules.water_feature) {
       const z = this.spec.depth + Math.max(2, Math.floor(gardenDepth / 2));
-      fillBox(grid, center - 2, 0, z, center + 2, 0, z + 2, 'minecraft:water', 'water_feature');
-      fillBox(grid, center - 3, 0, z - 1, center + 3, 0, z - 1, this.materials.foundation || 'minecraft:stone_bricks', 'water_feature');
-      fillBox(grid, center - 3, 0, z + 3, center + 3, 0, z + 3, this.materials.foundation || 'minecraft:stone_bricks', 'water_feature');
+      this.addContainedWaterRect(grid, center - 2, z, center + 2, z + 2, {
+        edge: this.materials.foundation || 'minecraft:stone_bricks',
+        water: this.materials.water || 'minecraft:water',
+        edgeModule: 'water_feature',
+        waterModule: 'water_feature'
+      });
     }
   }
 
@@ -1110,7 +1241,12 @@ export class CSGBuilder {
 
   addWaterEdge(grid, center, zStart, sitePlan = {}) {
     const water = sitePlan.materials?.water || this.materials.water || 'minecraft:water';
-    fillBox(grid, center - 7, 0, zStart + 3, center + 7, 0, zStart + 5, water, 'water_feature');
+    this.addContainedWaterRect(grid, center - 7, zStart + 3, center + 7, zStart + 5, {
+      edge: sitePlan.materials?.pool_edge || this.materials.pool_edge || this.materials.foundation || 'minecraft:stone_bricks',
+      water,
+      edgeModule: 'water_feature',
+      waterModule: 'water_feature'
+    });
   }
 
   addSunkenCourtMarkers(grid, center, zStart, sitePlan = {}) {
@@ -1150,8 +1286,17 @@ export class CSGBuilder {
     const water = sitePlan.materials?.water || this.materials.water || 'minecraft:water';
     const z1 = zStart + 2;
     const z2 = zStart + 6;
-    fillBox(grid, center - 6, 0, z1, center + 6, 0, z2, edge, 'pool_edge');
-    fillBox(grid, center - 5, 0, z1 + 1, center + 5, 0, z2 - 1, water, 'pool_water');
+    this.addContainedWaterRect(grid, center - 5, z1 + 1, center + 5, z2 - 1, {
+      edge,
+      water,
+      edgeModule: 'pool_edge',
+      waterModule: 'pool_water'
+    });
+  }
+
+  addContainedWaterRect(grid, minX, minZ, maxX, maxZ, { edge, water, edgeModule, waterModule }) {
+    fillBox(grid, minX - 1, 0, minZ - 1, maxX + 1, 0, maxZ + 1, edge, edgeModule);
+    fillBox(grid, minX, 0, minZ, maxX, 0, maxZ, water, waterModule);
   }
 
   addMailbox(grid, center, zStart, sitePlan = {}) {
@@ -1174,8 +1319,8 @@ export class CSGBuilder {
           floor,
           min_x: box.min_x + thickness,
           max_x: box.max_x - thickness,
-          min_y: floor * this.spec.floor_height + 2,
-          max_y: Math.min((floor + 1) * this.spec.floor_height, box.max_y),
+          min_y: floor * this.spec.floor_height + 1,
+          max_y: Math.min((floor + 1) * this.spec.floor_height - 1, box.max_y),
           min_z: box.min_z + thickness,
           max_z: box.max_z - thickness,
           source: box.id,
@@ -1403,6 +1548,16 @@ function windowPositions(min, max, width, spacing) {
   for (let value = min + 3; value <= max - width - 2; value += spacing) positions.push(value);
   if (!positions.length && max - min + 1 >= width + 2) positions.push(Math.floor((min + max - width) / 2));
   return positions;
+}
+
+function reliefBlockForStyle(family, materials = {}) {
+  if (materials.wall_detail) return materials.wall_detail;
+  if (family === 'modern' || family === 'futuristic') return 'minecraft:smooth_quartz_slab[type=bottom]';
+  if (family === 'industrial') return 'minecraft:polished_deepslate_slab[type=bottom]';
+  if (family === 'cyberpunk') return materials.neon || materials.facade_light || 'minecraft:sea_lantern';
+  if (family === 'desert' || family === 'mediterranean') return 'minecraft:cut_sandstone';
+  if (family === 'gothic') return 'minecraft:chiseled_stone_bricks';
+  return materials.accent || materials.trim || 'minecraft:quartz_bricks';
 }
 
 function clampInt(value, min, max, fallback = min) {

@@ -13,6 +13,11 @@ export class FacadeAgent {
     const serviceVents = Boolean(rules.service_vents) || family === 'industrial' || /通风|管线|风管|vent|service/i.test(prompt);
     const addressMarker = Boolean(rules.address_marker) || /门牌|信箱|招牌|标识|address|sign|mailbox/i.test(prompt) || neon || buildSpec.scale === 'large';
     const privacyFins = Boolean(rules.privacy_fins || /百叶|格栅|隐私|privacy|fins/i.test(prompt)) || screen;
+    const wallRelief = Boolean(rules.wall_relief || buildSpec.facade?.wall_relief) ||
+      ['modern', 'industrial', 'futuristic', 'cyberpunk'].includes(family) ||
+      /凹凸|层次|墙面|立面|半砖|切割砖|wall relief|facade relief/i.test(prompt);
+    const windowSurrounds = rules.window_surrounds !== false;
+    const entryDetail = rules.entry_detail !== false;
 
     return {
       source: 'local-facade-agent',
@@ -35,9 +40,9 @@ export class FacadeAgent {
         height: Number(buildSpec.door_height || 2),
         material: architecture.materials?.door || 'minecraft:dark_oak_door'
       },
-      facade_elements: facadeElements({ family, screen, arches, balcony, neon, wide, protectedOpenings, awning, flowerBoxes, serviceVents, addressMarker, privacyFins, prompt }),
+      facade_elements: facadeElements({ family, screen, arches, balcony, neon, wide, protectedOpenings, awning, flowerBoxes, serviceVents, addressMarker, privacyFins, wallRelief, windowSurrounds, entryDetail, prompt }),
       color_bands: colorBandsForFamily(family, materialPalette),
-      facade_depth_layers: facadeDepthLayers({ awning, flowerBoxes, serviceVents, privacyFins, wide }),
+      facade_depth_layers: facadeDepthLayers({ awning, flowerBoxes, serviceVents, privacyFins, wide, wallRelief, windowSurrounds, entryDetail }),
       room_alignment: {
         public_rooms_to_glass: wide,
         private_rooms_to_screens: screen,
@@ -60,13 +65,16 @@ export class FacadeAgent {
         render_flower_boxes: flowerBoxes,
         render_service_vents: serviceVents,
         render_address_marker: addressMarker,
-        render_privacy_fins: privacyFins
+        render_privacy_fins: privacyFins,
+        render_wall_relief: wallRelief,
+        render_window_surrounds: windowSurrounds,
+        render_entry_detail: entryDetail
       }
     };
   }
 }
 
-function facadeElements({ family, screen, arches, balcony, neon, wide, protectedOpenings, awning, flowerBoxes, serviceVents, addressMarker, privacyFins, prompt }) {
+function facadeElements({ family, screen, arches, balcony, neon, wide, protectedOpenings, awning, flowerBoxes, serviceVents, addressMarker, privacyFins, wallRelief, windowSurrounds, entryDetail, prompt }) {
   const elements = ['window-trim', 'entry-frame'];
   if (screen) elements.push('screen-panels');
   if (arches) elements.push('archivolts');
@@ -79,12 +87,18 @@ function facadeElements({ family, screen, arches, balcony, neon, wide, protected
   if (serviceVents) elements.push('service-vents');
   if (addressMarker) elements.push('address-marker');
   if (privacyFins) elements.push('privacy-fins');
+  if (wallRelief) elements.push('wall-relief-panels');
+  if (windowSurrounds) elements.push('window-surrounds');
+  if (entryDetail) elements.push('entry-threshold-detail');
   if (/柱廊|柱|pilaster|column/i.test(prompt) || family === 'classical') elements.push('pilaster-rhythm');
   return [...new Set(elements)];
 }
 
-function facadeDepthLayers({ awning, flowerBoxes, serviceVents, privacyFins, wide }) {
+function facadeDepthLayers({ awning, flowerBoxes, serviceVents, privacyFins, wide, wallRelief, windowSurrounds, entryDetail }) {
   const layers = ['wall-plane', 'window-trim'];
+  if (wallRelief) layers.push('relief-panel-layer');
+  if (windowSurrounds) layers.push('window-surround-layer');
+  if (entryDetail) layers.push('entry-detail-layer');
   if (wide) layers.push('deep-glass-frame');
   if (privacyFins) layers.push('screen-or-fin-layer');
   if (awning) layers.push('shade-canopy-layer');

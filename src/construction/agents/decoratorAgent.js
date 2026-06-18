@@ -211,7 +211,7 @@ class RoomFurnishingBuilder {
 
   addLiving() {
     this.addSofa();
-    this.addTable(this.centerX, this.floorY, this.centerZ);
+    this.addTable(this.centerX, this.floorY, clampInt(this.room.max_z - 3, this.room.min_z, this.room.max_z, this.centerZ));
     this.add('shelf', 'minecraft:bookshelf', this.room.max_x - 1, this.floorY, this.room.min_z + 1, 'reading-wall', 'decor_furniture');
     if (['gothic', 'classical', 'rustic', 'nordic'].includes(this.styleFamily)) {
       this.add('hearth', 'minecraft:campfire[lit=false]', this.centerX, this.floorY, this.room.min_z + 1, 'feature-hearth', 'decor_detail');
@@ -276,7 +276,7 @@ class RoomFurnishingBuilder {
   }
 
   addTowerRoom() {
-    this.add('lookout', 'minecraft:bell', this.centerX, this.floorY, this.centerZ, 'lookout-center', 'decor_detail');
+    this.add('lookout', 'minecraft:bell', this.room.max_x - 1, this.floorY, this.centerZ, 'lookout-edge', 'decor_detail');
     this.add('map-table', 'minecraft:cartography_table', this.room.min_x + 1, this.floorY, this.room.max_z - 1, 'tower-work-corner', 'decor_furniture');
   }
 
@@ -301,7 +301,7 @@ class RoomFurnishingBuilder {
   addSunroom() {
     this.add('planter', 'minecraft:composter', this.room.min_x + 1, this.floorY, this.room.min_z + 1, 'planting-corner', 'decor_plant');
     this.add('plant', 'minecraft:potted_bamboo', this.room.max_x - 1, this.floorY, this.room.max_z - 1, 'sunny-corner', 'decor_plant');
-    this.add('greenery', 'minecraft:oak_leaves[persistent=true]', this.centerX, this.floorY, this.centerZ, 'green-center', 'decor_plant');
+    this.add('greenery', 'minecraft:oak_leaves[persistent=true]', this.room.min_x + 1, this.floorY, this.centerZ, 'green-edge', 'decor_plant');
   }
 
   addCirculation() {
@@ -343,7 +343,7 @@ class RoomFurnishingBuilder {
   }
 
   addTable(x, y, z) {
-    this.add('table-base', 'minecraft:oak_fence', x, y, z, 'table-center', 'decor_furniture');
+    this.add('table-base', tableBaseBlockForStyle(this.styleFamily), x, y, z, 'table-center', 'decor_furniture');
     this.add('table-top', 'minecraft:oak_pressure_plate', x, y + 1, z, 'table-center', 'decor_furniture');
   }
 
@@ -397,23 +397,33 @@ class RoomFurnishingBuilder {
 
 function placeBlock(grid, item, room) {
   if (!grid) return true;
-  if (writePlacement(grid, item, item.at)) return true;
+  const preferred = preferredDecorPoint(grid, room, item);
+  if (preferred && writePlacement(grid, item, preferred, room)) {
+    item.at = preferred;
+    return true;
+  }
+  if (writePlacement(grid, item, item.at, room)) return true;
   const fallback = findDecorFallbackPoint(grid, room, item);
   if (!fallback) return false;
   item.at = fallback;
-  return writePlacement(grid, item, item.at);
+  return writePlacement(grid, item, item.at, room);
 }
 
-function writePlacement(grid, item, point) {
+function writePlacement(grid, item, point, room) {
   if (!point) return false;
+  if (!canPlaceDecorAt(grid, item, room, point)) return false;
   const key = keyFor(point.x, point.y, point.z);
-  const existing = grid.get(key);
-  if (existing && !canOverwrite(existing.module)) return false;
   grid.set(key, { block: item.block, module: item.module });
   return true;
 }
 
-function findDecorFallbackPoint(grid, room, item) {
+function preferredDecorPoint(grid, room, item) {
+  if (!shouldPreferWallPlacement(item, room)) return undefined;
+  if (isWallAdjacentPoint(room, item.at)) return undefined;
+  return findDecorFallbackPoint(grid, room, item, { preferWall: true });
+}
+
+function findDecorFallbackPoint(grid, room, item, options = {}) {
   if (!room || !item?.at) return undefined;
   const yCandidates = fallbackYLevels(room, item);
   const xCandidates = interiorCoordinates(room.min_x, room.max_x);
@@ -428,15 +438,20 @@ function findDecorFallbackPoint(grid, room, item) {
     }
   }
 
-  candidates.sort((a, b) => a.distance - b.distance || a.y - b.y || a.x - b.x || a.z - b.z);
+  candidates.sort((a, b) => decorCandidateScore(a, room, item, options) - decorCandidateScore(b, room, item, options));
   for (const candidate of candidates) {
     const point = { x: candidate.x, y: candidate.y, z: candidate.z };
-    const existing = grid.get(keyFor(point.x, point.y, point.z));
-    if (existing && !canOverwrite(existing.module)) continue;
-    if (existing && String(existing.module || '').startsWith('decor_')) continue;
+    if (!canPlaceDecorAt(grid, item, room, point)) continue;
     return point;
   }
   return undefined;
+}
+
+function canPlaceDecorAt(grid, item, room, point) {
+  const existing = grid.get(keyFor(point.x, point.y, point.z));
+  if (existing && !canOverwrite(existing.module)) return false;
+  if (existing && String(existing.module || '').startsWith('decor_')) return false;
+  return hasSafeSupport(grid, item, room, point);
 }
 
 function fallbackYLevels(room, item) {
@@ -448,10 +463,65 @@ function fallbackYLevels(room, item) {
 }
 
 function interiorCoordinates(min, max) {
-  if (max - min + 1 <= 3) {
-    return range(min, max);
+  return range(min, max);
+}
+
+function decorCandidateScore(candidate, room, item, options = {}) {
+  const edge = edgeDistance(room, candidate);
+  const wallBias = options.preferWall || shouldPreferWallPlacement(item, room) ? edge * 100 : edge;
+  return wallBias + candidate.distance * 3 + candidate.y;
+}
+
+function edgeDistance(room, point) {
+  return Math.min(
+    Math.abs(point.x - room.min_x),
+    Math.abs(point.x - room.max_x),
+    Math.abs(point.z - room.min_z),
+    Math.abs(point.z - room.max_z)
+  );
+}
+
+function isWallAdjacentPoint(room, point) {
+  if (!room || !point) return false;
+  return edgeDistance(room, point) <= 1;
+}
+
+function shouldPreferWallPlacement(item, room) {
+  if (!room || !item?.at) return false;
+  if (item.at.y !== room.min_y) return false;
+  if (['corridor', 'stairs'].includes(room.type)) return false;
+  if (item.module === 'decor_light' || item.module === 'decor_floor') return false;
+  if (/rug|runner|mat|pad|tile|carpet/i.test(`${item.role || ''} ${item.placement || ''}`)) return false;
+  if (/table-base|table-top|tea-heart-table|tea-candle|low-table|low-tray/i.test(item.role || '')) return false;
+  return ['decor_furniture', 'decor_storage', 'decor_utility', 'decor_detail', 'decor_plant'].includes(item.module);
+}
+
+function hasSafeSupport(grid, item, room, point) {
+  if (!room) return true;
+  if (item.module === 'decor_light' && (item.placement?.includes('ceiling') || point.y >= room.max_y - 1)) return true;
+  const below = grid.get(keyFor(point.x, point.y - 1, point.z));
+  if (point.y <= room.min_y) return !below || canSupportDecoration(below.block, item.block);
+  if (!below) return false;
+  return canSupportDecoration(below.block, item.block);
+}
+
+function canSupportDecoration(supportBlock = '', decorBlock = '') {
+  const support = blockBase(supportBlock);
+  const decor = blockBase(decorBlock);
+  if (!support || support === 'minecraft:air' || support === 'minecraft:water') return false;
+  if (support.includes('_fence') || support.endsWith(':chain')) {
+    return /lantern|bell|candle/.test(decor);
   }
-  return range(min + 1, max - 1);
+  if (isNonFullSupport(support)) return false;
+  return true;
+}
+
+function isNonFullSupport(block) {
+  return /_slab$|_stairs$|_carpet$|_pressure_plate$|_trapdoor$|_button$|_pane$|_bars$|lantern$|candle$|flower_pot$|potted_|chain$/.test(block);
+}
+
+function blockBase(block) {
+  return String(block || '').split('[')[0];
 }
 
 function range(min, max) {
@@ -480,6 +550,7 @@ function canOverwrite(module) {
     'columns',
     'arches',
     'windows',
+    'entry_path',
     'structural_frame',
     'bracing',
     'retaining_wall',
@@ -517,6 +588,13 @@ function seatingBlockForStyle(styleFamily) {
   if (styleFamily === 'japanese') return 'minecraft:bamboo_slab[type=bottom]';
   if (styleFamily === 'gothic') return 'minecraft:stone_brick_stairs[facing=north,half=bottom]';
   return 'minecraft:spruce_stairs[facing=north,half=bottom]';
+}
+
+function tableBaseBlockForStyle(styleFamily) {
+  if (styleFamily === 'modern' || styleFamily === 'classical') return 'minecraft:smooth_quartz';
+  if (styleFamily === 'gothic') return 'minecraft:chiseled_stone_bricks';
+  if (styleFamily === 'japanese') return 'minecraft:bamboo_planks';
+  return 'minecraft:oak_planks';
 }
 
 function bedBlockForStyle(styleFamily) {

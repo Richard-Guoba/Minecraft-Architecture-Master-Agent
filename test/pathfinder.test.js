@@ -73,7 +73,7 @@ function assertStairsMeetUpperFloors(grid, spec, paths) {
     const opening = paths.floorOpenings.find((item) => item.floor === floor + 1);
     assert.ok(topStep, `missing top stair for floor ${floor}`);
     assert.ok(opening, `missing floor opening for floor ${floor + 1}`);
-    assert.equal(topStep.y, (floor + 1) * spec.floor_height + 1);
+    assert.equal(topStep.y, (floor + 1) * spec.floor_height);
 
     const landing = landingAfter(topStep);
     const landingCell = grid.get(keyFor(landing.x, topStep.y, landing.z));

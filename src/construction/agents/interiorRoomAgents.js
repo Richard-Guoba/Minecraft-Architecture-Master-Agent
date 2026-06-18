@@ -714,7 +714,7 @@ function placeKitchen(builder, definition) {
   add(builder, definition, 'cutting-station', 'minecraft:stonecutter', east, y, north + 1, 'prep-corner', 'decor_utility');
   add(builder, definition, 'upper-cabinet', 'minecraft:barrel', west + 1, y1, north, 'upper-storage', 'decor_storage');
   if (!compact) add(builder, definition, 'pantry-chest', 'minecraft:chest', west + 2, y1, north, 'upper-storage', 'decor_storage');
-  add(builder, definition, 'water-basin', 'minecraft:water', east, y1, north, 'sink-water', 'decor_utility');
+  add(builder, definition, 'water-basin', 'minecraft:cauldron', east, y, north, 'sink-water', 'decor_utility');
   if (!compact) add(builder, definition, 'service-tile', 'minecraft:polished_andesite', east - 1, y, north, 'service-counter', 'decor_furniture');
   if (!compact) add(builder, definition, 'compost-bin', 'minecraft:composter', west, y, south, 'waste-corner', 'decor_utility');
   if (!compact) add(builder, definition, 'dry-storage', 'minecraft:hay_block', west + 1, y, south, 'pantry-floor', 'decor_storage');
@@ -740,7 +740,7 @@ function placeLivingRoom(builder, definition) {
   addRug(builder, definition, 'living-rug', builder.styleFamily === 'modern' ? 'minecraft:cyan_carpet' : 'minecraft:red_carpet', cx, cz, compact ? 1 : 2, compact ? 0 : 1);
   add(builder, definition, 'sectional-seat', seatBlock, compact ? cx : cx - 2, y, south, 'sofa-run', 'decor_furniture');
   if (!compact) add(builder, definition, 'sectional-seat', seatBlock, cx + 2, y, south, 'sofa-run', 'decor_furniture');
-  add(builder, definition, 'coffee-table-base', 'minecraft:oak_fence', cx, y, cz + 1, 'coffee-table', 'decor_furniture');
+  add(builder, definition, 'coffee-table-base', 'minecraft:oak_planks', cx, y, cz + 1, 'coffee-table', 'decor_furniture');
   add(builder, definition, 'coffee-table-top', 'minecraft:oak_pressure_plate', cx, y1, cz + 1, 'coffee-table', 'decor_furniture');
   add(builder, definition, 'media-wall', 'minecraft:black_concrete', cx, y, north, 'feature-wall', 'decor_detail');
   if (!compact) add(builder, definition, 'media-light', 'minecraft:sea_lantern', cx + 1, y, north, 'feature-wall', 'decor_light');
@@ -822,7 +822,7 @@ function placeStudy(builder, definition) {
 
 function placeBathroom(builder, definition) {
   const { y, y1, ceiling, north, south, west, east, cx, cz } = anchors(builder);
-  add(builder, definition, 'filled-basin', 'minecraft:water', west, y1, north, 'wet-fixture', 'decor_utility');
+  add(builder, definition, 'filled-basin', 'minecraft:cauldron', west, y, north, 'wet-fixture', 'decor_utility');
   add(builder, definition, 'vanity-counter', 'minecraft:smooth_quartz_slab[type=bottom]', west + 1, y, north, 'wet-counter', 'decor_furniture');
   add(builder, definition, 'mirror-light', 'minecraft:sea_lantern', west + 1, y1, north, 'mirror-light', 'decor_light');
   add(builder, definition, 'shower-screen', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', east, y1, north, 'screen-detail', 'decor_detail');
@@ -839,13 +839,13 @@ function placeTatamiSpecialist(builder, definition) {
   add(builder, definition, 'bamboo-screen', 'minecraft:bamboo_fence', east, y, cz, 'screen-line', 'decor_detail');
   add(builder, definition, 'floor-lantern', 'minecraft:lantern', west, y, south, 'quiet-light', 'decor_light');
   add(builder, definition, 'potted-bamboo', 'minecraft:potted_bamboo', east, y, south, 'green-corner', 'decor_plant');
-  add(builder, definition, 'low-tray', 'minecraft:oak_pressure_plate', cx, y1, cz, 'low-table-detail', 'decor_detail');
+  add(builder, definition, 'low-tray', 'minecraft:oak_pressure_plate', cx, y, cz, 'low-table-detail', 'decor_detail');
 }
 
 function placeTeaRoomSpecialist(builder, definition) {
   const { y, y1, ceiling, north, south, west, east, cx, cz } = anchors(builder);
   add(builder, definition, 'tea-heart-table', 'minecraft:bamboo_slab[type=bottom]', cx, y, cz, 'tea-heart', 'decor_furniture');
-  add(builder, definition, 'tea-candle', 'minecraft:candle', cx, y1, cz, 'tea-heart', 'decor_light');
+  add(builder, definition, 'tea-candle', 'minecraft:candle', cx + 1, y, cz, 'tea-heart', 'decor_light');
   add(builder, definition, 'tea-storage', 'minecraft:barrel', west, y, north, 'tea-storage', 'decor_storage');
   add(builder, definition, 'bamboo-view', 'minecraft:potted_bamboo', east, y, south, 'garden-view', 'decor_plant');
   add(builder, definition, 'tea-mat-edge', 'minecraft:green_carpet', cx + 1, y, cz, 'tea-mat', 'decor_floor');
@@ -899,7 +899,7 @@ function placeSunroomSpecialist(builder, definition) {
   add(builder, definition, 'leaf-cluster', 'minecraft:oak_leaves[persistent=true]', cx, y1, cz, 'leaf-cluster', 'decor_plant');
   add(builder, definition, 'azalea-pot', 'minecraft:potted_azalea_bush', east, y, south, 'sunny-corner', 'decor_plant');
   if (!compact) {
-    add(builder, definition, 'water-tray', 'minecraft:water', west + 1, y1, north, 'watering-tray', 'decor_utility');
+    add(builder, definition, 'water-tray', 'minecraft:cauldron', west + 1, y, north, 'watering-tray', 'decor_utility');
     add(builder, definition, 'grow-light', 'minecraft:sea_lantern', cx, ceiling, south, 'grow-light', 'decor_light');
   }
 }
@@ -1061,7 +1061,7 @@ function addRug(builder, definition, placement, block, centerX, centerZ, radiusX
 }
 
 function addTableSet(builder, definition, x, y, z, placement) {
-  add(builder, definition, 'table-base', 'minecraft:oak_fence', x, y, z, placement, 'decor_furniture');
+  add(builder, definition, 'table-base', 'minecraft:oak_planks', x, y, z, placement, 'decor_furniture');
   add(builder, definition, 'table-top', 'minecraft:oak_pressure_plate', x, y + 1, z, placement, 'decor_furniture');
 }
 

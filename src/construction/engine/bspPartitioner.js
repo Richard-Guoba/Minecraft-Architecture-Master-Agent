@@ -449,8 +449,8 @@ function fallbackMainRect(mainBox, spec, floor) {
     floor,
     min_x: mainBox.min_x + thickness,
     max_x: mainBox.max_x - thickness,
-    min_y: floor * spec.floor_height + 2,
-    max_y: Math.min((floor + 1) * spec.floor_height, mainBox.max_y) - 1,
+    min_y: floor * spec.floor_height + 1,
+    max_y: Math.min((floor + 1) * spec.floor_height - 1, mainBox.max_y),
     min_z: mainBox.min_z + thickness,
     max_z: mainBox.max_z - thickness,
     source: 'main'

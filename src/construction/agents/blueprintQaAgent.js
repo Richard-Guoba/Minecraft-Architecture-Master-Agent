@@ -314,6 +314,9 @@ function countAdvancedModules(modules = {}) {
   return [
     'awning',
     'flower_box',
+    'facade_relief',
+    'facade_detail',
+    'entry_detail',
     'service_vent',
     'address_marker',
     'privacy_fin',
@@ -588,7 +591,7 @@ function validateStairGeometry(stairs, rooms, floorHeight) {
     if (!pointInBox2d(room, Number(step.x), Number(step.z))) {
       issues.push(`${step.sourceRoom}:F${floor} 第 ${step.step} 级越出楼梯间`);
     }
-    const expectedY = floor * floorHeight + 2 + Number(step.step || 0);
+    const expectedY = floor * floorHeight + 1 + Number(step.step || 0);
     if (Number(step.y) !== expectedY) issues.push(`${step.sourceRoom}:F${floor} 第 ${step.step} 级高度应为 ${expectedY}`);
   }
   return issues;
@@ -603,7 +606,7 @@ function validateFloorOpeningGeometry(openings, stairs, rooms, floorHeight, floo
       issues.push('楼板开洞缺少楼层');
       continue;
     }
-    const expectedY = floor * floorHeight + 1;
+    const expectedY = floor * floorHeight;
     if (Number(opening.y) !== expectedY) issues.push(`F${floor} 楼板开洞高度应为 ${expectedY}`);
     const lowerRoom = roomByFloor.get(`${opening.sourceRoom}:F${floor - 1}`);
     if (lowerRoom && !rectInsideRoom2d(opening, lowerRoom)) {

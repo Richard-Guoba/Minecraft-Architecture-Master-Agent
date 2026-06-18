@@ -417,6 +417,9 @@ function contextualSurfaceSiteScore(ctx) {
   const roofHints = ctx.blueprint.roof?.engine_hints || {};
   const siteHints = ctx.blueprint.site?.engine_hints || {};
 
+  if (facadeHints.render_wall_relief) expected.add('facade_relief');
+  if (facadeHints.render_window_surrounds) expected.add('facade_detail');
+  if (facadeHints.render_entry_detail) expected.add('entry_detail');
   if (facadeHints.render_awnings) expected.add('awning');
   if (facadeHints.render_flower_boxes) expected.add('flower_box');
   if (facadeHints.render_service_vents) expected.add('service_vent');
@@ -499,21 +502,93 @@ function modulePresenceScore(ctx, modules, targetCount) {
   };
 }
 
+function massingProfile(ctx) {
+  if (ctx._massingProfile) return ctx._massingProfile;
+  const boxes = array(ctx.blueprint.shell?.volumeBoxes)
+    .map(normalizeVolume)
+    .filter((box) => validBox(box) && box.module !== 'porch' && box.module !== 'foundation');
+  const modules = ctx.blueprint.modules || {};
+  const facadeDepthModules = sum(['facade_relief', 'facade_detail', 'entry_detail', 'awning', 'flower_box', 'privacy_fin', 'balcony', 'screens', 'buttress'].map((name) => number(modules[name])));
+  const attachedVolumes = boxes.filter((box) => box.id && box.id !== 'main').length;
+  const moduleVariety = uniqueCount(boxes.map((box) => box.module));
+  const footprintCells = new Set();
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+
+  for (const box of boxes) {
+    minX = Math.min(minX, box.min_x);
+    maxX = Math.max(maxX, box.max_x);
+    minZ = Math.min(minZ, box.min_z);
+    maxZ = Math.max(maxZ, box.max_z);
+    for (let x = box.min_x; x <= box.max_x; x += 1) {
+      for (let z = box.min_z; z <= box.max_z; z += 1) footprintCells.add(`${x},${z}`);
+    }
+  }
+
+  const boundsArea = Number.isFinite(minX) ? Math.max(1, (maxX - minX + 1) * (maxZ - minZ + 1)) : 1;
+  const footprintVoidRatio = roundTo(clamp01((boundsArea - footprintCells.size) / boundsArea), 2);
+  const score = Math.round(clamp01(
+    attachedVolumes * 0.16 +
+    moduleVariety * 0.08 +
+    footprintVoidRatio * 1.4 +
+    Math.min(facadeDepthModules, 80) / 160
+  ) * 100);
+
+  ctx._massingProfile = {
+    volumeCount: boxes.length,
+    attachedVolumes,
+    moduleVariety,
+    footprintVoidRatio,
+    facadeDepthModules,
+    score,
+    notMatchbox: score >= 35,
+    matchboxRisk: score < 35 ? 'high' : score < 55 ? 'medium' : 'low'
+  };
+  return ctx._massingProfile;
+}
+
+function waterContainmentStats(ctx, grid) {
+  if (ctx._waterContainmentStats) return ctx._waterContainmentStats;
+  const waterCells = [...grid.entries()]
+    .filter(([, block]) => blockBase(block) === 'minecraft:water')
+    .map(([key]) => {
+      const [x, y, z] = key.split(',').map(Number);
+      return { x, y, z };
+    });
+  let leakCount = 0;
+  for (const cell of waterCells) {
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const neighbor = grid.get(pointKey(cell.x + dx, cell.y, cell.z + dz));
+      if (!neighbor) leakCount += 1;
+    }
+  }
+  ctx._waterContainmentStats = {
+    waterCellCount: waterCells.length,
+    leakCount,
+    contained: waterCells.length === 0 || leakCount === 0
+  };
+  return ctx._waterContainmentStats;
+}
+
 function creativityScore(ctx) {
   const modules = ctx.blueprint.modules || {};
-  const advancedModules = ['gallery', 'tower', 'sunroom', 'greenhouse', 'roof_garden', 'roof_sign', 'pool_water', 'solar_panel', 'rain_chain', 'awning', 'privacy_fin', 'tree_trunk', 'retaining_wall', 'buttress', 'outdoor_living'];
+  const massing = massingProfile(ctx);
+  const advancedModules = ['gallery', 'tower', 'sunroom', 'greenhouse', 'roof_garden', 'roof_sign', 'pool_water', 'solar_panel', 'rain_chain', 'awning', 'privacy_fin', 'facade_relief', 'facade_detail', 'entry_detail', 'tree_trunk', 'retaining_wall', 'buttress', 'outdoor_living'];
   const presentAdvanced = advancedModules.filter((name) => number(modules[name]) > 0);
   const checks = [
     array(ctx.architecture.volumes).length >= 2,
     array(ctx.blueprint.stylePreset?.signatures).length >= 3,
     presentAdvanced.length >= 3,
+    massing.notMatchbox,
     number(ctx.geometry.exporter?.moduleTypeCount || Object.keys(modules).length) >= 24,
     number(ctx.blueprint.decorator?.capability_profile?.active_specialists) >= 4
   ];
   const passed = checks.filter(Boolean).length;
   return {
     ratio: ratio01(passed, checks.length),
-    evidence: `${passed}/${checks.length}; advanced=${presentAdvanced.slice(0, 8).join(', ') || 'none'}`
+    evidence: `${passed}/${checks.length}; massing=${massing.score}/100, advanced=${presentAdvanced.slice(0, 8).join(', ') || 'none'}`
   };
 }
 
@@ -543,6 +618,8 @@ function summarizeCategories(checks) {
 function metrics(ctx) {
   const habitation = habitationProfile(ctx);
   const decoration = decorationProfile(ctx);
+  const massing = massingProfile(ctx);
+  const water = waterContainmentStats(ctx, voxelGrid(ctx));
   return {
     style: ctx.architecture.style,
     styleFamily: ctx.architecture.style_family,
@@ -568,6 +645,13 @@ function metrics(ctx) {
     decorationCirculationShare: Math.round(decoration.circulationShare * 100),
     decorationAnchoredPlacements: Math.round(decoration.anchoredRatio * 100),
     decorationStyleAnchored: decoration.styleAnchored,
+    decorationEdgeAnchored: Math.round(decoration.edgeAnchoredRatio * 100),
+    decorationSupportedPlacements: Math.round(decoration.supportedRatio * 100),
+    massingVariationScore: massing.score,
+    matchboxRisk: massing.matchboxRisk,
+    facadeDepthModules: massing.facadeDepthModules,
+    waterContained: water.contained,
+    waterLeakCount: water.leakCount,
     failedEdges: ctx.geometry.pathfinder?.failedEdgeCount || 0,
     warnings: array(ctx.validation.warnings).length,
     reachableRooms: habitation.reachableRoomCount,
@@ -603,7 +687,20 @@ function metrics(ctx) {
       roomFit: decoration.roleFitSummary,
       circulation: decoration.circulationSummary,
       anchors: decoration.anchorSummary,
-      style: decoration.styleSummary
+      style: decoration.styleSummary,
+      edgeFit: decoration.edgeSummary,
+      support: decoration.supportSummary
+    },
+    massing: {
+      score: massing.score,
+      attachedVolumes: massing.attachedVolumes,
+      footprintVoidRatio: massing.footprintVoidRatio,
+      facadeDepthModules: massing.facadeDepthModules,
+      matchboxRisk: massing.matchboxRisk
+    },
+    water: {
+      contained: water.contained,
+      leaks: water.leakCount
     }
   };
 }
@@ -640,6 +737,9 @@ function decorationProfile(ctx) {
   const circulationPlacementCount = sum(circulationRooms.map((room) => (placementsByRoom.get(room.id) || []).length));
   const circulationDensities = circulationRooms.map((room) => roomDensity(room, placementsByRoom.get(room.id) || []));
   const anchoredCount = placements.filter((item) => placementAnchored(item, roomById)).length;
+  const edgeEligiblePlacements = placements.filter((item) => placementNeedsEdgeAnchor(item, roomById));
+  const edgeAnchoredCount = edgeEligiblePlacements.filter((item) => placementEdgeAnchored(item, roomById)).length;
+  const supportedCount = placements.filter((item) => placementSupported(ctx, item, roomById)).length;
   const roleFit = decorationRoleFit(rooms, placementsByRoom);
   const style = decorationStyleStats(ctx, habitableRooms, placementsByRoom);
   const requiredUniqueBlocks = Math.min(50, Math.max(20, habitableRooms.length * 4));
@@ -665,6 +765,8 @@ function decorationProfile(ctx) {
     circulationShare: ratio01(circulationPlacementCount, placements.length),
     circulationMaxDensity: roundTo(Math.max(0, ...circulationDensities), 2),
     anchoredRatio: ratio01(anchoredCount, placements.length),
+    edgeAnchoredRatio: ratio01(edgeAnchoredCount, edgeEligiblePlacements.length),
+    supportedRatio: ratio01(supportedCount, placements.length),
     styleAnchored: style.styleAnchored,
     specialistCoverageRatio: style.specialistCoverageRatio,
     coverageSummary: `${decoratedHabitableRooms.length}/${habitableRooms.length} habitable rooms`,
@@ -675,6 +777,8 @@ function decorationProfile(ctx) {
     roleFitSummary: `${roleFit.fit}/${roleFit.total} room functions matched${roleFit.missing.length ? `; weak=${roleFit.missing.slice(0, 4).join(', ')}` : ''}`,
     circulationSummary: `${circulationPlacementCount}/${placements.length} placements, maxDensity=${roundTo(Math.max(0, ...circulationDensities), 2)}`,
     anchorSummary: `${anchoredCount}/${placements.length} anchored`,
+    edgeSummary: `${edgeAnchoredCount}/${edgeEligiblePlacements.length} wall-adjacent`,
+    supportSummary: `${supportedCount}/${placements.length} supported`,
     styleSummary: `${style.styleFamily}: styleAgent=${style.expectedStyleHint || 'room-specialists'}, active=${style.hasExpectedStyleAgent}, coverage=${percentText(style.specialistCoverageRatio)}`
   };
   return ctx._decorationProfile;
@@ -1104,6 +1208,48 @@ function placementAnchored(item, roomById) {
     Number.isFinite(number(at.y, NaN)) &&
     Number.isFinite(number(at.z, NaN))
   );
+}
+
+function placementNeedsEdgeAnchor(item, roomById) {
+  const room = roomById.get(item.room_id);
+  if (!room || ['corridor', 'stairs'].includes(room.type)) return false;
+  if (text(item.module) === 'decor_floor') return false;
+  if (text(item.module) === 'decor_light' && /ceiling|light/i.test(text(item.placement))) return false;
+  if (/rug|runner|mat|pad|tile|carpet|table/i.test(`${item.role || ''} ${item.placement || ''}`)) return false;
+  return ['decor_furniture', 'decor_storage', 'decor_utility', 'decor_detail', 'decor_plant'].includes(text(item.module));
+}
+
+function placementEdgeAnchored(item, roomById) {
+  const room = roomById.get(item.room_id);
+  const at = item.at || {};
+  if (!room || !Number.isFinite(number(at.x, NaN)) || !Number.isFinite(number(at.z, NaN))) return false;
+  const edgeDistance = Math.min(
+    Math.abs(number(at.x) - number(room.min_x)),
+    Math.abs(number(at.x) - number(room.max_x)),
+    Math.abs(number(at.z) - number(room.min_z)),
+    Math.abs(number(at.z) - number(room.max_z))
+  );
+  return edgeDistance <= 1 || /wall|corner|edge|line|side|shelf|storage|bench|entry|window|alcove|cove/i.test(text(item.placement));
+}
+
+function placementSupported(ctx, item, roomById) {
+  const room = roomById.get(item.room_id);
+  const at = item.at || {};
+  if (!room || !Number.isFinite(number(at.x, NaN)) || !Number.isFinite(number(at.y, NaN)) || !Number.isFinite(number(at.z, NaN))) return false;
+  if (text(item.module) === 'decor_light' && (number(at.y) >= number(room.max_y) - 1 || /ceiling/i.test(text(item.placement)))) return true;
+  const grid = voxelGrid(ctx);
+  const support = grid.get(pointKey(number(at.x), number(at.y) - 1, number(at.z)));
+  if (!support) return false;
+  return blockSupportsDecor(support, item.block);
+}
+
+function blockSupportsDecor(supportBlock = '', decorBlock = '') {
+  const support = blockBase(supportBlock);
+  const decor = blockBase(decorBlock);
+  if (!support || support === 'minecraft:air' || support === 'minecraft:water') return false;
+  if (support.includes('_fence') || support.endsWith(':chain')) return /lantern|bell|candle/.test(decor);
+  if (/_slab$|_stairs$|_carpet$|_pressure_plate$|_trapdoor$|_button$|_pane$|_bars$|lantern$|candle$|flower_pot$|potted_|chain$/.test(support)) return false;
+  return true;
 }
 
 function decorationRoleFit(rooms, placementsByRoom) {

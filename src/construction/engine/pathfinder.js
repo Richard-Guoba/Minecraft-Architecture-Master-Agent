@@ -64,6 +64,13 @@ export class AStarPathfinder {
       }
       const outsideZ = boundaryZ + (side === 'south' ? 1 : -1);
       const approach = fillExteriorApproach(grid, this.materials, side, startX - 1, startX + width, outsideZ, approachLength);
+      clearMainDoorClearance(grid, {
+        side,
+        spanStart: startX - 1,
+        spanEnd: startX + width,
+        boundary: boundaryZ,
+        height
+      });
       return {
         side,
         x: startX,
@@ -93,6 +100,13 @@ export class AStarPathfinder {
     }
     const outsideX = boundaryX + (side === 'east' ? 1 : -1);
     const approach = fillExteriorApproach(grid, this.materials, side, startZ - 1, startZ + width, outsideX, approachLength);
+    clearMainDoorClearance(grid, {
+      side,
+      spanStart: startZ - 1,
+      spanEnd: startZ + width,
+      boundary: boundaryX,
+      height
+    });
     return {
       side,
       x: boundaryX,
@@ -168,7 +182,7 @@ export class AStarPathfinder {
     const floorBlock = this.materials.floor || 'minecraft:spruce_planks';
 
     for (let floor = 0; floor < this.spec.floors - 1; floor += 1) {
-      const openingY = (floor + 1) * this.spec.floor_height + 1;
+      const openingY = (floor + 1) * this.spec.floor_height;
       const opening = openingForAnchor(anchor, floor + 1, openingY, stairCoreRoom);
       floorOpenings.push(opening);
       fillBox(grid, opening.min_x, opening.y, opening.min_z, opening.max_x, opening.y, opening.max_z, 'minecraft:air', 'stairs');
@@ -295,7 +309,7 @@ function stairAnchor(room, mainBox, spec) {
 }
 
 function stairPoint(anchor, floor, step, floorHeight) {
-  const y = floor * floorHeight + 2 + step;
+  const y = floor * floorHeight + 1 + step;
   if (anchor.axis === 'x') return { x: anchor.start.x - step, y, z: anchor.start.z };
   return { x: anchor.start.x, y, z: anchor.start.z - step };
 }
@@ -488,6 +502,20 @@ function fillExteriorApproach(grid, materials, side, spanStart, spanEnd, outside
   }
   fillBox(grid, outsideCoordinate - steps + 1, 0, spanStart, outsideCoordinate, 0, spanEnd, pathBlock, 'entry_path');
   return { axis: 'x', from: { x: outsideCoordinate - steps + 1, z: spanStart }, to: { x: outsideCoordinate, z: spanEnd }, length: steps };
+}
+
+function clearMainDoorClearance(grid, { side, spanStart, spanEnd, boundary, height }) {
+  const sign = side === 'south' || side === 'east' ? 1 : -1;
+  const clearHeight = Math.max(2, height);
+  for (let y = 1; y <= clearHeight; y += 1) {
+    for (let offset = 1; offset <= 2; offset += 1) {
+      const outside = boundary + sign * offset;
+      for (let span = spanStart; span <= spanEnd; span += 1) {
+        if (['south', 'north'].includes(side)) grid.delete(keyFor(span, y, outside));
+        else grid.delete(keyFor(outside, y, span));
+      }
+    }
+  }
 }
 
 function exteriorApproachLength(spec = {}) {
