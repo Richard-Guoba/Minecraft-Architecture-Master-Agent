@@ -17,6 +17,10 @@ import { BlueprintOptimizerAgent } from './agents/blueprintOptimizerAgent.js';
 import { BlueprintQAAgent } from './agents/blueprintQaAgent.js';
 import { VisualizationAgent } from './agents/visualizationAgent.js';
 import { TemplateKnowledgeAgent, applyTemplateKnowledgeToArchitecture, applyTemplateKnowledgeToBuildSpec } from './agents/templateKnowledgeAgent.js';
+import { TemplateAestheticReviewAgent } from './agents/templateAestheticReviewAgent.js';
+import { TemplateLawCoverageAgent } from './agents/templateLawCoverageAgent.js';
+import { TemplateLawAutoRepairAgent } from './agents/templateLawAutoRepairAgent.js';
+import { TemplateAssimilationAuditAgent } from './agents/templateAssimilationAuditAgent.js';
 import { CSGBuilder, computeBounds } from './engine/csgBuilder.js';
 import { BSPPartitioner } from './engine/bspPartitioner.js';
 import { AStarPathfinder } from './engine/pathfinder.js';
@@ -86,7 +90,7 @@ export async function runConstructionWorkflow({
     opening,
     interior
   });
-  const repair = new ConstraintRepairAgent().run({
+  const preRepair = new ConstraintRepairAgent().run({
     grid: shell.grid,
     buildSpec,
     architecture,
@@ -100,6 +104,67 @@ export async function runConstructionWorkflow({
     layout,
     paths,
     decorator
+  });
+  const preBounds = computeBounds(shell.grid);
+  const preBlueprint = buildBlueprint({
+    prompt,
+    architecture,
+    topology,
+    creativeDesign,
+    stylePreset,
+    materialPalette,
+    templateKnowledge,
+    structure,
+    facade,
+    roof,
+    site,
+    opening,
+    interior,
+    repair: preRepair,
+    templateLawAutoRepair: undefined,
+    buildSpec,
+    shell,
+    layout,
+    paths,
+    decorator,
+    exporter: { source: 'pre-template-law-auto-repair' },
+    operations: [],
+    bounds: preBounds,
+    llmProvider,
+    llmUsage,
+    seedSource,
+    seed
+  });
+  const preTemplateLawCoverage = new TemplateLawCoverageAgent().run(preBlueprint);
+  const templateLawAutoRepair = new TemplateLawAutoRepairAgent().run({
+    grid: shell.grid,
+    blueprint: preBlueprint,
+    coverage: preTemplateLawCoverage,
+    buildSpec,
+    architecture,
+    topology,
+    site,
+    roof,
+    opening,
+    interior,
+    decorator,
+    layout
+  });
+  const repair = new ConstraintRepairAgent().run({
+    grid: shell.grid,
+    buildSpec,
+    architecture,
+    topology,
+    structure,
+    facade,
+    roof,
+    site,
+    opening,
+    interior,
+    layout,
+    paths,
+    decorator,
+    templateLawAutoRepair
   });
   const bounds = computeBounds(shell.grid);
   const exportPlan = new BlueprintOptimizerAgent().run(shell.grid, {
@@ -121,6 +186,7 @@ export async function runConstructionWorkflow({
     opening,
     interior,
     repair,
+    templateLawAutoRepair,
     buildSpec,
     shell,
     layout,
@@ -134,6 +200,12 @@ export async function runConstructionWorkflow({
     seedSource,
     seed
   });
+  blueprint.templateLawCoverage = new TemplateLawCoverageAgent().run(blueprint);
+  if (blueprint.templateLawAutoRepair) {
+    blueprint.templateLawAutoRepair.coverage_after = compactTemplateLawCoverage(blueprint.templateLawCoverage);
+  }
+  blueprint.templateAestheticReview = new TemplateAestheticReviewAgent().run(blueprint);
+  blueprint.templateAssimilationAudit = new TemplateAssimilationAuditAgent().run(blueprint);
   const validation = validateBlueprint(blueprint);
   if (!validation.ok) throw new Error(`Blueprint validation failed: ${validation.errors.join('; ')}`);
 
@@ -174,6 +246,10 @@ export async function runConstructionWorkflow({
     opening,
     interior,
     repair,
+    templateLawAutoRepair: blueprint.templateLawAutoRepair,
+    templateLawCoverage: blueprint.templateLawCoverage,
+    templateAestheticReview: blueprint.templateAestheticReview,
+    templateAssimilationAudit: blueprint.templateAssimilationAudit,
     geometry: blueprint.geometry,
     blueprint,
     validation,
@@ -354,7 +430,7 @@ function createSeedVariation(seed, context = {}) {
   };
 }
 
-function buildBlueprint({ prompt, architecture, topology, creativeDesign, stylePreset, materialPalette, templateKnowledge, structure, facade, roof, site, opening, interior, repair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
+function buildBlueprint({ prompt, architecture, topology, creativeDesign, stylePreset, materialPalette, templateKnowledge, structure, facade, roof, site, opening, interior, repair, templateLawAutoRepair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
   return {
     version: 4,
     workflow: 'construction_method_v1',
@@ -379,6 +455,7 @@ function buildBlueprint({ prompt, architecture, topology, creativeDesign, styleP
     opening,
     interior,
     repair,
+    templateLawAutoRepair,
     geometry: {
       engine: 'pure JavaScript CSG + BSP + A* voxel engine',
       csg: shell.csg,
@@ -472,6 +549,18 @@ function summarizeLlmStage(agent, output = {}) {
   };
   if (output?.llm_error) stage.error = String(output.llm_error);
   return stage;
+}
+
+function compactTemplateLawCoverage(coverage = {}) {
+  return {
+    active: Boolean(coverage.active),
+    percent: coverage.percent || 0,
+    grade: coverage.grade || 'not-applicable',
+    satisfied_count: coverage.satisfied_count || 0,
+    partial_count: coverage.partial_count || 0,
+    missing_count: coverage.missing_count || 0,
+    gap_ids: (coverage.gaps || []).map((gap) => gap.id)
+  };
 }
 
 export function formatLlmUsage(usage = {}) {
@@ -628,6 +717,44 @@ function renderReport({ prompt, blueprint, validation, mcVersion, autoBuild, dat
   const templateCompositionLine = templateComposition.readiness
     ? `- 模板构图策略：${templateComposition.readiness}，体块 ${templateCompositionDirectives.preferred_massing_variant || 'auto'}，立面 ${templateCompositionDirectives.preferred_facade_rhythm || 'auto'}，屋顶 ${templateCompositionDirectives.preferred_roof_profile || 'auto'}，场地 ${templateCompositionDirectives.preferred_site_mood || 'auto'}`
     : '- 模板构图策略：未启用';
+  const templateSpacePlan = topology.template_space_plan || {};
+  const templateSpaceLine = templateSpacePlan.active
+    ? `- 模板空间规划：${templateSpacePlan.readiness || 'unknown'}，视线侧 ${templateSpacePlan.view_side || 'auto'}，服务侧 ${templateSpacePlan.service_side || 'auto'}，安静侧 ${templateSpacePlan.quiet_side || 'auto'}，序列 ${(templateSpacePlan.entry_sequence?.thresholds || []).join(' > ') || 'auto'}`
+    : '- 模板空间规划：未启用';
+  const templateRoomExperience = blueprint.interior?.template_room_experience || blueprint.opening?.template_room_experience || {};
+  const templateRoomExperienceLine = templateRoomExperience.active
+    ? `- 模板房间体验：${templateRoomExperience.readiness || 'unknown'}，主窗侧 ${templateRoomExperience.view_side || 'auto'}，体验房间 ${(templateRoomExperience.room_experiences || []).length}，观景房间 ${(templateRoomExperience.opening_plan?.public_view_rooms || []).join('、') || '无'}`
+    : '- 模板房间体验：未启用';
+  const templateInteriorScenes = blueprint.interior?.template_interior_scenes || {};
+  const templateInteriorScenesLine = templateInteriorScenes.active
+    ? `- 模板内饰场景：${templateInteriorScenes.readiness || 'unknown'}，场景房间 ${templateInteriorScenes.room_scene_count || 0}，类型 ${(templateInteriorScenes.scene_types || []).join('、') || 'auto'}`
+    : '- 模板内饰场景：未启用';
+  const templateSiteScenes = blueprint.site?.template_site_scenes || {};
+  const templateSiteScenesLine = templateSiteScenes.active
+    ? `- 模板场地场景：${templateSiteScenes.readiness || 'unknown'}，场景 ${templateSiteScenes.scene_count || 0}，类型 ${(templateSiteScenes.scene_types || []).join('、') || 'auto'}`
+    : '- 模板场地场景：未启用';
+  const templateAestheticReview = blueprint.templateAestheticReview || {};
+  const templateAestheticLine = templateAestheticReview.active
+    ? `- 模板审美评分：${templateAestheticReview.score}/${templateAestheticReview.max_score}（${templateAestheticReview.grade}），短板 ${(templateAestheticReview.gaps || []).slice(0, 3).map((item) => item.label).join('、') || '无'}`
+    : '- 模板审美评分：未启用';
+  const templateReflectionLine = templateAestheticReview.active
+    ? `- 模板反省闭环：${(templateAestheticReview.next_iteration_directives || []).slice(0, 3).map((item) => item.id).join('、') || '保持当前质量'}`
+    : '- 模板反省闭环：未启用';
+  const templateLawCoverage = blueprint.templateLawCoverage || {};
+  const templateLawAutoRepair = blueprint.templateLawAutoRepair || {};
+  const templateLawAutoRepairLine = templateLawAutoRepair.active
+    ? `- 模板法则自动补强：执行 ${templateLawAutoRepair.applied_count || 0} 项，补方块 ${templateLawAutoRepair.grid_patch_count || 0}，补摆件 ${templateLawAutoRepair.placement_count || 0}，覆盖率 ${templateLawAutoRepair.coverage_before?.percent || 0}% -> ${templateLawAutoRepair.coverage_after?.percent || templateLawCoverage.percent || 0}%`
+    : `- 模板法则自动补强：${templateLawAutoRepair.reason || '未触发'}`;
+  const templateLawCoverageLine = templateLawCoverage.active
+    ? `- 模板法则覆盖率：${templateLawCoverage.percent}%（${templateLawCoverage.grade}），检查 ${templateLawCoverage.satisfied_count || 0}/${(templateLawCoverage.checks || []).length}，缺口 ${(templateLawCoverage.gaps || []).slice(0, 3).map((item) => item.id).join('、') || '无'}`
+    : '- 模板法则覆盖率：未启用';
+  const templateLawRepairLine = templateLawCoverage.active
+    ? `- 模板法则补强闭环：${(templateLawCoverage.repair_directives || []).slice(0, 3).map((item) => item.id).join('、') || '保持当前覆盖'}`
+    : '- 模板法则补强闭环：未启用';
+  const templateAssimilationAudit = blueprint.templateAssimilationAudit || {};
+  const templateAssimilationLine = templateAssimilationAudit.active
+    ? `- 模板吸收总审计：${templateAssimilationAudit.percent}%（${templateAssimilationAudit.grade}），距顶级闭环 ${templateAssimilationAudit.top_tier_distance ?? 100} 分，阶段 ${templateAssimilationAudit.stage_progress?.completed_count || 0}/${templateAssimilationAudit.stage_progress?.total_count || 0}，短板 ${(templateAssimilationAudit.gaps || []).slice(0, 3).map((item) => item.id).join('、') || '无'}`
+    : '- 模板吸收总审计：未启用';
   const usage = [
     '1. 如果刚复制或更新了数据包，先运行 /reload。这个命令只刷新数据包，不会建造。',
     '2. 站在目标位置运行 /function architect:run。它会自动 clear + build。'
@@ -650,6 +777,8 @@ ${prompt}
 - FacadeAgent / RoofAgent / SiteLandscapeAgent：生成外立面、屋顶和场地细节 JSON。
 - OpeningConnectivityAgent：生成入口、窗洞、内部阈值和竖向开口计划。
 - InteriorDetailAgent：生成房间级室内细节计划，房间功能专家和建筑风格专家各掌握 50+ 室内方块，并叠加缤纷软装层，DecoratorAgent 负责写入方块。
+- TemplateLawAutoRepairAgent：在导出前执行模板法则覆盖率预检，自动补强缺失的场地、屋顶和内饰法则落块。
+- TemplateAssimilationAuditAgent：汇总 7A-7F 的案例、法则、审美、补强和真实落块证据，输出距离顶级模板的剩余差距。
 - ConstraintRepairAgent：导出前做约束检查与修复建议。
 - GeometryEngine：本地纯 JavaScript CSG + BSP + A* 按设计决策生成合法坐标、门洞和楼梯。
 - Export：将网格转成 Minecraft 函数命令。
@@ -683,6 +812,16 @@ ${prompt}
 - 体块变体：${blueprint.creativeDesign?.design_axes?.massing_variant || 'unknown'}
 - 平面切分：${blueprint.creativeDesign?.topology?.split_strategy || topology.bsp_hints?.split_strategy || 'weighted'}
 ${templateCompositionLine}
+${templateSpaceLine}
+${templateRoomExperienceLine}
+${templateInteriorScenesLine}
+${templateSiteScenesLine}
+${templateAestheticLine}
+${templateReflectionLine}
+${templateLawAutoRepairLine}
+${templateLawCoverageLine}
+${templateLawRepairLine}
+${templateAssimilationLine}
 
 ## 结构框架 JSON
 
@@ -700,6 +839,8 @@ ${templateCompositionLine}
 - SiteLandscapeAgent：${blueprint.site?.mood || geometry.site?.mood || 'simple'}，区域 ${blueprint.site?.zones?.join('、') || '无'}
 - OpeningConnectivityAgent：主入口 ${blueprint.opening?.main_entry?.side || 'south'}，计划开口 ${blueprint.opening?.engine_hints?.planned_opening_count || 0}
 - InteriorDetailAgent：房间细节 ${blueprint.interior?.room_count || 0} 个，灯光 ${blueprint.interior?.lighting_strategy || 'unknown'}，专家 ${blueprint.interior?.room_specialists?.map((item) => `${item.label || item.id}(${item.block_count || 0})`).join('、') || '无'}
+- TemplateLawAutoRepairAgent：${templateLawAutoRepair.active ? `执行 ${templateLawAutoRepair.applied_count || 0} 项，补强 ${(templateLawAutoRepair.applied || []).map((item) => item.id).join('、') || '无'}` : (templateLawAutoRepair.reason || '未触发')}
+- TemplateAssimilationAuditAgent：${templateAssimilationAudit.active ? `${templateAssimilationAudit.percent}% / ${templateAssimilationAudit.readiness}，下一步 ${(templateAssimilationAudit.next_iteration_directives || []).slice(0, 2).map((item) => item.id).join('、') || '保持'}` : (templateAssimilationAudit.reason || '未启用')}
 - ConstraintRepairAgent：${blueprint.repair?.ok ? '通过' : '需关注'}，建议 ${blueprint.repair?.suggestions?.join('；') || '无'}
 
 ## 几何结果

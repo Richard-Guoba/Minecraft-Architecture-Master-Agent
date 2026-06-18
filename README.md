@@ -24,6 +24,9 @@ src/construction/
 │   ├── plannerAgent.js        # 第二步：房间拓扑 JSON
 │   ├── interiorDetailAgent.js # 房间级室内语义与专家能力清单
 │   ├── interiorRoomAgents.js  # 50+ 方块房间功能专家 + 建筑风格内饰专家
+│   ├── templateLawCoverageAgent.js # Stage 7E：检查模板法则是否真实落地
+│   ├── templateLawAutoRepairAgent.js # Stage 7F：导出前自动补强模板法则缺口
+│   ├── templateAssimilationAuditAgent.js # Stage 7G：汇总模板吸收闭环与剩余差距
 │   └── decoratorAgent.js      # 将室内家具、灯光和装饰写入方块网格
 ├── engine/
 │   ├── csgBuilder.js          # 体块 CSG，生成空心外壳
@@ -62,6 +65,8 @@ npm start -- "建一个欧式大房子"
 
 如果本地存在 `mc_templates/analysis/template_index.json`，生成流程会自动启用模板知识检索：先从你收集的高质量 `.schematic` 样本里找相似建筑，再把地形、园林、屋顶/立面细节密度等建议注入 Site/CSG 管线。
 
+如果同时存在 `design_laws.json`，Stage 7D/7E/7F/7G 会继续把跨案例蒸馏出的设计法则注入 Planner、InteriorDetail 和 Decorator，在导出前检查覆盖率并自动补强可修复缺口，最后汇总模板吸收总审计，并在 `run_report.md` 里输出“模板法则覆盖率”和“模板吸收总审计”。多候选择优时，系统会同时考虑模板审美分、法则覆盖率和吸收审计分。Stage 7H 提供 24 个模板泛化 prompt 的批量回归脚本，用于持续追踪不同建筑类型下的吸收短板。
+
 ## 高质量模板语料
 
 把下载的模板放在：
@@ -77,22 +82,65 @@ Villa - (mcbuild_org) https://mcbuild.org/schematics/18669:villa
 The Sky City of Athalux - (mcbuild_org) 没有介绍页，这是一个末地紫晶风格的超大型城堡庙宇
 ```
 
+如果你不想写 JSONL，也可以给单个 schematic 放同名 sidecar 文件：
+
+```text
+mc_templates/House/Classicism House - (mcbuild_org).schematic
+mc_templates/House/Classicism House - (mcbuild_org).tags.txt
+```
+
+sidecar 里可以随便写少量键值：
+
+```text
+tags: classical mansion garden interior-rich
+quality: 5
+desc: 正立面比例很好，入口花园和室内层次值得学习
+```
+
 刷新语料分析：
 
 ```powershell
-npm run analyze:templates
+npm run analyze:templates -- --offline
 ```
 
 输出在：
 
 ```text
 mc_templates/analysis/
-├── template_index.json       # 每个模板的尺寸、材料、地形、园林、细节密度和检索建议
-├── labels.generated.jsonl    # 自动生成的标签初稿
-└── template_gap_report.md    # 当前生成器与顶级模板的差距报告
+├── template_index.json        # 每个模板的尺寸、材料、地形、园林、细节密度和检索建议
+├── case_index.json/md         # Stage 5A：可学习角色、房间/家具/构图证据
+├── case_library.json/md       # Stage 7A/7B：案例卡片、可迁移特征、风险控制
+├── retrieval_index.json       # 按 token/学习区域索引案例
+├── semantic_clauses.jsonl     # 每个案例蒸馏出的可执行语义条款
+├── design_laws.json/md        # Stage 7C：跨案例蒸馏出的可执行设计法则
+├── distilled_laws.jsonl       # 全部设计法则的 JSONL 版本
+├── interior_laws.jsonl        # 内饰/房间法则，优先供内饰生成器使用
+├── labels.generated.jsonl     # 自动生成的标签初稿
+├── template_import_errors.json # 损坏或不支持文件的导入错误
+└── template_gap_report.md     # 当前生成器与顶级模板的差距报告
 ```
 
-分析器支持经典 MCEdit `.schematic`、Sponge palette/blockdata 和 Regions/BlockStatePalette 结构。网页抓取失败不会中断，本地文件和备注仍会参与分析。
+分析器支持经典 MCEdit `.schematic`、Sponge palette/blockdata 和 Regions/BlockStatePalette 结构。网页抓取失败或单个文件损坏不会中断整批分析，本地文件和备注仍会参与案例库。
+
+生成时的模板吸收闭环：
+
+```text
+Stage 7A/7B 案例卡片 -> Stage 7C 设计法则 -> Stage 7D 运行时注入 -> Stage 7E 覆盖率检查 -> Stage 7F 自动补强与复检 -> Stage 7G 模板吸收总审计 -> Stage 7H 批量泛化回归
+```
+
+7E 会检查公共房间朝景观、水边平台、前景花园、非平坦台地、大玻璃视轴、屋顶露台、房间 identity stack、模板家具模式和 `design-law-*` 装饰摆件是否真的出现。7F 会把可修复的缺口转成真实网格补丁和语义元数据：近景花园、水边平台、石土台地、屋顶露台、观景玻璃、房间 identity stack、模板家具 pattern 和 `design-law-*` 摆件都会在导出前补上，并再次计算覆盖率。7G 会把语料抽象、法则运行、空间构图、场地地形、内饰场景和验证闭环汇总成 100 分审计，直接告诉你距离顶级模板闭环还差多少。7H 会用 24 个不同类型 prompt 跑批量回归，输出平均吸收审计、常见弱轨道、常见 gap、下一轮整改指令和 CSV 表。
+
+批量检查模板吸收泛化：
+
+```powershell
+npm run evaluate:template-assimilation -- --limit 24 --out out/template-assimilation
+```
+
+快速烟测：
+
+```powershell
+npm run evaluate:template-assimilation -- --limit 3 --out .tmp/stage7h-smoke --strict --min-audit 80
+```
 
 不传 `--seed` 时会自动随机一个设计 seed，并在命令行、`blueprint.json` 和 `run_report.md` 里记录。想复现同一次默认变体，可以显式传回这个 seed：
 

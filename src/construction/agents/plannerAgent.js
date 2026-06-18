@@ -1,4 +1,6 @@
 import { detectFloors, detectStyle } from './architectAgent.js';
+import { applyTemplateSpacePlanningStrategy } from './templateSpacePlanningStrategy.js';
+import { applyTemplateDesignLawRuntimeToTopology } from './templateDesignLawRuntime.js';
 
 const ROOM_TYPES = new Set([
   'entry',
@@ -61,7 +63,7 @@ export class ConstructionPlannerAgent {
   }
 
   async run(prompt, architectureJson, buildSpec = {}) {
-    const fallback = normalizeTopology(buildFallbackTopology(prompt, architectureJson, buildSpec), 'fallback', undefined, buildSpec);
+    const fallback = normalizeTopology(buildFallbackTopology(prompt, architectureJson, buildSpec), 'fallback', undefined, buildSpec, { prompt, architecture: architectureJson });
     if (this.mode === 'mock') return fallback;
 
     if (this.mode === 'llm' || (this.mode === 'auto' && this.llmClient?.isConfigured())) {
@@ -99,7 +101,7 @@ export class ConstructionPlannerAgent {
             build_spec: compactBuildSpec(buildSpec)
           })
         });
-        return normalizeTopology(parsed, 'llm', fallback, buildSpec);
+        return normalizeTopology(parsed, 'llm', fallback, buildSpec, { prompt, architecture: architectureJson });
       } catch (error) {
         if (this.mode === 'llm') throw error;
         return { ...fallback, source: 'fallback-after-llm-error', llm_error: error.message };
@@ -131,7 +133,7 @@ export function buildFallbackTopology(prompt, architectureJson = {}, buildSpec =
   const verticalCore = firstNodeId(nodes, 'stairs') || firstNodeId(nodes, 'tower') || 'none';
   const publicCore = choosePublicCore(nodes, typology);
 
-  return {
+  const topology = applyTemplateSpacePlanningStrategy({
     nodes,
     edges,
     floor_program: floorProgram,
@@ -149,10 +151,11 @@ export function buildFallbackTopology(prompt, architectureJson = {}, buildSpec =
     facade_alignment: buildFacadeAlignment(nodes, architectureJson, buildSpec),
     site_connections: buildSiteConnections(nodes, architectureJson, buildSpec),
     bsp_hints: buildBspHints({ style, styleFamily, typology, footprint, floors, buildSpec, nodes })
-  };
+  }, { prompt, architecture: architectureJson, buildSpec });
+  return applyTemplateDesignLawRuntimeToTopology(topology, { prompt, architecture: architectureJson, buildSpec });
 }
 
-export function normalizeTopology(value, source, fallback = {}, buildSpec = {}) {
+export function normalizeTopology(value, source, fallback = {}, buildSpec = {}, options = {}) {
   const raw = value && typeof value === 'object' ? value : {};
   const maxFloor = Math.max(0, Number(buildSpec.floors || 3) - 1);
   const nodes = normalizeNodes(raw.nodes, fallback.nodes, maxFloor);
@@ -160,7 +163,7 @@ export function normalizeTopology(value, source, fallback = {}, buildSpec = {}) 
   const supplements = supplementFallbackProgramNodes(nodes, fallback.nodes, maxFloor);
   const idNormalization = uniquifyNodeIds(nodes);
   const rebuildDerivedTopology = floorShift > 0 || idNormalization.renamed.length > 0 || supplements.added.length > 0;
-  return {
+  const normalized = {
     source,
     nodes,
     edges: rebuildDerivedTopology ? buildEdges(nodes) : normalizeEdges(raw.edges, nodes, fallback.edges),
@@ -180,6 +183,8 @@ export function normalizeTopology(value, source, fallback = {}, buildSpec = {}) 
       ...normalizeObject(raw.bsp_hints || raw.bspHints)
     }
   };
+  const spacePlanned = applyTemplateSpacePlanningStrategy(normalized, { prompt: options.prompt, architecture: options.architecture, buildSpec });
+  return applyTemplateDesignLawRuntimeToTopology(spacePlanned, { prompt: options.prompt, architecture: options.architecture, buildSpec });
 }
 
 function addGroundFloor(nodes, context) {
@@ -640,6 +645,7 @@ function compactBuildSpec(buildSpec) {
     facade: buildSpec.facade,
     site: buildSpec.site,
     structural: buildSpec.structural,
+    design: buildSpec.design,
     modules: buildSpec.modules,
     seed: buildSpec.seed,
     seed_variation: buildSpec.seed_variation

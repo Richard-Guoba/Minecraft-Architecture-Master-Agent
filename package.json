@@ -11,6 +11,7 @@
     "evaluate:decoration": "node src/evaluateDecorationSuite.js",
     "evaluate:living-quality": "node src/evaluateLivingQualitySuite.js",
     "evaluate:comprehensive": "node src/evaluateComprehensiveSuite.js",
+    "evaluate:template-assimilation": "node src/evaluateTemplateAssimilationSuite.js",
     "evaluate:variation": "node src/evaluateDesignVariation.js",
     "analyze:templates": "node src/analyzeTemplateCorpus.js"
   },

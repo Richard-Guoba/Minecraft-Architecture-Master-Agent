@@ -1,3 +1,5 @@
+import { buildTemplateSiteSceneStrategy } from './templateSiteSceneStrategy.js';
+
 export class SiteLandscapeAgent {
   run(prompt = '', architecture = {}, buildSpec = {}, topology = {}, materialPalette = {}, stylePreset = {}) {
     const family = String(architecture.style_family || buildSpec.style_family || 'general');
@@ -38,6 +40,27 @@ export class SiteLandscapeAgent {
     const templateWaterEdge = Boolean(templateFeatures.has('water-edge') || compositionDirectives.use_waterfront_transition);
     const templateTrees = Boolean(templateFeatures.has('tree-and-shrub-clusters'));
     const templateApproach = Boolean(compositionDirectives.use_foreground_garden_sequence || compositionDirectives.use_waterfront_transition || compositionDirectives.use_layered_terrain_base);
+    const templateSiteScenes = buildTemplateSiteSceneStrategy({
+      prompt,
+      architecture,
+      buildSpec,
+      topology,
+      context: {
+        water: water || templateWaterEdge,
+        template_features: [...templateFeatures],
+        terrain_profile: templateTerrainProfile,
+        template_terrain: templateTerrain,
+        template_garden: templateGarden,
+        template_rock_base: templateRockBase,
+        template_water_edge: templateWaterEdge,
+        template_trees: templateTrees,
+        template_approach: templateApproach
+      }
+    });
+    const zones = [
+      ...siteZones({ family, water: water || templateWaterEdge, patio, dryGarden, enclosed, plantingBeds: plantingBeds || templateGarden, outdoorSeating, pool, mailbox, accessible, prompt, templateTerrain, templateGarden, templateRockBase, templateApproach }),
+      ...(templateSiteScenes.zones || [])
+    ];
 
     return {
       source: 'local-site-landscape-agent',
@@ -52,16 +75,18 @@ export class SiteLandscapeAgent {
         grade: accessible ? 'gentle-ramped' : 'stepped-or-flat',
         wayfinding: mailbox ? 'address-marker-at-entry' : 'direct-path'
       },
-      zones: siteZones({ family, water: water || templateWaterEdge, patio, dryGarden, enclosed, plantingBeds: plantingBeds || templateGarden, outdoorSeating, pool, mailbox, accessible, prompt, templateTerrain, templateGarden, templateRockBase, templateApproach }),
+      zones: [...new Set(zones)],
       boundary: boundaryForFamily(family, enclosed),
       terrain_response: templateTerrain ? templateTerrainProfile : terrainResponseForFamily(family),
+      template_site_scenes: templateSiteScenes,
       template_guidance: {
         active: Boolean(architecture.template_knowledge?.active),
         terrain_profile: templateTerrainProfile,
         landscape_features: [...templateFeatures],
         detail_density: templateRecommendations.detail_density || 'unknown',
         retrieved: architecture.template_knowledge?.retrieved?.map((item) => item.title) || [],
-        composition_strategy: compositionStrategy
+        composition_strategy: compositionStrategy,
+        site_scene_strategy: templateSiteScenes
       },
       outdoor_program: {
         planting_beds: plantingBeds || templateGarden,
@@ -109,7 +134,9 @@ export class SiteLandscapeAgent {
         render_garden_composition: templateGarden,
         render_terrain_retaining: templateTerrain || templateRockBase,
         render_template_approach_sequence: templateApproach,
-        render_template_view_frame: Boolean(compositionDirectives.use_waterfront_transition || compositionDirectives.use_large_view_glass)
+        render_template_view_frame: Boolean(compositionDirectives.use_waterfront_transition || compositionDirectives.use_large_view_glass),
+        render_template_site_scenes: Boolean(templateSiteScenes.active),
+        template_site_scene_count: templateSiteScenes.scene_count || 0
       }
     };
   }

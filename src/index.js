@@ -20,6 +20,10 @@ function parseArgs(argv) {
     mcVersion: process.env.MC_VERSION || '1.21',
     out: path.join(projectRoot, 'out'),
     seed: undefined,
+    candidates: 1,
+    candidateRounds: 1,
+    candidateTargetScore: 95,
+    candidateForceRounds: false,
     minecraftDir: process.env.MINECRAFT_DIR,
     world: undefined,
     datapacksDir: process.env.ARCHITECT_DATAPACKS_DIR || resolveDatapacksTarget(process.env.ARCHITECT_DATAPACKS_TARGET),
@@ -43,6 +47,22 @@ function parseArgs(argv) {
       const parsed = Number(rawSeed);
       if (!Number.isFinite(parsed)) throw new Error(`无效 seed: ${rawSeed}`);
       options.seed = Math.trunc(parsed);
+    } else if (arg === '--candidates') {
+      const parsed = Number(argv[++i]);
+      if (!Number.isFinite(parsed) || parsed < 1) throw new Error(`无效候选数量: ${parsed}`);
+      options.candidates = Math.trunc(parsed);
+    } else if (arg === '--auto-select') {
+      options.candidates = Math.max(options.candidates, 3);
+    } else if (arg === '--candidate-rounds') {
+      const parsed = Number(argv[++i]);
+      if (!Number.isFinite(parsed) || parsed < 1) throw new Error(`无效候选轮数: ${parsed}`);
+      options.candidateRounds = Math.trunc(parsed);
+    } else if (arg === '--candidate-target-score') {
+      const parsed = Number(argv[++i]);
+      if (!Number.isFinite(parsed)) throw new Error(`无效候选目标分: ${parsed}`);
+      options.candidateTargetScore = Math.trunc(parsed);
+    } else if (arg === '--candidate-force-rounds') {
+      options.candidateForceRounds = true;
     } else if (arg === '--minecraft-dir') {
       options.minecraftDir = path.resolve(argv[++i] || '');
     } else if (arg === '--world') {
@@ -98,6 +118,11 @@ Options:
   --mc-version 1.21          Target Minecraft Java version. v1 exports 1.21 datapacks.
   --out <dir>                Output root directory. Defaults to ./out.
   --seed <number>            Deterministic design seed. Omit it to generate a random seed.
+  --candidates <n>           Generate n candidates and auto-select the best by template aesthetic review.
+  --auto-select              Shortcut for --candidates 3.
+  --candidate-rounds <n>     Run up to n reflection rounds. Defaults to 1.
+  --candidate-target-score <n> Stop reflection rounds when the selected candidate reaches this score. Defaults to 95.
+  --candidate-force-rounds   Run all requested reflection rounds even if target score is already reached.
   --minecraft-dir <dir>      Minecraft Java directory. Defaults to MINECRAFT_DIR or %APPDATA%\\.minecraft.
   --world <name|latest|dir>  Install the datapack into this save after generation.
   --datapacks-dir <dir>      Install directly into this world's datapacks directory. Can also use ARCHITECT_DATAPACKS_DIR.
@@ -149,6 +174,10 @@ async function main() {
     mcVersion: options.mcVersion,
     outRoot: options.out,
     seed: options.seed,
+    candidates: options.candidates,
+    candidateRounds: options.candidateRounds,
+    candidateTargetScore: options.candidateTargetScore,
+    candidateForceRounds: options.candidateForceRounds,
     cwd: projectRoot,
     minecraftDir: options.minecraftDir,
     world: options.world,
@@ -162,6 +191,11 @@ async function main() {
   console.log(`LLM通道: ${result.llmProvider}`);
   console.log(`LLM调用: ${formatLlmUsage(result.llmUsage)}`);
   console.log(`输出目录: ${result.outputDir}`);
+  if (result.candidateSelection) {
+    console.log(`候选择优: ${result.candidateSelection.selected_candidate_id} / seed ${result.candidateSelection.selected_seed} / ${result.candidateSelection.selected_template_score}分`);
+    console.log(`候选报告: ${result.artifacts.candidateSelectionReport}`);
+    console.log(`选中输出: ${result.selectedOutputDir}`);
+  }
   console.log(`数据包: ${result.artifacts.datapackDir}`);
   if (result.artifacts.installedDatapackDir) {
     console.log(`已安装到世界: ${result.artifacts.installedDatapackDir}`);

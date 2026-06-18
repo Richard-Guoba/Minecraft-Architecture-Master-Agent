@@ -1,12 +1,26 @@
 import { interiorSpecialistCapabilities, specialistDefinitionsForRoom } from './interiorRoomAgents.js';
 import { buildInteriorSemanticLibrary, semanticClausesForRoom, summarizeInteriorSemanticPlan } from './interiorSemanticClauses.js';
+import { buildTemplateDesignLawRuntime, designLawRuntimeForRoom } from './templateDesignLawRuntime.js';
+import { buildTemplateInteriorSceneStrategy, roomInteriorSceneFor } from './templateInteriorSceneStrategy.js';
+import { buildTemplateRoomExperienceStrategy, roomExperienceFor } from './templateRoomExperienceStrategy.js';
 
 export class InteriorDetailAgent {
   run(rooms = [], architecture = {}, buildSpec = {}, topology = {}, materialPalette = {}, stylePreset = {}) {
     const family = String(architecture.style_family || buildSpec.style_family || 'general');
     const design = architecture.design_directives?.interior || {};
     const templateKnowledge = architecture.template_knowledge || buildSpec.template_knowledge || {};
-    const roomDetails = (rooms || []).map((room) => detailForRoom(room, family, materialPalette, architecture, buildSpec, topology, design, templateKnowledge));
+    const templateDesignLawRuntime = buildTemplateDesignLawRuntime({ rooms, architecture, buildSpec, topology });
+    const templateRoomExperience = buildTemplateRoomExperienceStrategy({ rooms, architecture, buildSpec, topology });
+    const baseRoomDetails = (rooms || []).map((room) => detailForRoom(room, family, materialPalette, architecture, buildSpec, topology, design, templateKnowledge, templateRoomExperience, templateDesignLawRuntime));
+    const templateInteriorScenes = buildTemplateInteriorSceneStrategy({
+      rooms,
+      roomDetails: baseRoomDetails,
+      architecture,
+      buildSpec,
+      topology,
+      templateRoomExperience
+    });
+    const roomDetails = baseRoomDetails.map((detail) => attachTemplateInteriorScene(detail, templateInteriorScenes));
     const roomSpecialists = interiorSpecialistCapabilities();
     const semanticLibrary = buildInteriorSemanticLibrary();
     const semanticSummary = summarizeInteriorSemanticPlan(roomDetails);
@@ -19,6 +33,9 @@ export class InteriorDetailAgent {
       room_details: roomDetails,
       semantic_library: semanticLibrary,
       semantic_summary: semanticSummary,
+      template_design_law_runtime: templateDesignLawRuntime,
+      template_room_experience: templateRoomExperience,
+      template_interior_scenes: templateInteriorScenes,
       room_specialists: roomSpecialists,
       lighting_strategy: lightingForFamily(family),
       comfort_strategy: comfortStrategy(rooms, family, buildSpec, design),
@@ -35,7 +52,10 @@ export class InteriorDetailAgent {
         add_task_lighting: true,
         add_style_storage: true,
         use_room_specialist_agents: true,
+        use_template_design_laws: Boolean(templateDesignLawRuntime.active),
         use_template_room_patterns: Boolean(templateKnowledge?.active),
+        use_template_room_experience: Boolean(templateRoomExperience.active),
+        use_template_interior_scenes: Boolean(templateInteriorScenes.active),
         minimum_blocks_per_specialist: 50,
         add_vibrant_accent_layers: true,
         add_comfort_layers: true,
@@ -46,12 +66,17 @@ export class InteriorDetailAgent {
   }
 }
 
-function detailForRoom(room, family, materialPalette = {}, architecture = {}, buildSpec = {}, topology = {}, design = {}, templateKnowledge = {}) {
+function detailForRoom(room, family, materialPalette = {}, architecture = {}, buildSpec = {}, topology = {}, design = {}, templateKnowledge = {}, templateRoomExperience = {}, templateDesignLawRuntime = {}) {
   const materials = materialPalette.materials || architecture.materials || {};
   const specialists = specialistDefinitionsForRoom(room, { styleFamily: family, architecture });
   const blockCounts = specialists.map((specialist) => specialist.capability_blocks.length);
-  const semanticClauses = semanticClausesForRoom(room, { family, architecture, buildSpec, topology, materialPalette, templateKnowledge });
-  const templateRoomPatterns = templatePatternsForRoom(room, templateKnowledge);
+  const roomDesignLaw = designLawRuntimeForRoom(room, templateDesignLawRuntime);
+  const semanticClauses = mergeSemanticClauses(
+    semanticClausesForRoom(room, { family, architecture, buildSpec, topology, materialPalette, templateKnowledge }),
+    roomDesignLaw.semantic_clauses || []
+  );
+  const templateRoomPatterns = mergeTemplateDesignLawPatterns(templatePatternsForRoom(room, templateKnowledge), roomDesignLaw);
+  const roomExperience = roomExperienceFor(room, templateRoomExperience);
   const base = {
     room_id: room.id,
     type: room.type,
@@ -72,14 +97,72 @@ function detailForRoom(room, family, materialPalette = {}, architecture = {}, bu
     semantic_clauses: semanticClauses,
     semantic_clause_ids: semanticClauses.map((clause) => clause.id),
     semantic_clause_groups: [...new Set(semanticClauses.map((clause) => clause.group))],
-    semantic_budget: semanticBudgetForRoom(room, semanticClauses, design),
+    semantic_budget: semanticBudgetForRoom(room, semanticClauses, design, roomDesignLaw),
     template_room_patterns: templateRoomPatterns,
-    template_pattern_strength: templateRoomPatterns.strength
+    template_pattern_strength: templateRoomPatterns.strength,
+    template_design_law: roomDesignLaw,
+    template_design_law_clause_ids: (roomDesignLaw.semantic_clauses || []).map((clause) => clause.id),
+    template_experience: roomExperience,
+    template_experience_clause_ids: roomExperience.clauses || []
   };
   if (['kitchen', 'bathroom', 'garage', 'utility'].includes(room.type)) base.service_wall = materials.secondary_wall || architecture.materials?.interior_wall || 'minecraft:light_gray_concrete';
   if (['living', 'great_hall', 'lounge'].includes(room.type)) base.focal_feature = focalFeatureForFamily(family);
   if (room.type === 'sunroom' || room.type === 'greenhouse') base.planting = materials.plant || 'minecraft:oak_leaves[persistent=true]';
   return base;
+}
+
+function attachTemplateInteriorScene(detail = {}, templateInteriorScenes = {}) {
+  const scene = roomInteriorSceneFor({ id: detail.room_id, type: detail.type }, templateInteriorScenes);
+  return {
+    ...detail,
+    template_interior_scene: scene,
+    template_scene_component_ids: scene.component_ids || []
+  };
+}
+
+function mergeSemanticClauses(base = [], designLawClauses = []) {
+  const byId = new Map();
+  for (const clause of [...designLawClauses, ...base]) {
+    if (!clause?.id || byId.has(clause.id)) continue;
+    byId.set(clause.id, clause);
+  }
+  return [...byId.values()];
+}
+
+function mergeTemplateDesignLawPatterns(base = {}, roomDesignLaw = {}) {
+  if (!roomDesignLaw?.active) return base;
+  const baseGuidance = Array.isArray(base.guidance) ? base.guidance : [];
+  const lawGuidance = Array.isArray(roomDesignLaw.guidance) ? roomDesignLaw.guidance : [];
+  const guidance = dedupeGuidance([...lawGuidance, ...baseGuidance]).slice(0, 8);
+  const clauses = [...new Set([
+    ...(base.clauses || []),
+    ...(roomDesignLaw.semantic_clauses || []).map((clause) => clause.id),
+    ...lawGuidance.flatMap((item) => item.clauses || [])
+  ].filter(Boolean))];
+  return {
+    ...base,
+    strength: lawGuidance.length ? 'high' : base.strength,
+    strategy: {
+      ...(base.strategy || {}),
+      template_design_law_runtime: roomDesignLaw.source,
+      required_layers: roomDesignLaw.required_layers || []
+    },
+    guidance,
+    clauses,
+    design_law_pattern_types: roomDesignLaw.pattern_types || []
+  };
+}
+
+function dedupeGuidance(guidance = []) {
+  const seen = new Set();
+  const result = [];
+  for (const item of guidance) {
+    const key = `${normalizeRoomType(item?.room_type)}:${item?.pattern_type}:${item?.source_title || item?.source || ''}`;
+    if (!item?.pattern_type || seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
 }
 
 function templatePatternsForRoom(room = {}, templateKnowledge = {}) {
@@ -166,14 +249,15 @@ function densityForRoom(room) {
   return 'medium';
 }
 
-function semanticBudgetForRoom(room, clauses = [], design = {}) {
+function semanticBudgetForRoom(room, clauses = [], design = {}, roomDesignLaw = {}) {
+  const lawClauseCount = roomDesignLaw.active ? Math.min(6, roomDesignLaw.semantic_clauses?.length || 0) : 0;
   const area = roomArea(room);
-  if (['corridor', 'stairs'].includes(room.type)) return Math.min(4, clauses.length);
-  if (area <= 18) return Math.min(5, clauses.length);
-  if (area <= 36) return Math.min(8, clauses.length);
+  if (['corridor', 'stairs'].includes(room.type)) return Math.min(4 + lawClauseCount, clauses.length);
+  if (area <= 18) return Math.min(5 + lawClauseCount, clauses.length);
+  if (area <= 36) return Math.min(8 + lawClauseCount, clauses.length);
   const density = String(design.decor_density || '');
   const rich = ['layered', 'gallery', 'formal', 'rich-but-spaced'].includes(density);
-  return Math.min(rich ? 22 : 18, clauses.length);
+  return Math.min((rich ? 22 : 18) + lawClauseCount, clauses.length);
 }
 
 function roomArea(room = {}) {

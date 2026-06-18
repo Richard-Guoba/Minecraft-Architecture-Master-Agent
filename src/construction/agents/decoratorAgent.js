@@ -72,6 +72,8 @@ function furnishRoom(room, materials, context) {
     builder.addStyleAccent();
     builder.addInteriorPlanAccent();
     builder.addCreativeDesignAccent();
+    builder.addTemplateExperienceLayer();
+    builder.addTemplateInteriorSceneLayer();
   }
 
   switch (room.type) {
@@ -133,6 +135,7 @@ function furnishRoom(room, materials, context) {
 
   builder.addSemanticClauseLayer();
   builder.addTemplatePatternLayer();
+  builder.addTemplateDesignLawLayer();
   const specialists = specialistAgentsForRoom(room, context).map((agent) => agent.run(builder));
 
   return { blocks: builder.blocks, specialists, specialist: specialists[0] };
@@ -225,6 +228,295 @@ class RoomFurnishingBuilder {
     }
   }
 
+  addTemplateExperienceLayer() {
+    const experience = this.roomDetail.template_experience || {};
+    if (!experience || experience.role === 'neutral' || experience.active === false) return;
+    if (['corridor', 'stairs'].includes(this.room.type)) return;
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+    const accent = this.roomDetail.accent_block || this.materials.accent || this.materials.trim || 'minecraft:smooth_quartz';
+    const carpet = this.roomDetail.floor_accent || 'minecraft:white_carpet';
+    const seat = seatingBlockForSide(this.styleFamily, experience.furniture_facing || experience.view_side || 'south');
+    const viewPoint = this.pointOnWall(experience.primary_window_side || experience.view_side || 'south');
+    const anchorPoint = this.pointOnWall(experience.anchor_wall || oppositeSide(experience.primary_window_side || 'south'));
+    const sidePoint = this.pointOnWall(experience.side_wall || sideClockwise(experience.primary_window_side || 'south'));
+
+    if (experience.role === 'entry-axis') {
+      this.addAxisRunner(carpet, experience.furniture_facing || experience.view_side || 'south', 'template-entry-axis-runner');
+      this.add('template-arrival-marker', light, viewPoint.x, this.ceilingY, viewPoint.z, 'template-arrival-view-glimpse', 'decor_light');
+      return;
+    }
+
+    if (experience.role === 'public-view') {
+      this.add('template-view-frame-interior', accent, viewPoint.x, this.floorY, viewPoint.z, 'template-view-frame-interior', 'decor_detail');
+      this.add('template-view-frame-light', light, viewPoint.x, this.ceilingY, viewPoint.z, 'template-view-frame-interior', 'decor_light');
+      this.add('template-view-seat', seat, anchorPoint.x, this.floorY, anchorPoint.z, 'template-view-seat', 'decor_furniture');
+      if (this.area > 24) this.add('template-view-rug', carpet, this.centerX, this.floorY, this.centerZ, 'template-public-furniture-faces-view', 'decor_floor');
+      if (this.area > 30) this.add('template-view-plant', plantBlock(this.materials), sidePoint.x, this.floorY, sidePoint.z, 'template-view-soft-corner', 'decor_plant');
+      return;
+    }
+
+    if (experience.role === 'service-band') {
+      const workPoint = anchorPoint;
+      this.add('template-service-wall', serviceBlockForRoom(this.room.type), workPoint.x, this.floorY, workPoint.z, 'template-service-work-wall', 'decor_utility');
+      this.add('template-service-task-light', light, workPoint.x, this.ceilingY, workPoint.z, 'template-service-work-wall', 'decor_light');
+      if (this.area > 18) {
+        const storagePoint = this.offsetPointAlongWall(experience.anchor_wall || 'west', 1);
+        this.add('template-service-storage', 'minecraft:barrel', storagePoint.x, this.floorY, storagePoint.z, 'template-service-kept-off-view-wall', 'decor_storage');
+      }
+      return;
+    }
+
+    if (experience.role === 'quiet-retreat') {
+      if (this.room.type === 'study') {
+        this.add('template-quiet-desk', 'minecraft:lectern', anchorPoint.x, this.floorY, anchorPoint.z, 'template-quiet-desk-faces-garden', 'decor_furniture');
+        this.add('template-quiet-desk-light', light, anchorPoint.x, this.ceilingY, anchorPoint.z, 'template-quiet-desk-faces-garden', 'decor_light');
+        this.add('template-library-away-from-view', 'minecraft:bookshelf', sidePoint.x, this.floorY, sidePoint.z, 'template-library-wall-away-from-view', 'decor_furniture');
+      } else {
+        this.add('template-quiet-window-seat', seat, anchorPoint.x, this.floorY, anchorPoint.z, 'template-quiet-window-seat', 'decor_furniture');
+        if (this.area > 22) this.add('template-sleep-privacy-screen', this.materials.railing || 'minecraft:oak_fence', sidePoint.x, this.floorY, sidePoint.z, 'template-bed-away-from-view-glass', 'decor_detail');
+      }
+    }
+  }
+
+  addTemplateInteriorSceneLayer() {
+    const scene = this.roomDetail.template_interior_scene || {};
+    if (!scene.active || !Array.isArray(scene.components) || !scene.components.length) return;
+    if (['corridor', 'stairs'].includes(this.room.type)) return;
+
+    switch (scene.scene_type) {
+      case 'view-lounge-scene':
+        this.addViewLoungeScene(scene);
+        break;
+      case 'view-dining-scene':
+        this.addViewDiningScene(scene);
+        break;
+      case 'kitchen-island-scene':
+        this.addKitchenIslandScene(scene);
+        break;
+      case 'sleep-suite-scene':
+        this.addSleepSuiteScene(scene);
+        break;
+      case 'study-reading-scene':
+        this.addStudyReadingScene(scene);
+        break;
+      case 'entry-arrival-scene':
+        this.addEntryArrivalScene(scene);
+        break;
+      case 'bath-spa-scene':
+        this.addBathSpaScene(scene);
+        break;
+      case 'garden-room-scene':
+        this.addGardenRoomScene(scene);
+        break;
+      case 'utility-wall-scene':
+        this.addUtilityWallScene(scene);
+        break;
+      default:
+        break;
+    }
+  }
+
+  addViewLoungeScene(scene) {
+    const hints = this.sceneHints(scene);
+    const seat = seatingBlockForSide(this.styleFamily, hints.furnitureFacing);
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+    const focal = this.roomDetail.accent_block || this.materials.accent || 'minecraft:smooth_quartz';
+    const carpet = this.roomDetail.floor_accent || 'minecraft:white_carpet';
+    const anchor = hints.anchorWall;
+    const viewWall = hints.primaryWindowSide;
+    const sideWall = hints.sideWall;
+
+    this.addSceneItem('template-scene-sofa-primary', seat, this.pointInsideFromWall(anchor, 0), 'scene-lounge-primary-seat-faces-view');
+    if (this.area > 34) {
+      this.addSceneItem('template-scene-sofa-side', seat, this.pointInsideFromWall(anchor, 0, -2), 'scene-lounge-side-seat-faces-view');
+      this.addSceneItem('template-scene-sofa-side', seat, this.pointInsideFromWall(anchor, 0, 2), 'scene-lounge-side-seat-faces-view');
+    }
+    this.addSceneTable('template-scene-coffee-table', this.pointInsideFromWall(anchor, 2), 'scene-low-center-table');
+    this.addSceneItem('template-scene-view-rug', carpet, { x: this.centerX, z: this.centerZ }, 'scene-lounge-floor-frame', 'decor_floor');
+    this.addSceneItem('template-scene-focal-wall', focal, this.pointOnWall(viewWall), 'scene-view-wall-response', 'decor_detail');
+    this.addSceneItem('template-scene-side-table', tableBaseBlockForStyle(this.styleFamily), this.pointInsideFromWall(anchor, 1, this.width >= 7 ? 2 : 1), 'scene-seat-support-surface');
+    this.addSceneItem('template-scene-corner-plant', plantBlock(this.materials), this.pointOnWall(sideWall), 'scene-soft-corner', 'decor_plant');
+    if (this.area > 42) this.addSceneItem('template-scene-lounge-pendant', light, { x: this.centerX, z: this.centerZ }, 'scene-lounge-layered-light', 'decor_light', this.ceilingY);
+  }
+
+  addViewDiningScene(scene) {
+    const hints = this.sceneHints(scene);
+    const table = tableBaseBlockForStyle(this.styleFamily);
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+    const carpet = this.roomDetail.floor_accent || 'minecraft:white_carpet';
+    const serviceWall = hints.serviceWall;
+    const viewWall = hints.primaryWindowSide;
+
+    this.addSceneTable('template-scene-dining-table', { x: this.centerX, z: this.centerZ }, 'scene-dining-table-centers-room', table);
+    if (this.area > 34) {
+      this.addSceneItem('template-scene-dining-table-leaf', table, { x: this.centerX + 1, z: this.centerZ }, 'scene-dining-table-extension');
+      this.addSceneItem('template-scene-dining-table-leaf', table, { x: this.centerX - 1, z: this.centerZ }, 'scene-dining-table-extension');
+    }
+    this.addSceneItem('template-scene-dining-chair', seatingBlockForSide(this.styleFamily, 'south'), { x: this.centerX, z: this.centerZ - 2 }, 'scene-dining-paired-seat');
+    this.addSceneItem('template-scene-dining-chair', seatingBlockForSide(this.styleFamily, 'north'), { x: this.centerX, z: this.centerZ + 2 }, 'scene-dining-paired-seat');
+    if (this.width >= 7) {
+      this.addSceneItem('template-scene-dining-chair', seatingBlockForSide(this.styleFamily, 'east'), { x: this.centerX - 2, z: this.centerZ }, 'scene-dining-side-seat');
+      this.addSceneItem('template-scene-dining-chair', seatingBlockForSide(this.styleFamily, 'west'), { x: this.centerX + 2, z: this.centerZ }, 'scene-dining-side-seat');
+    }
+    this.addSceneItem('template-scene-dining-pendant', light, { x: this.centerX, z: this.centerZ }, 'scene-pendant-over-table', 'decor_light', this.ceilingY);
+    this.addSceneItem('template-scene-dining-sideboard', this.roomDetail.storage_block || 'minecraft:barrel', this.pointOnWall(serviceWall), 'scene-sideboard-on-service-edge', 'decor_storage');
+    this.addSceneItem('template-scene-dining-rug', carpet, { x: this.centerX, z: this.centerZ }, 'scene-dining-floor-frame', 'decor_floor');
+    this.addSceneItem('template-scene-window-planter', plantBlock(this.materials), this.pointOnWall(viewWall), 'scene-dining-view-softener', 'decor_plant');
+  }
+
+  addKitchenIslandScene(scene) {
+    const hints = this.sceneHints(scene);
+    const serviceWall = hints.anchorWall || hints.serviceWall;
+    const islandBlock = this.materials.trim || this.materials.accent || 'minecraft:smooth_quartz';
+    const counter = 'minecraft:smooth_quartz_slab[type=bottom]';
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+    const wallPoints = [-1, 0, 1].map((offset) => this.offsetPointAlongWall(serviceWall, offset));
+
+    this.addSceneItem('template-scene-kitchen-service-wall', 'minecraft:furnace', wallPoints[0], 'scene-kitchen-range-wall', 'decor_utility');
+    this.addSceneItem('template-scene-kitchen-prep', 'minecraft:crafting_table', wallPoints[1], 'scene-kitchen-prep-run', 'decor_utility');
+    this.addSceneItem('template-scene-pantry-column', 'minecraft:barrel', wallPoints[2], 'scene-kitchen-storage-column', 'decor_storage');
+    this.addSceneItem('template-scene-kitchen-sink', 'minecraft:cauldron', this.pointInsideFromWall(serviceWall, 0, 2), 'scene-kitchen-wet-station', 'decor_utility');
+
+    const islandAxisNorthSouth = ['north', 'south'].includes(serviceWall);
+    const islandOffsets = this.area > 40 ? [-1, 0, 1] : [0, 1];
+    for (const offset of islandOffsets) {
+      const point = islandAxisNorthSouth
+        ? { x: this.centerX + offset, z: this.centerZ }
+        : { x: this.centerX, z: this.centerZ + offset };
+      this.addSceneItem('template-scene-kitchen-island', islandBlock, point, 'scene-kitchen-island-between-service-and-public');
+      this.addSceneItem('template-scene-kitchen-island-top', counter, point, 'scene-kitchen-island-counter');
+    }
+
+    const stoolSide = oppositeSide(serviceWall);
+    const stoolPoint = this.pointInsideFromWall(stoolSide, 1);
+    this.addSceneItem('template-scene-bar-stool', seatingBlockForSide(this.styleFamily, serviceWall), stoolPoint, 'scene-bar-edge-faces-service-wall');
+    if (this.area > 44) this.addSceneItem('template-scene-bar-stool', seatingBlockForSide(this.styleFamily, serviceWall), this.pointInsideFromWall(stoolSide, 1, 2), 'scene-bar-edge-faces-service-wall');
+    this.addSceneItem('template-scene-kitchen-task-light', light, { x: this.centerX, z: this.centerZ }, 'scene-island-task-light', 'decor_light', this.ceilingY);
+  }
+
+  addSleepSuiteScene(scene) {
+    const hints = this.sceneHints(scene);
+    const headWall = hints.anchorWall || oppositeSide(hints.primaryWindowSide);
+    const sideWall = hints.sideWall;
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+    const carpet = this.roomDetail.floor_accent || 'minecraft:white_carpet';
+    const accent = this.roomDetail.accent_block || this.materials.accent || 'minecraft:smooth_quartz';
+
+    this.addSceneBed(headWall);
+    this.addSceneItem('template-scene-bed-headboard', accent, this.pointOnWall(headWall), 'scene-bed-headboard-wall', 'decor_detail');
+    this.addSceneItem('template-scene-bedside', 'minecraft:barrel', this.offsetPointAlongWall(headWall, -2), 'scene-bedside-pair', 'decor_storage');
+    this.addSceneItem('template-scene-bedside', 'minecraft:barrel', this.offsetPointAlongWall(headWall, 2), 'scene-bedside-pair', 'decor_storage');
+    this.addSceneItem('template-scene-bed-reading-light', light, this.offsetPointAlongWall(headWall, -2), 'scene-bedside-reading-light', 'decor_light', Math.min(this.floorY + 1, this.ceilingY));
+    this.addSceneItem('template-scene-bed-reading-light', light, this.offsetPointAlongWall(headWall, 2), 'scene-bedside-reading-light', 'decor_light', Math.min(this.floorY + 1, this.ceilingY));
+    this.addSceneItem('template-scene-wardrobe', this.roomDetail.storage_block || 'minecraft:barrel', this.pointOnWall(sideWall), 'scene-wardrobe-side-wall', 'decor_storage');
+    this.addSceneItem('template-scene-bedroom-rug', carpet, this.pointInsideFromWall(oppositeSide(headWall), 1), 'scene-soft-rug-at-bed-foot', 'decor_floor');
+  }
+
+  addStudyReadingScene(scene) {
+    const hints = this.sceneHints(scene);
+    const anchor = hints.anchorWall;
+    const quietWall = hints.primaryWindowSide;
+    const sideWall = hints.sideWall;
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+
+    this.addSceneItem('template-scene-study-desk', 'minecraft:lectern', this.pointInsideFromWall(anchor, 0), 'scene-desk-anchor-faces-quiet-window');
+    this.addSceneItem('template-scene-study-bookcase', 'minecraft:bookshelf', this.pointOnWall(sideWall), 'scene-library-wall-away-from-main-view');
+    this.addSceneItem('template-scene-study-bookcase', 'minecraft:bookshelf', this.offsetPointAlongWall(sideWall, 1), 'scene-library-wall-away-from-main-view');
+    this.addSceneItem('template-scene-reading-chair', seatingBlockForSide(this.styleFamily, hints.furnitureFacing), this.pointInsideFromWall(quietWall, 1), 'scene-reading-chair-near-quiet-window');
+    this.addSceneTable('template-scene-study-side-table', this.pointInsideFromWall(quietWall, 1, 1), 'scene-study-side-table');
+    this.addSceneItem('template-scene-study-light', light, this.pointInsideFromWall(anchor, 0), 'scene-desk-task-light', 'decor_light', this.ceilingY);
+  }
+
+  addEntryArrivalScene(scene) {
+    const hints = this.sceneHints(scene);
+    const carpet = this.roomDetail.floor_accent || 'minecraft:white_carpet';
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+    const sideWall = hints.sideWall;
+    const anchor = hints.anchorWall;
+
+    this.addAxisRunner(carpet, hints.furnitureFacing, 'template-scene-entry-runner');
+    this.addSceneItem('template-scene-entry-bench', seatingBlockForSide(this.styleFamily, hints.furnitureFacing), this.pointOnWall(sideWall), 'scene-entry-bench-edge');
+    this.addSceneItem('template-scene-coat-storage', this.roomDetail.storage_block || 'minecraft:barrel', this.pointOnWall(anchor), 'scene-entry-coat-storage', 'decor_storage');
+    this.addSceneTable('template-scene-arrival-console', this.pointInsideFromWall(anchor, 1), 'scene-arrival-console');
+    this.addSceneItem('template-scene-entry-pendant', light, { x: this.centerX, z: this.centerZ }, 'scene-entry-axis-light', 'decor_light', this.ceilingY);
+  }
+
+  addBathSpaScene(scene) {
+    const hints = this.sceneHints(scene);
+    const wetWall = hints.anchorWall || hints.serviceWall;
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+
+    this.addSceneItem('template-scene-bath-wet-wall', 'minecraft:cauldron', this.offsetPointAlongWall(wetWall, -1), 'scene-wet-wall-basin', 'decor_utility');
+    this.addSceneItem('template-scene-vanity', 'minecraft:smooth_quartz_slab[type=bottom]', this.offsetPointAlongWall(wetWall, 0), 'scene-vanity-counter');
+    this.addSceneItem('template-scene-bath-screen', this.materials.railing || 'minecraft:iron_bars', this.pointOnWall(hints.sideWall), 'scene-bath-privacy-screen', 'decor_detail');
+    this.addSceneItem('template-scene-bath-mat', 'minecraft:light_blue_carpet', { x: this.centerX, z: this.centerZ }, 'scene-soft-bath-mat', 'decor_floor');
+    this.addSceneItem('template-scene-mirror-light', light, this.offsetPointAlongWall(wetWall, 0), 'scene-mirror-task-light', 'decor_light', Math.min(this.floorY + 1, this.ceilingY));
+  }
+
+  addGardenRoomScene(scene) {
+    const hints = this.sceneHints(scene);
+    const viewWall = hints.primaryWindowSide;
+    const sideWall = hints.sideWall;
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+
+    this.addSceneItem('template-scene-planting-edge', 'minecraft:composter', this.offsetPointAlongWall(viewWall, -1), 'scene-planting-edge', 'decor_plant');
+    this.addSceneItem('template-scene-planting-edge', plantBlock(this.materials), this.offsetPointAlongWall(viewWall, 1), 'scene-planting-edge', 'decor_plant');
+    this.addSceneTable('template-scene-garden-table', { x: this.centerX, z: this.centerZ }, 'scene-low-garden-table', this.styleFamily === 'japanese' ? 'minecraft:bamboo_planks' : tableBaseBlockForStyle(this.styleFamily));
+    this.addSceneItem('template-scene-garden-seat', seatingBlockForSide(this.styleFamily, hints.furnitureFacing), this.pointOnWall(sideWall), 'scene-seat-near-green-view');
+    this.addSceneItem('template-scene-display-pot', 'minecraft:decorated_pot', this.pointInsideFromWall(sideWall, 1), 'scene-garden-display-pot', 'decor_detail');
+    this.addSceneItem('template-scene-garden-light', light, { x: this.centerX, z: this.centerZ }, 'scene-soft-garden-light', 'decor_light', this.ceilingY);
+  }
+
+  addUtilityWallScene(scene) {
+    const hints = this.sceneHints(scene);
+    const wall = hints.anchorWall || hints.serviceWall;
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+
+    this.addSceneItem('template-scene-utility-bench', 'minecraft:crafting_table', this.offsetPointAlongWall(wall, -1), 'scene-utility-work-bench', 'decor_utility');
+    this.addSceneItem('template-scene-utility-storage', 'minecraft:barrel', this.offsetPointAlongWall(wall, 0), 'scene-utility-storage-wall', 'decor_storage');
+    this.addSceneItem('template-scene-utility-storage', 'minecraft:chest', this.offsetPointAlongWall(wall, 1), 'scene-utility-storage-wall', 'decor_storage');
+    this.addSceneItem('template-scene-utility-task-light', light, this.offsetPointAlongWall(wall, 0), 'scene-utility-task-light', 'decor_light', this.ceilingY);
+  }
+
+  sceneHints(scene = {}) {
+    const hints = scene.layout_hints || {};
+    const experience = this.roomDetail.template_experience || {};
+    const viewSide = normalizeSide(hints.view_side || experience.view_side || 'south');
+    const primaryWindowSide = normalizeSide(hints.primary_window_side || experience.primary_window_side || viewSide);
+    const anchorWall = normalizeSide(hints.anchor_wall || experience.anchor_wall || oppositeSide(primaryWindowSide));
+    return {
+      viewSide,
+      primaryWindowSide,
+      anchorWall,
+      focalWall: normalizeSide(hints.focal_wall || experience.focal_wall || primaryWindowSide),
+      sideWall: normalizeSide(hints.side_wall || experience.side_wall || sideClockwise(primaryWindowSide)),
+      serviceWall: normalizeSide(hints.service_wall || anchorWall),
+      quietWall: normalizeSide(hints.quiet_wall || oppositeSide(viewSide)),
+      furnitureFacing: normalizeSide(hints.furniture_facing || experience.furniture_facing || primaryWindowSide)
+    };
+  }
+
+  addSceneItem(role, block, point, placement, module = 'decor_furniture', y = this.floorY) {
+    if (!point) return;
+    this.add(role, block, point.x, y, point.z, placement, module);
+  }
+
+  addSceneTable(role, point, placement, baseBlock = tableBaseBlockForStyle(this.styleFamily)) {
+    if (!point) return;
+    this.add(role, baseBlock, point.x, this.floorY, point.z, placement, 'decor_furniture');
+    this.add(`${role}-top`, 'minecraft:oak_pressure_plate', point.x, this.floorY + 1, point.z, placement, 'decor_furniture');
+  }
+
+  addSceneBed(headWall) {
+    const wall = normalizeSide(headWall);
+    const block = bedBlockForStyle(this.styleFamily);
+    const head = this.pointInsideFromWall(wall, 0);
+    const foot = this.pointInsideFromWall(wall, 1);
+    if (!head || !foot) return;
+    this.add('template-scene-bed', `${block}[facing=${wall},part=foot]`, foot.x, this.floorY, foot.z, 'scene-bed-foot', 'decor_furniture');
+    this.add('template-scene-bed', `${block}[facing=${wall},part=head]`, head.x, this.floorY, head.z, 'scene-bed-head', 'decor_furniture');
+  }
+
   addSemanticClauseLayer() {
     if (['corridor', 'stairs'].includes(this.room.type)) return;
     const clauses = Array.isArray(this.roomDetail.semantic_clauses) ? this.roomDetail.semantic_clauses : [];
@@ -238,6 +530,60 @@ class RoomFurnishingBuilder {
     if (!guidance.length) return;
     const budget = clampInt(this.roomDetail.template_pattern_strength === 'high' ? 4 : 3, 0, 5, 3);
     for (const pattern of guidance.slice(0, budget)) this.applyTemplatePattern(String(pattern.pattern_type || ''), pattern);
+  }
+
+  addTemplateDesignLawLayer() {
+    const law = this.roomDetail.template_design_law || {};
+    if (!law.active || ['corridor', 'stairs'].includes(this.room.type)) return;
+    const requiredLayers = new Set(law.required_layers || []);
+    const patternTypes = new Set(law.pattern_types || []);
+    const light = this.roomDetail.task_light || lightBlockForStyle(this.styleFamily, this.materials);
+    const accent = this.roomDetail.accent_block || this.materials.accent || this.materials.trim || 'minecraft:smooth_quartz';
+    const storage = this.roomDetail.storage_block || this.materials.furniture || 'minecraft:barrel';
+    const carpet = this.roomDetail.floor_accent || 'minecraft:white_carpet';
+    const focalWall = this.roomDetail.template_experience?.focal_wall || this.roomDetail.template_interior_scene?.layout_hints?.focal_wall || 'east';
+    const focal = this.pointOnWall(focalWall);
+    const budget = this.area >= 42 ? 6 : this.area >= 24 ? 4 : 3;
+    let added = 0;
+    const addLaw = (role, block, point, placement, module = 'decor_detail', y = this.floorY) => {
+      if (!point || added >= budget) return;
+      this.add(role, block, point.x, y, point.z, placement, module);
+      added += 1;
+    };
+
+    if (requiredLayers.has('identity-stack')) {
+      addLaw('design-law-focal-wall', accent, focal, 'design-law-room-identity-stack', 'decor_detail');
+      addLaw('design-law-task-light', light, focal, 'design-law-room-identity-stack', 'decor_light', this.ceilingY);
+    }
+
+    if (patternTypes.has('social_cluster')) {
+      addLaw('design-law-social-anchor', carpet, { x: this.centerX, z: this.centerZ }, 'design-law-living-social-core', 'decor_floor');
+      addLaw('design-law-support-surface', tableBaseBlockForStyle(this.styleFamily), this.pointInsideFromWall('south', 1), 'design-law-living-social-core', 'decor_furniture');
+    }
+    if (patternTypes.has('kitchen_work_wall')) {
+      addLaw('design-law-work-wall-light', light, this.pointOnWall('north'), 'design-law-kitchen-work-wall', 'decor_light', this.ceilingY);
+      addLaw('design-law-service-storage', storage, this.offsetPointAlongWall('north', 2), 'design-law-kitchen-work-wall', 'decor_storage');
+    }
+    if (patternTypes.has('sleep_niche')) {
+      addLaw('design-law-bedside-soft-light', light, this.pointOnWall('south'), 'design-law-bedroom-sleep-niche', 'decor_light', Math.min(this.floorY + 1, this.ceilingY));
+      addLaw('design-law-wardrobe-wall', storage, this.pointOnWall('east'), 'design-law-bedroom-sleep-niche', 'decor_storage');
+    }
+    if (patternTypes.has('library_focus_wall') || patternTypes.has('display_wall')) {
+      addLaw('design-law-focus-wall-light', light, focal, 'design-law-study-library-focus', 'decor_light', this.ceilingY);
+      addLaw('design-law-display-anchor', patternTypes.has('library_focus_wall') ? 'minecraft:bookshelf' : accent, focal, 'design-law-display-wall', 'decor_detail');
+    }
+    if (patternTypes.has('wet_wall')) {
+      addLaw('design-law-mirror-light', light, this.pointOnWall('north'), 'design-law-bathroom-wet-wall', 'decor_light', Math.min(this.floorY + 1, this.ceilingY));
+    }
+    if (patternTypes.has('storage_wall') || patternTypes.has('workshop_bench_wall')) {
+      addLaw('design-law-inventory-light', light, this.pointOnWall('north'), 'design-law-storage-service-wall', 'decor_light', this.ceilingY);
+    }
+    if (patternTypes.has('plant_corner')) {
+      addLaw('design-law-soft-plant', plantBlock(this.materials), this.pointOnWall('south'), 'design-law-garden-room-edge', 'decor_plant');
+    }
+    if (patternTypes.has('layered_lighting')) {
+      addLaw('design-law-accent-light', light, { x: this.centerX, z: this.centerZ }, 'design-law-layered-lighting', 'decor_light', this.ceilingY);
+    }
   }
 
   applyTemplatePattern(patternType, pattern = {}) {
@@ -565,6 +911,59 @@ class RoomFurnishingBuilder {
     }
   }
 
+  addAxisRunner(block, side, placement) {
+    const length = Math.min(5, Math.max(2, ['north', 'south'].includes(side) ? this.depth - 2 : this.width - 2));
+    for (let step = 0; step < length; step += 1) {
+      const offset = step - Math.floor(length / 2);
+      const x = ['east', 'west'].includes(side) ? clampInt(this.centerX + offset, this.room.min_x + 1, this.room.max_x - 1, this.centerX) : this.centerX;
+      const z = ['north', 'south'].includes(side) ? clampInt(this.centerZ + offset, this.room.min_z + 1, this.room.max_z - 1, this.centerZ) : this.centerZ;
+      this.add('template-entry-runner', block, x, this.floorY, z, placement, 'decor_floor');
+    }
+  }
+
+  pointOnWall(side) {
+    return anchorPointForWall(this.room, normalizeSide(side));
+  }
+
+  offsetPointAlongWall(side, offset = 0) {
+    const normalized = normalizeSide(side);
+    const point = this.pointOnWall(normalized);
+    if (['north', 'south'].includes(normalized)) {
+      return { x: clampInt(point.x + offset, this.room.min_x + 1, this.room.max_x - 1, point.x), z: point.z };
+    }
+    return { x: point.x, z: clampInt(point.z + offset, this.room.min_z + 1, this.room.max_z - 1, point.z) };
+  }
+
+  pointInsideFromWall(side, inward = 1, lateral = 0) {
+    const normalized = normalizeSide(side);
+    const west = this.room.min_x + 1;
+    const east = this.room.max_x - 1;
+    const north = this.room.min_z + 1;
+    const south = this.room.max_z - 1;
+    if (normalized === 'north') {
+      return {
+        x: clampInt(this.centerX + lateral, west, east, this.centerX),
+        z: clampInt(north + inward, north, south, north)
+      };
+    }
+    if (normalized === 'south') {
+      return {
+        x: clampInt(this.centerX + lateral, west, east, this.centerX),
+        z: clampInt(south - inward, north, south, south)
+      };
+    }
+    if (normalized === 'west') {
+      return {
+        x: clampInt(west + inward, west, east, west),
+        z: clampInt(this.centerZ + lateral, north, south, this.centerZ)
+      };
+    }
+    return {
+      x: clampInt(east - inward, west, east, east),
+      z: clampInt(this.centerZ + lateral, north, south, this.centerZ)
+    };
+  }
+
   add(role, block, x, y, z, placement, module) {
     const point = clampPointToRoom(this.room, x, y, z);
     if (!point) return;
@@ -828,6 +1227,50 @@ function seatingBlockForStyle(styleFamily) {
   return 'minecraft:spruce_stairs[facing=north,half=bottom]';
 }
 
+function seatingBlockForSide(styleFamily, side) {
+  const block = seatingBlockForStyle(styleFamily);
+  if (!block.includes('_stairs[')) return block;
+  return block.replace(/facing=(north|south|east|west)/, `facing=${normalizeSide(side)}`);
+}
+
+function serviceBlockForRoom(type) {
+  if (type === 'kitchen') return 'minecraft:crafting_table';
+  if (type === 'bathroom') return 'minecraft:cauldron';
+  if (type === 'garage' || type === 'workshop') return 'minecraft:smithing_table';
+  return 'minecraft:barrel';
+}
+
+function plantBlock(materials = {}) {
+  const plant = materials.plant || 'minecraft:potted_azalea_bush';
+  return blockBase(plant).includes('leaves') ? 'minecraft:potted_azalea_bush' : plant;
+}
+
+function normalizeSide(value) {
+  const text = String(value || '').toLowerCase();
+  if (/north/.test(text)) return 'north';
+  if (/east/.test(text)) return 'east';
+  if (/west/.test(text)) return 'west';
+  return 'south';
+}
+
+function oppositeSide(side) {
+  return {
+    north: 'south',
+    south: 'north',
+    east: 'west',
+    west: 'east'
+  }[normalizeSide(side)] || 'north';
+}
+
+function sideClockwise(side) {
+  return {
+    north: 'east',
+    east: 'south',
+    south: 'west',
+    west: 'north'
+  }[normalizeSide(side)] || 'west';
+}
+
 function tableBaseBlockForStyle(styleFamily) {
   if (styleFamily === 'modern' || styleFamily === 'classical') return 'minecraft:smooth_quartz';
   if (styleFamily === 'gothic') return 'minecraft:chiseled_stone_bricks';
@@ -862,6 +1305,13 @@ function decoratorCapabilityProfile({ placements, suggestions, specialistAgents,
   const vibrant = placements.filter((item) => String(item.role || '').startsWith('vibrant'));
   const functional = placements.filter((item) => ['decor_furniture', 'decor_storage', 'decor_utility'].includes(item.module));
   const templatePatternPlacements = placements.filter((item) => String(item.role || '').startsWith('template-pattern-'));
+  const templateScenePlacements = placements.filter((item) => String(item.role || '').startsWith('template-scene-'));
+  const templateDesignLawPlacements = placements.filter((item) => String(item.role || '').startsWith('design-law-'));
+  const templateExperiencePlacements = placements.filter((item) =>
+    String(item.role || '').startsWith('template-') &&
+    !String(item.role || '').startsWith('template-pattern-') &&
+    !String(item.role || '').startsWith('template-scene-')
+  );
   return {
     registered_specialists: specialistAgents.length,
     active_specialists: new Set(activeSpecialists.map((item) => item.agent_id)).size,
@@ -871,7 +1321,13 @@ function decoratorCapabilityProfile({ placements, suggestions, specialistAgents,
     functional_placement_count: functional.length,
     vibrant_placement_count: vibrant.length,
     template_pattern_placement_count: templatePatternPlacements.length,
+    template_design_law_placement_count: templateDesignLawPlacements.length,
+    template_experience_placement_count: templateExperiencePlacements.length,
+    template_interior_scene_placement_count: templateScenePlacements.length,
     supports_template_room_patterns: templatePatternPlacements.length > 0,
+    supports_template_design_laws: templateDesignLawPlacements.length > 0,
+    supports_template_room_experience: templateExperiencePlacements.length > 0,
+    supports_template_interior_scenes: templateScenePlacements.length > 0,
     supports_style_specialists: activeSpecialists.some((item) => String(item.agent_id || '').includes('interior-style-agent')),
     supports_room_specialists: activeSpecialists.some((item) => String(item.agent_id || '').includes('decoration-agent'))
   };

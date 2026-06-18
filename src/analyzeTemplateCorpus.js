@@ -6,16 +6,19 @@ const rootDir = args.root || args.templates || 'mc_templates';
 const outputDir = args.out || path.join(rootDir, 'analysis');
 const fetchPages = args.fetch !== 'false' && args.offline !== 'true';
 const maxPageFetches = args.maxFetches === undefined ? Infinity : Number(args.maxFetches);
+const continueOnError = args.strict !== 'true';
 
 const result = await analyzeTemplateCorpus({
   rootDir,
   outputDir,
   fetchPages,
   maxPageFetches: Number.isFinite(maxPageFetches) ? maxPageFetches : Infinity,
+  continueOnError,
   cwd: process.cwd()
 });
 
 console.log(`Analyzed ${result.corpus.template_count} templates.`);
+console.log(`Import errors ${result.importErrors.length}.`);
 console.log(`Fetched ${result.fetchedPages} source pages.`);
 console.log(`Wrote analysis to ${result.outputDir}.`);
 console.log(`Terrain-integrated: ${result.corpus.terrain.integrated_count}.`);
@@ -31,6 +34,17 @@ console.log(`Furniture groups mined: ${result.caseIndex.summary.phase3_completio
 console.log(`Furniture pattern ready: ${result.caseIndex.summary.phase3_completion.furniture_pattern_ready}.`);
 console.log(`Composition grammar analyzed: ${result.caseIndex.summary.phase5_completion.composition_analyzed}.`);
 console.log(`Composition grammar ready: ${result.caseIndex.summary.phase5_completion.composition_ready} total, ${result.caseIndex.summary.phase5_completion.high_composition_ready} high-confidence.`);
+console.log(`Stage 7 cases: ${result.caseLibrary.summary.case_count}.`);
+console.log(`Stage 7 semantic clauses: ${result.caseLibrary.semantic_clause_count}.`);
+console.log(`Stage 7 retrieval tokens: ${result.caseLibrary.summary.retrieval_token_count}.`);
+console.log(`Stage 7C design laws: ${result.designLawBook.summary.law_count}.`);
+console.log(`Stage 7C interior laws: ${result.designLawBook.summary.interior_law_count}.`);
+console.log(`Stage 7 case library: ${path.join(result.outputDir, 'case_library.json')}.`);
+console.log(`Stage 7 retrieval index: ${path.join(result.outputDir, 'retrieval_index.json')}.`);
+console.log(`Stage 7 clauses: ${path.join(result.outputDir, 'semantic_clauses.jsonl')}.`);
+console.log(`Stage 7 report: ${path.join(result.outputDir, 'case_library.md')}.`);
+console.log(`Stage 7C design laws: ${path.join(result.outputDir, 'design_laws.json')}.`);
+console.log(`Stage 7C interior laws: ${path.join(result.outputDir, 'interior_laws.jsonl')}.`);
 
 function parseArgs(argv) {
   const result = {};

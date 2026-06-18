@@ -2,6 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parseNbt } from './nbt.js';
 import { buildTemplateCaseProfile, renderCaseIndexReport, summarizeCaseIndex } from './templateCaseProfile.js';
+import { buildTemplateCaseLibrary, caseClausesJsonl, renderTemplateCaseLibraryReport } from './templateCaseLibrary.js';
+import { buildTemplateDesignLawBook, designLawsJsonl, interiorLawsJsonl, renderTemplateDesignLawReport } from './templateDesignLawDistiller.js';
 import { analyzeTemplateComposition } from './templateCompositionMiner.js';
 import { analyzeSpatialLayout } from './templateSpatialAnalyzer.js';
 
@@ -123,6 +125,7 @@ export async function analyzeTemplateCorpus({
   outputDir = path.join(rootDir, 'analysis'),
   fetchPages = true,
   maxPageFetches = Infinity,
+  continueOnError = true,
   cwd = process.cwd()
 } = {}) {
   const absoluteRoot = path.resolve(cwd, rootDir);
@@ -131,35 +134,72 @@ export async function analyzeTemplateCorpus({
   const files = await collectSchematicFiles(absoluteRoot);
   const pageCache = {};
   const templates = [];
+  const importErrors = [];
   let fetched = 0;
+  const generatedAt = new Date().toISOString();
 
   for (const filePath of files) {
-    const source = sources.byTemplateName.get(normalizeTemplateName(path.basename(filePath, path.extname(filePath)))) || {};
+    const relativePath = path.relative(absoluteRoot, filePath).replaceAll('\\', '/');
+    const source = mergeSourceRecords(
+      sources.byTemplateName.get(normalizeTemplateName(path.basename(filePath, path.extname(filePath)))),
+      sources.byRelativePath.get(relativePath)
+    );
     const page = fetchPages && source.url && fetched < maxPageFetches
       ? await fetchPageMetadata(source.url).catch((error) => ({ url: source.url, error: error.message }))
       : source.url ? { url: source.url, skipped: !fetchPages ? 'fetch-disabled' : 'fetch-limit' } : {};
     if (page.url && !page.skipped) fetched += 1;
     if (page.url) pageCache[page.url] = page;
-    templates.push(await analyzeSchematicFile(filePath, {
-      rootDir: absoluteRoot,
-      source,
-      page
-    }));
+    try {
+      templates.push(await analyzeSchematicFile(filePath, {
+        rootDir: absoluteRoot,
+        source,
+        page
+      }));
+    } catch (error) {
+      const record = {
+        file: relativePath,
+        path: filePath,
+        error: error.message
+      };
+      importErrors.push(record);
+      if (!continueOnError) throw error;
+    }
   }
 
   const corpus = summarizeCorpus(templates, sources.unmatched);
   const caseIndex = {
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt,
     root: rootDir,
     summary: summarizeCaseIndex(templates),
     cases: templates.map((template) => template.case_profile)
   };
+  const caseLibrary = buildTemplateCaseLibrary({
+    root: rootDir,
+    generatedAt,
+    templates,
+    corpus,
+    importErrors
+  });
+  const designLawBook = buildTemplateDesignLawBook({
+    root: rootDir,
+    generatedAt,
+    caseLibrary
+  });
   const labels = templates.map((template) => makeGeneratedLabel(template));
   const report = renderGapReport(corpus, templates);
   await fs.mkdir(absoluteOutput, { recursive: true });
-  await fs.writeFile(path.join(absoluteOutput, 'template_index.json'), `${JSON.stringify({ generated_at: new Date().toISOString(), root: rootDir, corpus, templates }, null, 2)}\n`, 'utf8');
+  await fs.writeFile(path.join(absoluteOutput, 'template_index.json'), `${JSON.stringify({ generated_at: generatedAt, root: rootDir, corpus, templates, import_errors: importErrors }, null, 2)}\n`, 'utf8');
   await fs.writeFile(path.join(absoluteOutput, 'case_index.json'), `${JSON.stringify(caseIndex, null, 2)}\n`, 'utf8');
   await fs.writeFile(path.join(absoluteOutput, 'case_index.md'), renderCaseIndexReport(caseIndex), 'utf8');
+  await fs.writeFile(path.join(absoluteOutput, 'case_library.json'), `${JSON.stringify(caseLibrary, null, 2)}\n`, 'utf8');
+  await fs.writeFile(path.join(absoluteOutput, 'case_library.md'), renderTemplateCaseLibraryReport(caseLibrary), 'utf8');
+  await fs.writeFile(path.join(absoluteOutput, 'retrieval_index.json'), `${JSON.stringify(caseLibrary.retrieval_index, null, 2)}\n`, 'utf8');
+  await fs.writeFile(path.join(absoluteOutput, 'semantic_clauses.jsonl'), caseClausesJsonl(caseLibrary), 'utf8');
+  await fs.writeFile(path.join(absoluteOutput, 'design_laws.json'), `${JSON.stringify(designLawBook, null, 2)}\n`, 'utf8');
+  await fs.writeFile(path.join(absoluteOutput, 'design_laws.md'), renderTemplateDesignLawReport(designLawBook), 'utf8');
+  await fs.writeFile(path.join(absoluteOutput, 'distilled_laws.jsonl'), designLawsJsonl(designLawBook), 'utf8');
+  await fs.writeFile(path.join(absoluteOutput, 'interior_laws.jsonl'), interiorLawsJsonl(designLawBook), 'utf8');
+  await fs.writeFile(path.join(absoluteOutput, 'template_import_errors.json'), `${JSON.stringify(importErrors, null, 2)}\n`, 'utf8');
   await fs.writeFile(path.join(absoluteOutput, 'labels.generated.jsonl'), `${labels.map((item) => JSON.stringify(item)).join('\n')}\n`, 'utf8');
   await fs.writeFile(path.join(absoluteOutput, 'template_gap_report.md'), report, 'utf8');
 
@@ -167,7 +207,10 @@ export async function analyzeTemplateCorpus({
     outputDir: absoluteOutput,
     corpus,
     caseIndex,
+    caseLibrary,
+    designLawBook,
     templates,
+    importErrors,
     fetchedPages: fetched,
     pageCache
   };
@@ -185,10 +228,10 @@ export async function analyzeSchematicFile(filePath, { rootDir = process.cwd(), 
   const relativePath = path.relative(rootDir, filePath).replaceAll('\\', '/');
   const category = relativePath.split('/')[0] || 'uncategorized';
   const title = source.title || page.title || path.basename(filePath, path.extname(filePath));
-  const text = [title, source.note, page.title, page.description, category].filter(Boolean).join(' ');
+  const text = [title, source.note, source.description, ...(source.tags || []), page.title, page.description, category].filter(Boolean).join(' ');
   const style = inferStyleFamily(text, category);
   const typology = inferTypology(text, category);
-  const featureTags = inferFeatureTags(text, voxels, category, typology);
+  const featureTags = [...new Set([...inferFeatureTags(text, voxels, category, typology), ...normalizeStringArray(source.tags)])].sort();
   voxels.composition_grammar = analyzeTemplateComposition(schematic, {
     blockAt: (index) => blockAt(schematic, index),
     analysis: voxels,
@@ -206,7 +249,7 @@ export async function analyzeSchematicFile(filePath, { rootDir = process.cwd(), 
     page,
     style_family: style,
     typology,
-    quality: 5,
+    quality: Number.isFinite(Number(source.quality)) ? Number(source.quality) : 5,
     tags: featureTags,
     schematic: {
       format: schematic.format,
@@ -226,7 +269,10 @@ export async function analyzeSchematicFile(filePath, { rootDir = process.cwd(), 
 
 export async function readTemplateSources(rootDir) {
   const dataFiles = await collectFiles(rootDir, (file) => path.basename(file).toLowerCase() === 'data.txt');
+  const labelFiles = await collectFiles(rootDir, (file) => /^labels?\.jsonl$/i.test(path.basename(file)) || /^case[-_ ]?labels?\.jsonl$/i.test(path.basename(file)));
+  const sidecarFiles = await collectFiles(rootDir, (file) => isSidecarMetadataFile(file));
   const byTemplateName = new Map();
+  const byRelativePath = new Map();
   const unmatched = [];
   for (const dataFile of dataFiles) {
     const category = path.basename(path.dirname(dataFile));
@@ -249,7 +295,31 @@ export async function readTemplateSources(rootDir) {
       unmatched.push(record);
     }
   }
-  return { byTemplateName, unmatched };
+  for (const labelFile of labelFiles) {
+    const content = await fs.readFile(labelFile, 'utf8');
+    for (const rawLine of content.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+      const record = parseLabelRecord(line, labelFile, rootDir);
+      if (!record) continue;
+      if (record.file) {
+        const normalizedPath = normalizeRelativePath(record.file);
+        byRelativePath.set(normalizedPath, mergeSourceRecords(byRelativePath.get(normalizedPath), record));
+      }
+      if (record.title) {
+        byTemplateName.set(normalizeTemplateName(record.title), mergeSourceRecords(byTemplateName.get(normalizeTemplateName(record.title)), record));
+      }
+      unmatched.push(record);
+    }
+  }
+  for (const sidecarFile of sidecarFiles) {
+    const record = await readSidecarMetadata(sidecarFile, rootDir);
+    if (!record) continue;
+    byRelativePath.set(record.file, mergeSourceRecords(byRelativePath.get(record.file), record));
+    if (record.title) byTemplateName.set(normalizeTemplateName(record.title), mergeSourceRecords(byTemplateName.get(normalizeTemplateName(record.title)), record));
+    unmatched.push(record);
+  }
+  return { byTemplateName, byRelativePath, unmatched };
 }
 
 async function collectSchematicFiles(rootDir) {
@@ -259,7 +329,13 @@ async function collectSchematicFiles(rootDir) {
 async function collectFiles(rootDir, predicate) {
   const results = [];
   async function walk(dir) {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch (error) {
+      if (error.code === 'ENOENT') return;
+      throw error;
+    }
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
@@ -272,6 +348,119 @@ async function collectFiles(rootDir, predicate) {
   }
   await walk(rootDir);
   return results.sort((a, b) => a.localeCompare(b));
+}
+
+function mergeSourceRecords(...records) {
+  const result = {};
+  for (const record of records.filter(Boolean)) {
+    result.category = record.category ?? result.category;
+    result.data_file = record.data_file ?? result.data_file;
+    result.label_file = record.label_file ?? result.label_file;
+    result.sidecar_file = record.sidecar_file ?? result.sidecar_file;
+    result.file = record.file ?? result.file;
+    result.title = record.title ?? result.title;
+    result.url = record.url ?? result.url;
+    result.note = mergeText(result.note, record.note);
+    result.description = mergeText(result.description, record.description);
+    result.quality = record.quality ?? result.quality;
+    result.raw = record.raw ?? result.raw;
+    result.tags = [...new Set([...normalizeStringArray(result.tags), ...normalizeStringArray(record.tags)])].sort();
+  }
+  return result;
+}
+
+function mergeText(a, b) {
+  const left = String(a || '').trim();
+  const right = String(b || '').trim();
+  if (!left) return right || undefined;
+  if (!right || left.includes(right)) return left;
+  if (right.includes(left)) return right;
+  return `${left} ${right}`;
+}
+
+function parseLabelRecord(line, labelFile, rootDir) {
+  let parsed;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    parsed = parseLooseLabelLine(line);
+  }
+  if (!parsed || typeof parsed !== 'object') return undefined;
+  const title = cleanTitle(parsed.title || parsed.name || parsed.case || parsed.template || parsed.file);
+  const url = parsed.url || String(parsed.source || '').match(MCBUILD_URL_PATTERN)?.[0];
+  const file = parsed.file || parsed.path || parsed.schematic;
+  return {
+    category: parsed.category || path.basename(path.dirname(labelFile)),
+    label_file: path.relative(rootDir, labelFile).replaceAll('\\', '/'),
+    file: file ? normalizeRelativePath(file) : undefined,
+    title,
+    url,
+    note: parsed.note || parsed.notes || parsed.comment,
+    description: parsed.description || parsed.desc,
+    quality: parsed.quality,
+    tags: normalizeStringArray(parsed.tags || parsed.labels || parsed.tag),
+    raw: line
+  };
+}
+
+function parseLooseLabelLine(line) {
+  const url = line.match(MCBUILD_URL_PATTERN)?.[0];
+  const withoutUrl = url ? line.replace(url, ' ') : line;
+  const parts = withoutUrl.split(/\t|\s+\|\s+|;/).map((part) => part.trim()).filter(Boolean);
+  const file = parts.find((part) => /\.(schematic|schem|litematic)$/i.test(part));
+  const tagPart = parts.find((part) => /^tags?\s*[:=]/i.test(part));
+  const title = cleanTitle(parts.find((part) => part !== file && !/^tags?\s*[:=]/i.test(part)) || file || withoutUrl);
+  return {
+    file,
+    title,
+    url,
+    tags: tagPart ? tagPart.replace(/^tags?\s*[:=]\s*/i, '').split(/[,，、\s]+/).filter(Boolean) : [],
+    note: parts.filter((part) => part !== file && part !== title && part !== tagPart).join(' ')
+  };
+}
+
+function isSidecarMetadataFile(file) {
+  const base = path.basename(file).toLowerCase();
+  if (!base.endsWith('.txt')) return false;
+  if (base === 'data.txt') return false;
+  if (base.endsWith('.tags.txt') || base.endsWith('.label.txt') || base.endsWith('.labels.txt') || base.endsWith('.url.txt') || base.endsWith('.note.txt')) return true;
+  return !/(readme|说明|license|credits)/i.test(base);
+}
+
+async function readSidecarMetadata(sidecarFile, rootDir) {
+  const content = await fs.readFile(sidecarFile, 'utf8');
+  const relativeSidecar = path.relative(rootDir, sidecarFile).replaceAll('\\', '/');
+  const templateFile = sidecarPathToTemplatePath(sidecarFile, rootDir);
+  const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const record = {
+    category: path.basename(path.dirname(sidecarFile)),
+    sidecar_file: relativeSidecar,
+    file: templateFile,
+    title: cleanTitle(path.basename(templateFile, path.extname(templateFile))),
+    tags: []
+  };
+  const notes = [];
+  for (const line of lines) {
+    const url = line.match(MCBUILD_URL_PATTERN)?.[0];
+    if (url) record.url = url;
+    if (/^title\s*[:=]/i.test(line)) record.title = cleanTitle(line.replace(/^title\s*[:=]\s*/i, ''));
+    else if (/^tags?\s*[:=]/i.test(line)) record.tags.push(...line.replace(/^tags?\s*[:=]\s*/i, '').split(/[,，、\s]+/).filter(Boolean));
+    else if (/^quality\s*[:=]/i.test(line)) record.quality = Number(line.replace(/^quality\s*[:=]\s*/i, ''));
+    else if (/^desc(?:ription)?\s*[:=]/i.test(line)) record.description = mergeText(record.description, line.replace(/^desc(?:ription)?\s*[:=]\s*/i, ''));
+    else if (!url) notes.push(line);
+  }
+  record.note = notes.join(' ') || undefined;
+  record.tags = [...new Set(record.tags)].sort();
+  return record;
+}
+
+function sidecarPathToTemplatePath(sidecarFile, rootDir) {
+  const dir = path.dirname(sidecarFile);
+  const base = path.basename(sidecarFile)
+    .replace(/\.(tags|labels|label|url|note)\.txt$/i, '')
+    .replace(/\.txt$/i, '');
+  const relative = path.relative(rootDir, path.join(dir, `${base}.schematic`)).replaceAll('\\', '/');
+  return normalizeRelativePath(relative);
 }
 
 async function fetchPageMetadata(url) {
@@ -846,6 +1035,19 @@ function cleanTitle(value) {
 
 function stripKnownSuffix(value) {
   return String(value || '').replace(/\s+-\s+\(mcbuild_org\)\s*$/i, '').trim();
+}
+
+function normalizeStringArray(value) {
+  if (Array.isArray(value)) return value.flatMap((item) => normalizeStringArray(item));
+  if (value === undefined || value === null) return [];
+  return String(value)
+    .split(/[,，、\s]+/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeRelativePath(value) {
+  return String(value || '').replaceAll('\\', '/').replace(/^\.?\//, '').trim();
 }
 
 function numberTag(value) {

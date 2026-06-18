@@ -1549,6 +1549,7 @@ export class CSGBuilder {
     if (sitePlan.engine_hints.render_outdoor_seating) this.addOutdoorSeating(grid, center, zStart, sitePlan);
     if (sitePlan.engine_hints.render_mailbox) this.addMailbox(grid, center, zStart, sitePlan);
     if (sitePlan.engine_hints.render_accessible_markers) this.addAccessibleMarkers(grid, center, zStart, zEnd, sitePlan);
+    if (sitePlan.engine_hints.render_template_site_scenes) this.addTemplateSiteScenes(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_template_approach_sequence) this.addTemplateApproachSequence(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_template_view_frame) this.addTemplateViewFrame(grid, center, zStart, sitePlan);
   }
@@ -1753,6 +1754,171 @@ export class CSGBuilder {
     fillBox(grid, center + 7, 1, z, center + 7, 3, z + 1, block, 'template_view_frame');
   }
 
+  addTemplateSiteScenes(grid, center, zStart, zEnd, sitePlan = {}) {
+    const scenes = Array.isArray(sitePlan.template_site_scenes?.scenes) ? sitePlan.template_site_scenes.scenes : [];
+    for (const scene of scenes) {
+      switch (scene.scene_type) {
+        case 'entry-approach-scene':
+          this.addTemplateSiteEntryApproachScene(grid, center, zStart, zEnd, sitePlan);
+          break;
+        case 'terrain-plinth-scene':
+          this.addTemplateSiteTerrainPlinthScene(grid, center, zStart, zEnd, sitePlan);
+          break;
+        case 'forecourt-garden-room-scene':
+          this.addTemplateSiteForecourtGardenScene(grid, center, zStart, zEnd, sitePlan);
+          break;
+        case 'water-edge-deck-scene':
+          this.addTemplateSiteWaterEdgeScene(grid, center, zStart, zEnd, sitePlan);
+          break;
+        case 'grove-edge-scene':
+          this.addTemplateSiteGroveEdgeScene(grid, center, zStart, zEnd, sitePlan);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  addTemplateSiteEntryApproachScene(grid, center, zStart, zEnd, sitePlan = {}) {
+    const path = sitePlan.materials?.path_secondary || sitePlan.materials?.path || this.materials.path || 'minecraft:gravel';
+    const frame = sitePlan.materials?.rock || this.materials.retaining || 'minecraft:stone_bricks';
+    const light = sitePlan.materials?.light || this.materials.path_light || this.materials.lamp || 'minecraft:glowstone';
+    const grass = sitePlan.materials?.grass || sitePlan.materials?.landscape || 'minecraft:grass_block';
+    const edge = sitePlan.materials?.garden_edge || sitePlan.materials?.fence || this.materials.railing || 'minecraft:oak_fence';
+    const z2 = Math.min(zEnd, zStart + 7);
+
+    fillBox(grid, center - 2, 1, zStart, center - 2, 1, z2, path, 'template_site_axis_path');
+    fillBox(grid, center + 2, 1, zStart, center + 2, 1, z2, path, 'template_site_axis_path');
+    fillBox(grid, center - 7, 0, zStart + 1, center - 4, 0, z2 - 1, grass, 'template_site_arrival_pocket');
+    fillBox(grid, center + 4, 0, zStart + 1, center + 7, 0, z2 - 1, grass, 'template_site_arrival_pocket');
+    fillBox(grid, center - 7, 1, zStart + 1, center - 7, 1, z2 - 1, edge, 'template_site_arrival_edge');
+    fillBox(grid, center + 7, 1, zStart + 1, center + 7, 1, z2 - 1, edge, 'template_site_arrival_edge');
+    fillBox(grid, center - 6, 1, zStart, center - 6, 3, zStart, frame, 'template_site_entry_frame');
+    fillBox(grid, center + 6, 1, zStart, center + 6, 3, zStart, frame, 'template_site_entry_frame');
+    fillBox(grid, center - 6, 4, zStart, center + 6, 4, zStart, frame, 'template_site_entry_frame');
+    for (let z = zStart + 2; z <= z2; z += 3) {
+      fillBox(grid, center - 5, 2, z, center - 5, 2, z, light, 'template_site_threshold_light');
+      fillBox(grid, center + 5, 2, z, center + 5, 2, z, light, 'template_site_threshold_light');
+    }
+  }
+
+  addTemplateSiteTerrainPlinthScene(grid, center, zStart, zEnd, sitePlan = {}) {
+    const earth = sitePlan.materials?.earth || this.materials.earth || 'minecraft:dirt';
+    const grass = sitePlan.materials?.grass || sitePlan.materials?.landscape || 'minecraft:grass_block';
+    const rock = sitePlan.materials?.rock || this.materials.retaining || 'minecraft:stone_bricks';
+    const plant = sitePlan.materials?.plant || this.materials.plant || 'minecraft:oak_leaves[persistent=true]';
+    const palette = blockPalette(sitePlan.materials?.plant_palette, plant, sitePlan.materials?.plant_secondary, 'minecraft:moss_carpet');
+    const left = center - 12;
+    const right = center + 12;
+    const terraceZ = Math.min(zEnd, zStart + 5);
+
+    fillBox(grid, center - 10, -1, zStart - 1, center + 10, -1, terraceZ, earth, 'template_site_earth_terrace');
+    fillBox(grid, center - 9, 0, zStart - 1, center + 9, 0, zStart + 1, rock, 'template_site_stone_plinth');
+    fillBox(grid, left, 0, zStart + 1, center - 4, 0, terraceZ, grass, 'template_site_earth_terrace');
+    fillBox(grid, center + 4, 0, zStart + 1, right, 0, terraceZ, grass, 'template_site_earth_terrace');
+    fillBox(grid, left, 1, zStart, left, 2, zEnd, rock, 'template_site_retaining_edge');
+    fillBox(grid, right, 1, zStart, right, 2, zEnd, rock, 'template_site_retaining_edge');
+    fillBox(grid, center - 8, 1, terraceZ, center - 3, 1, terraceZ, rock, 'template_site_retaining_edge');
+    fillBox(grid, center + 3, 1, terraceZ, center + 8, 1, terraceZ, rock, 'template_site_retaining_edge');
+    for (let x = center - 10; x <= center - 4; x += 3) {
+      fillBox(grid, x, 1, terraceZ - 1, x, 1, terraceZ - 1, blockAt(palette, x, plant), 'template_site_planting_pocket');
+    }
+    for (let x = center + 4; x <= center + 10; x += 3) {
+      fillBox(grid, x, 1, terraceZ - 1, x, 1, terraceZ - 1, blockAt(palette, x + 1, plant), 'template_site_planting_pocket');
+    }
+  }
+
+  addTemplateSiteForecourtGardenScene(grid, center, zStart, zEnd, sitePlan = {}) {
+    const path = sitePlan.materials?.path_secondary || sitePlan.materials?.path || this.materials.path || 'minecraft:gravel';
+    const edge = sitePlan.materials?.garden_edge || sitePlan.materials?.fence || this.materials.railing || 'minecraft:oak_fence';
+    const soil = sitePlan.materials?.grass || sitePlan.materials?.landscape || this.materials.landscape || 'minecraft:grass_block';
+    const plant = sitePlan.materials?.plant || this.materials.plant || 'minecraft:oak_leaves[persistent=true]';
+    const palette = blockPalette(sitePlan.materials?.plant_palette, plant, sitePlan.materials?.plant_secondary, 'minecraft:flowering_azalea_leaves[persistent=true]', 'minecraft:fern');
+    const water = sitePlan.materials?.water || this.materials.water || 'minecraft:water';
+    const zMid = Math.floor((zStart + zEnd) / 2);
+    const left1 = center - 11;
+    const left2 = center - 5;
+    const right1 = center + 5;
+    const right2 = center + 11;
+
+    fillBox(grid, center - 4, 0, zStart, center - 4, 0, zEnd, path, 'template_site_garden_axis');
+    fillBox(grid, center + 4, 0, zStart, center + 4, 0, zEnd, path, 'template_site_garden_axis');
+    fillBox(grid, center - 11, 0, zMid, center + 11, 0, zMid, path, 'template_site_garden_axis');
+    fillBox(grid, left1, 0, zStart + 1, left2, 0, zMid - 1, soil, 'template_site_garden_room');
+    fillBox(grid, right1, 0, zStart + 1, right2, 0, zMid - 1, soil, 'template_site_garden_room');
+    fillBox(grid, left1, 0, zMid + 1, left2, 0, zEnd, soil, 'template_site_garden_room');
+    fillBox(grid, right1, 0, zMid + 1, right2, 0, zEnd, soil, 'template_site_garden_room');
+
+    for (const [x1, x2] of [[left1, left2], [right1, right2]]) {
+      fillBox(grid, x1, 1, zStart + 1, x2, 1, zStart + 1, edge, 'template_site_garden_edge');
+      fillBox(grid, x1, 1, zEnd, x2, 1, zEnd, edge, 'template_site_garden_edge');
+      for (let z = zStart + 2; z <= zEnd - 1; z += 2) {
+        fillBox(grid, x1, 1, z, x1, 1, z, blockAt(palette, x1 + z, plant), 'template_site_garden_planting');
+        fillBox(grid, x2, 1, z, x2, 1, z, blockAt(palette, x2 + z, plant), 'template_site_garden_planting');
+      }
+    }
+
+    this.addContainedWaterRect(grid, center - 2, zMid - 1, center + 2, zMid + 1, {
+      edge: sitePlan.materials?.pool_edge || this.materials.foundation || 'minecraft:stone_bricks',
+      water,
+      edgeModule: 'template_site_reflection_basin',
+      waterModule: 'template_site_reflection_basin'
+    });
+  }
+
+  addTemplateSiteWaterEdgeScene(grid, center, zStart, zEnd, sitePlan = {}) {
+    const deck = sitePlan.materials?.pool_edge || this.materials.foundation || 'minecraft:smooth_quartz';
+    const rail = sitePlan.materials?.fence || this.materials.railing || 'minecraft:iron_bars';
+    const water = sitePlan.materials?.water || this.materials.water || 'minecraft:water';
+    const plant = sitePlan.materials?.plant || this.materials.plant || 'minecraft:oak_leaves[persistent=true]';
+    const seat = seatBlockForSiteSide(sitePlan.materials?.outdoor_seat || this.materials.outdoor_seat || 'minecraft:spruce_stairs[facing=north,half=bottom]', sitePlan.template_site_scenes?.view_side || 'south');
+    const table = sitePlan.materials?.path_secondary || 'minecraft:smooth_quartz_slab[type=bottom]';
+    const deckZ = Math.min(zEnd + 1, zStart + 8);
+
+    fillBox(grid, center - 8, 0, deckZ, center + 8, 0, deckZ + 2, deck, 'template_site_water_deck');
+    fillBox(grid, center - 8, 1, deckZ + 2, center + 8, 1, deckZ + 2, rail, 'template_site_deck_frame');
+    fillBox(grid, center - 8, 1, deckZ, center - 8, 2, deckZ + 2, rail, 'template_site_deck_frame');
+    fillBox(grid, center + 8, 1, deckZ, center + 8, 2, deckZ + 2, rail, 'template_site_deck_frame');
+    this.addContainedWaterRect(grid, center - 9, deckZ + 4, center + 9, deckZ + 6, {
+      edge: deck,
+      water,
+      edgeModule: 'template_site_water_edge',
+      waterModule: 'template_site_reflection_water'
+    });
+    fillBox(grid, center - 3, 1, deckZ + 1, center - 3, 1, deckZ + 1, seat, 'template_site_outdoor_seat');
+    fillBox(grid, center + 3, 1, deckZ + 1, center + 3, 1, deckZ + 1, seat, 'template_site_outdoor_seat');
+    fillBox(grid, center, 1, deckZ + 1, center, 1, deckZ + 1, table, 'template_site_outdoor_table');
+    for (let x = center - 9; x <= center + 9; x += 3) {
+      fillBox(grid, x, 1, deckZ + 3, x, 1, deckZ + 3, plant, 'template_site_water_planting');
+    }
+  }
+
+  addTemplateSiteGroveEdgeScene(grid, center, zStart, zEnd, sitePlan = {}) {
+    const trunk = this.materials.foundation || 'minecraft:oak_log';
+    const leaves = sitePlan.materials?.plant || this.materials.plant || 'minecraft:oak_leaves[persistent=true]';
+    const palette = blockPalette(sitePlan.materials?.plant_palette, leaves, sitePlan.materials?.plant_secondary, 'minecraft:flowering_azalea_leaves[persistent=true]');
+    const understory = blockPalette(sitePlan.materials?.understory_palette, 'minecraft:moss_carpet', 'minecraft:fern');
+    const rock = sitePlan.materials?.rock || this.materials.retaining || 'minecraft:mossy_cobblestone';
+    const anchors = [
+      [center - 12, zStart + 3],
+      [center + 12, Math.max(zStart + 5, zEnd - 1)]
+    ];
+
+    for (const [x, z] of anchors) {
+      fillBox(grid, x, 1, z, x, 3, z, trunk, 'template_site_tree_trunk');
+      for (let dx = -2; dx <= 2; dx += 1) {
+        for (let dz = -2; dz <= 2; dz += 1) {
+          if (Math.abs(dx) + Math.abs(dz) > 3) continue;
+          fillBox(grid, x + dx, 4, z + dz, x + dx, 4, z + dz, blockAt(palette, x + z + dx + dz, leaves), 'template_site_tree_canopy');
+        }
+      }
+      fillBox(grid, x - 2, 1, z + 2, x - 2, 1, z + 2, blockAt(understory, x + z, 'minecraft:moss_carpet'), 'template_site_understory');
+      fillBox(grid, x + 2, 1, z - 2, x + 2, 1, z - 2, blockAt(understory, x + z + 1, 'minecraft:fern'), 'template_site_understory');
+      fillBox(grid, x - 3, 0, z, x - 3, 1, z, rock, 'template_site_grove_rock');
+      fillBox(grid, x + 3, 0, z + 1, x + 3, 1, z + 1, rock, 'template_site_grove_rock');
+    }
+  }
+
   addOutdoorSeating(grid, center, zStart, sitePlan = {}) {
     const seat = sitePlan.materials?.outdoor_seat || this.materials.outdoor_seat || 'minecraft:spruce_stairs[facing=north,half=bottom]';
     const firepit = sitePlan.materials?.firepit || this.materials.firepit || 'minecraft:campfire[lit=false]';
@@ -1913,7 +2079,9 @@ function summarizeSitePlan(plan = {}) {
     mood: plan.mood || 'simple',
     zoneCount: Array.isArray(plan.zones) ? plan.zones.length : 0,
     boundary: plan.boundary || 'open-setback',
-    terrain: plan.terrain_response || 'flat-lot'
+    terrain: plan.terrain_response || 'flat-lot',
+    templateSiteSceneCount: plan.template_site_scenes?.scene_count || 0,
+    templateSiteSceneTypes: plan.template_site_scenes?.scene_types || []
   };
 }
 
@@ -2060,6 +2228,20 @@ function blockAt(blocks, index, fallback) {
 
 function blockPalette(...values) {
   return [...new Set(values.flatMap((value) => Array.isArray(value) ? value : [value]).filter(Boolean).map(String))];
+}
+
+function seatBlockForSiteSide(block, side) {
+  const value = String(block || 'minecraft:spruce_stairs[facing=north,half=bottom]');
+  if (!/_stairs\[/.test(value)) return value;
+  return value.replace(/facing=(north|south|east|west)/, `facing=${normalizeSideName(side)}`);
+}
+
+function normalizeSideName(value) {
+  const text = String(value || '').toLowerCase();
+  if (/north|北/.test(text)) return 'north';
+  if (/east|东/.test(text)) return 'east';
+  if (/west|西/.test(text)) return 'west';
+  return 'south';
 }
 
 function directlyFacesWindow(grid, x, y, z) {

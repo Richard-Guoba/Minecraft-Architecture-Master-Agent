@@ -1,7 +1,10 @@
+import { buildTemplateRoomExperienceStrategy } from './templateRoomExperienceStrategy.js';
+
 export class OpeningConnectivityAgent {
   run(prompt = '', architecture = {}, buildSpec = {}, topology = {}, shell = {}, layout = {}, facade = {}) {
     const rooms = Array.isArray(layout.rooms) ? layout.rooms : [];
     const doors = Array.isArray(layout.interiorDoors) ? layout.interiorDoors : [];
+    const templateRoomExperience = buildTemplateRoomExperienceStrategy({ rooms, architecture, buildSpec, topology });
     const floorCount = Number(buildSpec.floors || 1);
     const frontSide = facade.front_side || architecture.facade_rules?.front_side || buildSpec.door_side || 'south';
     const largeEntry = /大门|双开门|宽门|门厅|玻璃门/.test(prompt) || buildSpec.scale === 'large' || architecture.facade_rules?.arches;
@@ -30,7 +33,9 @@ export class OpeningConnectivityAgent {
         preferred_rooms: rooms.filter((room) => ['bedroom', 'master_bedroom', 'study', 'workshop'].includes(room.type)).map((room) => room.id),
         strategy: fireSafety ? 'opposite-side-exit-or-large-egress-window' : 'main-entry-plus-windows'
       },
-      window_openings: plannedWindows(rooms, facade, buildSpec),
+      window_openings: plannedWindows(rooms, facade, buildSpec, templateRoomExperience),
+      template_room_experience: templateRoomExperience,
+      view_thresholds: viewThresholds(templateRoomExperience),
       daylight_targets: daylightRooms,
       interior_thresholds: doors.map((door) => ({
         kind: door.kind,
@@ -57,6 +62,8 @@ export class OpeningConnectivityAgent {
         prefer_accessible_routes: accessible,
         protect_egress_routes: fireSafety,
         planned_daylight_room_count: daylightRooms.length,
+        template_view_opening_count: templateRoomExperience.opening_plan?.public_view_rooms?.length || 0,
+        template_terrace_door_count: templateRoomExperience.opening_plan?.terrace_door_rooms?.length || 0,
         planned_opening_count: 1 + doors.length + (floorCount > 1 ? floorCount - 1 : 0)
       }
     };
@@ -69,18 +76,41 @@ function selectEntryRoom(rooms) {
     rooms.find((room) => room.zone === 'public');
 }
 
-function plannedWindows(rooms, facade = {}, buildSpec = {}) {
+function plannedWindows(rooms, facade = {}, buildSpec = {}, templateRoomExperience = {}) {
   const highGlazing = facade.window_system?.glazing_ratio === 'high' || buildSpec.facade?.large_glass;
   const publicRooms = rooms
     .filter((room) => Number(room.floor || 0) === 0)
     .filter((room) => ['living', 'great_hall', 'lounge', 'sunroom', 'greenhouse', 'dining'].includes(room.type))
     .map((room) => room.id);
-  return [{
+  const base = [{
     side: facade.front_side || buildSpec.door_side || 'south',
     priority_rooms: publicRooms,
     rhythm: facade.window_system?.rhythm || 'balanced',
     glazing_ratio: highGlazing ? 'high' : facade.window_system?.glazing_ratio || 'medium'
   }];
+  const templateGroups = templateRoomExperience.opening_plan?.window_groups || [];
+  if (!templateGroups.length) return base;
+  return [
+    ...templateGroups.map((group) => ({
+      side: group.side,
+      priority_rooms: group.priority_rooms,
+      rhythm: group.role === 'view-glass' ? 'view-framed' : facade.window_system?.rhythm || 'balanced',
+      glazing_ratio: group.glazing_ratio || (group.role === 'view-glass' ? 'high' : 'medium'),
+      template_role: group.role,
+      source: 'template-room-experience-strategy-v1'
+    })),
+    ...base.filter((item) => !templateGroups.some((group) => group.side === item.side))
+  ];
+}
+
+function viewThresholds(templateRoomExperience = {}) {
+  const plan = templateRoomExperience.opening_plan || {};
+  return (plan.terrace_door_rooms || []).map((roomId) => ({
+    room_id: roomId,
+    side: plan.primary_view_side || templateRoomExperience.view_side || 'south',
+    target: 'view-deck-or-water-edge',
+    relation: 'template-public-room-to-outdoor-view-threshold'
+  }));
 }
 
 function secondaryExits(rooms, frontSide, enabled) {

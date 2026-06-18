@@ -1,3 +1,5 @@
+import { applyTemplateSpacePlanningStrategy } from './templateSpacePlanningStrategy.js';
+
 const MASSING_VARIANTS = [
   {
     id: 'east-offset-glass-wing',
@@ -332,7 +334,10 @@ export function applyCreativeDesign({ architecture = {}, buildSpec = {}, topolog
     creative_design_signature: design.signature
   };
 
-  const nextTopology = applyTopologyDirectives(topology, design);
+  const nextTopology = applyTemplateSpacePlanningStrategy(
+    applyTopologyDirectives(topology, design),
+    { prompt, architecture: nextArchitecture, buildSpec: nextBuildSpec }
+  );
   return { architecture: nextArchitecture, buildSpec: nextBuildSpec, topology: nextTopology, creativeDesign: design };
 }
 

@@ -148,3 +148,42 @@ test('planner normalization shifts one-based LLM floors to zero-based floors', (
   assert.ok(topology.floor_program[1].private.includes('bedroom'));
   assert.ok(topology.edges.some((edge) => edge.from === 'stairs' && edge.to === 'corridor'));
 });
+
+test('planner applies template design laws to fallback topology', () => {
+  const prompt = '建一个现代湖边别墅，带非平坦自然地形、前景花园、水边平台、大玻璃和屋顶露台';
+  const architecture = buildFallbackArchitecture(prompt);
+  const designLawPack = {
+    active: true,
+    source: 'test-planner-design-laws',
+    selected_laws: [
+      { id: 'site-waterfront-public-threshold', domain: 'site', rule: 'Water edge public rooms align to deck and view.', implementation_clauses: ['place living/dining/lounge rooms on the water/view side'] },
+      { id: 'site-foreground-garden-rooms', domain: 'site', rule: 'Foreground garden rooms frame entry.', implementation_clauses: ['reserve a foreground zone before the facade'] },
+      { id: 'site-terrain-plinth-sequence', domain: 'site', rule: 'Non-flat terrain becomes stone and earth plinth.', implementation_clauses: ['build a layered stone/earth base before placing the main shell'] },
+      { id: 'facade-glass-view-axis', domain: 'facade', rule: 'Large glass attaches to public view axis.', implementation_clauses: ['assign large glass to living/dining/lounge or stair reveal zones'] },
+      { id: 'roof-usable-terrace-system', domain: 'roof', rule: 'Roof terrace needs access and view edge.', implementation_clauses: ['include stair or internal access logic to the roof terrace'] }
+    ],
+    interior_laws: [
+      { id: 'interior-room-identity-layer-stack', domain: 'interior', rule: 'Important rooms need identity stack.', implementation_clauses: ['give each room one focal wall or task wall before adding loose decor'] }
+    ],
+    implementation_clauses: [
+      'connect public rooms to a deck, terrace, pier, or reflection basin',
+      'use height bands, retaining edges, and planting pockets instead of a flat lot'
+    ]
+  };
+  architecture.generation_hints = {
+    ...(architecture.generation_hints || {}),
+    template_design_law_pack: designLawPack
+  };
+  const buildSpec = deriveBuildSpec(prompt, architecture);
+  buildSpec.design = { ...(buildSpec.design || {}), template_design_law_pack: designLawPack };
+  const topology = buildFallbackTopology(prompt, architecture, buildSpec);
+
+  assert.equal(topology.template_design_law_runtime.active, true);
+  assert.ok(topology.facade_alignment.template_design_law_public_view_axis);
+  assert.ok(topology.facade_alignment.glass_priority_rooms.includes('living'));
+  assert.ok(topology.site_connections.some((item) => item.to === 'water_edge'));
+  assert.ok(topology.site_connections.some((item) => item.to === 'foreground_garden'));
+  assert.ok(topology.site_connections.some((item) => item.to === 'terrain_plinth'));
+  assert.ok(topology.site_connections.some((item) => item.to === 'roof_terrace'));
+  assert.equal(topology.bsp_hints.template_design_law_active, true);
+});

@@ -50,7 +50,14 @@ export class BSPPartitioner {
         attachedDoorCount: interiorDoors.filter((door) => door.kind === 'attached-volume').length,
         openPlanSoftBoundaries: interiorDoors.filter((door) => door.kind === 'open-plan-threshold').length,
         unassignedPlannerNodes,
-        splitStrategy: plannerJson.bsp_hints?.split_strategy || 'weighted'
+        splitStrategy: plannerJson.bsp_hints?.split_strategy || 'weighted',
+        templateSpacePlanning: plannerJson.bsp_hints?.template_space_planning_active ? {
+          active: true,
+          viewSide: plannerJson.bsp_hints.template_view_side,
+          serviceSide: plannerJson.bsp_hints.template_service_side,
+          quietSide: plannerJson.bsp_hints.template_quiet_side,
+          entrySequence: plannerJson.bsp_hints.template_entry_sequence || []
+        } : { active: false }
       }
     };
   }
@@ -71,11 +78,11 @@ export class BSPPartitioner {
       const box = boxById.get(space.source) || { id: space.source, module: 'attached', side: space.side };
       const node = matchNodeForSpace(space, box, nodes, assignedNodeIds);
       if (!node && !shouldCreateFallbackAttachedRoom(box)) continue;
-      if (node) assignedNodeIds.add(node.id);
       const fallback = fallbackNodeForSpace(space, box);
       const outsideRoom = trimAttachedRoomOutsideMain(roomFromSpace(space, node || fallback, box, Boolean(node)), mainBox, this.spec);
       const room = trimAttachedRoomAgainstExisting(outsideRoom, rooms);
       if (spanSize(room.min_x, room.max_x) < 3 || spanSize(room.min_z, room.max_z) < 3) continue;
+      if (node) assignedNodeIds.add(node.id);
       rooms.push(room);
     }
 

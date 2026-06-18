@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { buildStylePatternStrategy, selectStyleAwareRoomPatternGuidance } from './templatePatternStylePolicy.js';
+import { selectTemplateDesignLaws } from '../templates/templateDesignLawDistiller.js';
 
 const DEFAULT_ANALYSIS_FILE = path.join('mc_templates', 'analysis', 'template_index.json');
 
@@ -21,11 +22,18 @@ export class TemplateKnowledgeAgent {
       .slice(0, 6);
 
     if (!scored.length) return inactiveKnowledge('no matching templates');
-    const retrieved = scored.map(({ template, score }) => compactTemplate(template, score));
+    const caseCards = caseCardsByFile(corpus.case_library);
+    const retrieved = scored.map(({ template, score }) => compactTemplate(template, score, caseCards.get(template.file)));
     const recommendations = summarizeRecommendations(retrieved, corpus.corpus, {
       requestedStyleFamily: architecture.style_family || architecture.style || buildSpec.style_family,
       requestedTypology: architecture.typology || buildSpec.typology,
       prompt
+    });
+    const designLawPack = selectTemplateDesignLaws(corpus.design_law_book, prompt, {
+      styleFamily: recommendations.style_family,
+      typology: recommendations.typology,
+      featurePriorities: recommendations.case_feature_priorities || [],
+      retrievedCaseIds: retrieved.map((item) => item.case_card?.case_id || item.case_profile?.case_id).filter(Boolean)
     });
     return {
       source: 'local-template-knowledge-agent',
@@ -33,7 +41,13 @@ export class TemplateKnowledgeAgent {
       analysis_file: path.relative(this.cwd, this.analysisFile).replaceAll('\\', '/'),
       corpus_size: corpus.templates.length,
       retrieved,
-      recommendations,
+      recommendations: {
+        ...recommendations,
+        design_law_pack: designLawPack,
+        design_laws: designLawPack.selected_laws || [],
+        interior_design_laws: designLawPack.interior_laws || [],
+        design_law_clauses: designLawPack.implementation_clauses || []
+      },
       gap_priorities: corpus.corpus?.gap_priorities || []
     };
   }
@@ -41,7 +55,16 @@ export class TemplateKnowledgeAgent {
   loadCorpus() {
     if (!fs.existsSync(this.analysisFile)) return undefined;
     try {
-      return JSON.parse(fs.readFileSync(this.analysisFile, 'utf8'));
+      const corpus = JSON.parse(fs.readFileSync(this.analysisFile, 'utf8'));
+      const caseLibraryFile = path.join(path.dirname(this.analysisFile), 'case_library.json');
+      if (fs.existsSync(caseLibraryFile)) {
+        corpus.case_library = JSON.parse(fs.readFileSync(caseLibraryFile, 'utf8'));
+      }
+      const designLawFile = path.join(path.dirname(this.analysisFile), 'design_laws.json');
+      if (fs.existsSync(designLawFile)) {
+        corpus.design_law_book = JSON.parse(fs.readFileSync(designLawFile, 'utf8'));
+      }
+      return corpus;
     } catch {
       return undefined;
     }
@@ -62,6 +85,12 @@ function inactiveKnowledge(reason) {
       room_pattern_guidance: [],
       room_pattern_strategy: {},
       composition_strategy: {},
+      case_library_clauses: [],
+      case_feature_priorities: [],
+      design_law_pack: {},
+      design_laws: [],
+      interior_design_laws: [],
+      design_law_clauses: [],
       design_priorities: []
     },
     gap_priorities: []
@@ -107,7 +136,7 @@ function scoreTemplate(template, prompt, architecture, buildSpec) {
   return score;
 }
 
-function compactTemplate(template, score) {
+function compactTemplate(template, score, caseCard) {
   return {
     file: template.file,
     title: template.title,
@@ -120,6 +149,7 @@ function compactTemplate(template, score) {
     detail_metrics: template.analysis?.detail_metrics,
     case_profile: compactCaseProfile(template.case_profile),
     composition_grammar: template.analysis?.composition_grammar,
+    case_card: compactCaseCard(caseCard),
     top_blocks: (template.analysis?.top_blocks || []).slice(0, 8),
     recommendations: template.recommendations || {}
   };
@@ -136,6 +166,8 @@ function summarizeRecommendations(retrieved, corpus = {}, options = {}) {
   const furniturePatterns = new Map();
   const roomPatternGuidanceCandidates = [];
   const compositionCandidates = [];
+  const caseLibraryClauses = [];
+  const caseFeaturePriorities = new Set();
   const styles = new Map();
   const typologies = new Map();
   let detailScore = 0;
@@ -163,6 +195,15 @@ function summarizeRecommendations(retrieved, corpus = {}, options = {}) {
         clauses: (pattern.clauses || []).slice(0, 6),
         layout_intent: pattern.layout_intent
       });
+    }
+    if (item.case_card) {
+      for (const clause of item.case_card.semantic_clauses || []) caseLibraryClauses.push({
+        source_title: item.title,
+        case_id: item.case_card.case_id,
+        clause
+      });
+      for (const affinity of item.case_card.prompt_affinities || []) caseFeaturePriorities.add(affinity);
+      for (const area of item.case_card.learnable_areas || []) caseFeaturePriorities.add(area);
     }
     collectCompositionCandidates(compositionCandidates, item);
     furniturePatternScore += patternReadinessWeight(item.case_profile?.phase3_pattern_evidence?.furniture_pattern_readiness) * item.score;
@@ -217,9 +258,19 @@ function summarizeRecommendations(retrieved, corpus = {}, options = {}) {
     room_pattern_guidance: roomPatternGuidance,
     room_pattern_strategy: roomPatternStrategy,
     composition_strategy: compositionStrategy,
+    case_library_clauses: dedupeClauseRecords(caseLibraryClauses).slice(0, 32),
+    case_feature_priorities: [...caseFeaturePriorities].slice(0, 24).sort(),
     design_priorities: [...designPriorities].slice(0, 8),
     corpus_gap_priorities: corpus.gap_priorities || []
   };
+}
+
+function caseCardsByFile(caseLibrary = {}) {
+  const map = new Map();
+  for (const card of caseLibrary.cases || []) {
+    if (card?.file) map.set(card.file, card);
+  }
+  return map;
 }
 
 function hasCaseRole(template, role) {
@@ -242,6 +293,29 @@ function compactCaseProfile(profile = {}) {
     phase5_composition_evidence: profile.phase5_composition_evidence,
     review_flags: profile.review_flags || [],
     next_phase_hints: profile.next_phase_hints || []
+  };
+}
+
+function compactCaseCard(card) {
+  if (!card) return undefined;
+  return {
+    case_id: card.case_id,
+    study_priority: card.study_priority,
+    overall_reference_score: card.overall_reference_score,
+    learnable_areas: normalizeLearnableAreas(card.learnable_areas).slice(0, 12),
+    prompt_affinities: normalizeStringArray(card.retrieval?.prompt_affinities).slice(0, 16),
+    semantic_clauses: (card.semantic_clauses || []).slice(0, 20),
+    risk_controls: (card.risk_controls || []).slice(0, 6),
+    feature_card: {
+      site: card.feature_card?.site,
+      composition: card.feature_card?.composition,
+      interior: {
+        furnished_likelihood: card.feature_card?.interior?.furnished_likelihood,
+        room_candidates: card.feature_card?.interior?.room_candidates,
+        furniture_readiness: card.feature_card?.interior?.furniture_readiness,
+        top_furniture_patterns: card.feature_card?.interior?.top_furniture_patterns
+      }
+    }
   };
 }
 
@@ -521,7 +595,12 @@ export function applyTemplateKnowledgeToArchitecture(architecture = {}, template
       template_interior_pattern_strength: recommendations.template_interior_pattern_strength,
       template_room_pattern_clauses: recommendations.room_pattern_clauses || [],
       template_room_pattern_guidance: recommendations.room_pattern_guidance || [],
-      template_room_pattern_strategy: recommendations.room_pattern_strategy || {}
+      template_room_pattern_strategy: recommendations.room_pattern_strategy || {},
+      template_case_library_clauses: recommendations.case_library_clauses || [],
+      template_case_feature_priorities: recommendations.case_feature_priorities || [],
+      template_design_law_pack: recommendations.design_law_pack || {},
+      template_design_law_clauses: recommendations.design_law_clauses || [],
+      template_interior_design_laws: recommendations.interior_design_laws || []
     },
     generation_hints: {
       ...(architecture.generation_hints || {}),
@@ -530,6 +609,12 @@ export function applyTemplateKnowledgeToArchitecture(architecture = {}, template
       template_composition_strategy: recommendations.composition_strategy || {},
       template_furniture_group_patterns: recommendations.furniture_group_patterns || [],
       template_room_pattern_strategy: recommendations.room_pattern_strategy || {},
+      template_case_library_clauses: recommendations.case_library_clauses || [],
+      template_case_feature_priorities: recommendations.case_feature_priorities || [],
+      template_design_law_pack: recommendations.design_law_pack || {},
+      template_design_laws: recommendations.design_laws || [],
+      template_interior_design_laws: recommendations.interior_design_laws || [],
+      template_design_law_clauses: recommendations.design_law_clauses || [],
       template_gap_priorities: templateKnowledge.gap_priorities || []
     }
   };
@@ -560,7 +645,12 @@ export function applyTemplateKnowledgeToBuildSpec(buildSpec = {}, templateKnowle
     },
     design: {
       ...(buildSpec.design || {}),
-      template_composition_strategy: recommendations.composition_strategy || {}
+      template_composition_strategy: recommendations.composition_strategy || {},
+      template_case_library_clauses: recommendations.case_library_clauses || [],
+      template_case_feature_priorities: recommendations.case_feature_priorities || [],
+      template_design_law_pack: recommendations.design_law_pack || {},
+      template_design_law_clauses: recommendations.design_law_clauses || [],
+      template_interior_design_laws: recommendations.interior_design_laws || []
     },
     template_knowledge: {
       active: true,
@@ -597,6 +687,31 @@ function topWeightedEntries(map, limit) {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, limit)
     .map(([pattern_type, weight]) => ({ pattern_type, weight: round(weight) }));
+}
+
+function dedupeClauseRecords(records = []) {
+  const seen = new Set();
+  const result = [];
+  for (const record of records) {
+    const key = `${record.case_id || record.source_title}:${record.clause}`;
+    if (seen.has(key) || !record.clause) continue;
+    seen.add(key);
+    result.push(record);
+  }
+  return result;
+}
+
+function normalizeStringArray(value) {
+  if (Array.isArray(value)) return value.flatMap((item) => normalizeStringArray(item));
+  if (value === undefined || value === null) return [];
+  return String(value).split(/[,，、\s]+/u).map((item) => item.trim()).filter(Boolean);
+}
+
+function normalizeLearnableAreas(value) {
+  if (!Array.isArray(value)) return normalizeStringArray(value);
+  return value
+    .map((item) => typeof item === 'string' ? item : item?.area || item?.role || item?.next_phase)
+    .filter(Boolean);
 }
 
 function patternReadinessWeight(value) {
