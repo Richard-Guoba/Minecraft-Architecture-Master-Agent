@@ -6,6 +6,7 @@ import { runPipeline } from './pipeline.js';
 import { launchConfiguredMinecraft } from './lib/launcher.js';
 import { listWorlds } from './lib/minecraftWorlds.js';
 import { formatLlmUsage } from './construction/workflow.js';
+import { listCuratedTemplatePrompts, resolveCuratedTemplatePrompt } from './construction/curatedTemplatePromptLibrary.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -30,7 +31,9 @@ function parseArgs(argv) {
     autoBuild: false,
     launch: false,
     launchCommand: process.env.MINECRAFT_LAUNCH_COMMAND,
-    listWorlds: false
+    listWorlds: false,
+    listPrompts: false,
+    promptId: undefined
   };
   const promptParts = [];
 
@@ -79,6 +82,10 @@ function parseArgs(argv) {
       options.launchCommand = argv[++i] || options.launchCommand;
     } else if (arg === '--list-worlds') {
       options.listWorlds = true;
+    } else if (arg === '--list-prompts') {
+      options.listPrompts = true;
+    } else if (arg === '--prompt-id') {
+      options.promptId = argv[++i];
     } else if (arg === '--help' || arg === '-h') {
       options.help = true;
     } else {
@@ -131,6 +138,8 @@ Options:
   --launch                   Open Minecraft or a launcher after generation with MINECRAFT_LAUNCH_COMMAND.
   --launch-command <command> Command used by --launch.
   --list-worlds              List detected local Minecraft save names.
+  --list-prompts             List curated template prompt ids.
+  --prompt-id <id>           Use a curated template prompt profile. Extra text after options is appended as user additions.
 
 Workflow:
   ArchitectAgent -> PlannerAgent -> CSGBuilder -> BSPPartitioner -> AStarPathfinder.
@@ -163,13 +172,27 @@ async function main() {
     process.exit(0);
   }
 
-  if (!prompt) {
+  if (options.listPrompts) {
+    printCuratedPromptList();
+    process.exit(0);
+  }
+
+  let finalPrompt = prompt;
+  let resolvedPromptProfile;
+  if (options.promptId) {
+    const resolved = resolveCuratedTemplatePrompt(options.promptId, prompt);
+    finalPrompt = resolved.prompt;
+    resolvedPromptProfile = resolved.profile;
+    if (options.seed === undefined) options.seed = resolved.profile.seed;
+  }
+
+  if (!finalPrompt) {
     printHelp();
     process.exit(1);
   }
 
   const result = await runPipeline({
-    prompt,
+    prompt: finalPrompt,
     mode: options.mode,
     mcVersion: options.mcVersion,
     outRoot: options.out,
@@ -188,6 +211,9 @@ async function main() {
   console.log('\n建筑智能体运行完成。');
   console.log(`工作流: ${result.workflow}`);
   console.log(`Seed: ${result.seed} (${result.seedSource === 'random' ? '自动随机' : '手动指定'})`);
+  if (resolvedPromptProfile) {
+    console.log(`精选提示词: ${resolvedPromptProfile.id} (${resolvedPromptProfile.title})`);
+  }
   console.log(`LLM通道: ${result.llmProvider}`);
   console.log(`LLM调用: ${formatLlmUsage(result.llmUsage)}`);
   console.log(`输出目录: ${result.outputDir}`);
@@ -213,6 +239,13 @@ async function main() {
   if (options.launch) {
     const launched = launchConfiguredMinecraft({ launchCommand: options.launchCommand });
     console.log(`已尝试打开 Minecraft/启动器: ${launched.command}`);
+  }
+}
+
+function printCuratedPromptList() {
+  console.log('可用精选提示词：');
+  for (const item of listCuratedTemplatePrompts()) {
+    console.log(`- ${item.id} | ${item.style}/${item.typology} | seed ${item.seed} | ${item.title}`);
   }
 }
 

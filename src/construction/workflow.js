@@ -805,6 +805,10 @@ function renderReport({ prompt, blueprint, validation, mcVersion, autoBuild, dat
   const templateCompositionLine = templateComposition.readiness
     ? `- 模板构图策略：${templateComposition.readiness}，体块 ${templateCompositionDirectives.preferred_massing_variant || 'auto'}，立面 ${templateCompositionDirectives.preferred_facade_rhythm || 'auto'}，屋顶 ${templateCompositionDirectives.preferred_roof_profile || 'auto'}，场地 ${templateCompositionDirectives.preferred_site_mood || 'auto'}`
     : '- 模板构图策略：未启用';
+  const sourceFusionPolicy = blueprint.templateKnowledge?.recommendations?.source_fusion_policy || {};
+  const sourceFusionLine = sourceFusionPolicy.active
+    ? `- 模板融合控制：参考 ${sourceFusionPolicy.retrieved_source_count || 0} 个案例，Top占比 ${Math.round(Number(sourceFusionPolicy.top_source_share || 0) * 100)}%，复制风险 ${sourceFusionPolicy.copy_risk || 'low'}，融合 ${(sourceFusionPolicy.source_blend || []).slice(0, 3).map((item) => item.title).join('、') || 'auto'}`
+    : '- 模板融合控制：未启用';
   const templateSpacePlan = topology.template_space_plan || {};
   const templateSpaceLine = templateSpacePlan.active
     ? `- 模板空间规划：${templateSpacePlan.readiness || 'unknown'}，视线侧 ${templateSpacePlan.view_side || 'auto'}，服务侧 ${templateSpacePlan.service_side || 'auto'}，安静侧 ${templateSpacePlan.quiet_side || 'auto'}，序列 ${(templateSpacePlan.entry_sequence?.thresholds || []).join(' > ') || 'auto'}`
@@ -910,6 +914,7 @@ ${prompt}
 - 体块变体：${blueprint.creativeDesign?.design_axes?.massing_variant || 'unknown'}
 - 平面切分：${blueprint.creativeDesign?.topology?.split_strategy || topology.bsp_hints?.split_strategy || 'weighted'}
 ${templateCompositionLine}
+${sourceFusionLine}
 ${templateSpaceLine}
 ${templateRoomExperienceLine}
 ${templateInteriorScenesLine}

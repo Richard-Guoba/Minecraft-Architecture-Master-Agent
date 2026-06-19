@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { CURATED_TEMPLATE_PROMPT_LIBRARY, resolveCuratedTemplatePrompt } from '../src/construction/curatedTemplatePromptLibrary.js';
 import { TEMPLATE_ASSIMILATION_PROMPTS } from '../src/construction/templateAssimilationPromptSuite.js';
 import { renderTemplateAssimilationMarkdown, summarizeTemplateAssimilationSuite } from '../src/evaluateTemplateAssimilationSuite.js';
 
@@ -9,13 +10,29 @@ test('template assimilation prompt suite covers broad top-tier reference scenari
   const seeds = new Set(TEMPLATE_ASSIMILATION_PROMPTS.map((item) => item.seed));
   const focusTags = new Set(TEMPLATE_ASSIMILATION_PROMPTS.flatMap((item) => item.focus));
 
-  assert.equal(TEMPLATE_ASSIMILATION_PROMPTS.length, 24);
-  assert.equal(ids.size, 24);
-  assert.equal(prompts.size, 24);
-  assert.equal(seeds.size, 24);
+  assert.equal(CURATED_TEMPLATE_PROMPT_LIBRARY.length, 12);
+  assert.equal(TEMPLATE_ASSIMILATION_PROMPTS.length, 36);
+  assert.equal(ids.size, 36);
+  assert.equal(prompts.size, 36);
+  assert.equal(seeds.size, 36);
   assert.ok(focusTags.size >= 45);
   assert.ok(TEMPLATE_ASSIMILATION_PROMPTS.every((item) => item.prompt.length >= 45));
   assert.ok(TEMPLATE_ASSIMILATION_PROMPTS.every((item) => /花园|庭院|地形|平台|露台|内饰|室内/.test(item.prompt)));
+});
+
+test('curated template prompt profiles render executable non-copying prompts', () => {
+  const resolved = resolveCuratedTemplatePrompt('modern-waterfront-villa-reference', '加一个小型码头和傍晚灯光');
+
+  assert.equal(resolved.profile.seed, 720101);
+  assert.ok(resolved.prompt.includes('强参考复现目标'));
+  assert.ok(resolved.prompt.includes('但不逐块复制'));
+  assert.ok(resolved.prompt.includes('A Small Modern House'));
+  assert.ok(resolved.prompt.includes('检索标签'));
+  assert.ok(resolved.prompt.includes('负向控制'));
+  assert.ok(resolved.prompt.includes('至少融合三个参考案例'));
+  assert.ok(resolved.prompt.includes('用户补充：加一个小型码头和傍晚灯光'));
+  assert.ok(CURATED_TEMPLATE_PROMPT_LIBRARY.every((item) => item.inspiration_cases.length >= 3));
+  assert.ok(CURATED_TEMPLATE_PROMPT_LIBRARY.every((item) => item.retrieval_tokens.length >= 6));
 });
 
 test('template assimilation suite summary aggregates audits, tracks, gaps, and directives', () => {

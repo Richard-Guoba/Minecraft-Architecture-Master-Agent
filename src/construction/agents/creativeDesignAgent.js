@@ -2,6 +2,20 @@ import { applyTemplateSpacePlanningStrategy } from './templateSpacePlanningStrat
 
 const MASSING_VARIANTS = [
   {
+    id: 'waterfront-stepped-estate',
+    label: 'waterfront stepped estate with deck and roof lounge',
+    split: 'open-plan-weighted',
+    publicCore: 'living',
+    order: ['entry', 'living', 'dining', 'kitchen', 'stairs', 'study', 'storage', 'bathroom'],
+    volumes: [
+      designVolume('waterfront-glass-hall', 'mutate', [0.44, 0.82, 0.52], 'attached-south', ['offset-mass', 'glass-wing', 'view-hall'], 'flat'),
+      designVolume('west-service-wing', 'add', [0.3, 0.78, 0.48], 'attached-west', ['secondary-mass', 'service-wing']),
+      designVolume('water-edge-deck', 'add', [0.72, 0.22, 0.22], 'attached-south', ['gallery', 'deck', 'waterfront', 'view-platform'], 'flat'),
+      designVolume('entry-frame-gallery', 'add', [0.46, 0.42, 0.18], 'front-center', ['porch', 'entry-focus', 'threshold-frame'], 'flat'),
+      designVolume('roof-lounge-bar', 'add', [0.42, 0.18, 0.28], 'attached-north', ['roof-lounge', 'stepped-roofline'], 'flat')
+    ]
+  },
+  {
     id: 'east-offset-glass-wing',
     label: 'east offset glass wing',
     split: 'open-plan-weighted',
@@ -16,7 +30,7 @@ const MASSING_VARIANTS = [
     id: 'west-service-wing',
     label: 'west service wing with rear garden',
     split: 'side-bands',
-    publicCore: 'living',
+    publicCore: 'kitchen',
     order: ['entry', 'kitchen', 'dining', 'living', 'stairs', 'bathroom', 'storage', 'study'],
     volumes: [
       designVolume('glass-wing', 'mutate', [0.26, 0.52, 0.42], 'attached-north', ['offset-mass', 'quiet-glass-bay']),
@@ -77,7 +91,7 @@ const MASSING_VARIANTS = [
     id: 'compact-patio-bar',
     label: 'compact bar with patio bite',
     split: 'view-side-cluster',
-    publicCore: 'living',
+    publicCore: 'dining',
     order: ['entry', 'living', 'kitchen', 'dining', 'bathroom', 'storage', 'study', 'stairs'],
     volumes: [
       designVolume('glass-wing', 'mutate', [0.24, 0.48, 0.34], 'attached-east', ['offset-mass', 'compact-glass-bay']),
@@ -148,6 +162,7 @@ export class CreativeDesignAgent {
             '必需字段: authority, signature, design_axes, volume_directives, facade, roof, site, interior, topology。',
             'volume_directives 只能使用相对体块，不允许 XYZ 坐标；placement.relation 用 attached-east、attached-west、attached-north、attached-south、front-center、attached-north-east 等语义关系。',
             'topology 可以决定每层 room_order_by_floor、node_weights、split_strategy、public_core_position，但不能输出绝对坐标。',
+            '如果 reference_reproduction.active 为 true，你必须优先复现参考案例的体量比例、轮廓层次、场地构图、材质气质和细节密度，但仍需改变精确尺寸和细节位置，不能逐块复制。',
             '所有选择必须服从用户明确尺寸、楼层、门朝向、房间功能、外壳密闭和可达性。'
           ].join('\n'),
           user: JSON.stringify({
@@ -156,6 +171,7 @@ export class CreativeDesignAgent {
             architecture_summary: compactArchitecture(architecture),
             topology_summary: compactTopology(topology),
             build_spec: compactBuildSpec(buildSpec),
+            reference_reproduction: architecture.generation_hints?.reference_reproduction || buildSpec.design?.reference_reproduction || {},
             fallback_variation_example: fallback
           })
         });
@@ -180,7 +196,7 @@ export function buildSeededCreativeDesign(prompt = '', architecture = {}, buildS
   const templateComposition = templateCompositionStrategyFor(architecture, buildSpec);
   let massing = templateMassingVariant(templateComposition, seedIndex) || pickByIndex(MASSING_VARIANTS, seedIndex);
   massing = promptCompatibleMassingVariant(massing, prompt, architecture, templateComposition, seedIndex);
-  let roof = templateRoofVariant(templateComposition, seedIndex + 1) || pickByIndex(ROOF_VARIANTS, seedIndex + 1);
+  let roof = templateRoofVariant(templateComposition, seedIndex + 1) || fallbackRoofVariant(prompt, architecture, buildSpec, seedIndex + 1);
   let facade = templateFacadeVariant(templateComposition, seedIndex + 2) || pickByIndex(FACADE_VARIANTS, seedIndex + 2);
   let site = templateSiteVariant(templateComposition, seedIndex + 3) || pickByIndex(SITE_VARIANTS, seedIndex + 3);
   const interior = pickByIndex(INTERIOR_VARIANTS, seedIndex + 4);
@@ -219,7 +235,7 @@ export function buildSeededCreativeDesign(prompt = '', architecture = {}, buildS
         'detail-pattern'
       ]
     },
-    signature: `${massing.id}/${facade.rhythm}/${roof.profile}/${site.mood}/${interior.color_story}`,
+    signature: `${massing.id}/${facade.rhythm}/${roof.profile}/${site.mood}/${interior.color_story}/template-composition${templateComposition.directives?.reference_reproduction_strength === 'high' ? '-strong-reference' : ''}`,
     design_axes: {
       massing_variant: massing.id,
       massing_label: massing.label,
@@ -521,9 +537,17 @@ function templateMassingVariant(strategy = {}, seedIndex = 0) {
 }
 
 function promptCompatibleMassingVariant(massing, prompt = '', architecture = {}, strategy = {}, seedIndex = 0) {
+  if (massing?.id === 'waterfront-stepped-estate' && !waterfrontMassingAllowed(prompt, architecture, strategy)) {
+    const generalVariants = MASSING_VARIANTS.filter((variant) => !['formal-axis-manor', 'waterfront-stepped-estate'].includes(variant.id));
+    return pickByIndex(generalVariants, seedIndex + 1);
+  }
   if (massing?.id !== 'formal-axis-manor' || formalAxisMassingAllowed(prompt, architecture, strategy)) return massing;
-  const generalVariants = MASSING_VARIANTS.filter((variant) => variant.id !== 'formal-axis-manor');
-  return variantById(MASSING_VARIANTS, 'front-back-gallery') || pickByIndex(generalVariants, seedIndex + 1);
+  const allowWaterfront = waterfrontMassingAllowed(prompt, architecture, strategy);
+  const generalVariants = MASSING_VARIANTS.filter((variant) =>
+    variant.id !== 'formal-axis-manor' &&
+    (allowWaterfront || variant.id !== 'waterfront-stepped-estate')
+  );
+  return variantById(generalVariants, 'east-offset-glass-wing') || pickByIndex(generalVariants, seedIndex + 1);
 }
 
 function formalAxisMassingAllowed(prompt = '', architecture = {}, strategy = {}) {
@@ -533,8 +557,46 @@ function formalAxisMassingAllowed(prompt = '', architecture = {}, strategy = {})
   return /classical|european|victorian|baroque|rococo|manor|palace|古典|欧式|法式|庄园|宫殿|巴洛克|洛可可|维多利亚|对称|中轴|轴线|formal|symmetry|axis/.test(text);
 }
 
+function waterfrontMassingAllowed(prompt = '', architecture = {}, strategy = {}) {
+  const directives = strategy.directives || {};
+  if (directives.preferred_massing_variant === 'waterfront-stepped-estate' || directives.massing_intent === 'modern-waterfront') return true;
+  const text = `${prompt} ${architecture.style || ''} ${architecture.style_family || ''} ${architecture.typology || ''}`.toLowerCase();
+  return /湖|海|河|水边|临水|滨水|湖边|海边|水景|water|lake|coast|waterfront|riverside/.test(text);
+}
+
 function templateRoofVariant(strategy = {}, seedIndex = 0) {
+  if (strategy.directives?.lock_preferred_roof_profile && strategy.directives?.preferred_roof_profile) {
+    return ROOF_VARIANTS.find((item) => item.profile === strategy.directives.preferred_roof_profile);
+  }
   return pickTemplateVariant(ROOF_VARIANTS, templateVariantIds('roof', strategy.directives?.preferred_roof_profile, strategy.directives), seedIndex, 'profile');
+}
+
+function fallbackRoofVariant(prompt = '', architecture = {}, buildSpec = {}, seedIndex = 0) {
+  const text = String(prompt || '');
+  const family = String(architecture.style_family || buildSpec.style_family || '').toLowerCase();
+  const desiredStyle = String(architecture.roof_rules?.style || buildSpec.roof_style || '').toLowerCase();
+  const explicitFlatRoof = /平屋顶|平顶|露台顶|屋顶平台|roof terrace|roof deck|flat roof/i.test(text);
+  const pitchedFamily = /classical|gothic|medieval|rustic|nordic|alpine|victorian|farmhouse/.test(family);
+  if (!explicitFlatRoof && pitchedFamily) {
+    const pitched = ROOF_VARIANTS.filter((item) =>
+      item.style !== 'flat' &&
+      (family === 'japanese' || item.profile !== 'low-layered-eaves')
+    );
+    return pickByIndex(pitched, seedIndex);
+  }
+  if (!explicitFlatRoof && desiredStyle && desiredStyle !== 'flat') {
+    const matching = ROOF_VARIANTS.filter((item) =>
+      item.style === desiredStyle &&
+      (desiredStyle !== 'hipped' || family === 'japanese' || item.profile !== 'low-layered-eaves')
+    );
+    if (matching.length) return pickByIndex(matching, seedIndex);
+    const nonFlat = ROOF_VARIANTS.filter((item) => item.style !== 'flat');
+    if (nonFlat.length) return pickByIndex(nonFlat, seedIndex);
+  }
+  if (explicitFlatRoof || desiredStyle === 'flat') {
+    return pickByIndex(ROOF_VARIANTS.filter((item) => item.style === 'flat'), seedIndex);
+  }
+  return pickByIndex(ROOF_VARIANTS, seedIndex);
 }
 
 function templateFacadeVariant(strategy = {}, seedIndex = 0) {
@@ -567,6 +629,7 @@ function templateVariantIds(group, preferred, directives = {}) {
   }
   const maps = {
     massing: {
+      'waterfront-stepped-estate': ['waterfront-stepped-estate', 'east-offset-glass-wing', 'compact-patio-bar'],
       'east-offset-glass-wing': ['east-offset-glass-wing', 'compact-patio-bar', 'dual-wing-balanced'],
       'front-back-gallery': ['front-back-gallery', 'compact-patio-bar', 'west-service-wing'],
       'corner-vertical-accent': ['corner-vertical-accent', 'dual-wing-balanced', 'front-back-gallery'],

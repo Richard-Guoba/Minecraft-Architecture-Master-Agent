@@ -54,6 +54,48 @@ test('TemplateKnowledgeAgent returns style-aware room pattern guidance', () => {
   assert.ok(gothic.recommendations.room_pattern_strategy.traits.includes('ceremonial-focus'));
 });
 
+test('TemplateKnowledgeAgent records multi-source fusion policy and exact title matches', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-template-source-fusion-'));
+  const analysisFile = path.join(tempDir, 'template_index.json');
+  fs.writeFileSync(analysisFile, JSON.stringify({
+    corpus: { gap_priorities: [] },
+    templates: [
+      templateFixture({
+        title: 'A Small Modern House',
+        style_family: 'modern',
+        typology: 'house',
+        roomPatterns: [pattern('living', 'social_cluster', 88)]
+      }),
+      templateFixture({
+        title: 'Wood Modern House',
+        style_family: 'modern',
+        typology: 'house',
+        roomPatterns: [pattern('living', 'layered_lighting', 86)]
+      }),
+      templateFixture({
+        title: 'Lakehouse',
+        style_family: 'coastal',
+        typology: 'house',
+        roomPatterns: [pattern('living', 'social_cluster', 84)]
+      })
+    ]
+  }), 'utf8');
+
+  const knowledge = new TemplateKnowledgeAgent({ cwd: process.cwd(), analysisFile }).run(
+    '参考 A Small Modern House、Wood Modern House 和 Lakehouse，只迁移语法不要1:1复制，建一个现代滨水别墅',
+    { style_family: 'modern', typology: 'house' },
+    { typology: 'house' }
+  );
+
+  assert.equal(knowledge.active, true);
+  assert.equal(knowledge.retrieved.length, 3);
+  assert.equal(knowledge.retrieved[0].title, 'A Small Modern House');
+  assert.equal(knowledge.recommendations.source_fusion_policy.active, true);
+  assert.equal(knowledge.recommendations.source_fusion_policy.min_source_cases, 3);
+  assert.equal(knowledge.recommendations.source_fusion_policy.source_blend.length, 3);
+  assert.ok(knowledge.recommendations.source_fusion_policy.obligations.some((item) => /rather than dimensions/.test(item)));
+});
+
 function templateFixture({ title, style_family, typology, roomPatterns }) {
   return {
     title,

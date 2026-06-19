@@ -29,3 +29,16 @@ test('style grammar recognizes environment-led house archetypes', () => {
   assert.equal(cliff.profile.style, '悬崖');
   assert.equal(cliff.features.cliff_deck, true);
 });
+
+test('style grammar does not classify bare villa as classical', () => {
+  const grammar = new StyleGrammarAgent().analyze('modern waterfront villa with large glass and roof terrace');
+
+  assert.notEqual(grammar.profile?.family, 'classical');
+});
+
+test('style grammar recognizes medieval spruce as rustic timber grammar', () => {
+  const grammar = new StyleGrammarAgent().analyze('建一个中世纪云杉木住宅，木石基座，厚重屋顶和温暖室内');
+
+  assert.equal(grammar.profile.style, '木屋');
+  assert.equal(grammar.profile.family, 'rustic');
+});

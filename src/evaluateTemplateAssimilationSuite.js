@@ -515,7 +515,7 @@ Options:
   --mode mock|auto|llm             Generation mode. Defaults to mock for stable regression runs.
   --mc-version 1.21                Target Minecraft Java version.
   --out <dir>                      Evaluation output root.
-  --limit <n>                      Run the first n prompts from the 24 prompt suite.
+  --limit <n>                      Run the first n prompts from the ${TEMPLATE_ASSIMILATION_PROMPTS.length} prompt suite.
   --min-audit <n>                  Strict-mode minimum average audit score. Defaults to 88.
   --min-top-tier-percent <n>       Strict-mode minimum top-tier ready percentage. Defaults to 45.
   --strict                         Exit non-zero if any generation fails or thresholds are missed.

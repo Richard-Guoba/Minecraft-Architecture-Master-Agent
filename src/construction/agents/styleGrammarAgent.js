@@ -24,6 +24,30 @@ export const STYLE_GRAMMAR_PROFILES = [
     motifs: ['steep-snow-shedding-roof', 'stone-base', 'timber-warmth', 'hearth-core']
   },
   {
+    style: '北欧',
+    pattern: /北欧|斯堪的纳维亚|木玻璃|大坡屋顶|雪地|山居|nordic|scandinavian/i,
+    family: 'nordic',
+    defaultFootprint: 'rectangle',
+    defaultRoof: 'gabled',
+    massing: 'simple-compact-bar',
+    structuralSystem: 'timber-frame',
+    facade: { symmetry: false, porch: true, large_glass: true, windowRhythm: 'calm' },
+    site: { formal_garden: false },
+    motifs: ['steep-roof', 'timber-cladding', 'large-view-window']
+  },
+  {
+    style: '木屋',
+    pattern: /中世纪|云杉|原木|木屋|木质|森林小屋|medieval|spruce|timber|rustic|cabin/i,
+    family: 'rustic',
+    defaultFootprint: 'rectangle',
+    defaultRoof: 'gabled',
+    massing: 'compact-timber-house-with-stone-base',
+    structuralSystem: 'log-wall-and-timber-roof',
+    facade: { symmetry: false, porch: true, large_glass: false, windowRhythm: 'cozy' },
+    site: { formal_garden: false, patio: true },
+    motifs: ['log-walls', 'stone-base', 'deep-porch', 'warm-lanterns']
+  },
+  {
     style: '地下',
     pattern: /地下|地堡|半地下|掩体|洞穴住宅|地下基地|bunker|underground|subterranean/i,
     family: 'subterranean',
@@ -121,7 +145,7 @@ export const STYLE_GRAMMAR_PROFILES = [
   },
   {
     style: '古典庄园',
-    pattern: /古典|法式|庄园|柱廊|classical|villa|manor/i,
+    pattern: /古典|法式|庄园|柱廊|classical|manor/i,
     family: 'classical',
     defaultFootprint: 'rectangle',
     defaultRoof: 'hipped',

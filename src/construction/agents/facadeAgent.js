@@ -12,26 +12,34 @@ export class FacadeAgent {
       buildSpec.design?.template_composition_strategy ||
       {};
     const compositionDirectives = compositionStrategy.directives || {};
+    const referenceReproduction = rules.reference_reproduction ||
+      architecture.generation_hints?.reference_reproduction ||
+      architecture.detail_rules?.reference_reproduction ||
+      buildSpec.design?.reference_reproduction ||
+      {};
+    const referenceStrength = String(referenceReproduction.strength || 'low');
+    const referenceBoost = Boolean(referenceReproduction.active && ['high', 'medium'].includes(referenceStrength));
+    const highDetailReference = referenceReproduction.detail_targets?.detail_density === 'high' || referenceStrength === 'high';
     const designGlazing = design.glazing_ratio || buildSpec.facade?.glazing_ratio;
     const wide = Boolean(rules.large_glass || buildSpec.facade?.large_glass || designGlazing === 'high' || compositionDirectives.use_large_view_glass);
     const protectedOpenings = String(rules.glazing_ratio || designGlazing || buildSpec.facade?.glazing_ratio) === 'low';
     const neon = family === 'cyberpunk' || /霓虹|neon/i.test(prompt);
     const screen = Boolean(rules.screen || buildSpec.facade?.screens);
     const arches = Boolean(rules.arches || rules.pointed_arches || buildSpec.facade?.arches);
-    const balcony = Boolean(rules.balcony || buildSpec.facade?.balcony || /阳台|露台|观景/.test(prompt));
-    const awning = Boolean(rules.awnings || /遮阳|雨棚|awning|shade/i.test(prompt)) || ['desert', 'mediterranean', 'coastal', 'tropical'].includes(family);
-    const flowerBoxes = Boolean(rules.flower_boxes || /花箱|窗台花|flower box|planter/i.test(prompt)) || ['victorian', 'classical', 'cottage'].includes(family);
+    const balcony = Boolean(rules.balcony || buildSpec.facade?.balcony || /阳台|露台|观景/.test(prompt) || (referenceBoost && compositionDirectives.use_waterfront_transition));
+    const awning = Boolean(rules.awnings || /遮阳|雨棚|awning|shade/i.test(prompt)) || ['desert', 'mediterranean', 'coastal', 'tropical'].includes(family) || (highDetailReference && !['modern', 'industrial', 'cyberpunk'].includes(family));
+    const flowerBoxes = Boolean(rules.flower_boxes || /花箱|窗台花|flower box|planter/i.test(prompt)) || ['victorian', 'classical', 'cottage'].includes(family) || (highDetailReference && ['rustic', 'alpine', 'nordic', 'classical'].includes(family));
     const serviceVents = Boolean(rules.service_vents) || family === 'industrial' || /通风|管线|风管|vent|service/i.test(prompt);
     const addressMarker = Boolean(rules.address_marker) || /门牌|信箱|招牌|标识|address|sign|mailbox/i.test(prompt) || neon;
     const privacyFins = Boolean(rules.privacy_fins || /百叶|隐私鳍片|privacy|fins/i.test(prompt)) || ['industrial', 'cyberpunk'].includes(family);
-    const wallRelief = rules.wall_relief !== false || Boolean(compositionDirectives.use_facade_depth);
+    const wallRelief = rules.wall_relief !== false || Boolean(compositionDirectives.use_facade_depth || referenceBoost);
     const windowSurrounds = rules.window_surrounds !== false;
     const entryDetail = rules.entry_detail !== false;
     const windowRhythm = design.window_rhythm || rules.template_facade_rhythm || compositionDirectives.preferred_facade_rhythm || rules.window_rhythm || rhythmForFamily(family, wide, protectedOpenings);
     const windowWidth = design.window_width || (wide ? 4 : protectedOpenings ? 1 : 2);
     const windowHeight = design.window_height || (wide ? 3 : 2);
     const windowSpacing = design.window_spacing || (wide ? 5 : protectedOpenings ? 8 : 6);
-    const ornamentBudget = ornamentBudgetForFamily(family, { wide, protectedOpenings, prompt, windowWidth, windowSpacing });
+    const ornamentBudget = ornamentBudgetForFamily(family, { wide, protectedOpenings, prompt, windowWidth, windowSpacing, referenceBoost, highDetailReference });
     const exteriorDetailKits = exteriorDetailKitsForFamily(family, materials);
     const exteriorBlockPalette = exteriorBlockPaletteForFamily(family, materials);
 
@@ -90,6 +98,7 @@ export class FacadeAgent {
           unusual_blocks_are_focal_accents: true,
           utility_blocks_cluster_in_service_zones: true
         },
+        reference_reproduction: referenceReproduction,
         part_usage_policies: materialPalette.part_usage_policies || []
       },
       color_bands: colorBandsForFamily(family, materialPalette),
@@ -171,14 +180,18 @@ function rhythmForFamily(family, wide, protectedOpenings) {
   return 'balanced';
 }
 
-function ornamentBudgetForFamily(family, { wide, protectedOpenings, prompt, windowWidth, windowSpacing }) {
+function ornamentBudgetForFamily(family, { wide, protectedOpenings, prompt, windowWidth, windowSpacing, referenceBoost = false, highDetailReference = false }) {
   const explicitOrnament = /浮雕|花纹|雕花|柱廊|外饰|装饰|ornament|relief|pilaster/i.test(prompt);
   const clearGap = Math.max(0, Number(windowSpacing || 0) - Number(windowWidth || 0));
   const denseFamilies = ['classical', 'gothic', 'victorian', 'chinese-courtyard'];
   const naturalFamilies = ['treehouse', 'tropical', 'rustic', 'alpine', 'japanese'];
   const serviceFamilies = ['industrial', 'cyberpunk'];
   const low = wide || family === 'modern' || clearGap < 4;
-  const reliefDensity = explicitOrnament || denseFamilies.includes(family)
+  const reliefDensity = highDetailReference
+    ? 'high'
+    : referenceBoost && !wide
+      ? 'medium'
+      : explicitOrnament || denseFamilies.includes(family)
     ? 'medium'
     : serviceFamilies.includes(family)
       ? 'low'
@@ -187,9 +200,9 @@ function ornamentBudgetForFamily(family, { wide, protectedOpenings, prompt, wind
         : low ? 'low' : 'medium';
   return {
     relief_density: protectedOpenings ? 'low' : reliefDensity,
-    min_blank_wall_span: low ? 5 : 4,
+    min_blank_wall_span: highDetailReference ? 3 : low ? 5 : 4,
     skip_gap_under: 4,
-    max_detail_blocks_per_window: low ? 2 : denseFamilies.includes(family) ? 5 : 3,
+    max_detail_blocks_per_window: highDetailReference ? 6 : low ? 2 : denseFamilies.includes(family) ? 5 : 3,
     clear_gap: clearGap,
     focus: explicitOrnament ? 'prompted-ornament' : low ? 'edges-and-entry' : 'blank-bay-layering'
   };

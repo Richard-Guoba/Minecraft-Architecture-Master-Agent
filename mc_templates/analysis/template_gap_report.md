@@ -1,6 +1,6 @@
 # MC Template Corpus Gap Report
 
-Generated: 2026-06-18T15:40:39.154Z
+Generated: 2026-06-19T04:31:38.949Z
 
 ## Corpus
 
@@ -16,7 +16,7 @@ Generated: 2026-06-18T15:40:39.154Z
 ## What The Reference Buildings Do Better
 
 - They often make the site part of the building: cliffs, caves, raised plinths, islands, paths, courtyards, water edges, trees, and foreground scenery are part of the composition.
-- They use many small blocks for depth: stairs, slabs, fences, walls, panes, lights, vines, and plants create readable layers on roofs, walls, entries, and gardens.
+- They use disciplined small-block depth: columns, rails, walls, panes, lights, screens, vines, plants, and occasional shaped blocks create readable layers without turning windows into half-slab patches.
 - Their silhouettes are specific: towers taper, pagodas stack, castles use turrets and buttresses, modern builds use horizontal glass bands, and temples use strong axes.
 - The foreground is designed: paths, gates, hedges, rocks, water, plazas, and planting beds frame the building before the wall begins.
 - The current generator still leans toward a rectangular residential shell with simplified roof/site modules, so it needs template retrieval, terrain shaping, and garden composition.
@@ -65,5 +65,5 @@ Generated: 2026-06-18T15:40:39.154Z
 1. replace flat-lot assumption with terrain-aware bases
 2. compose foreground gardens, paths, rocks, vegetation, and water as a scene
 3. learn style-specific roof silhouettes and eave layering
-4. increase facade depth with trims, stairs/slabs, columns, rails, and relief
+4. increase facade depth with trims, columns, rails, screens, lights, and relief
 5. support large public/monument typologies beyond single residential shells

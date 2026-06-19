@@ -1,4 +1,6 @@
-export const TEMPLATE_ASSIMILATION_PROMPTS = [
+import { CURATED_TEMPLATE_PROMPTS } from './curatedTemplatePromptLibrary.js';
+
+const GENERALIZATION_TEMPLATE_PROMPTS = [
   promptCase(
     'modern-lake-villa',
     710001,
@@ -143,6 +145,11 @@ export const TEMPLATE_ASSIMILATION_PROMPTS = [
     ['library', 'courtyard', 'garden', 'interior-scenes', 'quiet-zone'],
     '建一个以图书馆和庭院为核心的住宅，入口花园引到安静内院，书房与客厅面向庭院，大玻璃、屋顶露台和卧室内饰都要完整'
   )
+];
+
+export const TEMPLATE_ASSIMILATION_PROMPTS = [
+  ...CURATED_TEMPLATE_PROMPTS,
+  ...GENERALIZATION_TEMPLATE_PROMPTS
 ];
 
 function promptCase(id, seed, focus, prompt) {

@@ -134,7 +134,25 @@ Stage 7A/7B 案例卡片 -> Stage 7C 设计法则 -> Stage 7D 运行时注入 ->
 批量检查模板吸收泛化：
 
 ```powershell
-npm run evaluate:template-assimilation -- --limit 24 --out out/template-assimilation
+npm run evaluate:template-assimilation -- --limit 36 --out out/template-assimilation
+```
+
+精选提示词复刻入口：
+
+```powershell
+npm start -- --list-prompts
+npm start -- --prompt-id modern-waterfront-villa-reference
+npm start -- --prompt-id japanese-courtyard-retreat-reference "加一个面向水景的小茶亭，整体控制在两层以内"
+```
+
+精选提示词会把参考案例、检索标签、场地/体块/屋顶/立面/室内语法和“非 1:1 复制”约束一起注入生成流程。未指定 `--seed` 时会使用该提示词的固定 seed，方便复现；要主动变化可以传入自己的 `--seed`。
+
+当前精选提示词和完整阶段计划见：
+
+```text
+src/construction/curatedTemplatePromptLibrary.js
+docs/template-assimilation-plan.md
+docs/template-review-notes.md
 ```
 
 快速烟测：

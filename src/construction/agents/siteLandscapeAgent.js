@@ -24,6 +24,14 @@ export class SiteLandscapeAgent {
       buildSpec.design?.template_composition_strategy ||
       {};
     const compositionDirectives = compositionStrategy.directives || {};
+    const referenceReproduction = rules.reference_reproduction ||
+      architecture.generation_hints?.reference_reproduction ||
+      architecture.detail_rules?.reference_reproduction ||
+      buildSpec.design?.reference_reproduction ||
+      templateRecommendations.reference_reproduction ||
+      {};
+    const referenceBoost = Boolean(referenceReproduction.active && ['high', 'medium'].includes(String(referenceReproduction.strength || '')));
+    const highNaturalSite = referenceReproduction.detail_targets?.natural_site_density === 'high';
     const hasCompositionDirectives = Object.keys(compositionDirectives).length > 0;
     const explicitTemplateSite = !hasCompositionDirectives || Boolean(compositionDirectives.prompt_signals?.explicit_composition_request);
     const templateFeatures = new Set(explicitTemplateSite ? [
@@ -34,12 +42,12 @@ export class SiteLandscapeAgent {
     const templateTerrainProfile = explicitTemplateSite
       ? String(rules.template_terrain_profile || buildSpec.site?.template_terrain_profile || templateRecommendations.terrain_profile || 'flat-or-built-platform')
       : 'flat-or-built-platform';
-    const templateTerrain = Boolean(rules.terrain_layers || templateFeatures.has('layered-terrain') || templateTerrainProfile !== 'flat-or-built-platform' || compositionDirectives.use_layered_terrain_base);
-    const templateGarden = Boolean(rules.garden_composition || templateFeatures.has('garden-composition') || compositionDirectives.use_foreground_garden_sequence);
-    const templateRockBase = Boolean(rules.rock_base || templateFeatures.has('rock-and-earth-base') || templateFeatures.has('layered-terrain'));
-    const templateWaterEdge = Boolean(templateFeatures.has('water-edge') || compositionDirectives.use_waterfront_transition);
-    const templateTrees = Boolean(templateFeatures.has('tree-and-shrub-clusters'));
-    const templateApproach = Boolean(compositionDirectives.use_foreground_garden_sequence || compositionDirectives.use_waterfront_transition || compositionDirectives.use_layered_terrain_base);
+    const templateTerrain = Boolean(rules.terrain_layers || templateFeatures.has('layered-terrain') || templateTerrainProfile !== 'flat-or-built-platform' || compositionDirectives.use_layered_terrain_base || referenceBoost);
+    const templateGarden = Boolean(rules.garden_composition || templateFeatures.has('garden-composition') || compositionDirectives.use_foreground_garden_sequence || referenceBoost);
+    const templateRockBase = Boolean(rules.rock_base || templateFeatures.has('rock-and-earth-base') || templateFeatures.has('layered-terrain') || referenceBoost);
+    const templateWaterEdge = Boolean(templateFeatures.has('water-edge') || compositionDirectives.use_waterfront_transition || (referenceBoost && water));
+    const templateTrees = Boolean(templateFeatures.has('tree-and-shrub-clusters') || highNaturalSite || referenceBoost);
+    const templateApproach = Boolean(compositionDirectives.use_foreground_garden_sequence || compositionDirectives.use_waterfront_transition || compositionDirectives.use_layered_terrain_base || referenceBoost);
     const templateSiteScenes = buildTemplateSiteSceneStrategy({
       prompt,
       architecture,
@@ -86,6 +94,7 @@ export class SiteLandscapeAgent {
         detail_density: templateRecommendations.detail_density || 'unknown',
         retrieved: architecture.template_knowledge?.retrieved?.map((item) => item.title) || [],
         composition_strategy: compositionStrategy,
+        reference_reproduction: referenceReproduction,
         site_scene_strategy: templateSiteScenes
       },
       outdoor_program: {

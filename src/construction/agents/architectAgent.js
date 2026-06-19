@@ -342,7 +342,7 @@ const STYLE_PROFILES = [
     site: { formal_garden: false },
     motifs: ['steep-roof', 'timber-cladding', 'large-view-window']
   }),
-  profile('木屋', /木屋|木质|森林|原木|小木屋|林间|猎人小屋/, {
+  profile('木屋', /中世纪|云杉|木屋|木质|森林|原木|小木屋|林间|猎人小屋|medieval|spruce|timber|rustic|cabin/i, {
     family: 'rustic',
     defaultFootprint: 'rectangle',
     defaultRoof: 'gabled',
