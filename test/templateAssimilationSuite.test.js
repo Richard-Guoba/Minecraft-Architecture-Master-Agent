@@ -39,7 +39,8 @@ test('template assimilation suite summary aggregates audits, tracks, gaps, and d
         track('interior-scene-density', 82, ['scene-placement-density-low'])
       ],
       directives: [{ id: 'increase-site-terrain-scenes', priority: 'medium', targets: ['SiteLandscapeAgent'], text: 'Increase site scenes.' }],
-      autoRepair: { active: true, applied_count: 2, grid_patch_count: 80, placement_count: 6 }
+      autoRepair: { active: true, applied_count: 2, grid_patch_count: 80, placement_count: 6 },
+      interiorDensityRepair: { active: true, applied_count: 4, grid_patch_count: 120, placement_count: 120 }
     })
   ], 'out/test', { mode: 'mock', mcVersion: '1.21' });
 
@@ -50,6 +51,8 @@ test('template assimilation suite summary aggregates audits, tracks, gaps, and d
   assert.equal(summary.topTierReadyCount, 1);
   assert.equal(summary.autoRepairAppliedCount, 1);
   assert.equal(summary.repairSummary.grid_patch_count, 80);
+  assert.equal(summary.interiorDensityRepairAppliedCount, 1);
+  assert.equal(summary.interiorDensityRepairSummary.grid_patch_count, 120);
   assert.equal(summary.gapCounts[0].id, 'site-terrain-scenes');
   assert.ok(summary.trackSummary.some((item) => item.id === 'site-terrain-scenes' && item.weakCount === 1));
   assert.ok(summary.directiveCounts.some((item) => item.id === 'increase-site-terrain-scenes'));
@@ -57,6 +60,7 @@ test('template assimilation suite summary aggregates audits, tracks, gaps, and d
   const markdown = renderTemplateAssimilationMarkdown(summary);
   assert.match(markdown, /Stage 7H Template Assimilation Regression/);
   assert.match(markdown, /Average assimilation audit: 88%/);
+  assert.match(markdown, /Stage 7I interior density repair/);
   assert.match(markdown, /site-terrain-scenes/);
 });
 
@@ -93,6 +97,10 @@ function result(id, auditPercent, options = {}) {
     autoRepair: options.autoRepair || {
       active: false,
       reason: 'template-law-coverage-already-satisfied'
+    },
+    interiorDensityRepair: options.interiorDensityRepair || {
+      active: false,
+      reason: 'template-interior-density-already-satisfied'
     },
     validation: { warnings: [] }
   };

@@ -27,6 +27,7 @@ src/construction/
 │   ├── templateLawCoverageAgent.js # Stage 7E：检查模板法则是否真实落地
 │   ├── templateLawAutoRepairAgent.js # Stage 7F：导出前自动补强模板法则缺口
 │   ├── templateAssimilationAuditAgent.js # Stage 7G：汇总模板吸收闭环与剩余差距
+│   ├── templateInteriorDensityRepairAgent.js # Stage 7I：导出前封顶补足复杂内饰场景密度
 │   └── decoratorAgent.js      # 将室内家具、灯光和装饰写入方块网格
 ├── engine/
 │   ├── csgBuilder.js          # 体块 CSG，生成空心外壳
@@ -65,7 +66,7 @@ npm start -- "建一个欧式大房子"
 
 如果本地存在 `mc_templates/analysis/template_index.json`，生成流程会自动启用模板知识检索：先从你收集的高质量 `.schematic` 样本里找相似建筑，再把地形、园林、屋顶/立面细节密度等建议注入 Site/CSG 管线。
 
-如果同时存在 `design_laws.json`，Stage 7D/7E/7F/7G 会继续把跨案例蒸馏出的设计法则注入 Planner、InteriorDetail 和 Decorator，在导出前检查覆盖率并自动补强可修复缺口，最后汇总模板吸收总审计，并在 `run_report.md` 里输出“模板法则覆盖率”和“模板吸收总审计”。多候选择优时，系统会同时考虑模板审美分、法则覆盖率和吸收审计分。Stage 7H 提供 24 个模板泛化 prompt 的批量回归脚本，用于持续追踪不同建筑类型下的吸收短板。
+如果同时存在 `design_laws.json`，Stage 7D/7E/7F/7G 会继续把跨案例蒸馏出的设计法则注入 Planner、InteriorDetail 和 Decorator，在导出前检查覆盖率并自动补强可修复缺口，最后汇总模板吸收总审计，并在 `run_report.md` 里输出“模板法则覆盖率”和“模板吸收总审计”。多候选择优时，系统会同时考虑模板审美分、法则覆盖率和吸收审计分。Stage 7H 提供 24 个模板泛化 prompt 的批量回归脚本，用于持续追踪不同建筑类型下的吸收短板；Stage 7I 会把 7H 暴露出的复杂类型内饰场景密度缺口在导出前封顶补足，让场景、体验、pattern 和 design-law 摆件都达到总审计阈值。
 
 ## 高质量模板语料
 
@@ -125,10 +126,10 @@ mc_templates/analysis/
 生成时的模板吸收闭环：
 
 ```text
-Stage 7A/7B 案例卡片 -> Stage 7C 设计法则 -> Stage 7D 运行时注入 -> Stage 7E 覆盖率检查 -> Stage 7F 自动补强与复检 -> Stage 7G 模板吸收总审计 -> Stage 7H 批量泛化回归
+Stage 7A/7B 案例卡片 -> Stage 7C 设计法则 -> Stage 7D 运行时注入 -> Stage 7E 覆盖率检查 -> Stage 7F 自动补强与复检 -> Stage 7G 模板吸收总审计 -> Stage 7H 批量泛化回归 -> Stage 7I 内饰密度封顶补强
 ```
 
-7E 会检查公共房间朝景观、水边平台、前景花园、非平坦台地、大玻璃视轴、屋顶露台、房间 identity stack、模板家具模式和 `design-law-*` 装饰摆件是否真的出现。7F 会把可修复的缺口转成真实网格补丁和语义元数据：近景花园、水边平台、石土台地、屋顶露台、观景玻璃、房间 identity stack、模板家具 pattern 和 `design-law-*` 摆件都会在导出前补上，并再次计算覆盖率。7G 会把语料抽象、法则运行、空间构图、场地地形、内饰场景和验证闭环汇总成 100 分审计，直接告诉你距离顶级模板闭环还差多少。7H 会用 24 个不同类型 prompt 跑批量回归，输出平均吸收审计、常见弱轨道、常见 gap、下一轮整改指令和 CSV 表。
+7E 会检查公共房间朝景观、水边平台、前景花园、非平坦台地、大玻璃视轴、屋顶露台、房间 identity stack、模板家具模式和 `design-law-*` 装饰摆件是否真的出现。7F 会把可修复的缺口转成真实网格补丁和语义元数据：近景花园、水边平台、石土台地、屋顶露台、观景玻璃、房间 identity stack、模板家具 pattern 和 `design-law-*` 摆件都会在导出前补上，并再次计算覆盖率。7G 会把语料抽象、法则运行、空间构图、场地地形、内饰场景和验证闭环汇总成 100 分审计，直接告诉你距离顶级模板闭环还差多少。7H 会用 24 个不同类型 prompt 跑批量回归，输出平均吸收审计、常见弱轨道、常见 gap、下一轮整改指令和 CSV 表。7I 会把批量回归中暴露的内饰密度短板转成最后一道导出前修复：复杂房型会自动补足房间场景、体验锚点、template pattern 和 design-law 摆件数量。
 
 批量检查模板吸收泛化：
 

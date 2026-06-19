@@ -37,6 +37,7 @@ export async function runTemplateAssimilationSuite(options = {}) {
       const law = result.blueprint.templateLawCoverage || result.templateLawCoverage || {};
       const aesthetic = result.blueprint.templateAestheticReview || result.templateAestheticReview || {};
       const autoRepair = result.blueprint.templateLawAutoRepair || result.templateLawAutoRepair || {};
+      const interiorDensityRepair = result.blueprint.templateInteriorDensityRepair || result.templateInteriorDensityRepair || {};
       results.push({
         id: item.id,
         focus: item.focus,
@@ -51,9 +52,10 @@ export async function runTemplateAssimilationSuite(options = {}) {
         audit,
         law,
         aesthetic,
-        autoRepair
+        autoRepair,
+        interiorDensityRepair
       });
-      console.log(`  audit=${audit.percent || 0}% ${audit.grade || 'n/a'} | law=${law.percent || 0}% | aesthetic=${aesthetic.score || 0}/100 | LLM=${formatLlmUsage(result.llmUsage)}`);
+      console.log(`  audit=${audit.percent || 0}% ${audit.grade || 'n/a'} | law=${law.percent || 0}% | aesthetic=${aesthetic.score || 0}/100 | density=${interiorDensityRepair.active ? `${interiorDensityRepair.placement_count || 0} placements` : 'ok'} | LLM=${formatLlmUsage(result.llmUsage)}`);
     } catch (error) {
       results.push({
         id: item.id,
@@ -98,6 +100,9 @@ export function summarizeTemplateAssimilationSuite(results = [], root = '', opti
   const autoRepairAppliedCount = results.filter((item) => item.autoRepair?.active).length;
   const totalAutoRepairGridPatches = sum(results.map((item) => item.autoRepair?.grid_patch_count || 0));
   const totalAutoRepairPlacements = sum(results.map((item) => item.autoRepair?.placement_count || 0));
+  const interiorDensityRepairAppliedCount = results.filter((item) => item.interiorDensityRepair?.active).length;
+  const totalInteriorDensityGridPatches = sum(results.map((item) => item.interiorDensityRepair?.grid_patch_count || 0));
+  const totalInteriorDensityPlacements = sum(results.map((item) => item.interiorDensityRepair?.placement_count || 0));
 
   return {
     source: 'local-template-assimilation-suite-evaluator',
@@ -118,6 +123,9 @@ export function summarizeTemplateAssimilationSuite(results = [], root = '', opti
     autoRepairAppliedCount,
     totalAutoRepairGridPatches,
     totalAutoRepairPlacements,
+    interiorDensityRepairAppliedCount,
+    totalInteriorDensityGridPatches,
+    totalInteriorDensityPlacements,
     trackSummary: summarizeTracks(results),
     gapCounts: summarizeGaps(results),
     directiveCounts: summarizeDirectives(results),
@@ -128,6 +136,13 @@ export function summarizeTemplateAssimilationSuite(results = [], root = '', opti
       placement_count: totalAutoRepairPlacements,
       average_grid_patches_when_active: autoRepairAppliedCount ? Math.round(totalAutoRepairGridPatches / autoRepairAppliedCount) : 0,
       average_placements_when_active: autoRepairAppliedCount ? Math.round(totalAutoRepairPlacements / autoRepairAppliedCount) : 0
+    },
+    interiorDensityRepairSummary: {
+      applied_count: interiorDensityRepairAppliedCount,
+      grid_patch_count: totalInteriorDensityGridPatches,
+      placement_count: totalInteriorDensityPlacements,
+      average_grid_patches_when_active: interiorDensityRepairAppliedCount ? Math.round(totalInteriorDensityGridPatches / interiorDensityRepairAppliedCount) : 0,
+      average_placements_when_active: interiorDensityRepairAppliedCount ? Math.round(totalInteriorDensityPlacements / interiorDensityRepairAppliedCount) : 0
     },
     results: results.map(compactResult)
   };
@@ -177,6 +192,7 @@ function compactResult(item = {}) {
   const law = item.law || {};
   const aesthetic = item.aesthetic || {};
   const autoRepair = item.autoRepair || {};
+  const interiorDensityRepair = item.interiorDensityRepair || {};
   return {
     id: item.id,
     focus: item.focus || [],
@@ -213,6 +229,16 @@ function compactResult(item = {}) {
       applied_count: autoRepair.applied_count || 0,
       grid_patch_count: autoRepair.grid_patch_count || 0,
       placement_count: autoRepair.placement_count || 0
+    },
+    interiorDensityRepair: {
+      active: Boolean(interiorDensityRepair.active),
+      reason: interiorDensityRepair.reason,
+      applied_count: interiorDensityRepair.applied_count || 0,
+      grid_patch_count: interiorDensityRepair.grid_patch_count || 0,
+      placement_count: interiorDensityRepair.placement_count || 0,
+      before: interiorDensityRepair.before,
+      after: interiorDensityRepair.after,
+      targets: interiorDensityRepair.targets
     },
     warnings: item.validation?.warnings || []
   };
@@ -347,14 +373,15 @@ export function renderTemplateAssimilationMarkdown(summary = {}) {
 - Top-tier ready: ${summary.topTierReadyCount}/${summary.total} (${summary.topTierReadyPercent}%)
 - Excellent or better: ${summary.excellentCount}/${summary.total} (${summary.excellentPercent}%)
 - Auto repair applied: ${summary.repairSummary?.applied_count || 0} prompts, ${summary.repairSummary?.grid_patch_count || 0} grid patches, ${summary.repairSummary?.placement_count || 0} placements
+- Stage 7I interior density repair: ${summary.interiorDensityRepairSummary?.applied_count || 0} prompts, ${summary.interiorDensityRepairSummary?.grid_patch_count || 0} grid patches, ${summary.interiorDensityRepairSummary?.placement_count || 0} placements
 - Mode: ${summary.options?.mode}
 - Minecraft target: ${summary.options?.mcVersion}
 - Output root: ${summary.root}
 
 ## Results
 
-| # | Prompt ID | OK | Audit | Grade | Law | Aesthetic | Auto Repair | Top Gaps | Output |
-|---:|---|---:|---:|---|---:|---:|---|---|---|
+| # | Prompt ID | OK | Audit | Grade | Law | Aesthetic | Auto Repair | Interior Density | Top Gaps | Output |
+|---:|---|---:|---:|---|---:|---:|---|---|---|---|
 ${resultRows}
 
 ## Track Summary
@@ -388,11 +415,15 @@ function resultRow(item = {}, index) {
   const law = item.law || {};
   const aesthetic = item.aesthetic || {};
   const repair = item.autoRepair || {};
+  const interiorDensityRepair = item.interiorDensityRepair || {};
   const gaps = (audit.gaps || []).slice(0, 3).map((gap) => gap.id).join(', ') || '-';
   const repairText = repair.active
     ? `${repair.applied_count} / ${repair.grid_patch_count} blocks`
     : (repair.reason || '-');
-  return `| ${index + 1} | ${item.id} | ${item.ok ? 'yes' : 'no'} | ${audit.percent || 0}% | ${audit.grade || 'n/a'} | ${law.percent || 0}% | ${aesthetic.score || 0} | ${repairText} | ${gaps} | ${item.outputDir || '-'} |`;
+  const densityText = interiorDensityRepair.active
+    ? `${interiorDensityRepair.applied_count} / ${interiorDensityRepair.grid_patch_count} blocks`
+    : (interiorDensityRepair.reason || '-');
+  return `| ${index + 1} | ${item.id} | ${item.ok ? 'yes' : 'no'} | ${audit.percent || 0}% | ${audit.grade || 'n/a'} | ${law.percent || 0}% | ${aesthetic.score || 0} | ${repairText} | ${densityText} | ${gaps} | ${item.outputDir || '-'} |`;
 }
 
 function renderTemplateAssimilationCsv(summary = {}) {
@@ -409,6 +440,9 @@ function renderTemplateAssimilationCsv(summary = {}) {
     'auto_repair_active',
     'auto_repair_grid_patches',
     'auto_repair_placements',
+    'interior_density_repair_active',
+    'interior_density_repair_grid_patches',
+    'interior_density_repair_placements',
     'gap_ids',
     'focus',
     'prompt',
@@ -427,6 +461,9 @@ function renderTemplateAssimilationCsv(summary = {}) {
     item.autoRepair?.active ? 'yes' : 'no',
     item.autoRepair?.grid_patch_count || 0,
     item.autoRepair?.placement_count || 0,
+    item.interiorDensityRepair?.active ? 'yes' : 'no',
+    item.interiorDensityRepair?.grid_patch_count || 0,
+    item.interiorDensityRepair?.placement_count || 0,
     (item.audit?.gaps || []).map((gap) => gap.id).join(';'),
     (item.focus || []).join(';'),
     item.prompt,
@@ -437,12 +474,12 @@ function renderTemplateAssimilationCsv(summary = {}) {
 
 function renderConsoleTable(results = []) {
   const lines = [
-    '| # | id | audit | law | aesthetic | repair | gaps |',
-    '|---:|---|---:|---:|---:|---|---|'
+    '| # | id | audit | law | aesthetic | repair | density | gaps |',
+    '|---:|---|---:|---:|---:|---|---|---|'
   ];
   for (let index = 0; index < results.length; index += 1) {
     const item = results[index];
-    lines.push(`| ${index + 1} | ${item.id} | ${item.audit?.percent || 0}% | ${item.law?.percent || 0}% | ${item.aesthetic?.score || 0} | ${item.autoRepair?.active ? 'yes' : 'no'} | ${(item.audit?.gaps || []).slice(0, 2).map((gap) => gap.id).join(', ') || '-'} |`);
+    lines.push(`| ${index + 1} | ${item.id} | ${item.audit?.percent || 0}% | ${item.law?.percent || 0}% | ${item.aesthetic?.score || 0} | ${item.autoRepair?.active ? 'yes' : 'no'} | ${item.interiorDensityRepair?.active ? 'yes' : 'no'} | ${(item.audit?.gaps || []).slice(0, 2).map((gap) => gap.id).join(', ') || '-'} |`);
   }
   return lines.join('\n');
 }

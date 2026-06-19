@@ -21,6 +21,7 @@ import { TemplateAestheticReviewAgent } from './agents/templateAestheticReviewAg
 import { TemplateLawCoverageAgent } from './agents/templateLawCoverageAgent.js';
 import { TemplateLawAutoRepairAgent } from './agents/templateLawAutoRepairAgent.js';
 import { TemplateAssimilationAuditAgent } from './agents/templateAssimilationAuditAgent.js';
+import { TemplateInteriorDensityRepairAgent } from './agents/templateInteriorDensityRepairAgent.js';
 import { CSGBuilder, computeBounds } from './engine/csgBuilder.js';
 import { BSPPartitioner } from './engine/bspPartitioner.js';
 import { AStarPathfinder } from './engine/pathfinder.js';
@@ -122,6 +123,7 @@ export async function runConstructionWorkflow({
     interior,
     repair: preRepair,
     templateLawAutoRepair: undefined,
+    templateInteriorDensityRepair: undefined,
     buildSpec,
     shell,
     layout,
@@ -150,6 +152,15 @@ export async function runConstructionWorkflow({
     decorator,
     layout
   });
+  const templateInteriorDensityRepair = new TemplateInteriorDensityRepairAgent().run({
+    grid: shell.grid,
+    blueprint: preBlueprint,
+    architecture,
+    topology,
+    interior,
+    decorator,
+    layout
+  });
   const repair = new ConstraintRepairAgent().run({
     grid: shell.grid,
     buildSpec,
@@ -164,7 +175,8 @@ export async function runConstructionWorkflow({
     layout,
     paths,
     decorator,
-    templateLawAutoRepair
+    templateLawAutoRepair,
+    templateInteriorDensityRepair
   });
   const bounds = computeBounds(shell.grid);
   const exportPlan = new BlueprintOptimizerAgent().run(shell.grid, {
@@ -187,6 +199,7 @@ export async function runConstructionWorkflow({
     interior,
     repair,
     templateLawAutoRepair,
+    templateInteriorDensityRepair,
     buildSpec,
     shell,
     layout,
@@ -250,6 +263,7 @@ export async function runConstructionWorkflow({
     templateLawCoverage: blueprint.templateLawCoverage,
     templateAestheticReview: blueprint.templateAestheticReview,
     templateAssimilationAudit: blueprint.templateAssimilationAudit,
+    templateInteriorDensityRepair: blueprint.templateInteriorDensityRepair,
     geometry: blueprint.geometry,
     blueprint,
     validation,
@@ -430,7 +444,7 @@ function createSeedVariation(seed, context = {}) {
   };
 }
 
-function buildBlueprint({ prompt, architecture, topology, creativeDesign, stylePreset, materialPalette, templateKnowledge, structure, facade, roof, site, opening, interior, repair, templateLawAutoRepair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
+function buildBlueprint({ prompt, architecture, topology, creativeDesign, stylePreset, materialPalette, templateKnowledge, structure, facade, roof, site, opening, interior, repair, templateLawAutoRepair, templateInteriorDensityRepair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
   return {
     version: 4,
     workflow: 'construction_method_v1',
@@ -456,6 +470,7 @@ function buildBlueprint({ prompt, architecture, topology, creativeDesign, styleP
     interior,
     repair,
     templateLawAutoRepair,
+    templateInteriorDensityRepair,
     geometry: {
       engine: 'pure JavaScript CSG + BSP + A* voxel engine',
       csg: shell.csg,
@@ -742,9 +757,13 @@ function renderReport({ prompt, blueprint, validation, mcVersion, autoBuild, dat
     : '- 模板反省闭环：未启用';
   const templateLawCoverage = blueprint.templateLawCoverage || {};
   const templateLawAutoRepair = blueprint.templateLawAutoRepair || {};
+  const templateInteriorDensityRepair = blueprint.templateInteriorDensityRepair || {};
   const templateLawAutoRepairLine = templateLawAutoRepair.active
     ? `- 模板法则自动补强：执行 ${templateLawAutoRepair.applied_count || 0} 项，补方块 ${templateLawAutoRepair.grid_patch_count || 0}，补摆件 ${templateLawAutoRepair.placement_count || 0}，覆盖率 ${templateLawAutoRepair.coverage_before?.percent || 0}% -> ${templateLawAutoRepair.coverage_after?.percent || templateLawCoverage.percent || 0}%`
     : `- 模板法则自动补强：${templateLawAutoRepair.reason || '未触发'}`;
+  const templateInteriorDensityLine = templateInteriorDensityRepair.active
+    ? `- 模板内饰密度封顶：补强 ${templateInteriorDensityRepair.applied_count || 0} 类，补方块 ${templateInteriorDensityRepair.grid_patch_count || 0}，补摆件 ${templateInteriorDensityRepair.placement_count || 0}，pattern ${templateInteriorDensityRepair.before?.pattern || 0}->${templateInteriorDensityRepair.after?.pattern || 0}，design-law ${templateInteriorDensityRepair.before?.designLaw || 0}->${templateInteriorDensityRepair.after?.designLaw || 0}`
+    : `- 模板内饰密度封顶：${templateInteriorDensityRepair.reason || '未触发'}`;
   const templateLawCoverageLine = templateLawCoverage.active
     ? `- 模板法则覆盖率：${templateLawCoverage.percent}%（${templateLawCoverage.grade}），检查 ${templateLawCoverage.satisfied_count || 0}/${(templateLawCoverage.checks || []).length}，缺口 ${(templateLawCoverage.gaps || []).slice(0, 3).map((item) => item.id).join('、') || '无'}`
     : '- 模板法则覆盖率：未启用';
@@ -778,6 +797,7 @@ ${prompt}
 - OpeningConnectivityAgent：生成入口、窗洞、内部阈值和竖向开口计划。
 - InteriorDetailAgent：生成房间级室内细节计划，房间功能专家和建筑风格专家各掌握 50+ 室内方块，并叠加缤纷软装层，DecoratorAgent 负责写入方块。
 - TemplateLawAutoRepairAgent：在导出前执行模板法则覆盖率预检，自动补强缺失的场地、屋顶和内饰法则落块。
+- TemplateInteriorDensityRepairAgent：在导出前补足复杂类型的内饰场景、体验、pattern 和 design-law 摆件密度。
 - TemplateAssimilationAuditAgent：汇总 7A-7F 的案例、法则、审美、补强和真实落块证据，输出距离顶级模板的剩余差距。
 - ConstraintRepairAgent：导出前做约束检查与修复建议。
 - GeometryEngine：本地纯 JavaScript CSG + BSP + A* 按设计决策生成合法坐标、门洞和楼梯。
@@ -819,6 +839,7 @@ ${templateSiteScenesLine}
 ${templateAestheticLine}
 ${templateReflectionLine}
 ${templateLawAutoRepairLine}
+${templateInteriorDensityLine}
 ${templateLawCoverageLine}
 ${templateLawRepairLine}
 ${templateAssimilationLine}
@@ -840,6 +861,7 @@ ${templateAssimilationLine}
 - OpeningConnectivityAgent：主入口 ${blueprint.opening?.main_entry?.side || 'south'}，计划开口 ${blueprint.opening?.engine_hints?.planned_opening_count || 0}
 - InteriorDetailAgent：房间细节 ${blueprint.interior?.room_count || 0} 个，灯光 ${blueprint.interior?.lighting_strategy || 'unknown'}，专家 ${blueprint.interior?.room_specialists?.map((item) => `${item.label || item.id}(${item.block_count || 0})`).join('、') || '无'}
 - TemplateLawAutoRepairAgent：${templateLawAutoRepair.active ? `执行 ${templateLawAutoRepair.applied_count || 0} 项，补强 ${(templateLawAutoRepair.applied || []).map((item) => item.id).join('、') || '无'}` : (templateLawAutoRepair.reason || '未触发')}
+- TemplateInteriorDensityRepairAgent：${templateInteriorDensityRepair.active ? `执行 ${templateInteriorDensityRepair.applied_count || 0} 类，补强 ${(templateInteriorDensityRepair.applied || []).map((item) => item.id).join('、') || '无'}` : (templateInteriorDensityRepair.reason || '未触发')}
 - TemplateAssimilationAuditAgent：${templateAssimilationAudit.active ? `${templateAssimilationAudit.percent}% / ${templateAssimilationAudit.readiness}，下一步 ${(templateAssimilationAudit.next_iteration_directives || []).slice(0, 2).map((item) => item.id).join('、') || '保持'}` : (templateAssimilationAudit.reason || '未启用')}
 - ConstraintRepairAgent：${blueprint.repair?.ok ? '通过' : '需关注'}，建议 ${blueprint.repair?.suggestions?.join('；') || '无'}
 

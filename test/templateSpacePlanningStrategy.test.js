@@ -19,6 +19,8 @@ test('template space planning turns composition grammar into room orientation an
   assert.equal(topology.template_space_plan.active, true);
   assert.equal(topology.template_space_plan.view_side, 'south');
   assert.equal(topology.template_space_plan.service_side, 'west');
+  assert.ok(topology.template_space_plan.entry_sequence.thresholds.length >= 5);
+  assert.ok(topology.template_space_plan.entry_sequence.thresholds.includes('porch-threshold'));
   assert.equal(topology.bsp_hints.template_space_planning_active, true);
   assert.equal(topology.bsp_hints.split_strategy, 'view-side-cluster');
   assert.ok(topology.bsp_hints.room_order_by_floor[0].includes('living'));

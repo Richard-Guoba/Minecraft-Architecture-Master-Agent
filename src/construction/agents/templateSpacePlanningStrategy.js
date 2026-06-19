@@ -224,12 +224,16 @@ function upperFloorOrder({ directives = {} }) {
 }
 
 function buildEntrySequence({ publicCore, verticalCore, directives = {}, viewSide }) {
-  const thresholds = ['forecourt', 'entry'];
-  if (directives.use_layered_terrain_base) thresholds.unshift('terrain-plinth');
-  if (directives.use_foreground_garden_sequence) thresholds.unshift('garden-rooms');
+  const thresholds = [];
+  thresholds.push(directives.use_layered_terrain_base ? 'terrain-plinth' : 'site-edge');
+  thresholds.push(directives.use_foreground_garden_sequence ? 'garden-rooms' : 'forecourt');
+  thresholds.push('porch-threshold', 'entry');
   thresholds.push(publicCore || 'living');
   if (directives.use_vertical_accent && verticalCore) thresholds.push(verticalCore);
   if (directives.use_waterfront_transition) thresholds.push('view-deck', 'water-edge');
+  else if (directives.use_courtyard_or_patio_void) thresholds.push('courtyard-threshold');
+  else if (directives.use_large_view_glass) thresholds.push('view-frame');
+  else thresholds.push('inner-room-threshold');
   return {
     axis: ['north', 'south'].includes(viewSide) ? 'z' : 'x',
     thresholds: [...new Set(thresholds)],
