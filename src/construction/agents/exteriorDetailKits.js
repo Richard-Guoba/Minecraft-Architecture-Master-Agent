@@ -15,7 +15,7 @@ const KIT_METADATA = {
   window_surround: {
     label: 'layered-window-decoration',
     module: 'facade_detail',
-    motifs: ['sill', 'lintel', 'side-jambs', 'bars', 'trapdoor-shutters']
+    motifs: ['solid-sill', 'solid-lintel', 'side-jambs', 'bars', 'shutters']
   },
   entry_portal: {
     label: 'detailed-entry-decoration',
@@ -25,7 +25,7 @@ const KIT_METADATA = {
   wall_relief: {
     label: 'textured-wall-decoration',
     module: 'facade_relief',
-    motifs: ['slab-relief', 'stair-caps', 'wall-piers', 'buttons', 'trapdoor-panels']
+    motifs: ['surface-relief', 'trim-belts', 'wall-piers', 'buttons', 'trapdoor-panels']
   },
   shade_awnings: {
     label: 'shade-and-awning-decoration',
@@ -66,8 +66,8 @@ const KIT_METADATA = {
 
 const COMMON_KIT_BLOCKS = {
   window_surround: [
-    'minecraft:smooth_quartz_slab[type=bottom]',
-    'minecraft:smooth_quartz_stairs[facing=north,half=bottom]',
+    'minecraft:smooth_quartz',
+    'minecraft:quartz_bricks',
     'minecraft:stone_brick_wall',
     'minecraft:iron_bars',
     'minecraft:white_stained_glass_pane',
@@ -163,32 +163,32 @@ const COMMON_KIT_BLOCKS = {
 
 const FAMILY_KIT_OVERRIDES = {
   modern: {
-    window_surround: ['minecraft:smooth_quartz_slab[type=bottom]', 'minecraft:smooth_quartz_stairs[facing=north,half=bottom]', 'minecraft:light_gray_concrete', 'minecraft:white_stained_glass_pane', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', 'minecraft:end_rod'],
-    wall_relief: ['minecraft:smooth_quartz_slab[type=bottom]', 'minecraft:light_gray_carpet', 'minecraft:light_gray_concrete'],
+    window_surround: ['minecraft:light_gray_concrete', 'minecraft:smooth_quartz', 'minecraft:iron_bars', 'minecraft:white_stained_glass_pane', 'minecraft:sea_lantern', 'minecraft:end_rod'],
+    wall_relief: ['minecraft:light_gray_concrete', 'minecraft:smooth_quartz', 'minecraft:sea_lantern'],
     shade_awnings: ['minecraft:white_carpet', 'minecraft:smooth_quartz_slab[type=bottom]', 'minecraft:sea_lantern'],
     privacy_screen: ['minecraft:iron_bars', 'minecraft:white_stained_glass_pane', 'minecraft:end_rod']
   },
   futuristic: {
-    window_surround: ['minecraft:smooth_quartz_slab[type=bottom]', 'minecraft:smooth_quartz_stairs[facing=north,half=bottom]', 'minecraft:cyan_stained_glass_pane', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', 'minecraft:end_rod'],
-    wall_relief: ['minecraft:smooth_quartz_slab[type=bottom]', 'minecraft:cyan_carpet', 'minecraft:sea_lantern'],
+    window_surround: ['minecraft:smooth_quartz', 'minecraft:cyan_concrete', 'minecraft:iron_bars', 'minecraft:cyan_stained_glass_pane', 'minecraft:sea_lantern', 'minecraft:end_rod'],
+    wall_relief: ['minecraft:smooth_quartz', 'minecraft:cyan_concrete', 'minecraft:sea_lantern'],
     privacy_screen: ['minecraft:iron_bars', 'minecraft:cyan_stained_glass_pane', 'minecraft:end_rod']
   },
   cyberpunk: {
-    window_surround: ['minecraft:polished_blackstone_slab[type=bottom]', 'minecraft:polished_blackstone_stairs[facing=north,half=bottom]', 'minecraft:cyan_stained_glass_pane', 'minecraft:end_rod', 'minecraft:magenta_carpet', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]'],
+    window_surround: ['minecraft:polished_blackstone', 'minecraft:black_concrete', 'minecraft:cyan_stained_glass_pane', 'minecraft:end_rod', 'minecraft:magenta_carpet', 'minecraft:iron_bars'],
     wall_relief: ['minecraft:gray_carpet', 'minecraft:cyan_carpet', 'minecraft:sea_lantern', 'minecraft:iron_bars'],
     shade_awnings: ['minecraft:cyan_carpet', 'minecraft:magenta_carpet', 'minecraft:sea_lantern', 'minecraft:chain'],
     identity_marker: ['minecraft:sea_lantern', 'minecraft:redstone_lamp', 'minecraft:iron_bars', 'minecraft:chain'],
     service_utilities: ['minecraft:copper_grate', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', 'minecraft:redstone_lamp', 'minecraft:lightning_rod']
   },
   industrial: {
-    window_surround: ['minecraft:polished_deepslate_slab[type=bottom]', 'minecraft:polished_deepslate_stairs[facing=north,half=bottom]', 'minecraft:polished_deepslate_wall', 'minecraft:copper_grate'],
+    window_surround: ['minecraft:polished_deepslate', 'minecraft:deepslate_tiles', 'minecraft:polished_deepslate_wall', 'minecraft:copper_grate'],
     wall_relief: ['minecraft:polished_deepslate_slab[type=bottom]', 'minecraft:polished_deepslate_stairs[facing=north,half=bottom]', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', 'minecraft:copper_grate'],
     shade_awnings: ['minecraft:gray_carpet', 'minecraft:iron_bars', 'minecraft:chain', 'minecraft:redstone_lamp'],
     plant_boxes: ['minecraft:dark_oak_trapdoor[facing=south,half=top,open=false]', 'minecraft:barrel', 'minecraft:potted_azalea_bush'],
     service_utilities: ['minecraft:copper_grate', 'minecraft:weathered_copper_grate', 'minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', 'minecraft:lightning_rod']
   },
   japanese: {
-    window_surround: ['minecraft:bamboo_mosaic_slab[type=bottom]', 'minecraft:bamboo_mosaic_stairs[facing=north,half=bottom]', 'minecraft:bamboo_fence', 'minecraft:bamboo_trapdoor[facing=south,half=top,open=false]', 'minecraft:dark_oak_trapdoor[facing=south,half=top,open=false]'],
+    window_surround: ['minecraft:bamboo_mosaic', 'minecraft:stripped_dark_oak_log', 'minecraft:bamboo_fence', 'minecraft:bamboo_trapdoor[facing=south,half=top,open=false]', 'minecraft:dark_oak_trapdoor[facing=south,half=top,open=false]'],
     entry_portal: ['minecraft:dark_oak_fence', 'minecraft:bamboo_mosaic_slab[type=bottom]', 'minecraft:lantern', 'minecraft:dark_oak_trapdoor[facing=south,half=top,open=false]'],
     wall_relief: ['minecraft:bamboo_mosaic_slab[type=bottom]', 'minecraft:bamboo_fence', 'minecraft:dark_oak_trapdoor[facing=south,half=top,open=false]', 'minecraft:red_carpet'],
     shade_awnings: ['minecraft:red_carpet', 'minecraft:bamboo_mosaic_slab[type=bottom]', 'minecraft:bamboo_fence', 'minecraft:lantern'],
@@ -196,81 +196,81 @@ const FAMILY_KIT_OVERRIDES = {
     decorative_screens: ['minecraft:bamboo_fence', 'minecraft:bamboo_trapdoor[facing=south,half=top,open=false]', 'minecraft:bamboo_mosaic_slab[type=bottom]', 'minecraft:bamboo_button[face=wall,facing=south]']
   },
   'chinese-courtyard': {
-    window_surround: ['minecraft:dark_oak_trapdoor[facing=south,half=top,open=false]', 'minecraft:dark_oak_fence', 'minecraft:red_carpet', 'minecraft:stone_brick_wall'],
+    window_surround: ['minecraft:stripped_dark_oak_log', 'minecraft:dark_oak_planks', 'minecraft:dark_oak_fence', 'minecraft:red_carpet', 'minecraft:stone_brick_wall'],
     entry_portal: ['minecraft:dark_oak_fence', 'minecraft:dark_oak_trapdoor[facing=south,half=top,open=false]', 'minecraft:lantern', 'minecraft:red_carpet'],
     shade_awnings: ['minecraft:red_carpet', 'minecraft:dark_oak_fence', 'minecraft:lantern', 'minecraft:chain'],
     privacy_screen: ['minecraft:dark_oak_fence', 'minecraft:dark_oak_trapdoor[facing=south,half=top,open=false]', 'minecraft:iron_bars']
   },
   gothic: {
-    window_surround: ['minecraft:deepslate_tile_wall', 'minecraft:deepslate_tile_slab[type=bottom]', 'minecraft:deepslate_tile_stairs[facing=north,half=bottom]', 'minecraft:iron_bars', 'minecraft:soul_lantern'],
+    window_surround: ['minecraft:deepslate_tiles', 'minecraft:chiseled_deepslate', 'minecraft:deepslate_tile_wall', 'minecraft:iron_bars', 'minecraft:soul_lantern'],
     entry_portal: ['minecraft:stone_brick_wall', 'minecraft:deepslate_tile_wall', 'minecraft:soul_lantern', 'minecraft:chain', 'minecraft:blackstone_slab[type=bottom]'],
     wall_relief: ['minecraft:deepslate_tile_wall', 'minecraft:deepslate_tile_slab[type=bottom]', 'minecraft:deepslate_tile_stairs[facing=north,half=bottom]', 'minecraft:iron_bars', 'minecraft:soul_lantern'],
     shade_awnings: ['minecraft:blackstone_slab[type=bottom]', 'minecraft:blackstone_stairs[facing=north,half=bottom]', 'minecraft:chain', 'minecraft:soul_lantern'],
     identity_marker: ['minecraft:soul_lantern', 'minecraft:chain', 'minecraft:iron_bars', 'minecraft:stone_button[face=wall,facing=south]']
   },
   desert: {
-    window_surround: ['minecraft:sandstone_slab[type=bottom]', 'minecraft:sandstone_stairs[facing=north,half=bottom]', 'minecraft:sandstone_wall', 'minecraft:acacia_trapdoor[facing=south,half=top,open=false]', 'minecraft:orange_carpet'],
+    window_surround: ['minecraft:cut_sandstone', 'minecraft:smooth_sandstone', 'minecraft:sandstone_wall', 'minecraft:acacia_trapdoor[facing=south,half=top,open=false]', 'minecraft:orange_carpet'],
     entry_portal: ['minecraft:sandstone_wall', 'minecraft:sandstone_slab[type=bottom]', 'minecraft:sandstone_stairs[facing=north,half=bottom]', 'minecraft:lantern', 'minecraft:acacia_trapdoor[facing=south,half=top,open=false]'],
     wall_relief: ['minecraft:cut_sandstone_slab[type=bottom]', 'minecraft:sandstone_wall', 'minecraft:orange_carpet', 'minecraft:acacia_trapdoor[facing=south,half=top,open=false]'],
     shade_awnings: ['minecraft:orange_carpet', 'minecraft:acacia_fence', 'minecraft:lantern', 'minecraft:chain'],
     plant_boxes: ['minecraft:acacia_trapdoor[facing=south,half=top,open=false]', 'minecraft:potted_cactus', 'minecraft:dead_bush']
   },
   mediterranean: {
-    window_surround: ['minecraft:smooth_sandstone_slab[type=bottom]', 'minecraft:smooth_sandstone_stairs[facing=north,half=bottom]', 'minecraft:sandstone_wall', 'minecraft:light_blue_carpet'],
+    window_surround: ['minecraft:smooth_sandstone', 'minecraft:cut_sandstone', 'minecraft:sandstone_wall', 'minecraft:light_blue_carpet'],
     shade_awnings: ['minecraft:light_blue_carpet', 'minecraft:smooth_sandstone_slab[type=bottom]', 'minecraft:lantern', 'minecraft:chain'],
     plant_boxes: ['minecraft:spruce_trapdoor[facing=south,half=top,open=false]', 'minecraft:potted_azalea_bush', 'minecraft:flower_pot']
   },
   coastal: {
-    window_surround: ['minecraft:dark_prismarine_slab[type=bottom]', 'minecraft:dark_prismarine_stairs[facing=north,half=bottom]', 'minecraft:birch_trapdoor[facing=south,half=top,open=false]', 'minecraft:light_blue_carpet', 'minecraft:sea_lantern'],
+    window_surround: ['minecraft:dark_prismarine', 'minecraft:prismarine_bricks', 'minecraft:birch_trapdoor[facing=south,half=top,open=false]', 'minecraft:light_blue_carpet', 'minecraft:sea_lantern'],
     wall_relief: ['minecraft:dark_prismarine_slab[type=bottom]', 'minecraft:birch_trapdoor[facing=south,half=top,open=false]', 'minecraft:light_blue_carpet', 'minecraft:sea_lantern'],
     shade_awnings: ['minecraft:light_blue_carpet', 'minecraft:birch_fence', 'minecraft:sea_lantern', 'minecraft:chain'],
     balcony_rail: ['minecraft:birch_fence', 'minecraft:chain', 'minecraft:sea_lantern']
   },
   alpine: {
-    window_surround: ['minecraft:spruce_trapdoor[facing=south,half=top,open=false]', 'minecraft:spruce_fence', 'minecraft:stone_brick_wall', 'minecraft:snow', 'minecraft:lantern'],
+    window_surround: ['minecraft:spruce_planks', 'minecraft:stripped_spruce_log', 'minecraft:spruce_fence', 'minecraft:stone_brick_wall', 'minecraft:snow', 'minecraft:lantern'],
     wall_relief: ['minecraft:spruce_trapdoor[facing=south,half=top,open=false]', 'minecraft:stone_brick_wall', 'minecraft:snow', 'minecraft:lantern'],
     shade_awnings: ['minecraft:white_carpet', 'minecraft:spruce_fence', 'minecraft:lantern', 'minecraft:chain']
   },
   rustic: {
-    window_surround: ['minecraft:spruce_trapdoor[facing=south,half=top,open=false]', 'minecraft:spruce_fence', 'minecraft:stone_brick_wall', 'minecraft:lantern'],
+    window_surround: ['minecraft:spruce_planks', 'minecraft:stripped_spruce_log', 'minecraft:spruce_fence', 'minecraft:stone_brick_wall', 'minecraft:lantern'],
     wall_relief: ['minecraft:spruce_trapdoor[facing=south,half=top,open=false]', 'minecraft:spruce_fence', 'minecraft:stone_button[face=wall,facing=south]'],
     shade_awnings: ['minecraft:spruce_trapdoor[facing=south,half=top,open=false]', 'minecraft:spruce_fence', 'minecraft:lantern']
   },
   nordic: {
-    window_surround: ['minecraft:spruce_trapdoor[facing=south,half=top,open=false]', 'minecraft:spruce_fence', 'minecraft:white_carpet', 'minecraft:lantern'],
+    window_surround: ['minecraft:spruce_planks', 'minecraft:white_concrete', 'minecraft:spruce_fence', 'minecraft:white_carpet', 'minecraft:lantern'],
     wall_relief: ['minecraft:spruce_trapdoor[facing=south,half=top,open=false]', 'minecraft:light_gray_carpet', 'minecraft:stone_brick_wall']
   },
   victorian: {
-    window_surround: ['minecraft:dark_oak_trapdoor[facing=south,half=top,open=false]', 'minecraft:dark_oak_fence', 'minecraft:red_carpet', 'minecraft:iron_bars'],
+    window_surround: ['minecraft:dark_oak_planks', 'minecraft:white_concrete', 'minecraft:dark_oak_fence', 'minecraft:red_carpet', 'minecraft:iron_bars'],
     entry_portal: ['minecraft:dark_oak_fence', 'minecraft:red_carpet', 'minecraft:lantern', 'minecraft:chain'],
     shade_awnings: ['minecraft:red_carpet', 'minecraft:dark_oak_fence', 'minecraft:lantern'],
     plant_boxes: ['minecraft:spruce_trapdoor[facing=south,half=top,open=false]', 'minecraft:potted_azalea_bush', 'minecraft:flower_pot']
   },
   classical: {
-    window_surround: ['minecraft:quartz_slab[type=bottom]', 'minecraft:quartz_stairs[facing=north,half=bottom]', 'minecraft:stone_brick_wall', 'minecraft:iron_bars'],
+    window_surround: ['minecraft:quartz_block', 'minecraft:quartz_bricks', 'minecraft:stone_brick_wall', 'minecraft:iron_bars'],
     entry_portal: ['minecraft:quartz_stairs[facing=north,half=bottom]', 'minecraft:quartz_slab[type=bottom]', 'minecraft:stone_brick_wall', 'minecraft:lantern'],
     wall_relief: ['minecraft:quartz_slab[type=bottom]', 'minecraft:quartz_stairs[facing=north,half=bottom]', 'minecraft:stone_brick_wall', 'minecraft:stone_button[face=wall,facing=south]']
   },
   treehouse: {
-    window_surround: ['minecraft:jungle_slab[type=bottom]', 'minecraft:jungle_stairs[facing=north,half=bottom]', 'minecraft:stripped_jungle_log', 'minecraft:jungle_trapdoor[facing=south,half=top,open=false]', 'minecraft:vine', 'minecraft:lantern'],
+    window_surround: ['minecraft:stripped_jungle_log', 'minecraft:jungle_planks', 'minecraft:jungle_trapdoor[facing=south,half=top,open=false]', 'minecraft:vine', 'minecraft:lantern'],
     entry_portal: ['minecraft:jungle_fence', 'minecraft:jungle_trapdoor[facing=south,half=top,open=false]', 'minecraft:lantern', 'minecraft:chain'],
     wall_relief: ['minecraft:jungle_trapdoor[facing=south,half=top,open=false]', 'minecraft:jungle_fence', 'minecraft:vine', 'minecraft:moss_carpet'],
     plant_boxes: ['minecraft:jungle_trapdoor[facing=south,half=top,open=false]', 'minecraft:oak_leaves[persistent=true]', 'minecraft:moss_carpet', 'minecraft:flower_pot'],
     privacy_screen: ['minecraft:jungle_fence', 'minecraft:chain', 'minecraft:vine', 'minecraft:jungle_trapdoor[facing=south,half=top,open=false]']
   },
   tropical: {
-    window_surround: ['minecraft:jungle_trapdoor[facing=south,half=top,open=false]', 'minecraft:jungle_fence', 'minecraft:vine', 'minecraft:lantern'],
+    window_surround: ['minecraft:jungle_planks', 'minecraft:stripped_jungle_log', 'minecraft:jungle_fence', 'minecraft:vine', 'minecraft:lantern'],
     shade_awnings: ['minecraft:green_carpet', 'minecraft:jungle_fence', 'minecraft:chain', 'minecraft:lantern'],
     privacy_screen: ['minecraft:jungle_fence', 'minecraft:jungle_trapdoor[facing=south,half=top,open=false]', 'minecraft:vine', 'minecraft:chain']
   },
   subterranean: {
-    window_surround: ['minecraft:polished_deepslate_wall', 'minecraft:polished_deepslate_slab[type=bottom]', 'minecraft:iron_bars', 'minecraft:chain', 'minecraft:glowstone'],
+    window_surround: ['minecraft:polished_deepslate', 'minecraft:deepslate_bricks', 'minecraft:polished_deepslate_wall', 'minecraft:iron_bars', 'minecraft:chain', 'minecraft:glowstone'],
     entry_portal: ['minecraft:polished_deepslate_wall', 'minecraft:polished_deepslate_slab[type=bottom]', 'minecraft:chain', 'minecraft:lantern'],
     wall_relief: ['minecraft:polished_deepslate_wall', 'minecraft:polished_deepslate_slab[type=bottom]', 'minecraft:moss_carpet', 'minecraft:glowstone'],
     service_utilities: ['minecraft:iron_trapdoor[facing=north,half=bottom,open=false]', 'minecraft:copper_grate', 'minecraft:chain', 'minecraft:lightning_rod']
   },
   'greenhouse-house': {
-    window_surround: ['minecraft:oxidized_cut_copper_slab[type=bottom]', 'minecraft:oxidized_copper_grate', 'minecraft:iron_bars', 'minecraft:green_stained_glass_pane', 'minecraft:chain'],
+    window_surround: ['minecraft:oxidized_copper', 'minecraft:moss_block', 'minecraft:oxidized_copper_grate', 'minecraft:iron_bars', 'minecraft:green_stained_glass_pane', 'minecraft:chain'],
     wall_relief: ['minecraft:oxidized_cut_copper_slab[type=bottom]', 'minecraft:oxidized_copper_grate', 'minecraft:moss_carpet', 'minecraft:oak_leaves[persistent=true]'],
     plant_boxes: ['minecraft:composter', 'minecraft:potted_azalea_bush', 'minecraft:oak_leaves[persistent=true]', 'minecraft:moss_carpet', 'minecraft:flower_pot']
   }

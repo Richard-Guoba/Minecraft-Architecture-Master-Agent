@@ -61,6 +61,19 @@ const MASSING_VARIANTS = [
     ]
   },
   {
+    id: 'formal-axis-manor',
+    label: 'formal axis manor with paired wings',
+    split: 'axis-balanced',
+    publicCore: 'living',
+    order: ['entry', 'living', 'dining', 'study', 'stairs', 'kitchen', 'bathroom', 'storage'],
+    volumes: [
+      designVolume('west-wing', 'mutate', [0.34, 0.96, 0.58], 'attached-west', ['secondary-mass', 'wing', 'formal-pair']),
+      designVolume('east-wing', 'mutate', [0.34, 0.96, 0.58], 'attached-east', ['secondary-mass', 'wing', 'formal-pair']),
+      designVolume('entry-portico', 'add', [0.38, 0.48, 0.2], 'front-center', ['porch', 'entry-focus', 'formal-axis', 'columned-entry'], 'flat'),
+      designVolume('rear-stone-terrace', 'add', [0.5, 0.24, 0.24], 'attached-north', ['gallery', 'terrace', 'stone-terrace', 'formal-axis'], 'flat')
+    ]
+  },
+  {
     id: 'compact-patio-bar',
     label: 'compact bar with patio bite',
     split: 'view-side-cluster',
@@ -166,6 +179,7 @@ export function buildSeededCreativeDesign(prompt = '', architecture = {}, buildS
   const seedIndex = seedIndexFor(prompt, buildSpec.seed);
   const templateComposition = templateCompositionStrategyFor(architecture, buildSpec);
   let massing = templateMassingVariant(templateComposition, seedIndex) || pickByIndex(MASSING_VARIANTS, seedIndex);
+  massing = promptCompatibleMassingVariant(massing, prompt, architecture, templateComposition, seedIndex);
   let roof = templateRoofVariant(templateComposition, seedIndex + 1) || pickByIndex(ROOF_VARIANTS, seedIndex + 1);
   let facade = templateFacadeVariant(templateComposition, seedIndex + 2) || pickByIndex(FACADE_VARIANTS, seedIndex + 2);
   let site = templateSiteVariant(templateComposition, seedIndex + 3) || pickByIndex(SITE_VARIANTS, seedIndex + 3);
@@ -427,9 +441,20 @@ function applyTemplateCompositionToCreativeDesign(design = {}, architecture = {}
   const directives = strategy.directives || {};
   if (!strategy || !directives || Object.keys(directives).length === 0) return design;
   const explicitComposition = Boolean(directives.prompt_signals?.explicit_composition_request);
+  const lockedMassing = Boolean(directives.lock_preferred_massing_variant && directives.preferred_massing_variant);
 
-  const variant = design.design_axes?.massing_variant || directives.preferred_massing_variant;
-  const volumeDirectives = mergeTemplateVolumeDirectives(design.volume_directives || [], directives);
+  const variant = lockedMassing
+    ? directives.preferred_massing_variant
+    : design.design_axes?.massing_variant || directives.preferred_massing_variant;
+  const anchoredDirectives = lockedMassing
+    ? mergeLockedMassingVolumeDirectives(
+      filterConflictingVolumeDirectives(design.volume_directives || [], directives),
+      variant,
+      architecture,
+      buildSpec
+    )
+    : design.volume_directives || [];
+  const volumeDirectives = mergeTemplateVolumeDirectives(anchoredDirectives, directives);
   return {
     ...design,
     signature: design.signature.includes('template-composition') ? design.signature : `${design.signature}+template-composition`,
@@ -489,7 +514,23 @@ function templateCompositionStrategyFor(architecture = {}, buildSpec = {}) {
 }
 
 function templateMassingVariant(strategy = {}, seedIndex = 0) {
+  if (strategy.directives?.lock_preferred_massing_variant && strategy.directives?.preferred_massing_variant) {
+    return variantById(MASSING_VARIANTS, strategy.directives.preferred_massing_variant);
+  }
   return pickTemplateVariant(MASSING_VARIANTS, templateVariantIds('massing', strategy.directives?.preferred_massing_variant, strategy.directives), seedIndex);
+}
+
+function promptCompatibleMassingVariant(massing, prompt = '', architecture = {}, strategy = {}, seedIndex = 0) {
+  if (massing?.id !== 'formal-axis-manor' || formalAxisMassingAllowed(prompt, architecture, strategy)) return massing;
+  const generalVariants = MASSING_VARIANTS.filter((variant) => variant.id !== 'formal-axis-manor');
+  return variantById(MASSING_VARIANTS, 'front-back-gallery') || pickByIndex(generalVariants, seedIndex + 1);
+}
+
+function formalAxisMassingAllowed(prompt = '', architecture = {}, strategy = {}) {
+  const directives = strategy.directives || {};
+  if (directives.massing_intent === 'formal-axis' || directives.preferred_massing_variant === 'formal-axis-manor') return true;
+  const text = `${prompt} ${architecture.style || ''} ${architecture.style_family || ''} ${architecture.typology || ''} ${architecture.footprint || ''}`.toLowerCase();
+  return /classical|european|victorian|baroque|rococo|manor|palace|古典|欧式|法式|庄园|宫殿|巴洛克|洛可可|维多利亚|对称|中轴|轴线|formal|symmetry|axis/.test(text);
 }
 
 function templateRoofVariant(strategy = {}, seedIndex = 0) {
@@ -530,6 +571,7 @@ function templateVariantIds(group, preferred, directives = {}) {
       'front-back-gallery': ['front-back-gallery', 'compact-patio-bar', 'west-service-wing'],
       'corner-vertical-accent': ['corner-vertical-accent', 'dual-wing-balanced', 'front-back-gallery'],
       'dual-wing-balanced': ['dual-wing-balanced', 'east-offset-glass-wing', 'west-service-wing'],
+      'formal-axis-manor': ['formal-axis-manor', 'dual-wing-balanced'],
       'compact-patio-bar': ['compact-patio-bar', 'east-offset-glass-wing', 'front-back-gallery']
     },
     facade: {
@@ -573,6 +615,43 @@ function roofPatchForTemplate(directives = {}, current = {}) {
   return {};
 }
 
+function filterConflictingVolumeDirectives(existing = [], directives = {}) {
+  const intent = String(directives.massing_intent || '');
+  if (!intent) return existing;
+  return (existing || []).filter((directive) => {
+    const text = volumeDirectiveText(directive);
+    if (intent === 'formal-axis') {
+      return !/(glass-wing|view-terrace|template-view-deck|template-side-gallery|sunroom|transparent-volume|waterfront|view-platform|offset-mass|corner-glass)/.test(text);
+    }
+    if (intent === 'modern-waterfront') {
+      return !/(formal-axis|formal-pair|entry-portico|rear-stone-terrace|west-wing|east-wing|paired-wing|columned-entry)/.test(text);
+    }
+    return true;
+  });
+}
+
+function mergeLockedMassingVolumeDirectives(existing = [], variantId, architecture = {}, buildSpec = {}) {
+  const variant = variantById(MASSING_VARIANTS, variantId);
+  if (!variant) return existing;
+  const rng = seededRng(`${variantId}|${buildSpec.seed ?? 'none'}|locked-template-massing`);
+  const lockedDirectives = specializeVolumes(variant.volumes, architecture, buildSpec, rng);
+  const lockedIds = new Set(lockedDirectives.flatMap((directive) => [directive.id, directive.target]).filter(Boolean));
+  const filtered = (existing || []).filter((directive) => !lockedIds.has(directive.id) && !lockedIds.has(directive.target));
+  return [...filtered, ...lockedDirectives];
+}
+
+function volumeDirectiveText(directive = {}) {
+  return [
+    directive.id,
+    directive.target,
+    directive.role,
+    directive.purpose,
+    directive.facade_role,
+    directive.placement?.relation,
+    ...(Array.isArray(directive.tags) ? directive.tags : [])
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
 function mergeTemplateVolumeDirectives(existing = [], directives = {}) {
   if (!directives.prompt_signals?.explicit_composition_request) return existing;
   const result = [...existing];
@@ -580,13 +659,13 @@ function mergeTemplateVolumeDirectives(existing = [], directives = {}) {
     if (result.some((item) => item.id === volume.id)) return;
     result.push(volume);
   };
-  if (directives.use_wings) {
+  if (directives.use_wings && directives.massing_intent !== 'formal-axis') {
     add(designVolume('template-side-gallery', 'add', [0.28, 0.62, 0.48], 'attached-east', ['wing', 'template-composition', 'side-gallery']));
   }
   if (directives.use_vertical_accent) {
     add(designVolume('template-lookout-tower', 'add', [0.22, 1.24, 0.22], 'attached-north-east', ['tower', 'vertical-accent', 'template-composition'], 'flat'));
   }
-  if (directives.use_courtyard_or_patio_void || directives.use_foreground_garden_sequence) {
+  if ((directives.use_courtyard_or_patio_void || directives.use_foreground_garden_sequence) && directives.massing_intent !== 'formal-axis') {
     add(designVolume('template-entry-forecourt', 'add', [0.42, 0.34, 0.18], 'front-center', ['porch', 'entry-focus', 'template-composition'], 'flat'));
   }
   if (directives.use_waterfront_transition) {
@@ -846,6 +925,12 @@ function extraNodesForVariant(variant, buildSpec = {}, rng) {
   if (variant === 'dual-wing-balanced') {
     return [extraNode('family-lounge', '家庭侧厅', 'lounge', floor, weight(), 'public', ['wing-room'])];
   }
+  if (variant === 'formal-axis-manor') {
+    return [
+      extraNode('axis-gallery', '入口轴线廊', 'corridor', floor, weight(), 'circulation', ['formal-axis']),
+      extraNode('manor-library-wing', '庄园书房翼', 'study', floor, weight(), 'private', ['formal-wing'])
+    ];
+  }
   if (variant === 'compact-patio-bar') {
     return [extraNode('display-vestibule', '展示玄关', 'room', floor, weight(), 'public', ['display-niche'])];
   }
@@ -967,6 +1052,7 @@ function compositionBias(volumes = []) {
 }
 
 function publicCorePosition(variant) {
+  if (/formal-axis/.test(variant)) return 'front-axis';
   if (/front|patio/.test(variant)) return 'front-to-center';
   if (/west|east/.test(variant)) return 'side-linked';
   if (/corner/.test(variant)) return 'near-vertical-core';

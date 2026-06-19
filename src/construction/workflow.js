@@ -22,6 +22,7 @@ import { TemplateLawCoverageAgent } from './agents/templateLawCoverageAgent.js';
 import { TemplateLawAutoRepairAgent } from './agents/templateLawAutoRepairAgent.js';
 import { TemplateAssimilationAuditAgent } from './agents/templateAssimilationAuditAgent.js';
 import { TemplateInteriorDensityRepairAgent } from './agents/templateInteriorDensityRepairAgent.js';
+import { InteriorClearanceRepairAgent } from './agents/interiorClearanceRepairAgent.js';
 import { CSGBuilder, computeBounds } from './engine/csgBuilder.js';
 import { BSPPartitioner } from './engine/bspPartitioner.js';
 import { AStarPathfinder } from './engine/pathfinder.js';
@@ -64,6 +65,12 @@ export async function runConstructionWorkflow({
   let buildSpec = deriveBuildSpec(prompt, architecture, seed);
   const templateKnowledge = new TemplateKnowledgeAgent({ cwd }).run(prompt, architecture, buildSpec);
   architecture = applyTemplateKnowledgeToArchitecture(architecture, templateKnowledge);
+  if (architecture.generation_hints?.template_material_patch) {
+    materialPalette.materials = architecture.materials;
+    materialPalette.template_material_guidance = architecture.generation_hints.template_material_guidance;
+    materialPalette.template_material_patch = architecture.generation_hints.template_material_patch;
+    materialPalette.roles = Object.keys(materialPalette.materials || {}).sort();
+  }
   buildSpec = applyTemplateKnowledgeToBuildSpec(buildSpec, templateKnowledge);
   let topology = await new ConstructionPlannerAgent({ llmClient, mode }).run(prompt, architecture, buildSpec);
   let creativeDesign = await new CreativeDesignAgent({ llmClient, mode }).run(prompt, architecture, buildSpec, topology);
@@ -124,6 +131,7 @@ export async function runConstructionWorkflow({
     repair: preRepair,
     templateLawAutoRepair: undefined,
     templateInteriorDensityRepair: undefined,
+    interiorClearanceRepair: undefined,
     buildSpec,
     shell,
     layout,
@@ -152,7 +160,7 @@ export async function runConstructionWorkflow({
     decorator,
     layout
   });
-  const templateInteriorDensityRepair = new TemplateInteriorDensityRepairAgent().run({
+  let templateInteriorDensityRepair = new TemplateInteriorDensityRepairAgent().run({
     grid: shell.grid,
     blueprint: preBlueprint,
     architecture,
@@ -161,6 +169,24 @@ export async function runConstructionWorkflow({
     decorator,
     layout
   });
+  const interiorClearanceRepair = new InteriorClearanceRepairAgent().run({
+    grid: shell.grid,
+    layout,
+    decorator
+  });
+  const postClearanceInteriorDensityRepair = new TemplateInteriorDensityRepairAgent().run({
+    grid: shell.grid,
+    blueprint: preBlueprint,
+    architecture,
+    topology,
+    interior,
+    decorator,
+    layout
+  });
+  templateInteriorDensityRepair = mergeTemplateInteriorDensityRepairs(
+    templateInteriorDensityRepair,
+    postClearanceInteriorDensityRepair
+  );
   const repair = new ConstraintRepairAgent().run({
     grid: shell.grid,
     buildSpec,
@@ -176,7 +202,8 @@ export async function runConstructionWorkflow({
     paths,
     decorator,
     templateLawAutoRepair,
-    templateInteriorDensityRepair
+    templateInteriorDensityRepair,
+    interiorClearanceRepair
   });
   const bounds = computeBounds(shell.grid);
   const exportPlan = new BlueprintOptimizerAgent().run(shell.grid, {
@@ -200,6 +227,7 @@ export async function runConstructionWorkflow({
     repair,
     templateLawAutoRepair,
     templateInteriorDensityRepair,
+    interiorClearanceRepair,
     buildSpec,
     shell,
     layout,
@@ -264,6 +292,7 @@ export async function runConstructionWorkflow({
     templateAestheticReview: blueprint.templateAestheticReview,
     templateAssimilationAudit: blueprint.templateAssimilationAudit,
     templateInteriorDensityRepair: blueprint.templateInteriorDensityRepair,
+    interiorClearanceRepair: blueprint.interiorClearanceRepair,
     geometry: blueprint.geometry,
     blueprint,
     validation,
@@ -444,7 +473,7 @@ function createSeedVariation(seed, context = {}) {
   };
 }
 
-function buildBlueprint({ prompt, architecture, topology, creativeDesign, stylePreset, materialPalette, templateKnowledge, structure, facade, roof, site, opening, interior, repair, templateLawAutoRepair, templateInteriorDensityRepair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
+function buildBlueprint({ prompt, architecture, topology, creativeDesign, stylePreset, materialPalette, templateKnowledge, structure, facade, roof, site, opening, interior, repair, templateLawAutoRepair, templateInteriorDensityRepair, interiorClearanceRepair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
   return {
     version: 4,
     workflow: 'construction_method_v1',
@@ -471,6 +500,7 @@ function buildBlueprint({ prompt, architecture, topology, creativeDesign, styleP
     repair,
     templateLawAutoRepair,
     templateInteriorDensityRepair,
+    interiorClearanceRepair,
     geometry: {
       engine: 'pure JavaScript CSG + BSP + A* voxel engine',
       csg: shell.csg,
@@ -575,6 +605,49 @@ function compactTemplateLawCoverage(coverage = {}) {
     partial_count: coverage.partial_count || 0,
     missing_count: coverage.missing_count || 0,
     gap_ids: (coverage.gaps || []).map((gap) => gap.id)
+  };
+}
+
+function mergeTemplateInteriorDensityRepairs(beforeClearance = {}, afterClearance = {}) {
+  const phases = [
+    { phase: 'before-clearance', repair: beforeClearance },
+    { phase: 'after-clearance', repair: afterClearance }
+  ].filter((item) => item.repair && (item.repair.active || item.repair.reason));
+  const active = phases.some((item) => item.repair.active);
+  const primary = beforeClearance?.source ? beforeClearance : afterClearance;
+  const finalRepair = afterClearance?.source ? afterClearance : beforeClearance;
+  const placements = phases.flatMap((item) => item.repair.placements || []);
+  const applied = phases.flatMap((item) =>
+    (item.repair.applied || []).map((entry) => ({ ...entry, phase: item.phase }))
+  );
+  return {
+    ...primary,
+    active,
+    reason: active ? 'template-interior-density-repaired' : (finalRepair.reason || primary.reason || 'template-interior-density-already-satisfied'),
+    targets: finalRepair.targets || primary.targets,
+    before: beforeClearance.before || finalRepair.before,
+    after: finalRepair.after || beforeClearance.after,
+    applied_count: applied.length,
+    grid_patch_count: phases.reduce((sum, item) => sum + Number(item.repair.grid_patch_count || 0), 0),
+    placement_count: placements.length,
+    applied,
+    placements,
+    phases: phases.map((item) => ({
+      phase: item.phase,
+      active: Boolean(item.repair.active),
+      reason: item.repair.reason,
+      before: item.repair.before,
+      after: item.repair.after,
+      placement_count: item.repair.placement_count || 0,
+      grid_patch_count: item.repair.grid_patch_count || 0
+    })),
+    engine_hints: {
+      ...(primary.engine_hints || {}),
+      post_clearance_top_up: Boolean(afterClearance?.active),
+      mutates_grid_before_export: phases.some((item) => item.repair.engine_hints?.mutates_grid_before_export),
+      mutates_decorator_profile: phases.some((item) => item.repair.engine_hints?.mutates_decorator_profile),
+      repairs_template_assimilation_audit_track: 'interior-scene-density'
+    }
   };
 }
 
@@ -758,12 +831,16 @@ function renderReport({ prompt, blueprint, validation, mcVersion, autoBuild, dat
   const templateLawCoverage = blueprint.templateLawCoverage || {};
   const templateLawAutoRepair = blueprint.templateLawAutoRepair || {};
   const templateInteriorDensityRepair = blueprint.templateInteriorDensityRepair || {};
+  const interiorClearanceRepair = blueprint.interiorClearanceRepair || {};
   const templateLawAutoRepairLine = templateLawAutoRepair.active
     ? `- 模板法则自动补强：执行 ${templateLawAutoRepair.applied_count || 0} 项，补方块 ${templateLawAutoRepair.grid_patch_count || 0}，补摆件 ${templateLawAutoRepair.placement_count || 0}，覆盖率 ${templateLawAutoRepair.coverage_before?.percent || 0}% -> ${templateLawAutoRepair.coverage_after?.percent || templateLawCoverage.percent || 0}%`
     : `- 模板法则自动补强：${templateLawAutoRepair.reason || '未触发'}`;
   const templateInteriorDensityLine = templateInteriorDensityRepair.active
     ? `- 模板内饰密度封顶：补强 ${templateInteriorDensityRepair.applied_count || 0} 类，补方块 ${templateInteriorDensityRepair.grid_patch_count || 0}，补摆件 ${templateInteriorDensityRepair.placement_count || 0}，pattern ${templateInteriorDensityRepair.before?.pattern || 0}->${templateInteriorDensityRepair.after?.pattern || 0}，design-law ${templateInteriorDensityRepair.before?.designLaw || 0}->${templateInteriorDensityRepair.after?.designLaw || 0}`
     : `- 模板内饰密度封顶：${templateInteriorDensityRepair.reason || '未触发'}`;
+  const interiorClearanceLine = interiorClearanceRepair.active
+    ? `- 一层室内净空保护：清理 ${interiorClearanceRepair.removed_count || 0} 个阻塞方块，检查 ${interiorClearanceRepair.checked_room_count || 0} 个房间`
+    : `- 一层室内净空保护：${interiorClearanceRepair.reason || '未触发'}`;
   const templateLawCoverageLine = templateLawCoverage.active
     ? `- 模板法则覆盖率：${templateLawCoverage.percent}%（${templateLawCoverage.grade}），检查 ${templateLawCoverage.satisfied_count || 0}/${(templateLawCoverage.checks || []).length}，缺口 ${(templateLawCoverage.gaps || []).slice(0, 3).map((item) => item.id).join('、') || '无'}`
     : '- 模板法则覆盖率：未启用';
@@ -798,6 +875,7 @@ ${prompt}
 - InteriorDetailAgent：生成房间级室内细节计划，房间功能专家和建筑风格专家各掌握 50+ 室内方块，并叠加缤纷软装层，DecoratorAgent 负责写入方块。
 - TemplateLawAutoRepairAgent：在导出前执行模板法则覆盖率预检，自动补强缺失的场地、屋顶和内饰法则落块。
 - TemplateInteriorDensityRepairAgent：在导出前补足复杂类型的内饰场景、体验、pattern 和 design-law 摆件密度。
+- InteriorClearanceRepairAgent：在导出前清理一层房间头部净空里的过量阻塞方块，避免家具或旧细节挤占可通行空间。
 - TemplateAssimilationAuditAgent：汇总 7A-7F 的案例、法则、审美、补强和真实落块证据，输出距离顶级模板的剩余差距。
 - ConstraintRepairAgent：导出前做约束检查与修复建议。
 - GeometryEngine：本地纯 JavaScript CSG + BSP + A* 按设计决策生成合法坐标、门洞和楼梯。
@@ -840,6 +918,7 @@ ${templateAestheticLine}
 ${templateReflectionLine}
 ${templateLawAutoRepairLine}
 ${templateInteriorDensityLine}
+${interiorClearanceLine}
 ${templateLawCoverageLine}
 ${templateLawRepairLine}
 ${templateAssimilationLine}
@@ -862,6 +941,7 @@ ${templateAssimilationLine}
 - InteriorDetailAgent：房间细节 ${blueprint.interior?.room_count || 0} 个，灯光 ${blueprint.interior?.lighting_strategy || 'unknown'}，专家 ${blueprint.interior?.room_specialists?.map((item) => `${item.label || item.id}(${item.block_count || 0})`).join('、') || '无'}
 - TemplateLawAutoRepairAgent：${templateLawAutoRepair.active ? `执行 ${templateLawAutoRepair.applied_count || 0} 项，补强 ${(templateLawAutoRepair.applied || []).map((item) => item.id).join('、') || '无'}` : (templateLawAutoRepair.reason || '未触发')}
 - TemplateInteriorDensityRepairAgent：${templateInteriorDensityRepair.active ? `执行 ${templateInteriorDensityRepair.applied_count || 0} 类，补强 ${(templateInteriorDensityRepair.applied || []).map((item) => item.id).join('、') || '无'}` : (templateInteriorDensityRepair.reason || '未触发')}
+- InteriorClearanceRepairAgent：${interiorClearanceRepair.active ? `清理 ${interiorClearanceRepair.removed_count || 0} 个阻塞点` : (interiorClearanceRepair.reason || '未触发')}
 - TemplateAssimilationAuditAgent：${templateAssimilationAudit.active ? `${templateAssimilationAudit.percent}% / ${templateAssimilationAudit.readiness}，下一步 ${(templateAssimilationAudit.next_iteration_directives || []).slice(0, 2).map((item) => item.id).join('、') || '保持'}` : (templateAssimilationAudit.reason || '未启用')}
 - ConstraintRepairAgent：${blueprint.repair?.ok ? '通过' : '需关注'}，建议 ${blueprint.repair?.suggestions?.join('；') || '无'}
 

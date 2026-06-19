@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TemplateKnowledgeAgent } from '../src/construction/agents/templateKnowledgeAgent.js';
+import { TemplateKnowledgeAgent, applyTemplateKnowledgeToArchitecture } from '../src/construction/agents/templateKnowledgeAgent.js';
 import { buildTemplateCaseLibrary, renderTemplateCaseLibraryReport } from '../src/construction/templates/templateCaseLibrary.js';
 import { readTemplateSources } from '../src/construction/templates/schematicAnalyzer.js';
 
@@ -123,7 +123,28 @@ test('TemplateKnowledgeAgent carries stage 7 case clauses into recommendations',
   assert.equal(knowledge.active, true);
   assert.ok(knowledge.recommendations.case_library_clauses.length > 0);
   assert.ok(knowledge.recommendations.case_feature_priorities.includes('waterfront'));
+  assert.ok(knowledge.recommendations.material_guidance.wall_candidates.some((item) => item.block === 'minecraft:smooth_quartz'));
+  assert.ok(knowledge.recommendations.material_guidance.glass_candidates.some((item) => item.block === 'minecraft:glass'));
   assert.ok(knowledge.retrieved[0].case_card.semantic_clauses.some((item) => /water edge/.test(item)));
+
+  const guidedArchitecture = applyTemplateKnowledgeToArchitecture({
+    style_family: 'modern',
+    typology: 'house',
+    materials: {
+      wall: 'minecraft:white_concrete',
+      glass: 'minecraft:glass',
+      landscape: 'minecraft:grass_block'
+    },
+    site_rules: {},
+    facade_rules: {},
+    roof_rules: {},
+    massing_rules: {},
+    detail_rules: {},
+    generation_hints: {}
+  }, knowledge);
+  assert.equal(guidedArchitecture.materials.wall, 'minecraft:smooth_quartz');
+  assert.equal(guidedArchitecture.materials.plant, 'minecraft:oak_leaves[persistent=true]');
+  assert.equal(guidedArchitecture.generation_hints.template_material_patch.wall, 'minecraft:smooth_quartz');
 });
 
 function templateFixture({ title, file, style_family, tags, roles, composition }) {
@@ -152,7 +173,13 @@ function templateFixture({ title, file, style_family, tags, roles, composition }
         vegetation: { count: 900, ratio: 0.0375 },
         water: { count: 600, ratio: 0.025 }
       },
-      top_blocks: [{ name: 'smooth_quartz', key: 'minecraft:smooth_quartz', count: 5000, ratio: 0.2, category: 'rock' }],
+      top_blocks: [
+        { name: 'smooth_quartz', key: 'minecraft:smooth_quartz', count: 5000, ratio: 0.2, category: 'rock' },
+        { name: 'glass', key: 'minecraft:glass', count: 1600, ratio: 0.066, category: 'glass' },
+        { name: 'grass_block', key: 'minecraft:grass_block', count: 900, ratio: 0.0375, category: 'earth' },
+        { name: 'oak_leaves', key: 'minecraft:oak_leaves', count: 700, ratio: 0.029, category: 'vegetation' },
+        { name: 'water', key: 'minecraft:water', count: 600, ratio: 0.025, category: 'water' }
+      ],
       terrain: { integrated: true, non_flat: true, height_range: 7, natural_column_ratio: 0.24 },
       detail_metrics: {
         glass_ratio: 0.09,

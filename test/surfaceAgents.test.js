@@ -171,7 +171,16 @@ test('template composition strategy biases massing, facade, roof, and site modul
           use_waterfront_transition: true,
           use_foreground_garden_sequence: true,
           use_layered_terrain_base: true,
-          use_wings: true
+          use_wings: true,
+          lock_preferred_massing_variant: true,
+          massing_intent: 'modern-waterfront',
+          prompt_signals: {
+            explicit_composition_request: true,
+            water_requested: true,
+            garden_requested: true,
+            roof_terrace_requested: true,
+            modern_waterfront_requested: true
+          }
         }
       },
       design_priorities: ['compose foreground garden rooms before the main facade']
@@ -192,7 +201,7 @@ test('template composition strategy biases massing, facade, roof, and site modul
   const counts = moduleCounts(shell.grid);
 
   assert.ok(creativeDesign.signature.includes('template-composition'));
-  assert.ok(['east-offset-glass-wing', 'compact-patio-bar', 'dual-wing-balanced'].includes(creativeDesign.design_axes.massing_variant));
+  assert.equal(creativeDesign.design_axes.massing_variant, 'east-offset-glass-wing');
   assert.ok(['horizontal-ribbon-breaks', 'corner-window-bands', 'asymmetric-panels', 'irregular-studio-grid'].includes(facade.window_system.rhythm));
   assert.equal(facade.window_system.glazing_ratio, 'high');
   assert.ok(['thin-parapet-terrace', 'stepped-flat-with-light-slot', 'service-flat-roof'].includes(roof.profile));
@@ -201,6 +210,30 @@ test('template composition strategy biases massing, facade, roof, and site modul
   assert.ok(counts.template_approach_path > 0);
   assert.ok(counts.template_entry_frame > 0);
   assert.ok(counts.template_view_frame > 0);
+});
+
+test('locked template massing prevents modern and classical prompts from sharing the same structure', () => {
+  const modernPrompt = '建一个现代湖边别墅，带非平坦自然地形、前景花园、水边平台、大玻璃、屋顶露台';
+  const classicalPrompt = '建一个古典庄园住宅，带对称立面、入口轴线花园、石质台地、喷泉水景、露台屋顶';
+
+  const modern = applyPromptLockedMassing(modernPrompt, lockedTemplateKnowledge('east-offset-glass-wing', 'modern-waterfront'), pollutedCreativeDesign('formal-axis-manor'));
+  const classical = applyPromptLockedMassing(classicalPrompt, lockedTemplateKnowledge('formal-axis-manor', 'formal-axis'), pollutedCreativeDesign('east-offset-glass-wing'));
+
+  assert.equal(modern.creativeDesign.design_axes.massing_variant, 'east-offset-glass-wing');
+  assert.equal(classical.creativeDesign.design_axes.massing_variant, 'formal-axis-manor');
+
+  const modernIds = modern.architecture.volumes.map((volume) => volume.id);
+  const classicalIds = classical.architecture.volumes.map((volume) => volume.id);
+  assert.ok(modernIds.includes('glass-wing'));
+  assert.ok(modernIds.includes('view-terrace'));
+  assert.equal(modernIds.includes('entry-portico'), false);
+  assert.equal(modernIds.includes('west-wing'), false);
+  assert.ok(classicalIds.includes('west-wing'));
+  assert.ok(classicalIds.includes('east-wing'));
+  assert.ok(classicalIds.includes('entry-portico'));
+  assert.ok(classicalIds.includes('rear-stone-terrace'));
+  assert.equal(classicalIds.some((id) => /glass-wing|view-terrace/.test(id)), false);
+  assert.notEqual(volumeSignature(modern.architecture.volumes), volumeSignature(classical.architecture.volumes));
 });
 
 test('opening, interior, and repair agents complete the post-layout contract', () => {
@@ -245,4 +278,99 @@ function moduleCounts(grid) {
   const counts = {};
   for (const item of grid.values()) counts[item.module] = (counts[item.module] || 0) + 1;
   return counts;
+}
+
+function applyPromptLockedMassing(prompt, templateKnowledge, creativeDesign) {
+  let architecture = buildFallbackArchitecture(prompt);
+  const stylePreset = new StylePresetMemoryAgent().run(prompt, architecture);
+  const materialPalette = new MaterialPaletteAgent().run(prompt, architecture, stylePreset);
+  architecture = { ...architecture, materials: materialPalette.materials };
+  let buildSpec = deriveBuildSpec(prompt, architecture, 101);
+  architecture = applyTemplateKnowledgeToArchitecture(architecture, templateKnowledge);
+  buildSpec = applyTemplateKnowledgeToBuildSpec(buildSpec, templateKnowledge);
+  let topology = buildFallbackTopology(prompt, architecture, buildSpec);
+  return applyCreativeDesign({ architecture, buildSpec, topology, creativeDesign, prompt });
+}
+
+function lockedTemplateKnowledge(preferredMassingVariant, massingIntent) {
+  const isModernWaterfront = massingIntent === 'modern-waterfront';
+  return {
+    active: true,
+    recommendations: {
+      composition_strategy: {
+        source: 'template-composition-strategy-v1',
+        readiness: 'high',
+        directives: {
+          preferred_massing_variant: preferredMassingVariant,
+          preferred_facade_rhythm: isModernWaterfront ? 'horizontal-ribbon-breaks' : 'quiet-punched-windows',
+          preferred_roof_profile: isModernWaterfront ? 'thin-parapet-terrace' : 'low-layered-eaves',
+          preferred_site_mood: isModernWaterfront ? 'reflecting-water-edge' : 'ordered-entry-court',
+          use_wings: true,
+          use_large_view_glass: isModernWaterfront,
+          use_waterfront_transition: isModernWaterfront,
+          use_foreground_garden_sequence: true,
+          use_courtyard_or_patio_void: true,
+          lock_preferred_massing_variant: true,
+          massing_intent: massingIntent,
+          prompt_signals: {
+            explicit_composition_request: true,
+            water_requested: isModernWaterfront,
+            garden_requested: true,
+            formal_axis_requested: !isModernWaterfront,
+            modern_waterfront_requested: isModernWaterfront
+          }
+        }
+      }
+    }
+  };
+}
+
+function pollutedCreativeDesign(variant) {
+  const formal = variant === 'formal-axis-manor';
+  return {
+    signature: `polluted-${variant}`,
+    design_axes: {
+      massing_variant: variant,
+      massing_label: variant,
+      public_core: 'living',
+      split_strategy: formal ? 'axis-balanced' : 'open-plan-weighted',
+      composition_bias: formal ? 'balanced-wings' : 'east-weighted'
+    },
+    volume_directives: formal ? [
+      pollutedVolume('west-wing', [0.34, 0.92, 0.58], 'attached-west', ['formal-pair', 'wing']),
+      pollutedVolume('east-wing', [0.34, 0.92, 0.58], 'attached-east', ['formal-pair', 'wing']),
+      pollutedVolume('entry-portico', [0.38, 0.48, 0.2], 'front-center', ['formal-axis', 'columned-entry'])
+    ] : [
+      pollutedVolume('glass-wing', [0.4, 0.7, 0.52], 'attached-east-rear', ['glass-wing', 'offset-mass']),
+      pollutedVolume('view-terrace', [0.5, 0.24, 0.24], 'attached-south', ['deck', 'view-platform'])
+    ],
+    facade: {
+      window_rhythm: formal ? 'quiet-punched-windows' : 'horizontal-ribbon-breaks',
+      glazing_ratio: formal ? 'medium' : 'high'
+    },
+    roof: { style: formal ? 'hipped' : 'flat', profile: formal ? 'low-layered-eaves' : 'thin-parapet-terrace' },
+    site: { mood: formal ? 'ordered-entry-court' : 'reflecting-water-edge' },
+    interior: {},
+    topology: {}
+  };
+}
+
+function pollutedVolume(id, scale, relation, tags) {
+  return {
+    id,
+    action: 'add',
+    role: id,
+    shape: 'box',
+    scale,
+    placement: { relation, attach_to: 'main' },
+    boolean_mode: 'union',
+    tags
+  };
+}
+
+function volumeSignature(volumes = []) {
+  return volumes
+    .map((volume) => `${volume.id}:${volume.scale?.join(',')}:${volume.placement?.relation}`)
+    .sort()
+    .join('|');
 }

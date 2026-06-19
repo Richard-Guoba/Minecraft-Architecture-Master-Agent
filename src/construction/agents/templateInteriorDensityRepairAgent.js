@@ -1,4 +1,5 @@
 import { keyFor } from '../engine/csgBuilder.js';
+import { isBlockingHeadroomBlock, roomBlockingBudget } from './interiorClearanceRepairAgent.js';
 
 const SOURCE = 'local-template-interior-density-repair-agent';
 const VERSION = 1;
@@ -164,12 +165,11 @@ function densitySpec(ctx, room, category, slot) {
   const roomToken = normalizeRoleToken(room.type || room.id || 'room');
   if (category === 'scene') {
     const variants = [
-      ['anchor', seat, 'decor_furniture'],
-      ['support-table', tableBlockForStyle(ctx.architecture?.style_family), 'decor_furniture'],
       ['soft-frame', 'minecraft:white_carpet', 'decor_floor'],
-      ['storage-edge', storage, 'decor_storage'],
       ['accent-light', light, 'decor_light'],
-      ['plant-softener', plant, 'decor_plant']
+      ['plant-softener', plant, 'decor_plant'],
+      ['threshold-marker', 'minecraft:oak_pressure_plate', 'decor_floor'],
+      ['detail-vessel', 'minecraft:flower_pot', 'decor_detail']
     ];
     const [name, block, module] = variants[slot % variants.length];
     return {
@@ -181,11 +181,11 @@ function densitySpec(ctx, room, category, slot) {
   }
   if (category === 'experience') {
     const variants = [
-      ['view-anchor', seat, 'decor_furniture'],
       ['threshold-rug', 'minecraft:white_carpet', 'decor_floor'],
       ['view-light', light, 'decor_light'],
-      ['memory-object', accent, 'decor_detail'],
-      ['soft-plant', plant, 'decor_plant']
+      ['soft-plant', plant, 'decor_plant'],
+      ['memory-marker', 'minecraft:flower_pot', 'decor_detail'],
+      ['view-threshold', 'minecraft:oak_pressure_plate', 'decor_floor']
     ];
     const [name, block, module] = variants[slot % variants.length];
     return {
@@ -207,11 +207,11 @@ function densitySpec(ctx, room, category, slot) {
   }
   if (category === 'designLaw') {
     const variants = [
-      ['focal-wall', accent, 'decor_detail'],
+      ['focal-marker', 'minecraft:stone_button[face=wall,facing=south]', 'decor_detail'],
       ['task-light', light, 'decor_light'],
-      ['functional-anchor', functionalBlockForRoom(room.type), 'decor_utility'],
-      ['storage-display', storage, 'decor_storage'],
-      ['soft-detail', plant, 'decor_plant']
+      ['soft-detail', plant, 'decor_plant'],
+      ['circulation-rug', 'minecraft:white_carpet', 'decor_floor'],
+      ['memory-vessel', 'minecraft:flower_pot', 'decor_detail']
     ];
     const [name, block, module] = variants[slot % variants.length];
     return {
@@ -226,45 +226,45 @@ function densitySpec(ctx, room, category, slot) {
 
 function patternVariantsForRoom(room, ctx) {
   const light = ctx.materials.lamp || lightBlockForStyle(ctx.architecture?.style_family, ctx.materials);
-  const seat = seatingBlockForStyle(ctx.architecture?.style_family);
-  const storage = ctx.materials.furniture || 'minecraft:barrel';
+  const plant = plantBlock(ctx.materials);
   if (room.type === 'kitchen') {
     return [
-      ['prep-run', 'minecraft:crafting_table', 'decor_utility'],
-      ['range', 'minecraft:furnace', 'decor_utility'],
-      ['pantry', storage, 'decor_storage'],
-      ['task-light', light, 'decor_light']
+      ['task-light', light, 'decor_light'],
+      ['prep-run-rug', 'minecraft:white_carpet', 'decor_floor'],
+      ['herb-pot', plant, 'decor_plant'],
+      ['work-threshold', 'minecraft:oak_pressure_plate', 'decor_floor']
     ];
   }
   if (['bedroom', 'master_bedroom'].includes(room.type)) {
     return [
-      ['bedside', storage, 'decor_storage'],
       ['reading-light', light, 'decor_light'],
-      ['wardrobe', storage, 'decor_storage'],
-      ['soft-rug', 'minecraft:white_carpet', 'decor_floor']
+      ['soft-rug', 'minecraft:white_carpet', 'decor_floor'],
+      ['bedside-plant', plant, 'decor_plant'],
+      ['sleep-threshold', 'minecraft:oak_pressure_plate', 'decor_floor']
     ];
   }
   if (room.type === 'study') {
     return [
-      ['library', 'minecraft:bookshelf', 'decor_furniture'],
-      ['desk', 'minecraft:lectern', 'decor_furniture'],
       ['reading-light', light, 'decor_light'],
-      ['display', ctx.materials.accent || 'minecraft:decorated_pot', 'decor_detail']
+      ['desk-rug', 'minecraft:white_carpet', 'decor_floor'],
+      ['archive-marker', 'minecraft:flower_pot', 'decor_detail'],
+      ['quiet-plant', plant, 'decor_plant']
     ];
   }
   if (room.type === 'bathroom') {
     return [
-      ['basin', 'minecraft:cauldron', 'decor_utility'],
-      ['counter', 'minecraft:smooth_quartz_slab[type=bottom]', 'decor_furniture'],
-      ['mirror-light', light, 'decor_light']
+      ['mirror-light', light, 'decor_light'],
+      ['bath-mat', 'minecraft:white_carpet', 'decor_floor'],
+      ['soft-plant', plant, 'decor_plant'],
+      ['threshold-marker', 'minecraft:oak_pressure_plate', 'decor_floor']
     ];
   }
   return [
-    ['seat', seat, 'decor_furniture'],
     ['rug', 'minecraft:white_carpet', 'decor_floor'],
-    ['low-table', tableBlockForStyle(ctx.architecture?.style_family), 'decor_furniture'],
     ['layered-light', light, 'decor_light'],
-    ['display', ctx.materials.accent || 'minecraft:decorated_pot', 'decor_detail']
+    ['plant-softener', plant, 'decor_plant'],
+    ['display-vessel', 'minecraft:flower_pot', 'decor_detail'],
+    ['threshold-marker', 'minecraft:oak_pressure_plate', 'decor_floor']
   ];
 }
 
@@ -299,11 +299,52 @@ function findFreeRoomPoint(grid, room, preferred, module) {
   const candidates = candidatePoints(room, preferred, module);
   let replaceable;
   for (const point of candidates) {
+    if (!canUseDensityPoint(grid, room, point, module)) continue;
     const existing = grid.get(keyFor(point.x, point.y, point.z));
     if (!existing) return point;
     if (!replaceable && String(existing.module || '').startsWith('decor_')) replaceable = point;
   }
   return replaceable;
+}
+
+function canUseDensityPoint(grid, room, point, module) {
+  if (!grid || !room || !point) return true;
+  if (module === 'decor_light' || module === 'decor_floor') return true;
+  if (Number(room.floor || 0) !== 0) return true;
+  if (point.y !== room.min_y) return true;
+  const projectedBlock = densityBlockingProbeBlock(module);
+  if (!isBlockingHeadroomBlock(projectedBlock)) return true;
+  return roomBlockingCount(grid, room) < roomBlockingBudget(room);
+}
+
+function densityBlockingProbeBlock(module) {
+  if (module === 'decor_plant') return 'minecraft:potted_azalea_bush';
+  return 'minecraft:stone';
+}
+
+function roomBlockingCount(grid, room) {
+  const scan = insetRoomHeadroomScan(room);
+  let count = 0;
+  for (let x = scan.min_x; x <= scan.max_x; x += 1) {
+    for (let z = scan.min_z; z <= scan.max_z; z += 1) {
+      const cell = grid.get(keyFor(x, room.min_y, z));
+      if (cell && isBlockingHeadroomBlock(cell.block)) count += 1;
+    }
+  }
+  return count;
+}
+
+function insetRoomHeadroomScan(room = {}) {
+  const width = room.max_x - room.min_x + 1;
+  const depth = room.max_z - room.min_z + 1;
+  const insetX = width >= 5 ? 1 : 0;
+  const insetZ = depth >= 5 ? 1 : 0;
+  return {
+    min_x: room.min_x + insetX,
+    max_x: room.max_x - insetX,
+    min_z: room.min_z + insetZ,
+    max_z: room.max_z - insetZ
+  };
 }
 
 function candidatePoints(room, preferred, module) {

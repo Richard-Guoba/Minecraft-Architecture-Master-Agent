@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isKnownMinecraft121Block, normalizeBlockId } from './minecraftBlockCatalog.js';
 import { buildStylePatternStrategy, selectStyleAwareRoomPatternGuidance } from './templatePatternStylePolicy.js';
 import { selectTemplateDesignLaws } from '../templates/templateDesignLawDistiller.js';
 
@@ -87,6 +88,8 @@ function inactiveKnowledge(reason) {
       composition_strategy: {},
       case_library_clauses: [],
       case_feature_priorities: [],
+      material_guidance: emptyMaterialGuidance(),
+      material_locks: [],
       design_law_pack: {},
       design_laws: [],
       interior_design_laws: [],
@@ -230,6 +233,10 @@ function summarizeRecommendations(retrieved, corpus = {}, options = {}) {
     typology,
     candidates: roomPatternGuidanceCandidates
   });
+  const detailAverage = detailScore / totalScore;
+  const materialGuidance = buildMaterialGuidance(retrieved);
+  const materialLocks = detectExplicitMaterialLocks(options.prompt);
+  const materialTransferStrength = materialTransferStrengthForPrompt(options.prompt, detailAverage);
   const compositionStrategy = buildCompositionStrategy(compositionCandidates, {
     styleFamily,
     typology,
@@ -249,7 +256,8 @@ function summarizeRecommendations(retrieved, corpus = {}, options = {}) {
     garden_weight: round(gardenWeight),
     water_weight: round(waterWeight),
     landscape_features: [...landscapeFeatures].sort(),
-    detail_density: detailScore / totalScore > 2.35 ? 'high' : detailScore / totalScore > 1.45 ? 'medium' : 'low',
+    detail_density: detailAverage > 2.35 ? 'high' : detailAverage > 1.45 ? 'medium' : 'low',
+    material_transfer_strength: materialTransferStrength,
     template_interior_pattern_strength: furniturePatternScore / totalScore > 2.35 ? 'high' : furniturePatternScore / totalScore > 1.35 ? 'medium' : furniturePatternScore > 0 ? 'low' : 'none',
     learning_roles: [...learningRoles].sort(),
     room_reference_candidates: [...roomReferences].sort(),
@@ -258,11 +266,177 @@ function summarizeRecommendations(retrieved, corpus = {}, options = {}) {
     room_pattern_guidance: roomPatternGuidance,
     room_pattern_strategy: roomPatternStrategy,
     composition_strategy: compositionStrategy,
+    material_guidance: materialGuidance,
+    material_locks: materialLocks,
     case_library_clauses: dedupeClauseRecords(caseLibraryClauses).slice(0, 32),
     case_feature_priorities: [...caseFeaturePriorities].slice(0, 24).sort(),
     design_priorities: [...designPriorities].slice(0, 8),
     corpus_gap_priorities: corpus.gap_priorities || []
   };
+}
+
+function emptyMaterialGuidance() {
+  return {
+    source: 'template-top-blocks-v1',
+    wall_candidates: [],
+    accent_candidates: [],
+    trim_candidates: [],
+    glass_candidates: [],
+    landscape_candidates: [],
+    earth_candidates: [],
+    plant_candidates: [],
+    water_candidates: []
+  };
+}
+
+function buildMaterialGuidance(retrieved = []) {
+  const buckets = {
+    wall: new Map(),
+    accent: new Map(),
+    trim: new Map(),
+    glass: new Map(),
+    landscape: new Map(),
+    earth: new Map(),
+    plant: new Map(),
+    water: new Map()
+  };
+
+  for (const item of retrieved) {
+    for (const blockInfo of item.top_blocks || []) {
+      const block = normalizeTemplateBlock(blockInfo.key || blockInfo.name);
+      if (!block || !isKnownMinecraft121Block(block)) continue;
+      const base = blockBase(block);
+      const category = String(blockInfo.category || '').toLowerCase();
+      const weight = Number(item.score || 1) *
+        (1 + Math.min(2, Number(blockInfo.ratio || 0) * 10)) +
+        Math.log1p(Number(blockInfo.count || 0)) * 0.1;
+
+      if (base === 'minecraft:water') addMaterialCandidate(buckets.water, block, item, category, weight);
+      if (isGlassCandidate(base)) addMaterialCandidate(buckets.glass, block, item, category, weight);
+      if (isPlantCandidate(base, category)) addMaterialCandidate(buckets.plant, plantMaterialBlock(block), item, category, weight);
+      if (isEarthCandidate(base, category)) addMaterialCandidate(buckets.earth, block, item, category, weight);
+      if (isLandscapeCandidate(base, category)) addMaterialCandidate(buckets.landscape, block, item, category, weight);
+      if (isSolidSurfaceCandidate(base, category)) {
+        if (isWallSurfaceCandidate(base, category)) addMaterialCandidate(buckets.wall, block, item, category, weight);
+        addMaterialCandidate(buckets.accent, block, item, category, weight * 0.9);
+        addMaterialCandidate(buckets.trim, block, item, category, weight * 0.8);
+      }
+    }
+  }
+
+  return {
+    source: 'template-top-blocks-v1',
+    wall_candidates: rankedMaterialCandidates(buckets.wall, 8),
+    accent_candidates: rankedMaterialCandidates(buckets.accent, 8),
+    trim_candidates: rankedMaterialCandidates(buckets.trim, 8),
+    glass_candidates: rankedMaterialCandidates(buckets.glass, 6),
+    landscape_candidates: rankedMaterialCandidates(buckets.landscape, 8),
+    earth_candidates: rankedMaterialCandidates(buckets.earth, 8),
+    plant_candidates: rankedMaterialCandidates(buckets.plant, 8),
+    water_candidates: rankedMaterialCandidates(buckets.water, 4)
+  };
+}
+
+function normalizeTemplateBlock(value) {
+  const normalized = normalizeBlockId(value);
+  return normalized && normalized !== 'minecraft:' ? normalized : '';
+}
+
+function addMaterialCandidate(bucket, block, item, category, weight) {
+  const existing = bucket.get(block) || {
+    block,
+    weight: 0,
+    sources: new Set(),
+    categories: new Set()
+  };
+  existing.weight += weight;
+  if (item.title) existing.sources.add(item.title);
+  if (category) existing.categories.add(category);
+  bucket.set(block, existing);
+}
+
+function rankedMaterialCandidates(bucket, limit) {
+  return [...bucket.values()]
+    .sort((a, b) => b.weight - a.weight || a.block.localeCompare(b.block))
+    .slice(0, limit)
+    .map((item) => ({
+      block: item.block,
+      weight: round(item.weight),
+      sources: [...item.sources].slice(0, 4),
+      categories: [...item.categories].sort()
+    }));
+}
+
+function isSolidSurfaceCandidate(base, category) {
+  if (isNonSurfaceBase(base) || ['glass', 'water', 'vegetation', 'light', 'decor', 'stair', 'slab'].includes(category)) return false;
+  if (category === 'earth' && !/sandstone|mud_bricks|packed_mud|terracotta|clay/.test(base)) return false;
+  return ['rock', 'wood', 'metal', 'ore', 'wool', 'concrete', 'terracotta'].includes(category) ||
+    /stone|quartz|brick|deepslate|blackstone|tuff|andesite|diorite|granite|concrete|terracotta|planks|log|wood|copper|prismarine|basalt|sandstone|calcite/.test(base);
+}
+
+function isWallSurfaceCandidate(base, category) {
+  if (category === 'wood' || /planks|log|wood|stem|hyphae|bamboo/.test(base)) return false;
+  if (category === 'earth' && !/sandstone|mud_bricks|packed_mud/.test(base)) return false;
+  return ['rock', 'concrete', 'terracotta', 'metal', 'ore'].includes(category) ||
+    /stone|quartz|brick|deepslate|blackstone|tuff|andesite|diorite|granite|concrete|terracotta|copper|prismarine|basalt|sandstone|calcite/.test(base);
+}
+
+function isGlassCandidate(base) {
+  return /(^minecraft:glass$|_glass$|tinted_glass$)/.test(base) && !/_pane$/.test(base);
+}
+
+function isLandscapeCandidate(base, category) {
+  return ['earth', 'vegetation', 'rock'].includes(category) ||
+    /grass_block|dirt|podzol|mud|moss_block|gravel|sand|clay|stone|tuff|andesite|diorite|granite/.test(base);
+}
+
+function isEarthCandidate(base, category) {
+  return category === 'earth' ||
+    /grass_block|dirt|coarse_dirt|podzol|rooted_dirt|mud|packed_mud|clay|gravel|sand|moss_block/.test(base);
+}
+
+function isPlantCandidate(base, category) {
+  if (/grass_block|moss_block/.test(base)) return false;
+  return category === 'vegetation' ||
+    /leaves|azalea|bamboo|short_grass|tall_grass|fern|flower|sapling|bush|vine/.test(base);
+}
+
+function isNonSurfaceBase(base) {
+  return /_slab$|_stairs$|_trapdoor$|_pane$|_fence$|_wall$|_bars$|_carpet$|_button$|_pressure_plate$|_door$|_sign$|_hanging_sign$|chain$|lantern$|candle$|flower_pot$|potted_|vine$|torch$|rail$|rod$|grate$/.test(base);
+}
+
+function plantMaterialBlock(block) {
+  const base = blockBase(block);
+  return /_leaves$/.test(base) ? `${base}[persistent=true]` : block;
+}
+
+function blockBase(block) {
+  return String(block || '').split('[')[0];
+}
+
+function detectExplicitMaterialLocks(prompt = '') {
+  const text = String(prompt || '');
+  const locks = new Set();
+  if (/白墙|白色混凝土|白混凝土|white concrete/i.test(text)) locks.add('wall');
+  if (/石英地板|quartz floor|石英.*地板/i.test(text)) locks.add('floor');
+  if (/玻璃|glass/i.test(text)) locks.add('glass');
+  if (/铁门|iron door/i.test(text)) locks.add('door');
+  if (/沙岩|砂岩|sandstone/i.test(text)) {
+    locks.add('wall');
+    locks.add('foundation');
+  }
+  if (/木墙|木屋|木质|wooden|timber/i.test(text)) locks.add('wall');
+  return [...locks].sort();
+}
+
+function materialTransferStrengthForPrompt(prompt = '', detailAverage = 0) {
+  const text = String(prompt || '');
+  if (/材质|材料|质感|模板|参考|顶级|精致|细节|花园|庭院|地形|水边|湖|海|河|露台|大玻璃|平台|garden|terrain|water|lake|terrace|material|reference/i.test(text)) {
+    return 'high';
+  }
+  if (detailAverage > 2.35) return 'high';
+  if (detailAverage > 1.45) return 'medium';
+  return 'low';
 }
 
 function caseCardsByFile(caseLibrary = {}) {
@@ -444,26 +618,31 @@ function compositionDirectives(groups, { prompt = '', terrainWeight, gardenWeigh
   const typologyText = String(typology || '').toLowerCase();
   const promptText = String(prompt || '').toLowerCase();
   const modernLike = /modern|coastal|futuristic|cyberpunk|现代|海滨|湖边|未来|赛博/.test(styleText);
+  const classicalLike = /classical|european|victorian|baroque|rococo|manor|palace|古典|欧式|法式|庄园|宫殿|巴洛克|洛可可|维多利亚/.test(`${styleText} ${typologyText} ${promptText}`);
   const verticalTypology = /castle|tower|temple|gothic|medieval|城堡|塔|神殿|教堂|哥特|中世纪/.test(`${typologyText} ${styleText}`);
   const waterRequested = /湖|海|河|水边|临水|滨水|海边|湖边|water|lake|beach|coast|waterfront|riverside/.test(promptText);
   const gardenRequested = /前景|花园|庭院|园林|前庭|garden|courtyard|yard|forecourt|approach/.test(promptText);
   const terrainRequested = /非平坦|地形|坡|山|悬崖|岩|terrain|slope|hill|cliff|rock/.test(promptText);
   const roofTerraceRequested = /屋顶露台|上人屋顶|屋顶平台|平屋顶|roof terrace|roof deck|flat roof/.test(promptText);
   const explicitCompositionRequest = waterRequested || gardenRequested || terrainRequested || roofTerraceRequested || /整体构图|入口序列|空间序列|composition|massing/.test(promptText);
+  const formalAxisRequested = classicalLike && /对称|轴线|中轴|入口轴线|庄园|主轴|礼仪|formal|symmetry|axis|manor/.test(`${promptText} ${styleText} ${typologyText}`);
   const useVerticalAccent = has('massing', 'vertical_landmark') && (verticalTypology || weightOf('massing', 'vertical_landmark') >= 720);
   const useWaterfront = waterRequested && (has('approach', 'waterfront_transition') || has('site', 'water_edge') || waterWeight > 0.2);
   const useLargeGlass = has('facade', 'large_glass_bands') || (modernLike && has('view', 'orient_public_rooms_to_view'));
+  const modernWaterfrontRequested = modernLike && waterRequested && (useLargeGlass || /大玻璃|落地窗|玻璃|glass|view/.test(promptText));
   const useLayeredEaves = has('roof', 'layered_eaves') && !modernLike;
   const useFlatTerrace = roofTerraceRequested || has('roof', 'flat_terrace_or_platform') || (modernLike && useWaterfront);
   const useForegroundGarden = gardenRequested && (has('approach', 'garden_forecourt') || has('site', 'garden_rooms') || gardenWeight > 0.25);
   const useLayeredTerrain = terrainRequested && (has('site', 'layered_terrain_base') || terrainWeight > 0.25);
   const massingVariant =
-    useVerticalAccent ? 'corner-vertical-accent' :
-      has('massing', 'asymmetric_wings') ? 'dual-wing-balanced' :
-        has('massing', 'long_bar') && useWaterfront ? 'east-offset-glass-wing' :
-          useForegroundGarden || has('massing', 'courtyard_or_void') ? 'front-back-gallery' :
-            useWaterfront ? 'compact-patio-bar' :
-              undefined;
+    formalAxisRequested ? 'formal-axis-manor' :
+      modernWaterfrontRequested ? 'east-offset-glass-wing' :
+        useVerticalAccent ? 'corner-vertical-accent' :
+          has('massing', 'asymmetric_wings') ? 'dual-wing-balanced' :
+            has('massing', 'long_bar') && useWaterfront ? 'east-offset-glass-wing' :
+              useForegroundGarden || has('massing', 'courtyard_or_void') ? 'front-back-gallery' :
+                useWaterfront ? 'compact-patio-bar' :
+                  undefined;
   const facadeRhythm =
     has('facade', 'large_glass_bands') ? 'horizontal-ribbon-breaks' :
       has('facade', 'vertical_slots') ? 'vertical-slot-grid' :
@@ -486,7 +665,7 @@ function compositionDirectives(groups, { prompt = '', terrainWeight, gardenWeigh
     preferred_facade_rhythm: facadeRhythm,
     preferred_roof_profile: roofProfile,
     preferred_site_mood: siteMood,
-    use_wings: has('massing', 'asymmetric_wings') || has('massing', 'long_bar'),
+    use_wings: formalAxisRequested || has('massing', 'asymmetric_wings') || has('massing', 'long_bar'),
     use_vertical_accent: useVerticalAccent,
     use_courtyard_or_patio_void: has('massing', 'courtyard_or_void') || useForegroundGarden,
     use_large_view_glass: useLargeGlass,
@@ -495,12 +674,16 @@ function compositionDirectives(groups, { prompt = '', terrainWeight, gardenWeigh
     use_waterfront_transition: useWaterfront,
     use_foreground_garden_sequence: useForegroundGarden,
     use_layered_terrain_base: useLayeredTerrain,
+    lock_preferred_massing_variant: Boolean(formalAxisRequested || modernWaterfrontRequested),
+    massing_intent: formalAxisRequested ? 'formal-axis' : modernWaterfrontRequested ? 'modern-waterfront' : undefined,
     prompt_signals: {
       explicit_composition_request: explicitCompositionRequest,
       water_requested: waterRequested,
       garden_requested: gardenRequested,
       terrain_requested: terrainRequested,
-      roof_terrace_requested: roofTerraceRequested
+      roof_terrace_requested: roofTerraceRequested,
+      formal_axis_requested: formalAxisRequested,
+      modern_waterfront_requested: modernWaterfrontRequested
     }
   };
 }
@@ -546,8 +729,14 @@ export function applyTemplateKnowledgeToArchitecture(architecture = {}, template
   const compositionDirectives = compositionStrategy.directives || {};
   const hasCompositionDirectives = Object.keys(compositionDirectives).length > 0;
   const explicitTemplateSite = !hasCompositionDirectives || Boolean(compositionDirectives.prompt_signals?.explicit_composition_request);
+  const materialPatch = buildTemplateMaterialPatch(architecture.materials || {}, recommendations);
+  const materials = {
+    ...(architecture.materials || {}),
+    ...materialPatch
+  };
   return {
     ...architecture,
+    materials,
     template_knowledge: templateKnowledge,
     massing_rules: {
       ...(architecture.massing_rules || {}),
@@ -600,7 +789,9 @@ export function applyTemplateKnowledgeToArchitecture(architecture = {}, template
       template_case_feature_priorities: recommendations.case_feature_priorities || [],
       template_design_law_pack: recommendations.design_law_pack || {},
       template_design_law_clauses: recommendations.design_law_clauses || [],
-      template_interior_design_laws: recommendations.interior_design_laws || []
+      template_interior_design_laws: recommendations.interior_design_laws || [],
+      template_material_guidance: recommendations.material_guidance || emptyMaterialGuidance(),
+      template_material_patch: materialPatch
     },
     generation_hints: {
       ...(architecture.generation_hints || {}),
@@ -615,9 +806,62 @@ export function applyTemplateKnowledgeToArchitecture(architecture = {}, template
       template_design_laws: recommendations.design_laws || [],
       template_interior_design_laws: recommendations.interior_design_laws || [],
       template_design_law_clauses: recommendations.design_law_clauses || [],
+      template_material_guidance: recommendations.material_guidance || emptyMaterialGuidance(),
+      template_material_patch: materialPatch,
       template_gap_priorities: templateKnowledge.gap_priorities || []
     }
   };
+}
+
+function buildTemplateMaterialPatch(existing = {}, recommendations = {}) {
+  const guidance = recommendations.material_guidance || {};
+  const locks = new Set(recommendations.material_locks || []);
+  const strongSurfaceTransfer = recommendations.material_transfer_strength === 'high';
+  const hasSiteLearning = (recommendations.landscape_features || []).some((item) =>
+    ['garden-composition', 'water-edge', 'layered-terrain', 'rock-and-earth-base', 'tree-and-shrub-clusters'].includes(item)
+  );
+  const patch = {};
+  const wall = pickCandidate(guidance.wall_candidates);
+  const accent = pickCandidate(guidance.accent_candidates, wall);
+  const trim = pickCandidate(guidance.trim_candidates, accent || wall);
+  const glass = pickCandidate(guidance.glass_candidates);
+  const landscape = pickCandidate(guidance.landscape_candidates);
+  const earth = pickCandidate(guidance.earth_candidates);
+  const plant = pickCandidate(guidance.plant_candidates);
+  const water = pickCandidate(guidance.water_candidates);
+  const poolEdge = pickCandidate([...(guidance.trim_candidates || []), ...(guidance.wall_candidates || [])], accent);
+
+  if (strongSurfaceTransfer && !locks.has('wall') && wall && shouldAdoptTemplateMaterial(existing.wall, wall)) patch.wall = wall;
+  if (strongSurfaceTransfer && !locks.has('accent') && accent && shouldAdoptTemplateMaterial(existing.accent, accent)) patch.accent = accent;
+  if (strongSurfaceTransfer && !locks.has('trim') && trim && shouldAdoptTemplateMaterial(existing.trim, trim)) patch.trim = trim;
+  if (!locks.has('glass') && glass && shouldAdoptTemplateMaterial(existing.glass, glass)) patch.glass = glass;
+  if (hasSiteLearning && !locks.has('landscape') && landscape && shouldAdoptTemplateMaterial(existing.landscape, landscape)) patch.landscape = landscape;
+  if (hasSiteLearning && !locks.has('earth') && earth && shouldAdoptTemplateMaterial(existing.earth, earth)) patch.earth = earth;
+  if (hasSiteLearning && !locks.has('plant') && plant && shouldAdoptTemplateMaterial(existing.plant, plant)) patch.plant = plant;
+  if (hasSiteLearning && !locks.has('plant_secondary') && plant && shouldAdoptTemplateMaterial(existing.plant_secondary, plant)) patch.plant_secondary = plant;
+  if (!locks.has('water') && water && shouldAdoptTemplateMaterial(existing.water, water)) patch.water = water;
+  if (strongSurfaceTransfer && !locks.has('wall_detail') && trim && shouldAdoptTemplateMaterial(existing.wall_detail, trim)) patch.wall_detail = trim;
+  if (strongSurfaceTransfer && !locks.has('secondary_wall') && accent && shouldAdoptTemplateMaterial(existing.secondary_wall, accent)) patch.secondary_wall = accent;
+  if (!locks.has('retaining') && landscape && shouldAdoptTemplateMaterial(existing.retaining, landscape) && /stone|tuff|andesite|diorite|granite|deepslate|blackstone|brick/.test(landscape)) {
+    patch.retaining = landscape;
+  }
+  if (strongSurfaceTransfer && !locks.has('pool_edge') && poolEdge && shouldAdoptTemplateMaterial(existing.pool_edge, poolEdge)) patch.pool_edge = poolEdge;
+
+  return patch;
+}
+
+function pickCandidate(candidates = [], avoidBlock) {
+  const avoid = blockBase(avoidBlock);
+  const found = (candidates || [])
+    .map((item) => typeof item === 'string' ? item : item?.block)
+    .find((block) => block && blockBase(block) !== avoid && isKnownMinecraft121Block(block));
+  return found;
+}
+
+function shouldAdoptTemplateMaterial(existing, candidate) {
+  if (!candidate || !isKnownMinecraft121Block(candidate)) return false;
+  if (!existing) return true;
+  return blockBase(existing) !== blockBase(candidate);
 }
 
 export function applyTemplateKnowledgeToBuildSpec(buildSpec = {}, templateKnowledge = {}) {
@@ -650,7 +894,8 @@ export function applyTemplateKnowledgeToBuildSpec(buildSpec = {}, templateKnowle
       template_case_feature_priorities: recommendations.case_feature_priorities || [],
       template_design_law_pack: recommendations.design_law_pack || {},
       template_design_law_clauses: recommendations.design_law_clauses || [],
-      template_interior_design_laws: recommendations.interior_design_laws || []
+      template_interior_design_laws: recommendations.interior_design_laws || [],
+      template_material_guidance: recommendations.material_guidance || emptyMaterialGuidance()
     },
     template_knowledge: {
       active: true,

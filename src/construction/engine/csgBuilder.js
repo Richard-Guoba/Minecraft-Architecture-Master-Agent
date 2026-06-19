@@ -2217,7 +2217,8 @@ function exteriorKitBlocks(id, facadePlan = {}, family = 'general', materials = 
   const blocks = planned?.blocks?.length
     ? planned.blocks
     : exteriorDetailKitsForFamily(family, materials).find((kit) => kit.id === id)?.blocks;
-  return Array.isArray(blocks) ? blocks.filter(Boolean) : [];
+  const normalized = Array.isArray(blocks) ? blocks.filter(Boolean) : [];
+  return id === 'window_surround' ? sanitizeWindowSurroundBlocks(normalized, materials) : normalized;
 }
 
 function blockAt(blocks, index, fallback) {
@@ -2228,6 +2229,28 @@ function blockAt(blocks, index, fallback) {
 
 function blockPalette(...values) {
   return [...new Set(values.flatMap((value) => Array.isArray(value) ? value : [value]).filter(Boolean).map(String))];
+}
+
+function sanitizeWindowSurroundBlocks(blocks = [], materials = {}) {
+  const fullFrameBlocks = blocks.filter(isFullWindowFrameBlock);
+  const supportBlocks = blocks.filter((block) => !isFullWindowFrameBlock(block));
+  const fallbacks = [
+    materials.trim,
+    materials.accent,
+    materials.secondary_wall,
+    'minecraft:smooth_quartz',
+    'minecraft:quartz_bricks'
+  ].filter((block) => block && isFullWindowFrameBlock(block));
+  return [...new Set([...fullFrameBlocks, ...fallbacks, ...supportBlocks].map(String).filter(Boolean))];
+}
+
+function isFullWindowFrameBlock(block) {
+  const base = blockBaseName(block);
+  return !/_slab$|_stairs$|_trapdoor$|_pane$|_fence$|_wall$|_bars$|_carpet$|_button$|_pressure_plate$|_door$|chain$|lantern$|candle$|flower_pot$|potted_|vine$|rod$|grate$/.test(base);
+}
+
+function blockBaseName(block) {
+  return String(block || '').split('[')[0];
 }
 
 function seatBlockForSiteSide(block, side) {
@@ -2261,7 +2284,7 @@ function hasNearbyWindow(grid, x, y, z, radius = 2) {
 
 function reliefBlockForStyle(family, materials = {}) {
   if (materials.wall_detail) return materials.wall_detail;
-  if (family === 'modern' || family === 'futuristic') return 'minecraft:smooth_quartz_slab[type=bottom]';
+  if (family === 'modern' || family === 'futuristic') return materials.secondary_wall || 'minecraft:light_gray_concrete';
   if (family === 'industrial') return 'minecraft:polished_deepslate_slab[type=bottom]';
   if (family === 'cyberpunk') return materials.neon || materials.facade_light || 'minecraft:sea_lantern';
   if (family === 'desert' || family === 'mediterranean') return 'minecraft:cut_sandstone';

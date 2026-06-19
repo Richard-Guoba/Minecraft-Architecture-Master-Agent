@@ -1,4 +1,5 @@
 import { keyFor } from '../engine/csgBuilder.js';
+import { isBlockingHeadroomBlock, roomBlockingBudget } from './interiorClearanceRepairAgent.js';
 import { interiorSpecialistCapabilities, specialistAgentsForRoom } from './interiorRoomAgents.js';
 
 export class ConstructionDecoratorAgent {
@@ -1055,7 +1056,9 @@ function canPlaceDecorAt(grid, item, room, point) {
   const existing = grid.get(keyFor(point.x, point.y, point.z));
   if (existing && !canOverwrite(existing.module)) return false;
   if (existing && String(existing.module || '').startsWith('decor_')) return false;
-  return hasSafeSupport(grid, item, room, point);
+  if (!hasSafeSupport(grid, item, room, point)) return false;
+  if (isBlockingRoomHeadroom(item, room, point) && roomBlockingCount(grid, room) >= roomBlockingBudget(room)) return false;
+  return true;
 }
 
 function normalizePlacementPoint(item, point, room) {
@@ -1146,6 +1149,41 @@ function canSupportDecoration(supportBlock = '', decorBlock = '') {
   }
   if (isNonFullSupport(support)) return false;
   return true;
+}
+
+function isBlockingRoomHeadroom(item, room, point) {
+  return room &&
+    Number(room.floor || 0) === 0 &&
+    point.y === room.min_y &&
+    item.module !== 'decor_light' &&
+    item.module !== 'decor_floor' &&
+    isBlockingHeadroomBlock(item.block);
+}
+
+function roomBlockingCount(grid, room) {
+  if (!grid || !room) return 0;
+  const scan = insetRoomHeadroomScan(room);
+  let count = 0;
+  for (let x = scan.min_x; x <= scan.max_x; x += 1) {
+    for (let z = scan.min_z; z <= scan.max_z; z += 1) {
+      const cell = grid.get(keyFor(x, room.min_y, z));
+      if (cell && isBlockingHeadroomBlock(cell.block)) count += 1;
+    }
+  }
+  return count;
+}
+
+function insetRoomHeadroomScan(room = {}) {
+  const width = room.max_x - room.min_x + 1;
+  const depth = room.max_z - room.min_z + 1;
+  const insetX = width >= 5 ? 1 : 0;
+  const insetZ = depth >= 5 ? 1 : 0;
+  return {
+    min_x: room.min_x + insetX,
+    max_x: room.max_x - insetX,
+    min_z: room.min_z + insetZ,
+    max_z: room.max_z - insetZ
+  };
 }
 
 function isNonFullSupport(block) {
