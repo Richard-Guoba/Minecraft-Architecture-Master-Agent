@@ -22,7 +22,8 @@ export class FacadeAgent {
     const highDetailReference = referenceReproduction.detail_targets?.detail_density === 'high' || referenceStrength === 'high';
     const designGlazing = design.glazing_ratio || buildSpec.facade?.glazing_ratio;
     const wide = Boolean(rules.large_glass || buildSpec.facade?.large_glass || designGlazing === 'high' || compositionDirectives.use_large_view_glass);
-    const protectedOpenings = String(rules.glazing_ratio || designGlazing || buildSpec.facade?.glazing_ratio) === 'low';
+    const protectedOpenings = String(rules.glazing_ratio || designGlazing || buildSpec.facade?.glazing_ratio) === 'low' &&
+      !(referenceBoost && (wide || compositionDirectives.use_large_view_glass));
     const neon = family === 'cyberpunk' || /霓虹|neon/i.test(prompt);
     const screen = Boolean(rules.screen || buildSpec.facade?.screens);
     const arches = Boolean(rules.arches || rules.pointed_arches || buildSpec.facade?.arches);

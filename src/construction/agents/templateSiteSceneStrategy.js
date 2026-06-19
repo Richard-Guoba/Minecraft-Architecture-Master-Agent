@@ -173,11 +173,16 @@ function shouldActivateSiteScenes({ prompt = '', composition = {}, directives = 
   if (composition.readiness === 'none') return false;
   const text = String(prompt || '').toLowerCase();
   const explicitPrompt = /前景|花园|园林|庭院|水边|湖边|平台|露台|地形|非平坦|挡土|树|景观|garden|landscape|water|lake|terrain|deck|terrace|forecourt/.test(text);
+  const referenceTransfer = Boolean(
+    directives.prompt_signals?.reference_transfer ||
+    (context.reference_reproduction?.active && ['high', 'medium'].includes(String(context.reference_reproduction?.strength || '')))
+  );
   const hasSignals = directives.prompt_signals && Object.keys(directives.prompt_signals).length > 0;
   const explicitSignal = Boolean(directives.prompt_signals?.explicit_composition_request || explicitPrompt);
-  if (hasSignals && !explicitSignal) return false;
+  if (hasSignals && !explicitSignal && !referenceTransfer) return false;
   return Boolean(
     explicitSignal ||
+    referenceTransfer ||
     directives.use_foreground_garden_sequence ||
     directives.use_waterfront_transition ||
     directives.use_layered_terrain_base ||

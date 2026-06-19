@@ -33,7 +33,10 @@ export class SiteLandscapeAgent {
     const referenceBoost = Boolean(referenceReproduction.active && ['high', 'medium'].includes(String(referenceReproduction.strength || '')));
     const highNaturalSite = referenceReproduction.detail_targets?.natural_site_density === 'high';
     const hasCompositionDirectives = Object.keys(compositionDirectives).length > 0;
-    const explicitTemplateSite = !hasCompositionDirectives || Boolean(compositionDirectives.prompt_signals?.explicit_composition_request);
+    const templateSiteTransfer = referenceBoost ||
+      ['high', 'medium'].includes(String(compositionDirectives.reference_reproduction_strength || '')) ||
+      Boolean(compositionDirectives.prompt_signals?.reference_transfer);
+    const explicitTemplateSite = !hasCompositionDirectives || templateSiteTransfer || Boolean(compositionDirectives.prompt_signals?.explicit_composition_request);
     const templateFeatures = new Set(explicitTemplateSite ? [
       ...normalizeStringArray(templateRecommendations.landscape_features),
       ...normalizeStringArray(rules.template_landscape_features),
@@ -62,7 +65,8 @@ export class SiteLandscapeAgent {
         template_rock_base: templateRockBase,
         template_water_edge: templateWaterEdge,
         template_trees: templateTrees,
-        template_approach: templateApproach
+        template_approach: templateApproach,
+        reference_reproduction: referenceReproduction
       }
     });
     const zones = [

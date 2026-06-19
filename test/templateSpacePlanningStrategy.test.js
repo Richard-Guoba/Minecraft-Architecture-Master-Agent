@@ -35,6 +35,19 @@ test('template space planning turns composition grammar into room orientation an
   assert.ok(topology.facade_alignment.template_public_view_rooms.includes('living'));
 });
 
+test('template space planning stays active for reference transfer without explicit composition words', () => {
+  const prompt = '按模板库顶级房子强参考复现：建一个现代别墅，客厅、开放厨房、卧室和书房';
+  const architecture = withLakeVillaComposition(buildFallbackArchitecture(prompt), { referenceTransferOnly: true });
+  const buildSpec = deriveBuildSpec(prompt, architecture, 17);
+  const topology = buildFallbackTopology(prompt, architecture, buildSpec);
+
+  assert.equal(topology.template_space_plan.active, true);
+  assert.equal(topology.template_space_plan.view_side, 'south');
+  assert.equal(topology.bsp_hints.template_space_planning_active, true);
+  assert.ok(topology.site_connections.some((item) => item.to === 'water_edge'));
+  assert.ok(topology.facade_alignment.template_public_view_rooms.includes('living'));
+});
+
 test('template space planning survives creative design and biases BSP room placement', () => {
   const prompt = '建一个现代湖边别墅，带前景花园、水边平台、大玻璃和屋顶露台，客厅、开放厨房、卧室和书房';
   let architecture = withLakeVillaComposition(buildFallbackArchitecture(prompt));
@@ -58,7 +71,8 @@ test('template space planning survives creative design and biases BSP room place
   assert.ok(living.max_z >= kitchen.max_z, 'public view room should sit no farther from the south view edge than the kitchen');
 });
 
-function withLakeVillaComposition(architecture) {
+function withLakeVillaComposition(architecture, options = {}) {
+  const referenceTransferOnly = Boolean(options.referenceTransferOnly);
   const compositionStrategy = {
     source: 'template-composition-strategy-v1',
     readiness: 'high',
@@ -73,12 +87,14 @@ function withLakeVillaComposition(architecture) {
       use_waterfront_transition: true,
       use_foreground_garden_sequence: true,
       use_layered_terrain_base: true,
+      reference_reproduction_strength: referenceTransferOnly ? 'high' : 'low',
       prompt_signals: {
-        explicit_composition_request: true,
-        water_requested: true,
-        garden_requested: true,
+        explicit_composition_request: !referenceTransferOnly,
+        reference_transfer: referenceTransferOnly,
+        water_requested: !referenceTransferOnly,
+        garden_requested: !referenceTransferOnly,
         terrain_requested: false,
-        roof_terrace_requested: true
+        roof_terrace_requested: !referenceTransferOnly
       }
     },
     massing_patterns: [{ pattern_type: 'long_bar', confidence: 84 }],

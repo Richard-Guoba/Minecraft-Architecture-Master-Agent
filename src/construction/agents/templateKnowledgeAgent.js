@@ -245,12 +245,13 @@ function buildReferenceReproductionStrategy(retrieved = [], prompt = '', context
 function referenceTargetDimensions(sources = [], context = {}) {
   const typology = String(context.typology || '').toLowerCase();
   const styleFamily = String(context.styleFamily || '').toLowerCase();
+  const strongReference = context.referenceMode?.strength === 'high';
   const estateLike = /villa|manor|mansion|estate|castle|public-building|temple|庄园|别墅/.test(`${typology} ${styleFamily}`);
   const compact = /cabin|small|compact|treehouse|lodge/.test(`${typology} ${styleFamily}`);
-  const maxWidth = /castle|temple|public-building/.test(typology) ? 43 : estateLike ? 39 : compact ? 23 : 31;
-  const maxDepth = /castle|temple|public-building/.test(typology) ? 39 : estateLike ? 33 : compact ? 21 : 29;
-  const minWidth = estateLike ? 27 : compact ? 15 : 19;
-  const minDepth = estateLike ? 21 : compact ? 13 : 17;
+  const maxWidth = strongReference ? 45 : /castle|temple|public-building/.test(typology) ? 43 : estateLike ? 39 : compact ? 23 : 31;
+  const maxDepth = strongReference ? 45 : /castle|temple|public-building/.test(typology) ? 39 : estateLike ? 33 : compact ? 21 : 29;
+  const minWidth = strongReference && estateLike ? 31 : estateLike ? 27 : compact ? 15 : 19;
+  const minDepth = strongReference && estateLike ? 25 : estateLike ? 21 : compact ? 13 : 17;
   const samples = sources
     .map((item) => normalizeReferenceDimensionSample(item.dimensions, { maxWidth, maxDepth, minWidth, minDepth, title: item.title }))
     .filter(Boolean);
@@ -277,7 +278,7 @@ function referenceTargetDimensions(sources = [], context = {}) {
     width: clampNumber(Math.round(width), minWidth, maxWidth, minWidth),
     depth: clampNumber(Math.round(depth), minDepth, maxDepth, minDepth),
     floors,
-    garden_depth: clampNumber(Math.round(Math.max(10, depth * 0.45)), 9, estateLike ? 16 : 13, 10),
+    garden_depth: clampNumber(Math.round(Math.max(10, depth * 0.45)), 9, strongReference ? 20 : estateLike ? 16 : 13, 10),
     normalized_from: samples.map((item) => item.title)
   };
 }
@@ -428,7 +429,7 @@ function summarizeRecommendations(retrieved, corpus = {}, options = {}) {
     waterWeight,
     referenceMode
   });
-  const sourceFusionPolicy = buildSourceFusionPolicy(retrieved, options.prompt);
+  const sourceFusionPolicy = buildSourceFusionPolicy(retrieved, options.prompt, referenceMode);
   const referenceReproduction = buildReferenceReproductionStrategy(retrieved, options.prompt, {
     styleFamily,
     typology,
@@ -768,7 +769,7 @@ function buildCompositionStrategy(candidates = [], { styleFamily = 'general', ty
   };
 }
 
-function buildSourceFusionPolicy(retrieved = [], prompt = '') {
+function buildSourceFusionPolicy(retrieved = [], prompt = '', referenceMode = {}) {
   const totalScore = retrieved.reduce((sum, item) => sum + Number(item.score || 0), 0) || 1;
   const sourceBlend = retrieved.map((item) => ({
     title: item.title,
@@ -782,16 +783,22 @@ function buildSourceFusionPolicy(retrieved = [], prompt = '') {
   }));
   const topShare = sourceBlend[0]?.share || 0;
   const explicitReference = /复刻|参考|模板|inspired|reference|case/i.test(String(prompt || ''));
+  const strongReference = referenceMode.strength === 'high';
   const copyRisk = topShare >= 0.56 && explicitReference ? 'medium' : topShare >= 0.72 ? 'medium' : 'low';
   return {
     source: 'template-source-fusion-policy-v1',
     active: retrieved.length > 0,
-    min_source_cases: Math.min(3, retrieved.length),
+    min_source_cases: strongReference ? Math.min(1, retrieved.length) : Math.min(3, retrieved.length),
     retrieved_source_count: retrieved.length,
     top_source_share: topShare,
     copy_risk: copyRisk,
     source_blend: sourceBlend.slice(0, 6),
-    obligations: [
+    obligations: strongReference ? [
+      'preserve the dominant reference proportions, silhouette family, site composition, material atmosphere, and detail density',
+      'allow a single top reference to dominate when the user explicitly asks for strong reproduction',
+      'scale only as needed for Minecraft-safe bounds and explicit user constraints',
+      'change exact block placement, room order, and repeated detail locations to avoid block-for-block copying'
+    ] : [
       'borrow transferable grammar rather than dimensions or exact floor plans',
       'mix site, massing, facade, roof, and interior lessons from different cases',
       'normalize monumental references to residential scale when the requested typology is a house',
@@ -863,22 +870,27 @@ function compositionDirectives(groups, { prompt = '', terrainWeight, gardenWeigh
   const gardenRequested = /前景|花园|庭院|园林|前庭|garden|courtyard|yard|forecourt|approach/.test(promptText);
   const terrainRequested = /非平坦|地形|坡|山|悬崖|岩|terrain|slope|hill|cliff|rock/.test(promptText);
   const roofTerraceRequested = /屋顶露台|上人屋顶|屋顶平台|平屋顶|roof terrace|roof deck|flat roof/.test(promptText);
-  const explicitCompositionRequest = waterRequested || gardenRequested || terrainRequested || roofTerraceRequested || /整体构图|入口序列|空间序列|composition|massing/.test(promptText);
+  const referenceTransfer = referenceMode.active && ['high', 'medium'].includes(String(referenceMode.strength || ''));
+  const templateWaterAvailable = has('approach', 'waterfront_transition') || has('site', 'water_edge') || waterWeight > 0.2;
+  const templateGardenAvailable = has('approach', 'garden_forecourt') || has('site', 'garden_rooms') || gardenWeight > 0.25;
+  const templateTerrainAvailable = has('site', 'layered_terrain_base') || terrainWeight > 0.25;
+  const templateFlatTerraceAvailable = has('roof', 'flat_terrace_or_platform');
+  const explicitCompositionRequest = waterRequested || gardenRequested || terrainRequested || roofTerraceRequested || referenceTransfer || /整体构图|入口序列|空间序列|composition|massing/.test(promptText);
   const formalAxisRequested = classicalLike && /对称|轴线|中轴|入口轴线|庄园|主轴|礼仪|formal|symmetry|axis|manor/.test(`${promptText} ${styleText} ${typologyText}`);
   const useVerticalAccent = has('massing', 'vertical_landmark') && (verticalTypology || weightOf('massing', 'vertical_landmark') >= 720);
-  const useWaterfront = waterRequested && (has('approach', 'waterfront_transition') || has('site', 'water_edge') || waterWeight > 0.2);
+  const useWaterfront = (waterRequested || (referenceTransfer && templateWaterAvailable)) && templateWaterAvailable;
   const useLargeGlass = has('facade', 'large_glass_bands') || (modernLike && has('view', 'orient_public_rooms_to_view'));
-  const modernWaterfrontRequested = modernLike && waterRequested && (useLargeGlass || /大玻璃|落地窗|玻璃|glass|view/.test(promptText));
+  const modernWaterfrontActive = modernLike && (waterRequested || (referenceTransfer && templateWaterAvailable)) && (useLargeGlass || /大玻璃|落地窗|玻璃|glass|view/.test(promptText));
   const strongReference = referenceMode.strength === 'high';
   const promptLayeredEaves = /层叠|重檐|深檐|飞檐|屋檐|eaves|pagoda/.test(promptText);
   const useLayeredEaves = layeredEaveStyle && (promptLayeredEaves || has('roof', 'layered_eaves'));
-  const useFlatTerrace = roofTerraceRequested || (terraceRoofStyle && has('roof', 'flat_terrace_or_platform')) || (modernLike && useWaterfront);
-  const useForegroundGarden = gardenRequested && (has('approach', 'garden_forecourt') || has('site', 'garden_rooms') || gardenWeight > 0.25);
-  const useLayeredTerrain = terrainRequested && (has('site', 'layered_terrain_base') || terrainWeight > 0.25);
+  const useFlatTerrace = roofTerraceRequested || (terraceRoofStyle && templateFlatTerraceAvailable) || (modernLike && useWaterfront) || (referenceTransfer && templateFlatTerraceAvailable && terraceRoofStyle);
+  const useForegroundGarden = (gardenRequested || (referenceTransfer && templateGardenAvailable)) && templateGardenAvailable;
+  const useLayeredTerrain = (terrainRequested || (referenceTransfer && templateTerrainAvailable)) && templateTerrainAvailable;
   const massingVariant =
-    strongReference && modernWaterfrontRequested ? 'waterfront-stepped-estate' :
+    strongReference && modernWaterfrontActive ? 'waterfront-stepped-estate' :
       formalAxisRequested ? 'formal-axis-manor' :
-        modernWaterfrontRequested ? 'east-offset-glass-wing' :
+        modernWaterfrontActive ? 'east-offset-glass-wing' :
         useVerticalAccent ? 'corner-vertical-accent' :
           has('massing', 'asymmetric_wings') ? 'dual-wing-balanced' :
             has('massing', 'long_bar') && useWaterfront ? 'east-offset-glass-wing' :
@@ -917,16 +929,17 @@ function compositionDirectives(groups, { prompt = '', terrainWeight, gardenWeigh
     use_waterfront_transition: useWaterfront,
     use_foreground_garden_sequence: useForegroundGarden,
     use_layered_terrain_base: useLayeredTerrain,
-    lock_preferred_massing_variant: Boolean(formalAxisRequested || modernWaterfrontRequested || strongReference),
-    massing_intent: formalAxisRequested ? 'formal-axis' : modernWaterfrontRequested ? 'modern-waterfront' : undefined,
+    lock_preferred_massing_variant: Boolean(formalAxisRequested || modernWaterfrontActive || strongReference),
+    massing_intent: formalAxisRequested ? 'formal-axis' : modernWaterfrontActive ? 'modern-waterfront' : undefined,
     prompt_signals: {
       explicit_composition_request: explicitCompositionRequest,
+      reference_transfer: referenceTransfer,
       water_requested: waterRequested,
       garden_requested: gardenRequested,
       terrain_requested: terrainRequested,
       roof_terrace_requested: roofTerraceRequested,
       formal_axis_requested: formalAxisRequested,
-      modern_waterfront_requested: modernWaterfrontRequested
+      modern_waterfront_requested: modernWaterfrontActive
     }
   };
 }
@@ -974,7 +987,8 @@ export function applyTemplateKnowledgeToArchitecture(architecture = {}, template
   const referenceStrong = referenceReproduction.active && ['high', 'medium'].includes(String(referenceReproduction.strength || ''));
   const referenceDetailHigh = referenceReproduction.detail_targets?.detail_density === 'high';
   const hasCompositionDirectives = Object.keys(compositionDirectives).length > 0;
-  const explicitTemplateSite = !hasCompositionDirectives || Boolean(compositionDirectives.prompt_signals?.explicit_composition_request);
+  const templateSiteTransfer = referenceStrong || ['high', 'medium'].includes(String(compositionDirectives.reference_reproduction_strength || ''));
+  const explicitTemplateSite = !hasCompositionDirectives || templateSiteTransfer || Boolean(compositionDirectives.prompt_signals?.explicit_composition_request);
   const materialPatch = buildTemplateMaterialPatch(architecture.materials || {}, recommendations);
   const materials = {
     ...(architecture.materials || {}),
@@ -1130,7 +1144,8 @@ export function applyTemplateKnowledgeToBuildSpec(buildSpec = {}, templateKnowle
   const referenceDimensions = referenceReproduction.target_dimensions || {};
   const referenceActive = referenceReproduction.active && ['high', 'medium'].includes(String(referenceReproduction.strength || ''));
   const hasCompositionDirectives = Object.keys(compositionDirectives).length > 0;
-  const explicitTemplateSite = !hasCompositionDirectives || Boolean(compositionDirectives.prompt_signals?.explicit_composition_request);
+  const templateSiteTransfer = referenceActive || ['high', 'medium'].includes(String(compositionDirectives.reference_reproduction_strength || ''));
+  const explicitTemplateSite = !hasCompositionDirectives || templateSiteTransfer || Boolean(compositionDirectives.prompt_signals?.explicit_composition_request);
   const needsSiteDepth = explicitTemplateSite && (
     recommendations.terrain_profile !== 'flat-or-built-platform' ||
     (recommendations.landscape_features || []).some((item) => ['garden-composition', 'water-edge', 'layered-terrain'].includes(item))

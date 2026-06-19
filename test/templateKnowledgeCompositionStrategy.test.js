@@ -154,6 +154,46 @@ test('strong reference prompts lock modern waterfront massing to a richer estate
   assert.equal(knowledge.recommendations.composition_strategy.directives.lock_preferred_massing_variant, true);
 });
 
+test('strong reference transfer uses template composition even when prompt omits site keywords', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-template-reference-transfer-without-site-keywords-'));
+  const analysisFile = path.join(tempDir, 'template_index.json');
+  fs.writeFileSync(analysisFile, JSON.stringify({
+    corpus: { gap_priorities: [] },
+    templates: [
+      templateFixture({
+        title: 'Modern Water Garden Estate',
+        style_family: 'modern',
+        typology: 'house',
+        tags: ['water-edge', 'landscape-composition', 'terrain-integrated', 'large-glass-or-panel-grid'],
+        dimensions: { width: 58, length: 52, height: 28, non_air_blocks: 16000 },
+        detail_metrics: { glass_ratio: 0.09, stair_slab_ratio: 0.22, fence_ratio: 0.03, light_ratio: 0.02, decor_ratio: 0.03, natural_ratio: 0.28, garden_signal: 'water-garden' },
+        composition: {
+          massing_patterns: [pattern('waterfront_deck_massing', 94), pattern('stepped_terraces', 88)],
+          approach_sequence: [pattern('waterfront_transition', 90), pattern('garden_forecourt', 86)],
+          facade_rhythm: [pattern('large_glass_bands', 92), pattern('micro_depth_trim', 86)],
+          roof_composition: [pattern('flat_terrace_or_platform', 88)],
+          site_composition: [pattern('water_edge', 90), pattern('garden_rooms', 86), pattern('layered_terrain_base', 84)],
+          view_and_landmark_rules: [pattern('orient_public_rooms_to_view', 90)]
+        }
+      })
+    ]
+  }), 'utf8');
+
+  const knowledge = new TemplateKnowledgeAgent({ cwd: process.cwd(), analysisFile }).run(
+    '按模板库顶级房子强参考复现：建一个现代别墅，完整客厅、开放厨房、主卧和书房场景',
+    { style_family: 'modern', typology: 'villa' },
+    { typology: 'villa' }
+  );
+  const directives = knowledge.recommendations.composition_strategy.directives;
+
+  assert.equal(knowledge.recommendations.reference_reproduction.strength, 'high');
+  assert.equal(directives.prompt_signals.reference_transfer, true);
+  assert.equal(directives.use_waterfront_transition, true);
+  assert.equal(directives.use_foreground_garden_sequence, true);
+  assert.equal(directives.use_layered_terrain_base, true);
+  assert.equal(directives.preferred_massing_variant, 'waterfront-stepped-estate');
+});
+
 test('template composition keeps classical roofs away from unrequested flat terraces', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc-template-classical-roof-policy-'));
   const analysisFile = path.join(tempDir, 'template_index.json');

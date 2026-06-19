@@ -129,9 +129,13 @@ function shouldActivateSpacePlanning(composition = {}, directives = {}, prompt =
   const promptText = String(prompt || '').toLowerCase();
   const explicitPrompt = /整体构图|空间序列|入口序列|平面|布局|主轴|侧翼|庭院|水边|湖边|前景|花园|地形|露台|composition|massing|layout|axis|courtyard|waterfront|garden|terrain|terrace/.test(promptText);
   const explicitSignal = Boolean(directives.prompt_signals?.explicit_composition_request || explicitPrompt);
+  const referenceTransfer = Boolean(
+    directives.prompt_signals?.reference_transfer ||
+    ['high', 'medium'].includes(String(directives.reference_reproduction_strength || ''))
+  );
   const hasPromptSignals = directives.prompt_signals && Object.keys(directives.prompt_signals).length > 0;
-  if (hasPromptSignals) return explicitSignal;
-  return explicitSignal || Boolean(directives.use_waterfront_transition || directives.use_foreground_garden_sequence);
+  if (hasPromptSignals) return explicitSignal || referenceTransfer;
+  return explicitSignal || referenceTransfer || Boolean(directives.use_waterfront_transition || directives.use_foreground_garden_sequence);
 }
 
 function inferViewSide({ frontSide, directives = {}, prompt = '', architecture = {} }) {

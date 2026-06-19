@@ -197,6 +197,7 @@ export function buildSeededCreativeDesign(prompt = '', architecture = {}, buildS
   let massing = templateMassingVariant(templateComposition, seedIndex) || pickByIndex(MASSING_VARIANTS, seedIndex);
   massing = promptCompatibleMassingVariant(massing, prompt, architecture, templateComposition, seedIndex);
   let roof = templateRoofVariant(templateComposition, seedIndex + 1) || fallbackRoofVariant(prompt, architecture, buildSpec, seedIndex + 1);
+  roof = promptCompatibleRoofVariant(roof, prompt, architecture, buildSpec, templateComposition, seedIndex + 1);
   let facade = templateFacadeVariant(templateComposition, seedIndex + 2) || pickByIndex(FACADE_VARIANTS, seedIndex + 2);
   let site = templateSiteVariant(templateComposition, seedIndex + 3) || pickByIndex(SITE_VARIANTS, seedIndex + 3);
   const interior = pickByIndex(INTERIOR_VARIANTS, seedIndex + 4);
@@ -456,7 +457,7 @@ function applyTemplateCompositionToCreativeDesign(design = {}, architecture = {}
   const strategy = templateCompositionStrategyFor(architecture, buildSpec);
   const directives = strategy.directives || {};
   if (!strategy || !directives || Object.keys(directives).length === 0) return design;
-  const explicitComposition = Boolean(directives.prompt_signals?.explicit_composition_request);
+  const explicitComposition = shouldUseTemplateVariantPreference(directives);
   const lockedMassing = Boolean(directives.lock_preferred_massing_variant && directives.preferred_massing_variant);
 
   const variant = lockedMassing
@@ -571,6 +572,23 @@ function templateRoofVariant(strategy = {}, seedIndex = 0) {
   return pickTemplateVariant(ROOF_VARIANTS, templateVariantIds('roof', strategy.directives?.preferred_roof_profile, strategy.directives), seedIndex, 'profile');
 }
 
+function promptCompatibleRoofVariant(roof, prompt = '', architecture = {}, buildSpec = {}, strategy = {}, seedIndex = 0) {
+  if (!roof || strategy.directives?.lock_preferred_roof_profile) return roof;
+  const text = String(prompt || '');
+  const family = String(architecture.style_family || buildSpec.style_family || '').toLowerCase();
+  const desiredStyle = String(architecture.roof_rules?.style || buildSpec.roof_style || '').toLowerCase();
+  const explicitFlatRoof = /平屋顶|平顶|露台顶|屋顶平台|roof terrace|roof deck|flat roof/i.test(text);
+  const explicitLayeredEaves = /层叠|重檐|深檐|飞檐|屋檐|eaves|pagoda/.test(text);
+  const pitchedFamily = /classical|gothic|medieval|rustic|nordic|alpine|victorian|farmhouse/.test(family);
+  const eastAsian = /japanese|chinese|east-asian|pagoda/.test(family);
+  const flatConflict = roof.style === 'flat' && !explicitFlatRoof && (pitchedFamily || (desiredStyle && desiredStyle !== 'flat'));
+  const layeredConflict = roof.profile === 'low-layered-eaves' && !eastAsian && !explicitLayeredEaves;
+  if (flatConflict || layeredConflict) {
+    return fallbackRoofVariant(prompt, architecture, buildSpec, seedIndex);
+  }
+  return roof;
+}
+
 function fallbackRoofVariant(prompt = '', architecture = {}, buildSpec = {}, seedIndex = 0) {
   const text = String(prompt || '');
   const family = String(architecture.style_family || buildSpec.style_family || '').toLowerCase();
@@ -621,7 +639,7 @@ function pickTemplateVariant(items, ids, seedIndex, key = 'id') {
 }
 
 function templateVariantIds(group, preferred, directives = {}) {
-  if (!directives.prompt_signals?.explicit_composition_request) {
+  if (!shouldUseTemplateVariantPreference(directives)) {
     if (group === 'massing') return MASSING_VARIANTS.map((item) => item.id);
     if (group === 'facade') return FACADE_VARIANTS.map((item) => item.rhythm);
     if (group === 'roof') return ROOF_VARIANTS.map((item) => item.profile);
@@ -654,7 +672,23 @@ function templateVariantIds(group, preferred, directives = {}) {
       'terrain-forecourt': ['ordered-entry-court', 'lush-side-garden', 'open-family-yard']
     }
   };
-  return maps[group]?.[preferred] || (preferred ? [preferred] : []);
+  if (maps[group]?.[preferred]) return maps[group][preferred];
+  if (preferred) return [preferred];
+  if (group === 'massing') return MASSING_VARIANTS.map((item) => item.id);
+  if (group === 'facade') return FACADE_VARIANTS.map((item) => item.rhythm);
+  if (group === 'roof') return ROOF_VARIANTS.map((item) => item.profile);
+  if (group === 'site') return SITE_VARIANTS.map((item) => item.mood);
+  return [];
+}
+
+function shouldUseTemplateVariantPreference(directives = {}) {
+  return Boolean(
+    directives.lock_preferred_massing_variant ||
+    directives.lock_preferred_roof_profile ||
+    directives.prompt_signals?.explicit_composition_request ||
+    directives.prompt_signals?.reference_transfer ||
+    ['high', 'medium'].includes(String(directives.reference_reproduction_strength || ''))
+  );
 }
 
 function labelForMassingVariant(id) {
@@ -716,7 +750,7 @@ function volumeDirectiveText(directive = {}) {
 }
 
 function mergeTemplateVolumeDirectives(existing = [], directives = {}) {
-  if (!directives.prompt_signals?.explicit_composition_request) return existing;
+  if (!shouldUseTemplateVariantPreference(directives)) return existing;
   const result = [...existing];
   const add = (volume) => {
     if (result.some((item) => item.id === volume.id)) return;

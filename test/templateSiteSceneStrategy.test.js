@@ -49,13 +49,36 @@ test('template site scene strategy renders terrain, forecourt garden, water edge
   }
 });
 
-function buildTemplateSiteContext() {
-  const prompt = '建一个现代湖边别墅，带非平坦自然地形、前景花园、水边平台、大玻璃和屋顶露台';
-  let architecture = withLakeVillaComposition(buildFallbackArchitecture(prompt));
+test('template site scenes bypass old explicit prompt gate during strong reference transfer', () => {
+  const context = buildTemplateSiteContext({
+    prompt: '按模板库顶级房子强参考复现：建一个现代别墅，完整客厅、开放厨房、主卧和书房场景',
+    referenceTransferOnly: true
+  });
+  const siteScenes = context.site.template_site_scenes;
+
+  assert.equal(siteScenes.active, true);
+  assert.ok(siteScenes.scene_types.includes('forecourt-garden-room-scene'));
+  assert.ok(siteScenes.scene_types.includes('water-edge-deck-scene'));
+  assert.ok(siteScenes.scene_types.includes('terrain-plinth-scene'));
+});
+
+function buildTemplateSiteContext(options = {}) {
+  const prompt = options.prompt || '建一个现代湖边别墅，带非平坦自然地形、前景花园、水边平台、大玻璃和屋顶露台';
+  let architecture = withLakeVillaComposition(buildFallbackArchitecture(prompt), options);
   const stylePreset = new StylePresetMemoryAgent().run(prompt, architecture);
   const materialPalette = new MaterialPaletteAgent().run(prompt, architecture, stylePreset);
   architecture = { ...architecture, materials: materialPalette.materials };
   let buildSpec = deriveBuildSpec(prompt, architecture, 1997941929);
+  if (options.referenceTransferOnly) {
+    buildSpec = {
+      ...buildSpec,
+      garden_depth: Math.max(Number(buildSpec.garden_depth || 0), 12),
+      lot: {
+        ...(buildSpec.lot || {}),
+        depth: Number(buildSpec.depth || 0) + 12 + Number(buildSpec.lot?.rear_setback || 2)
+      }
+    };
+  }
   let topology = buildFallbackTopology(prompt, architecture, buildSpec);
   const creativeDesign = buildSeededCreativeDesign(prompt, architecture, buildSpec, topology);
   ({ architecture, buildSpec, topology } = applyCreativeDesign({ architecture, buildSpec, topology, creativeDesign, prompt }));
@@ -67,7 +90,8 @@ function buildTemplateSiteContext() {
   return { prompt, architecture, buildSpec, topology, structure, facade, roof, site, shell };
 }
 
-function withLakeVillaComposition(architecture) {
+function withLakeVillaComposition(architecture, options = {}) {
+  const referenceTransferOnly = Boolean(options.referenceTransferOnly);
   const compositionStrategy = {
     source: 'template-composition-strategy-v1',
     readiness: 'high',
@@ -83,11 +107,12 @@ function withLakeVillaComposition(architecture) {
       use_foreground_garden_sequence: true,
       use_layered_terrain_base: true,
       prompt_signals: {
-        explicit_composition_request: true,
-        water_requested: true,
-        garden_requested: true,
-        terrain_requested: true,
-        roof_terrace_requested: true
+        explicit_composition_request: !referenceTransferOnly,
+        reference_transfer: referenceTransferOnly,
+        water_requested: !referenceTransferOnly,
+        garden_requested: !referenceTransferOnly,
+        terrain_requested: !referenceTransferOnly,
+        roof_terrace_requested: !referenceTransferOnly
       }
     },
     massing_patterns: [{ pattern_type: 'long_bar', confidence: 84 }],
@@ -97,11 +122,17 @@ function withLakeVillaComposition(architecture) {
     site_composition: [{ pattern_type: 'water_edge', confidence: 88 }, { pattern_type: 'garden_rooms', confidence: 80 }],
     view_and_landmark_rules: [{ pattern_type: 'orient_public_rooms_to_view', confidence: 86 }]
   };
+  const referenceReproduction = referenceTransferOnly ? {
+    active: true,
+    strength: 'high',
+    detail_targets: { natural_site_density: 'high', detail_density: 'high' }
+  } : undefined;
   return {
     ...architecture,
     generation_hints: {
       ...(architecture.generation_hints || {}),
-      template_composition_strategy: compositionStrategy
+      template_composition_strategy: compositionStrategy,
+      ...(referenceReproduction ? { reference_reproduction: referenceReproduction } : {})
     },
     massing_rules: {
       ...(architecture.massing_rules || {}),
@@ -109,7 +140,12 @@ function withLakeVillaComposition(architecture) {
     },
     site_rules: {
       ...(architecture.site_rules || {}),
-      template_composition_strategy: compositionStrategy
+      template_composition_strategy: compositionStrategy,
+      ...(referenceReproduction ? { reference_reproduction: referenceReproduction } : {})
+    },
+    detail_rules: {
+      ...(architecture.detail_rules || {}),
+      ...(referenceReproduction ? { reference_reproduction: referenceReproduction } : {})
     }
   };
 }
