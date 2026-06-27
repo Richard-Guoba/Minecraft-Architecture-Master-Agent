@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="430" viewBox="0 0 1180 430" role="img" aria-labelledby="title desc">
+  <title id="title">Minecraft Constructing Agents hybrid architecture</title>
+  <desc id="desc">The system turns a Chinese building request into semantic agent JSON, template knowledge, deterministic CSG BSP A star geometry, decoration and QA, then exports a Minecraft datapack.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2f4f6f"/>
+    </marker>
+    <style>
+      .bg { fill: #f6f7f2; }
+      .node { fill: #ffffff; stroke: #d4d8dd; stroke-width: 2; rx: 16; }
+      .node-strong { fill: #eaf2f0; stroke: #3d7c6a; stroke-width: 2; rx: 16; }
+      .node-engine { fill: #f8efe4; stroke: #b9832f; stroke-width: 2; rx: 16; }
+      .node-export { fill: #eef1f7; stroke: #315b8a; stroke-width: 2; rx: 16; }
+      .label { fill: #17212f; font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 23px; font-weight: 700; }
+      .small { fill: #4c5665; font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 16px; }
+      .arrow { stroke: #2f4f6f; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .caption { fill: #5a6472; font-family: "Microsoft YaHei", Arial, sans-serif; font-size: 15px; }
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1180" height="430" rx="24"/>
+  <text x="42" y="48" class="caption">核心原则：LLM 负责语义决策，本地程序负责坐标、连通、校验和导出。</text>
+
+  <rect class="node" x="42" y="110" width="155" height="118" rx="16"/>
+  <text x="70" y="157" class="label">中文需求</text>
+  <text x="64" y="190" class="small">自然语言 prompt</text>
+
+  <path class="arrow" d="M 197 169 L 250 169"/>
+  <rect class="node-strong" x="250" y="96" width="210" height="146" rx="16"/>
+  <text x="281" y="146" class="label">语义 Agent</text>
+  <text x="277" y="181" class="small">Architect / Planner</text>
+  <text x="292" y="207" class="small">材料、风格、拓扑</text>
+
+  <path class="arrow" d="M 460 169 L 513 169"/>
+  <rect class="node" x="513" y="96" width="210" height="146" rx="16"/>
+  <text x="549" y="146" class="label">模板知识</text>
+  <text x="542" y="181" class="small">64 个 schematic</text>
+  <text x="540" y="207" class="small">设计法则与检索</text>
+
+  <path class="arrow" d="M 723 169 L 776 169"/>
+  <rect class="node-engine" x="776" y="96" width="210" height="146" rx="16"/>
+  <text x="821" y="146" class="label">几何引擎</text>
+  <text x="806" y="181" class="small">CSG / BSP / A*</text>
+  <text x="814" y="207" class="small">房间、门洞、楼梯</text>
+
+  <path class="arrow" d="M 881 242 L 881 292"/>
+  <rect class="node" x="736" y="292" width="290" height="92" rx="16"/>
+  <text x="775" y="330" class="label">Decorator / QA / Optimizer</text>
+  <text x="798" y="360" class="small">室内、修复、校验、命令压缩</text>
+
+  <path class="arrow" d="M 1026 338 L 1078 338"/>
+  <rect class="node-export" x="1078" y="292" width="72" height="92" rx="16"/>
+  <text x="1095" y="326" class="label" style="font-size:18px">数据包</text>
+  <text x="1095" y="356" class="small" style="font-size:13px">run.mcfunction</text>
+
+  <path class="arrow" d="M 355 242 C 355 308, 450 338, 736 338"/>
+  <text x="424" y="307" class="caption">LLM 输出只作为高层语义输入，不直接生成 XYZ 方块坐标</text>
+</svg>
