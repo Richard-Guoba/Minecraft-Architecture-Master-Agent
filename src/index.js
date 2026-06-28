@@ -17,7 +17,7 @@ const DATAPACK_TARGETS = {
 
 function parseArgs(argv) {
   const options = {
-    mode: 'auto',
+    mode: 'mock',
     mcVersion: process.env.MC_VERSION || '1.21',
     out: path.join(projectRoot, 'out'),
     seed: undefined,
@@ -121,11 +121,11 @@ Usage:
   npm start -- --list-worlds
 
 Options:
-  --mode mock|llm|auto       Use rule fallback, force LLM JSON, or auto-detect API config.
+  --mode mock|llm|auto       Use local mock mode, force your configured API, or auto-detect API config. Defaults to mock.
   --mc-version 1.21          Target Minecraft Java version. v1 exports 1.21 datapacks.
   --out <dir>                Output root directory. Defaults to ./out.
   --seed <number>            Deterministic design seed. Omit it to generate a random seed.
-  --candidates <n>           Generate n candidates and auto-select the best by template aesthetic review.
+  --candidates <n>           Generate n candidates and auto-select the strongest local result.
   --auto-select              Shortcut for --candidates 3.
   --candidate-rounds <n>     Run up to n reflection rounds. Defaults to 1.
   --candidate-target-score <n> Stop reflection rounds when the selected candidate reaches this score. Defaults to 95.
@@ -138,15 +138,15 @@ Options:
   --launch                   Open Minecraft or a launcher after generation with MINECRAFT_LAUNCH_COMMAND.
   --launch-command <command> Command used by --launch.
   --list-worlds              List detected local Minecraft save names.
-  --list-prompts             List curated template prompt ids.
-  --prompt-id <id>           Use a curated template prompt profile. Extra text after options is appended as user additions.
+  --list-prompts             List recommended prompt ids.
+  --prompt-id <id>           Use a recommended prompt profile. Extra text after options is appended as user additions.
 
-Workflow:
+  Workflow:
   ArchitectAgent -> PlannerAgent -> CSGBuilder -> BSPPartitioner -> AStarPathfinder.
   construction_method_v1 is the only active generation pipeline.
   Runtime: Node.js only. Python is not required.
-  Default LLM: Zhipu API via LLM_PROVIDER=zhipu.
-  Optional LLM: set LLM_PROVIDER=codex or LLM_PROVIDER=openai-compatible.
+  API: configure your own provider in .env and use --mode llm.
+  Mock: use --mode mock when no API key is available.
 `);
 }
 
@@ -243,7 +243,7 @@ async function main() {
 }
 
 function printCuratedPromptList() {
-  console.log('可用精选提示词：');
+  console.log('可用推荐提示词：');
   for (const item of listCuratedTemplatePrompts()) {
     console.log(`- ${item.id} | ${item.style}/${item.typology} | seed ${item.seed} | ${item.title}`);
   }

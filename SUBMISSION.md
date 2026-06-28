@@ -23,8 +23,7 @@ GitHub：https://github.com/CityC196/Minecraft-Constructing-Agents
 | 安装依赖 | `npm install` |
 | 运行测试 | `npm test` |
 | 规则兜底生成 | `npm start -- --mode mock "建一个欧式大房子"` |
-| 查看精选 prompt | `npm start -- --list-prompts` |
-| 模板语料分析 | `npm run analyze:templates -- --offline` |
+| 查看推荐 prompt | `npm start -- --list-prompts` |
 | 生成课程报告 | `python scripts/build_course_report.py` |
 | Minecraft 刷新数据包 | `/reload` |
 | Minecraft 一键建造 | `/function architect:run` |
@@ -44,7 +43,6 @@ GitHub：https://github.com/CityC196/Minecraft-Constructing-Agents
 - 本地几何层：CSGBuilder、BSPPartitioner、AStarPathfinder 负责坐标、房间、门洞和楼梯。
 - 材料与校验层：基于 Minecraft Java 1.21.1 方块目录校验材料合法性。
 - 装饰与质量层：InteriorDetailAgent、DecoratorAgent、QA、Repair、Optimizer 负责室内、修复、审计和命令压缩。
-- 模板学习层：解析 64 个本地 schematic，生成案例库、语义条款、设计法则、检索索引和候选择优机制。
 
 ## AI 辅助说明
 

@@ -33,7 +33,7 @@ import { detectDoorSide, detectFloors, detectScale } from './agents/architectAge
 
 export async function runConstructionWorkflow({
   prompt,
-  mode = 'auto',
+  mode = 'mock',
   mcVersion = '1.21',
   outputDir,
   seed,

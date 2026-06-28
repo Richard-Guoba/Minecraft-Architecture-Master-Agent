@@ -39,8 +39,8 @@ PAPER = {
         "Java 的建筑生成多智能体系统。系统将大语言模型限制在高层语义决策层，使其输出风格、"
         "体块、材料、房间拓扑和设计意图等 JSON；随后由本地确定性几何引擎完成 CSG 体块生成、"
         "BSP 房间划分、A* 连通路径、室内装饰、质量校验、自动修复和数据包导出。项目从最初的"
-        "单一建筑智能体逐步迭代为多智能体流水线，并进一步加入模板语料学习、设计法则蒸馏、"
-        "审美审计与候选择优机制。当前版本支持无 API key 的 mock 模式，可生成 blueprint.json、"
+        "单一建筑智能体逐步迭代为多智能体流水线，并逐步加入语义规划、本地几何、质量检查、"
+        "可视化预览和候选择优机制。当前版本支持无 API key 的 mock 模式，可生成 blueprint.json、"
         "architect_datapack、preview.html 和 run_report.md；全量测试结果为 176 项通过、0 项失败。"
     ),
     "keywords": "大语言模型智能体；Minecraft；多智能体系统；CSG；BSP；A*；数据包",
@@ -71,9 +71,8 @@ PAPER = {
                 "widths": [1.15, 2.1, 3.25],
                 "rows": [
                     ["语义层", "ArchitectAgent, PlannerAgent", "将中文需求转化为风格、材料、体块和房间拓扑 JSON"],
-                    ["知识层", "TemplateKnowledgeAgent", "从本地 schematic 案例中检索可迁移设计语法"],
                     ["几何层", "CSGBuilder, BSPPartitioner, AStarPathfinder", "生成外壳、房间、门洞、楼梯和可达路径"],
-                    ["质量层", "QA, Repair, Optimizer", "校验材料、连通性、模板法则覆盖和命令数量"],
+                    ["质量层", "QA, Repair, Optimizer", "校验材料、连通性、入口、装饰和命令数量"],
                     ["导出层", "Exporter", "输出 blueprint.json、mcfunction 和可安装 datapack"],
                 ],
             },
@@ -105,15 +104,15 @@ PAPER = {
                     ],
                 },
                 {
-                    "heading": "3.3 模板语料学习",
+                    "heading": "3.3 质量检查与可复现导出",
                     "paragraphs": [
-                        "项目后期加入 mc_templates 下的 64 个本地 schematic 模板。我们没有把模板用作方块级复制库，而是将其分析为可迁移的设计语法，包括场地入口、前景花园、体块轮廓、屋顶语言、立面深度和室内场景。",
-                        "如图 3 所示，模板知识会进入检索、生成、审计和修复闭环。系统记录 source_fusion_policy，要求多来源融合并控制单一来源占比，降低直接复制风险。"
+                        "在生成末端，系统不会直接信任任何单个智能体输出，而是把结构、材料、入口、房间可达性、装饰和命令数量放入统一检查。若发现缺入口、断路、非法方块或命令过多，Repair 与 Optimizer 会在导出前进行修复和压缩。",
+                        "如图 3 所示，质量闭环的目标是让一次中文 prompt 最终落到可复现的工程产物：同一个 seed 可以复现同一份 blueprint、预览页、运行报告和 Minecraft 数据包。"
                     ],
                     "figures": [
                         {
-                            "id": "template_quality_loop",
-                            "caption": "图 3 模板语料学习与质量闭环",
+                            "id": "quality_loop",
+                            "caption": "图 3 质量检查与可复现导出闭环",
                         }
                     ],
                 },
@@ -122,7 +121,7 @@ PAPER = {
         {
             "heading": "4 实现过程与构思迭代",
             "paragraphs": [
-                "项目的主要工作并不是一次性写出最终架构，而是在多轮实现中逐步修改问题定义。图 4 概括了 Git 历史中几个关键阶段：从初始 agent，到多智能体拆分、语义规划、本地几何、模板语料和质量闭环。",
+                "项目的主要工作并不是一次性写出最终架构，而是在多轮实现中逐步修改问题定义。图 4 概括了 Git 历史中几个关键阶段：从初始 agent，到多智能体拆分、语义规划、本地几何、质量检查和提交版本整理。",
                 "这些变化反映了项目构思的转向。最初我们关注“如何生成一个房子”，后来逐步意识到课程项目更需要展示智能体系统如何分工、如何约束大模型、如何把开放语义落地为可靠工程产物。"
             ],
             "figures": [
@@ -135,8 +134,8 @@ PAPER = {
         {
             "heading": "5 实验与结果",
             "paragraphs": [
-                "当前全量测试为 176 项通过、0 项失败，其中包括课程提交文档测试；原项目功能基线为 173 项通过、0 项失败。测试覆盖 Architect fallback、Planner、CSG、BSP、A*、Decorator、模板法则、候选择优、LLM provider、材料目录和可视化输出等模块。",
-                "本地样例 out/2026-06-19-145532212 使用 prompt“建造一个木屋别墅”。run_report.md 记录了 LLM 调用状态、seed、几何统计、装饰数量、模板法则覆盖、QA 状态和 Minecraft 使用步骤。该样例说明系统并非只生成文本，而是在输出前经过结构、材料、连通和命令层面的检查。",
+                "当前全量测试为 176 项通过、0 项失败，其中包括课程提交文档测试；原项目功能基线为 173 项通过、0 项失败。测试覆盖 Architect fallback、Planner、CSG、BSP、A*、Decorator、候选择优、LLM provider、材料目录和可视化输出等模块。",
+                "本地样例 out/2026-06-19-145532212 使用 prompt“建造一个木屋别墅”。run_report.md 记录了 LLM 调用状态、seed、几何统计、装饰数量、QA 状态和 Minecraft 使用步骤。该样例说明系统并非只生成文本，而是在输出前经过结构、材料、连通和命令层面的检查。",
                 "为便于后续补充真实截图，仓库另整理了 docs/recommended-prompts.md，其中包含带固定 prompt-id 的推荐样例和截图取景建议。"
             ],
             "table": {
@@ -149,22 +148,22 @@ PAPER = {
                     ["QA 检查", "9/9", "结构、材料、入口和装饰检查通过"],
                     ["装饰数量", "819", "由室内与风格装饰模块写入"],
                     ["命令压缩", "2692 -> 1251", "压缩倍率约 2.15x，降低数据包函数体积"],
-                    ["模板法则覆盖", "100%", "TemplateLawAutoRepairAgent 补强后达到 law-perfect"],
+                    ["建造入口", "/function architect:run", "数据包内置清理与建造函数"],
                 ],
             },
         },
         {
             "heading": "6 讨论",
             "paragraphs": [
-                "从课程要求看，项目的整体性体现在所有模块都围绕同一条主线协作：中文需求输入、智能体语义决策、本地几何落地、质量检查和数据包导出。项目的创新性主要体现在三点。第一，系统清晰区分 LLM 与程序算法的职责，避免让大模型直接处理坐标和命令。第二，模板语料被抽象为设计语法和审美法则，而不是简单复制。第三，项目保留 mock 兜底和自动化测试，使没有 token 或现场网络时仍能复现完整流程。",
-                "项目也存在局限。当前版本不是 Mineflayer 实时机器人，也不模拟玩家逐块放置；GDMC HTTP 客户端虽然保留，但主交付仍是数据包导出。自动审美评分可以发现法则覆盖问题，却不能完全替代玩家视角下的尺度、镜头、路径和 block readability 检查。后续可补充真实游戏截图、人工评分样本，以及更严格的视觉相似性和非复制检测。"
+                "从课程要求看，项目的整体性体现在所有模块都围绕同一条主线协作：中文需求输入、智能体语义决策、本地几何落地、质量检查和数据包导出。项目的创新性主要体现在三点。第一，系统清晰区分 LLM 与程序算法的职责，避免让大模型直接处理坐标和命令。第二，语义 JSON 与本地几何之间有清晰接口，便于单独测试和回退。第三，项目保留 mock 兜底和自动化测试，使没有 token 或现场网络时仍能复现完整流程。",
+                "项目也存在局限。当前版本不是 Mineflayer 实时机器人，也不模拟玩家逐块放置；GDMC HTTP 客户端虽然保留，但主交付仍是数据包导出。自动检查可以发现结构、材料和连通问题，却不能完全替代玩家视角下的尺度、镜头、路径和 block readability 检查。后续可补充真实游戏截图、人工评分样本，以及更严格的视觉检查。"
             ],
         },
         {
             "heading": "7 结论",
             "paragraphs": [
                 "Minecraft Constructing Agents 构建了一条从中文建筑需求到 Minecraft 可执行数据包的完整流水线。项目的核心经验是：在开放生成任务中，大语言模型更适合作为语义和设计决策者，而不是直接坐标生成器；本地几何算法、材料目录、连通性校验和命令优化可以为其提供稳定落地能力。",
-                "通过多智能体分工、CSG/BSP/A* 几何引擎、模板语料学习和质量闭环，项目将一个模糊的建房需求转化为可复现、可检查、可安装的工程产物。相比最终单次生成效果，项目更重要的贡献在于展示了一个课程级智能体系统如何从想法、失败尝试和架构调整中逐步形成。"
+                "通过多智能体分工、CSG/BSP/A* 几何引擎和质量闭环，项目将一个模糊的建房需求转化为可复现、可检查、可安装的工程产物。相比最终单次生成效果，项目更重要的贡献在于展示了一个课程级智能体系统如何从想法、失败尝试和架构调整中逐步形成。"
             ],
         },
         {
@@ -178,7 +177,6 @@ PAPER = {
             "references": [
                 "Minecraft-Constructing-Agents 项目仓库与 README，https://github.com/CityC196/Minecraft-Constructing-Agents。",
                 "本地样例运行报告：out/2026-06-19-145532212/run_report.md。",
-                "模板吸收与设计法则相关文档：docs/template-assimilation-plan.md。",
                 "课程提交展示页与提交清单：docs/index.html，SUBMISSION.md。",
                 "推荐 Prompt 库与截图建议：docs/recommended-prompts.md。"
             ],
@@ -353,20 +351,20 @@ def make_generation_pipeline():
     save_diagram(image, "generation_pipeline")
 
 
-def make_template_quality_loop():
+def make_quality_loop():
     image, draw = new_canvas()
     box_font = load_image_font(22, bold=True)
-    draw_title(draw, "模板语料学习与质量闭环", "把参考建筑转化为可迁移设计语法，而不是方块级复制")
+    draw_title(draw, "质量检查与导出闭环", "把一次生成结果变成可复现、可检查、可安装的数据包")
 
     boxes = [
-        ((90, 205, 350, 320), "64 个 schematic\n本地模板", "#F6F8FA"),
-        ((455, 205, 715, 320), "解析案例库\n空间 / 场地 / 立面", "#EAF3FF"),
-        ((820, 205, 1080, 320), "蒸馏设计法则\nsite / roof / interior", "#EAF3FF"),
-        ((1185, 205, 1445, 320), "按 prompt 检索\n多来源融合", "#EAF3FF"),
-        ((1185, 510, 1445, 625), "生成候选建筑\n语义 + 几何", "#EAF7EF"),
-        ((820, 510, 1080, 625), "审美审计\nlaw coverage", "#FFF4DF"),
-        ((455, 510, 715, 625), "自动修复\n补场地 / 屋顶 / 内饰", "#FFF4DF"),
-        ((90, 510, 350, 625), "候选择优\n输出 datapack", "#EAF7EF"),
+        ((90, 205, 350, 320), "语义 JSON\n风格 / 拓扑", "#EAF3FF"),
+        ((455, 205, 715, 320), "几何网格\n外壳 / 房间 / 路径", "#EAF7EF"),
+        ((820, 205, 1080, 320), "QA 检查\n材料 / 入口 / 连通", "#FFF4DF"),
+        ((1185, 205, 1445, 320), "Repair\n补洞 / 修路 / 清障", "#FFF4DF"),
+        ((1185, 510, 1445, 625), "Optimizer\n命令压缩", "#FFF4DF"),
+        ((820, 510, 1080, 625), "Exporter\nmcfunction", "#EAF7EF"),
+        ((455, 510, 715, 625), "datapack\n游戏内执行", "#EAF7EF"),
+        ((90, 510, 350, 625), "报告与预览\nrun_report / HTML", "#F6F8FA"),
     ]
     for box, text, fill in boxes:
         draw_round_box(draw, box, text, box_font, fill)
@@ -382,13 +380,13 @@ def make_template_quality_loop():
     draw_round_box(
         draw,
         (525, 705, 1275, 790),
-        "非复制控制：source_fusion_policy 控制单一来源占比，要求多个模板融合",
+        "可复现控制：prompt + seed + blueprint + datapack 一一对应，便于复查和提交",
         note_font,
         "#FFFFFF",
         outline="#B8C3CC",
         radius=16,
     )
-    save_diagram(image, "template_quality_loop")
+    save_diagram(image, "quality_loop")
 
 
 def make_iteration_timeline():
@@ -403,7 +401,7 @@ def make_iteration_timeline():
         (410, "6/02\n拆分蓝图生成\n子智能体"),
         (710, "6/09\n语义规划层\n多 Agent 架构"),
         (1010, "6/17\nconstruction_method_v1\n本地几何闭环"),
-        (1310, "6/18-19\n模板语料\n审计与修复"),
+        (1310, "6/18-19\n质量检查\n提交整理"),
     ]
     draw.line((125, y, 1500, y), fill="#345B7D", width=5)
     draw_arrow(draw, (1500, y), (1620, y), width=5)
@@ -429,7 +427,7 @@ def make_iteration_timeline():
 def generate_report_figures():
     make_overall_architecture()
     make_generation_pipeline()
-    make_template_quality_loop()
+    make_quality_loop()
     make_iteration_timeline()
 
 
@@ -605,7 +603,7 @@ def add_docx_table(doc, table_data):
 FIGURE_WIDTHS_IN = {
     "overall_architecture": 6.15,
     "generation_pipeline": 5.85,
-    "template_quality_loop": 6.15,
+    "quality_loop": 6.15,
     "iteration_timeline": 5.95,
 }
 
