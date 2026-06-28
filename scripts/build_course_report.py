@@ -6,6 +6,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
+from PIL import Image as PILImage
+from PIL import ImageDraw, ImageFont
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import letter
@@ -13,11 +15,13 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image as RLImage
+from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "course_submission"
+ASSET_DIR = OUT_DIR / "report_assets"
 DOCX_PATH = OUT_DIR / "Minecraft_Constructing_Agents_课程报告.docx"
 PDF_PATH = OUT_DIR / "Minecraft_Constructing_Agents_课程报告.pdf"
 GITHUB_URL = "https://github.com/CityC196/Minecraft-Constructing-Agents"
@@ -52,8 +56,14 @@ PAPER = {
         {
             "heading": "2 系统总体设计",
             "paragraphs": [
-                "系统采用“LLM 语义智能体与本地确定性几何引擎”相结合的混合架构。ArchitectAgent、PlannerAgent、CreativeDesignAgent 等模块只输出高层 JSON，描述风格、材料、体块、房间拓扑、立面节奏和场地语义。CSGBuilder、BSPPartitioner、AStarPathfinder 等本地模块再把语义描述转换为合法方块网格。Decorator、QA、Repair 和 Optimizer 模块负责室内落块、约束修复、质量检查与命令压缩。",
-                "这种边界划分保留了大语言模型在开放需求理解和风格构思上的优势，也避免让模型直接承担坐标计算、Minecraft 材料校验和命令体积控制等确定性任务。系统还保留 mock 模式，当外部模型不可用时仍可生成完整输出，便于课程评阅和复现实验。"
+                "系统采用“LLM 语义智能体与本地确定性几何引擎”相结合的混合架构，如图 1 所示。大模型主要负责开放需求理解、风格构思和高层 JSON 决策；本地程序负责坐标、材料、连通性、命令体积和数据包导出等确定性任务。",
+                "这种边界划分是项目最重要的构思修改：我们没有让模型直接写坐标，而是让它提出建筑意图，再由程序把意图变成可检查的 Minecraft 方块网格。"
+            ],
+            "figures": [
+                {
+                    "id": "overall_architecture",
+                    "caption": "图 1 系统总体架构：LLM 负责语义决策，本地程序负责几何落地与导出",
+                }
             ],
             "table": {
                 "caption": "表 1 系统层次与模块职责",
@@ -70,6 +80,15 @@ PAPER = {
         },
         {
             "heading": "3 方法",
+            "paragraphs": [
+                "图 2 展示了主流程。流程分为语义决策、确定性几何、质量闭环和数据包导出四段；每段都有明确输入输出，因此可以单独测试和回退。"
+            ],
+            "figures": [
+                {
+                    "id": "generation_pipeline",
+                    "caption": "图 2 从中文 prompt 到 Minecraft datapack 的主流程",
+                }
+            ],
             "subsections": [
                 {
                     "heading": "3.1 语义智能体分工",
@@ -88,8 +107,14 @@ PAPER = {
                 {
                     "heading": "3.3 模板语料学习",
                     "paragraphs": [
-                        "项目后期加入 mc_templates 下的 64 个本地 schematic 模板。我们没有把模板用作方块级复制库，而是将其分析为可迁移的设计语法，包括场地入口、前景花园、体块轮廓、屋顶语言、立面深度和室内场景。生成时，TemplateKnowledgeAgent 检索相关案例，CreativeDesignAgent 和 Site、Roof、Facade、Interior 模块再使用这些语法。",
-                        "为降低抄袭风险，系统记录 source_fusion_policy，要求多来源融合并控制单一来源占比。模板法则覆盖、审美审计和自动修复机制构成了后期质量闭环，使建筑不只满足“能生成”，还尝试拥有可解释的风格来源和设计一致性。"
+                        "项目后期加入 mc_templates 下的 64 个本地 schematic 模板。我们没有把模板用作方块级复制库，而是将其分析为可迁移的设计语法，包括场地入口、前景花园、体块轮廓、屋顶语言、立面深度和室内场景。",
+                        "如图 3 所示，模板知识会进入检索、生成、审计和修复闭环。系统记录 source_fusion_policy，要求多来源融合并控制单一来源占比，降低直接复制风险。"
+                    ],
+                    "figures": [
+                        {
+                            "id": "template_quality_loop",
+                            "caption": "图 3 模板语料学习与质量闭环",
+                        }
                     ],
                 },
             ],
@@ -97,8 +122,14 @@ PAPER = {
         {
             "heading": "4 实现过程与构思迭代",
             "paragraphs": [
-                "项目的主要工作并不是一次性写出最终架构，而是在多轮实现中逐步修改问题定义。2026 年 5 月 28 日的初始版本建立了 Minecraft architect agent，并加入自动安装世界与建造模式；6 月 2 日，蓝图生成被拆分为多个子智能体；6 月 9 日，项目加入语义规划层和多智能体建筑技能；6 月 17 日前后，construction_method_v1 基本成型；6 月 18 日至 19 日，模板语料、schematic 分析、设计法则、审美审计、自动修复和候选择优陆续接入主流程。",
-                "这些变化反映了项目构思的转向。最初我们关注“如何生成一个房子”，后来逐步意识到课程项目更需要展示智能体系统如何分工、如何约束大模型、如何把开放语义落地为可靠工程产物。因此，系统从 prompt 驱动的单点生成，转向多 Agent 分工、语义 JSON、本地几何、模板知识和质量闭环。"
+                "项目的主要工作并不是一次性写出最终架构，而是在多轮实现中逐步修改问题定义。图 4 概括了 Git 历史中几个关键阶段：从初始 agent，到多智能体拆分、语义规划、本地几何、模板语料和质量闭环。",
+                "这些变化反映了项目构思的转向。最初我们关注“如何生成一个房子”，后来逐步意识到课程项目更需要展示智能体系统如何分工、如何约束大模型、如何把开放语义落地为可靠工程产物。"
+            ],
+            "figures": [
+                {
+                    "id": "iteration_timeline",
+                    "caption": "图 4 项目构思与实现迭代路线",
+                }
             ],
         },
         {
@@ -152,6 +183,252 @@ PAPER = {
         },
     ],
 }
+
+
+def image_path(figure_id):
+    return ASSET_DIR / f"{figure_id}.png"
+
+
+def load_image_font(size, bold=False):
+    candidates = [
+        Path("C:/Windows/Fonts/msyhbd.ttc") if bold else Path("C:/Windows/Fonts/msyh.ttc"),
+        Path("C:/Windows/Fonts/simhei.ttf") if bold else Path("C:/Windows/Fonts/Deng.ttf"),
+        Path("C:/Windows/Fonts/simsun.ttc"),
+    ]
+    for path in candidates:
+        if path.exists():
+            return ImageFont.truetype(str(path), size=size)
+    return ImageFont.load_default()
+
+
+def text_size(draw, text, font):
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def wrap_text(draw, text, font, max_width):
+    lines = []
+    for raw_line in text.split("\n"):
+        current = ""
+        for char in raw_line:
+            candidate = current + char
+            if text_size(draw, candidate, font)[0] <= max_width or not current:
+                current = candidate
+            else:
+                lines.append(current)
+                current = char
+        if current:
+            lines.append(current)
+    return lines
+
+
+def draw_centered_text(draw, box, text, font, fill="#17212F", line_gap=8):
+    x1, y1, x2, y2 = box
+    lines = wrap_text(draw, text, font, x2 - x1 - 34)
+    heights = [text_size(draw, line, font)[1] for line in lines]
+    total = sum(heights) + line_gap * (len(lines) - 1)
+    y = y1 + (y2 - y1 - total) / 2
+    for line, height in zip(lines, heights):
+        width = text_size(draw, line, font)[0]
+        draw.text((x1 + (x2 - x1 - width) / 2, y), line, font=font, fill=fill)
+        y += height + line_gap
+
+
+def draw_round_box(draw, box, text, font, fill, outline="#8AA1B7", text_fill="#17212F", radius=18):
+    draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=2)
+    draw_centered_text(draw, box, text, font, fill=text_fill)
+
+
+def draw_arrow(draw, start, end, fill="#345B7D", width=4):
+    x1, y1 = start
+    x2, y2 = end
+    draw.line((x1, y1, x2, y2), fill=fill, width=width)
+    if abs(x2 - x1) >= abs(y2 - y1):
+        direction = 1 if x2 >= x1 else -1
+        head = [(x2, y2), (x2 - direction * 18, y2 - 10), (x2 - direction * 18, y2 + 10)]
+    else:
+        direction = 1 if y2 >= y1 else -1
+        head = [(x2, y2), (x2 - 10, y2 - direction * 18), (x2 + 10, y2 - direction * 18)]
+    draw.polygon(head, fill=fill)
+
+
+def new_canvas(width=1800, height=860):
+    image = PILImage.new("RGB", (width, height), "#FFFFFF")
+    draw = ImageDraw.Draw(image)
+    return image, draw
+
+
+def save_diagram(image, figure_id):
+    ASSET_DIR.mkdir(parents=True, exist_ok=True)
+    image.save(image_path(figure_id), "PNG")
+
+
+def draw_title(draw, title, subtitle=None):
+    title_font = load_image_font(36, bold=True)
+    sub_font = load_image_font(22)
+    draw.text((70, 46), title, font=title_font, fill="#17212F")
+    if subtitle:
+        draw.text((72, 96), subtitle, font=sub_font, fill="#566170")
+
+
+def make_overall_architecture():
+    image, draw = new_canvas()
+    title_font = load_image_font(30, bold=True)
+    box_font = load_image_font(24, bold=True)
+    note_font = load_image_font(20)
+    draw_title(draw, "总体架构", "让 LLM 做语义决策，让本地程序做可验证落地")
+
+    boxes = [
+        ((90, 230, 360, 390), "中文需求\n自然语言 prompt", "#F6F8FA"),
+        ((470, 185, 790, 435), "LLM 语义智能体\nArchitect / Planner\nCreativeDesign\n输出高层 JSON", "#EAF3FF"),
+        ((900, 185, 1220, 435), "本地几何引擎\nCSG / BSP / A*\n坐标、房间、路径", "#EAF7EF"),
+        ((1330, 185, 1650, 435), "质量与导出\nQA / Repair / Optimizer\nMinecraft datapack", "#FFF4DF"),
+    ]
+    for box, text, fill in boxes:
+        draw_round_box(draw, box, text, box_font, fill)
+    for start, end in [((360, 310), (470, 310)), ((790, 310), (900, 310)), ((1220, 310), (1330, 310))]:
+        draw_arrow(draw, start, end)
+
+    layers = [
+        ((470, 540, 790, 640), "开放语义：风格、体块、材料、拓扑", "#EAF3FF"),
+        ((900, 540, 1220, 640), "确定性约束：坐标、注册名、连通性", "#EAF7EF"),
+        ((1330, 540, 1650, 640), "可提交结果：blueprint + mcfunction + datapack", "#FFF4DF"),
+    ]
+    for box, text, fill in layers:
+        draw_round_box(draw, box, text, note_font, fill, outline="#B8C3CC", radius=14)
+    draw.text((90, 575), "核心边界", font=title_font, fill="#1F3A5F")
+    save_diagram(image, "overall_architecture")
+
+
+def make_generation_pipeline():
+    image, draw = new_canvas(height=980)
+    box_font = load_image_font(22, bold=True)
+    small_font = load_image_font(18)
+    draw_title(draw, "主生成流程", "每一步都有明确输入输出，便于测试、回退和复现")
+
+    top_y = 190
+    boxes = [
+        ((70, top_y, 260, top_y + 110), "用户 prompt", "#F6F8FA"),
+        ((330, top_y, 520, top_y + 110), "buildSpec\n尺寸与偏好", "#F6F8FA"),
+        ((590, top_y, 810, top_y + 110), "Architect\n外壳语义", "#EAF3FF"),
+        ((880, top_y, 1100, top_y + 110), "Planner\n房间拓扑", "#EAF3FF"),
+        ((1170, top_y, 1390, top_y + 110), "CreativeDesign\n体块/屋顶/场地", "#EAF3FF"),
+        ((1460, top_y, 1700, top_y + 110), "语义 JSON", "#EAF3FF"),
+    ]
+    for box, text, fill in boxes:
+        draw_round_box(draw, box, text, box_font, fill)
+    for idx in range(len(boxes) - 1):
+        draw_arrow(draw, (boxes[idx][0][2], top_y + 55), (boxes[idx + 1][0][0], top_y + 55))
+
+    mid_y = 460
+    boxes2 = [
+        ((160, mid_y, 430, mid_y + 120), "CSGBuilder\n外壳与屋顶", "#EAF7EF"),
+        ((535, mid_y, 805, mid_y + 120), "BSPPartitioner\n房间划分", "#EAF7EF"),
+        ((910, mid_y, 1180, mid_y + 120), "AStarPathfinder\n门洞与楼梯", "#EAF7EF"),
+        ((1285, mid_y, 1555, mid_y + 120), "Decorator\n家具与细节", "#EAF7EF"),
+    ]
+    for box, text, fill in boxes2:
+        draw_round_box(draw, box, text, box_font, fill)
+    draw_arrow(draw, (1580, top_y + 110), (295, mid_y))
+    for idx in range(len(boxes2) - 1):
+        draw_arrow(draw, (boxes2[idx][0][2], mid_y + 60), (boxes2[idx + 1][0][0], mid_y + 60))
+
+    bottom_y = 730
+    boxes3 = [
+        ((210, bottom_y, 500, bottom_y + 110), "QA / Repair\n材料与连通检查", "#FFF4DF"),
+        ((620, bottom_y, 910, bottom_y + 110), "Optimizer\n命令压缩", "#FFF4DF"),
+        ((1030, bottom_y, 1320, bottom_y + 110), "Exporter\nmcfunction", "#FFF4DF"),
+        ((1440, bottom_y, 1690, bottom_y + 110), "datapack\n游戏内执行", "#FFF4DF"),
+    ]
+    for box, text, fill in boxes3:
+        draw_round_box(draw, box, text, box_font, fill)
+    draw_arrow(draw, (1415, mid_y + 120), (355, bottom_y))
+    for idx in range(len(boxes3) - 1):
+        draw_arrow(draw, (boxes3[idx][0][2], bottom_y + 55), (boxes3[idx + 1][0][0], bottom_y + 55))
+
+    draw.text((72, 370), "LLM 层：只输出语义 JSON，不直接写坐标", font=small_font, fill="#315B8A")
+    draw.text((72, 645), "程序层：确定性生成坐标、房间、路径和命令", font=small_font, fill="#2E7D5B")
+    save_diagram(image, "generation_pipeline")
+
+
+def make_template_quality_loop():
+    image, draw = new_canvas()
+    box_font = load_image_font(22, bold=True)
+    draw_title(draw, "模板语料学习与质量闭环", "把参考建筑转化为可迁移设计语法，而不是方块级复制")
+
+    boxes = [
+        ((90, 205, 350, 320), "64 个 schematic\n本地模板", "#F6F8FA"),
+        ((455, 205, 715, 320), "解析案例库\n空间 / 场地 / 立面", "#EAF3FF"),
+        ((820, 205, 1080, 320), "蒸馏设计法则\nsite / roof / interior", "#EAF3FF"),
+        ((1185, 205, 1445, 320), "按 prompt 检索\n多来源融合", "#EAF3FF"),
+        ((1185, 510, 1445, 625), "生成候选建筑\n语义 + 几何", "#EAF7EF"),
+        ((820, 510, 1080, 625), "审美审计\nlaw coverage", "#FFF4DF"),
+        ((455, 510, 715, 625), "自动修复\n补场地 / 屋顶 / 内饰", "#FFF4DF"),
+        ((90, 510, 350, 625), "候选择优\n输出 datapack", "#EAF7EF"),
+    ]
+    for box, text, fill in boxes:
+        draw_round_box(draw, box, text, box_font, fill)
+    for idx in range(3):
+        draw_arrow(draw, (boxes[idx][0][2], 262), (boxes[idx + 1][0][0], 262))
+    draw_arrow(draw, (1315, 320), (1315, 510))
+    for idx in [4, 5, 6]:
+        draw_arrow(draw, (boxes[idx][0][0], 568), (boxes[idx + 1][0][2], 568))
+    draw_arrow(draw, (585, 510), (950, 320))
+    draw_arrow(draw, (950, 510), (1315, 320))
+
+    note_font = load_image_font(19)
+    draw_round_box(
+        draw,
+        (525, 705, 1275, 790),
+        "非复制控制：source_fusion_policy 控制单一来源占比，要求多个模板融合",
+        note_font,
+        "#FFFFFF",
+        outline="#B8C3CC",
+        radius=16,
+    )
+    save_diagram(image, "template_quality_loop")
+
+
+def make_iteration_timeline():
+    image, draw = new_canvas(height=760)
+    box_font = load_image_font(20, bold=True)
+    small_font = load_image_font(18)
+    draw_title(draw, "构思与实现迭代", "从“生成一栋房子”转向“可复现的智能体建筑流水线”")
+
+    y = 360
+    milestones = [
+        (110, "5/28\n初始 agent\n自动安装与建造"),
+        (410, "6/02\n拆分蓝图生成\n子智能体"),
+        (710, "6/09\n语义规划层\n多 Agent 架构"),
+        (1010, "6/17\nconstruction_method_v1\n本地几何闭环"),
+        (1310, "6/18-19\n模板语料\n审计与修复"),
+    ]
+    draw.line((125, y, 1500, y), fill="#345B7D", width=5)
+    draw_arrow(draw, (1500, y), (1620, y), width=5)
+    for x, label in milestones:
+        draw.ellipse((x - 16, y - 16, x + 16, y + 16), fill="#315B8A")
+        box = (x - 90, y - 175, x + 150, y - 45) if x % 600 != 410 else (x - 90, y + 45, x + 150, y + 175)
+        draw_round_box(draw, box, label, box_font, "#F6F8FA", outline="#9AA9B7", radius=16)
+        line_y = box[3] if box[1] < y else box[1]
+        draw.line((x, line_y, x, y - 18 if box[1] < y else y + 18), fill="#9AA9B7", width=3)
+
+    draw_round_box(
+        draw,
+        (390, 610, 1410, 700),
+        "核心修改：LLM 只给语义与设计意图；几何、校验、导出由本地确定性模块完成",
+        small_font,
+        "#EAF7EF",
+        outline="#8AA1B7",
+        radius=16,
+    )
+    save_diagram(image, "iteration_timeline")
+
+
+def generate_report_figures():
+    make_overall_architecture()
+    make_generation_pipeline()
+    make_template_quality_loop()
+    make_iteration_timeline()
 
 
 def set_rfonts(run, ascii_name="Times New Roman", east_asia="SimSun"):
@@ -323,6 +600,24 @@ def add_docx_table(doc, table_data):
     doc.add_paragraph()
 
 
+def add_docx_figures(doc, figures):
+    for figure in figures:
+        para = doc.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        para.paragraph_format.first_line_indent = Pt(0)
+        run = para.add_run()
+        run.add_picture(str(image_path(figure["id"])), width=Inches(6.3))
+        para.paragraph_format.space_after = Pt(2)
+
+        caption = doc.add_paragraph()
+        caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        caption.paragraph_format.first_line_indent = Pt(0)
+        caption.paragraph_format.space_before = Pt(0)
+        caption.paragraph_format.space_after = Pt(8)
+        run = caption.add_run(figure["caption"])
+        set_run_font(run, size=10.5, bold=True, east_asia="SimSun")
+
+
 def build_docx():
     doc = Document()
     style_document(doc)
@@ -352,10 +647,14 @@ def build_docx():
         doc.add_heading(section["heading"], level=1)
         for paragraph in section.get("paragraphs", []):
             add_para(doc, paragraph)
+        if section.get("figures"):
+            add_docx_figures(doc, section["figures"])
         for subsection in section.get("subsections", []):
             doc.add_heading(subsection["heading"], level=2)
             for paragraph in subsection["paragraphs"]:
                 add_para(doc, paragraph)
+            if subsection.get("figures"):
+                add_docx_figures(doc, subsection["figures"])
         if section.get("table"):
             add_docx_table(doc, section["table"])
         if section.get("references"):
@@ -537,6 +836,23 @@ def add_pdf_table(story, table_data, styles):
     story.append(Spacer(1, 8))
 
 
+def add_pdf_figures(story, figures, styles):
+    for figure in figures:
+        path = image_path(figure["id"])
+        with PILImage.open(path) as image:
+            aspect = image.height / image.width
+        width = 6.5 * inch
+        story.append(
+            KeepTogether(
+                [
+                    RLImage(str(path), width=width, height=width * aspect),
+                    P(figure["caption"], styles["caption"]),
+                    Spacer(1, 8),
+                ]
+            )
+        )
+
+
 def footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("CNSong", 8)
@@ -572,10 +888,14 @@ def build_pdf():
         story.append(P(section["heading"], styles["h1"]))
         for paragraph in section.get("paragraphs", []):
             story.append(P(paragraph, styles["body"]))
+        if section.get("figures"):
+            add_pdf_figures(story, section["figures"], styles)
         for subsection in section.get("subsections", []):
             story.append(P(subsection["heading"], styles["h2"]))
             for paragraph in subsection["paragraphs"]:
                 story.append(P(paragraph, styles["body"]))
+            if subsection.get("figures"):
+                add_pdf_figures(story, subsection["figures"], styles)
         if section.get("table"):
             add_pdf_table(story, section["table"], styles)
         if section.get("references"):
@@ -587,6 +907,7 @@ def build_pdf():
 
 
 def main():
+    generate_report_figures()
     build_docx()
     build_pdf()
     print(f"DOCX: {DOCX_PATH}")
