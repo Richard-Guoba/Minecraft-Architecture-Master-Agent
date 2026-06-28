@@ -11,7 +11,7 @@ const DEFAULT_CANDIDATE_TARGET_SCORE = 95;
 
 export async function runPipeline({
   prompt,
-  mode = 'auto',
+  mode = 'mock',
   mcVersion = '1.21',
   outRoot,
   seed,
@@ -77,7 +77,7 @@ export async function runPipeline({
 
 export async function runCandidatePipeline({
   prompt,
-  mode = 'auto',
+  mode = 'mock',
   mcVersion = '1.21',
   outRoot,
   seed,

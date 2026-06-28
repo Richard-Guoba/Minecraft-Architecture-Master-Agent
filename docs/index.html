@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Minecraft Constructing Agents - 课程项目展示</title>
+    <link rel="stylesheet" href="assets/course-showcase.css?v=20260627">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">Minecraft Constructing Agents</div>
+      <nav class="nav" aria-label="页面导航">
+        <a href="#architecture">架构</a>
+        <a href="#results">结果</a>
+        <a href="#iteration">迭代</a>
+        <a href="#reproduce">复现</a>
+        <a href="../SUBMISSION.md">提交清单</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero__content">
+          <p class="eyebrow">《大语言模型与信息决策》课程项目</p>
+          <h1>从中文建房需求到 Minecraft 可执行数据包</h1>
+          <p class="lead">本项目构建了一套 LLM 语义智能体 + 本地确定性几何引擎的建筑生成流水线。LLM 不直接输出坐标，而是生成高层 JSON；坐标、房间、门洞、楼梯、装饰和命令由本地程序生成并校验。</p>
+          <div class="button-row">
+            <a class="button primary" href="https://github.com/CityC196/Minecraft-Constructing-Agents">GitHub 仓库</a>
+            <a class="button" href="../README.md">README</a>
+            <a class="button" href="../SUBMISSION.md">提交清单</a>
+          </div>
+          <pre class="code-block">npm start -- --mode mock "建一个欧式大房子"</pre>
+        </div>
+        <div class="hero__visual">
+          <img src="assets/architecture-flow.svg" alt="从中文需求到 Minecraft 数据包的混合式多智能体架构图">
+        </div>
+      </section>
+
+      <section id="architecture" class="section">
+        <h2>系统架构</h2>
+        <p class="section-intro">项目没有把 prompt 直接翻译成 Minecraft 方块坐标，而是把不稳定的语言理解限制在语义层，再用确定性程序完成几何、连通和命令导出。这是项目最核心的设计取舍。</p>
+        <div class="grid">
+          <div class="artifact-frame">
+            <h3>LLM 负责什么</h3>
+            <ul class="compact-list">
+              <li>ArchitectAgent 生成风格、材料、体块和外壳规则。</li>
+              <li>PlannerAgent 生成房间拓扑、楼层功能和连通关系。</li>
+              <li>CreativeDesignAgent 选择体块变化、屋顶语言和场地策略。</li>
+            </ul>
+          </div>
+          <div class="artifact-frame">
+            <h3>本地程序负责什么</h3>
+            <ul class="compact-list">
+              <li>CSGBuilder 生成空心外壳和体块网格。</li>
+              <li>BSPPartitioner 切分室内房间。</li>
+              <li>AStarPathfinder 打通门洞和楼梯。</li>
+              <li>Decorator、QA、Optimizer 写入装饰、校验方块并压缩命令。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="results" class="section">
+        <h2>当前结果</h2>
+        <p class="section-intro">这些结果来自仓库现有测试与 Minecraft 游戏内真实截图。A-D 对应四个中文 prompt；每组 1、2 为外景，3 为内饰。</p>
+        <div class="metric-grid">
+          <div class="metric-card">
+            <strong>176 passed</strong>
+            <span>当前全量测试全部通过，0 failed；原项目基线为 173 passed。</span>
+          </div>
+          <div class="metric-card">
+            <strong>mock</strong>
+            <span>无 API key 也能完整生成可复现结果。</span>
+          </div>
+          <div class="metric-card">
+            <strong>1060</strong>
+            <span>Minecraft Java 1.21.1 方块目录校验规模。</span>
+          </div>
+          <div class="metric-card">
+            <strong>datapack</strong>
+            <span>输出可安装到世界的 <code>architect_datapack</code>。</span>
+          </div>
+        </div>
+        <div class="grid" style="margin-top: 24px;">
+          <div class="artifact-frame">
+            <h3>样例输出目录</h3>
+            <pre class="code-block">out/2026-06-19-145532212/
+├── blueprint.json
+├── architect_datapack/
+├── raw_build.mcfunction
+├── preview.html
+└── run_report.md</pre>
+          </div>
+          <div class="artifact-frame">
+            <h3>截图说明</h3>
+            <p>A：现代两层家庭别墅。B：日式一层庭院住宅。C：欧式三层大别墅。D：海滨架空度假住宅。</p>
+            <p>所有截图均来自 Minecraft 内执行 `/function architect:run` 后的结果。</p>
+          </div>
+        </div>
+        <div class="shot-gallery" aria-label="Minecraft 真实运行截图">
+          <figure class="shot-card"><img src="assets/run-screenshots/A1.jpg" alt="A1 现代两层家庭别墅外景"><figcaption>A1 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/A2.jpg" alt="A2 现代两层家庭别墅外景"><figcaption>A2 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/A3.jpg" alt="A3 现代两层家庭别墅内饰"><figcaption>A3 内饰</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/B1.jpg" alt="B1 日式一层庭院住宅外景"><figcaption>B1 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/B2.jpg" alt="B2 日式一层庭院住宅外景"><figcaption>B2 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/B3.jpg" alt="B3 日式一层庭院住宅内饰"><figcaption>B3 内饰</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/C1.jpg" alt="C1 欧式三层大别墅外景"><figcaption>C1 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/C2.jpg" alt="C2 欧式三层大别墅外景"><figcaption>C2 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/C3.jpg" alt="C3 欧式三层大别墅内饰"><figcaption>C3 内饰</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/D1.jpg" alt="D1 海滨架空度假住宅外景"><figcaption>D1 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/D2.jpg" alt="D2 海滨架空度假住宅外景"><figcaption>D2 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/D3.jpg" alt="D3 海滨架空度假住宅内饰"><figcaption>D3 内饰</figcaption></figure>
+        </div>
+      </section>
+
+      <section id="iteration" class="section">
+        <h2>构思修改与项目迭代</h2>
+        <p class="section-intro">报告会重点呈现这些阶段：项目不是一次成型，而是在“生成是否稳定、是否可复现、是否有建筑语法、是否能评估质量”的问题中逐步收束。</p>
+        <div class="timeline">
+          <div class="timeline-item">
+            <time>2026-05-28</time>
+            <div><strong>初始 Minecraft architect agent。</strong> 建立从需求到建筑输出的最小闭环，并加入自动安装世界与建造模式。</div>
+          </div>
+          <div class="timeline-item">
+            <time>2026-06-02</time>
+            <div><strong>拆分蓝图生成子 Agent。</strong> 从单体逻辑转为更清晰的多 Agent 协作结构。</div>
+          </div>
+          <div class="timeline-item">
+            <time>2026-06-09</time>
+            <div><strong>引入语义规划层。</strong> 将 LLM 输出控制在 JSON 语义层，避免直接生成 Minecraft 坐标。</div>
+          </div>
+          <div class="timeline-item">
+            <time>2026-06-17</time>
+            <div><strong>完成 construction_method_v1 主流程。</strong> 加入 CSG、BSP、A*、材料校验、室内装饰、QA 和命令压缩。</div>
+          </div>
+          <div class="timeline-item">
+            <time>2026-06-18</time>
+            <div><strong>补强质量检查。</strong> 加入结构、材料、入口、房间可达性和命令体积检查。</div>
+          </div>
+          <div class="timeline-item">
+            <time>2026-06-19</time>
+            <div><strong>整理提交版本。</strong> 固化 mock 复现路径、展示页、报告和真实截图展示。</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="reproduce" class="section">
+        <h2>复现方式</h2>
+        <p class="section-intro">默认 mock 模式不需要 API key，便于课程评阅时快速复现完整输出。</p>
+        <div class="grid">
+          <div class="artifact-frame">
+            <h3>本地运行</h3>
+            <pre class="code-block">npm install
+npm test
+npm start -- --mode mock "建一个欧式大房子"</pre>
+          </div>
+          <div class="artifact-frame">
+            <h3>Minecraft 中建造</h3>
+            <pre class="code-block">复制 out/&lt;timestamp&gt;/architect_datapack 到世界 datapacks
+/reload
+/function architect:run</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>边界与诚实说明</h2>
+        <div class="grid">
+          <div class="note">
+            当前版本不是 Mineflayer 实时连服机器人，也不模拟玩家逐块放置；主交付是可复现的数据包生成流水线。
+          </div>
+          <div class="note">
+            AI 辅助用于代码建议、文档初稿整理和报告润色；项目方向、系统取舍、运行调试、结果确认与最终整合由小组完成。
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>成员：龙想 2300011196；石宇宸 2300011051。</span>
+      <span> GitHub: CityC196/Minecraft-Constructing-Agents。</span>
+    </footer>
+  </body>
+</html>
