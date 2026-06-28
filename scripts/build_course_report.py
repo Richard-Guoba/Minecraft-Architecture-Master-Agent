@@ -25,6 +25,31 @@ ASSET_DIR = OUT_DIR / "report_assets"
 DOCX_PATH = OUT_DIR / "Minecraft_Constructing_Agents_课程报告.docx"
 PDF_PATH = OUT_DIR / "Minecraft_Constructing_Agents_课程报告.pdf"
 GITHUB_URL = "https://github.com/CityC196/Minecraft-Constructing-Agents"
+SCREENSHOT_DIR = ROOT / "docs" / "assets" / "run-screenshots"
+
+
+SCREENSHOT_CASES = [
+    {
+        "id": "A",
+        "title": "现代两层家庭别墅",
+        "prompt": "建一个现代两层家庭别墅，宽31深21，大玻璃窗，入口门厅，开放厨房，客厅，餐厅，三间卧室，书房，阳光房和彩色内饰，要有地毯、彩烛、盆栽、展示柜和清晰空间层次。",
+    },
+    {
+        "id": "B",
+        "title": "日式一层庭院住宅",
+        "prompt": "建一个日式一层庭院住宅，宽29深23，木格栅，玄关，客厅，茶室，榻榻米卧室，小厨房，卫生间和枯山水庭院，要求内饰温暖缤纷，有灯笼、竹制家具、盆景和彩色地毯。",
+    },
+    {
+        "id": "C",
+        "title": "欧式三层大别墅",
+        "prompt": "建一个欧式三层大别墅，宽39深29，对称侧翼，门廊，车库，客厅，餐厅，厨房，书房，四间卧室，阳台和卫生间，内饰豪华缤纷，有彩色地毯、旗帜、彩烛、盆栽和展示柜。",
+    },
+    {
+        "id": "D",
+        "title": "海滨架空度假住宅",
+        "prompt": "建一个海滨架空度假住宅，宽33深21，抗风，抬高防潮，大露台，大玻璃客厅，厨房，餐厅，主卧，客房和书房，要求蓝白明亮内饰、户外座椅、信箱、无障碍坡道和遮雨平台。",
+    },
+]
 
 
 PAPER = {
@@ -136,7 +161,7 @@ PAPER = {
             "paragraphs": [
                 "当前全量测试为 176 项通过、0 项失败，其中包括课程提交文档测试；原项目功能基线为 173 项通过、0 项失败。测试覆盖 Architect fallback、Planner、CSG、BSP、A*、Decorator、候选择优、LLM provider、材料目录和可视化输出等模块。",
                 "本地样例 out/2026-06-19-145532212 使用 prompt“建造一个木屋别墅”。run_report.md 记录了 LLM 调用状态、seed、几何统计、装饰数量、QA 状态和 Minecraft 使用步骤。该样例说明系统并非只生成文本，而是在输出前经过结构、材料、连通和命令层面的检查。",
-                "为便于后续补充真实截图，仓库另整理了 docs/recommended-prompts.md，其中包含带固定 prompt-id 的推荐样例和截图取景建议。"
+                "为展示实际运行效果，我们补充了四组 Minecraft 游戏内截图。A-D 分别对应现代两层家庭别墅、日式一层庭院住宅、欧式三层大别墅和海滨架空度假住宅；每组 1、2 为外景，3 为内饰。"
             ],
             "table": {
                 "caption": "表 2 本地样例运行结果",
@@ -151,6 +176,16 @@ PAPER = {
                     ["建造入口", "/function architect:run", "数据包内置清理与建造函数"],
                 ],
             },
+            "figures_after_table": [
+                {
+                    "id": "run_exterior_grid",
+                    "caption": "图 5 四个 prompt 的外景运行截图（A-D，每组两张外景）",
+                },
+                {
+                    "id": "run_interior_grid",
+                    "caption": "图 6 四个 prompt 的室内运行截图（A-D，每组一张内饰）",
+                },
+            ],
         },
         {
             "heading": "6 讨论",
@@ -261,6 +296,66 @@ def new_canvas(width=1800, height=860):
 def save_diagram(image, figure_id):
     ASSET_DIR.mkdir(parents=True, exist_ok=True)
     image.save(image_path(figure_id), "PNG")
+
+
+def cover_resize(image, size):
+    target_w, target_h = size
+    source_w, source_h = image.size
+    scale = max(target_w / source_w, target_h / source_h)
+    resized = image.resize((round(source_w * scale), round(source_h * scale)), PILImage.Resampling.LANCZOS)
+    left = (resized.width - target_w) // 2
+    top = (resized.height - target_h) // 2
+    return resized.crop((left, top, left + target_w, top + target_h))
+
+
+def draw_screenshot_card(canvas, draw, screenshot, box, label, label_font, label_fill="#17212F"):
+    x1, y1, x2, y2 = box
+    label_h = 46
+    draw.rounded_rectangle((x1, y1, x2, y2), radius=12, fill="#FFFFFF", outline="#B8C3CC", width=2)
+    image_x1 = x1 + 12
+    image_y1 = y1 + 12
+    image_x2 = image_x1 + screenshot.width
+    image_y2 = image_y1 + screenshot.height
+    canvas.paste(screenshot, (image_x1, image_y1))
+    draw.rectangle((image_x1, image_y1, image_x2, image_y2), outline="#B8C3CC", width=1)
+    draw.text((x1 + 16, y2 - 34), label, font=label_font, fill=label_fill)
+
+
+def make_screenshot_grid(figure_id, image_items, title, subtitle, columns=2):
+    thumb_size = (760, 475)
+    card_w = thumb_size[0] + 24
+    card_h = thumb_size[1] + 68
+    gap_x = 34
+    gap_y = 28
+    margin_x = 70
+    top = 145
+    rows = (len(image_items) + columns - 1) // columns
+    width = margin_x * 2 + columns * card_w + (columns - 1) * gap_x
+    height = top + rows * card_h + (rows - 1) * gap_y + 60
+    image, draw = new_canvas(width=width, height=height)
+    title_font = load_image_font(34, bold=True)
+    sub_font = load_image_font(20)
+    label_font = load_image_font(20, bold=True)
+    draw.text((70, 46), title, font=title_font, fill="#17212F")
+    draw.text((72, 94), subtitle, font=sub_font, fill="#566170")
+
+    for idx, item in enumerate(image_items):
+        row = idx // columns
+        col = idx % columns
+        x1 = margin_x + col * (card_w + gap_x)
+        y1 = top + row * (card_h + gap_y)
+        src = SCREENSHOT_DIR / f"{item['image']}.jpg"
+        with PILImage.open(src) as screenshot:
+            screenshot = cover_resize(screenshot.convert("RGB"), thumb_size)
+        draw_screenshot_card(
+            image,
+            draw,
+            screenshot,
+            (x1, y1, x1 + card_w, y1 + card_h),
+            item["label"],
+            label_font,
+        )
+    save_diagram(image, figure_id)
 
 
 def draw_title(draw, title, subtitle=None):
@@ -424,11 +519,35 @@ def make_iteration_timeline():
     save_diagram(image, "iteration_timeline")
 
 
+def make_run_screenshot_collages():
+    exterior_items = []
+    interior_items = []
+    for case in SCREENSHOT_CASES:
+        exterior_items.append({"image": f"{case['id']}1", "label": f"{case['id']}1 外景：{case['title']}"})
+        exterior_items.append({"image": f"{case['id']}2", "label": f"{case['id']}2 外景：{case['title']}"})
+        interior_items.append({"image": f"{case['id']}3", "label": f"{case['id']}3 内饰：{case['title']}"})
+    make_screenshot_grid(
+        "run_exterior_grid",
+        exterior_items,
+        "真实运行截图：外景",
+        "A-D 对应四个中文 prompt，每组 1/2 为外景截图",
+        columns=2,
+    )
+    make_screenshot_grid(
+        "run_interior_grid",
+        interior_items,
+        "真实运行截图：内饰",
+        "A-D 对应四个中文 prompt，每组 3 为室内截图",
+        columns=2,
+    )
+
+
 def generate_report_figures():
     make_overall_architecture()
     make_generation_pipeline()
     make_quality_loop()
     make_iteration_timeline()
+    make_run_screenshot_collages()
 
 
 def set_rfonts(run, ascii_name="Times New Roman", east_asia="SimSun"):
@@ -605,6 +724,8 @@ FIGURE_WIDTHS_IN = {
     "generation_pipeline": 5.85,
     "quality_loop": 6.15,
     "iteration_timeline": 5.95,
+    "run_exterior_grid": 5.9,
+    "run_interior_grid": 6.1,
 }
 
 
@@ -665,6 +786,8 @@ def build_docx():
                 add_docx_figures(doc, subsection["figures"])
         if section.get("table"):
             add_docx_table(doc, section["table"])
+        if section.get("figures_after_table"):
+            add_docx_figures(doc, section["figures_after_table"])
         if section.get("references"):
             for idx, item in enumerate(section["references"], start=1):
                 para = doc.add_paragraph()
@@ -910,6 +1033,8 @@ def build_pdf():
                 add_pdf_figures(story, subsection["figures"], styles)
         if section.get("table"):
             add_pdf_table(story, section["table"], styles)
+        if section.get("figures_after_table"):
+            add_pdf_figures(story, section["figures_after_table"], styles)
         if section.get("references"):
             for idx, item in enumerate(section["references"], start=1):
                 story.append(P(f"[{idx}] {item}", styles["ref"]))

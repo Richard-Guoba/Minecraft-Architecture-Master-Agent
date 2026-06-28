@@ -64,7 +64,7 @@
    - 图示从中文 prompt 到 datapack 的数据流。
 5. 几何与 Minecraft 导出
    - CSG、BSP、A*、方块目录校验、命令压缩、数据包结构。
-6. 模板语料学习与审美闭环
+6. 设计规则与审美闭环
    - 64 个本地 schematic 模板。
    - 案例库、语义条款、设计法则、检索索引、候选择优。
    - 强调模板作为设计语法，不做 1:1 复制。
@@ -75,12 +75,12 @@
      - 拆分蓝图生成子 Agent。
      - 引入语义规划层和多 Agent 架构。
      - 改造为 construction_method_v1：LLM JSON + 本地几何。
-     - 加入模板语料、设计法则、审美审计、自动修复和候选择优。
+     - 加入设计法则、审美审计、自动修复和候选择优。
    - 突出每次修改背后的问题和取舍。
 8. 实验与运行结果
-   - 现有测试：`npm test`，173 项通过。
+   - 现有测试：`npm test`，176 项通过。
    - 展示一到两个本地输出目录中的 `run_report.md`、`preview.html`、`blueprint.json`、datapack。
-   - 真实截图如未准备好，则保留“运行结果截图补充位”，并给出补图说明。
+   - 展示四组 Minecraft 游戏内截图：A-D 每组两张外景、一张内饰。
 9. 项目边界与不足
    - 不是 Mineflayer 实时机器人。
    - 当前以 datapack 导出为主，不自动下载 Minecraft。
@@ -129,15 +129,11 @@ README 已经比较完整，后续只做克制增强：
 - `out/2026-06-19-145532212/run_report.md`
 - `out/2026-06-19-145532212/preview.html`
 - `out/2026-06-19-145532212/blueprint.json`
-- `docs/template-assimilation-plan.md`
-- `docs/template-review-notes.md`
 - git 历史和测试输出
 
-需要用户后续可补充的材料：
+已补充材料：
 
-- Minecraft 游戏内最终建筑截图。
-- `preview.html` 浏览器截图。
-- 数据包运行后 `/function architect:run` 的现场截图。
+- 四组 prompt 的 Minecraft 游戏内最终建筑截图，每组两张外景、一张内饰。
 
 占位原则：
 

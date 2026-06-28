@@ -212,7 +212,7 @@ async function main() {
   console.log(`工作流: ${result.workflow}`);
   console.log(`Seed: ${result.seed} (${result.seedSource === 'random' ? '自动随机' : '手动指定'})`);
   if (resolvedPromptProfile) {
-    console.log(`精选提示词: ${resolvedPromptProfile.id} (${resolvedPromptProfile.title})`);
+    console.log(`推荐提示词: ${resolvedPromptProfile.id} (${resolvedPromptProfile.title})`);
   }
   console.log(`LLM通道: ${result.llmProvider}`);
   console.log(`LLM调用: ${formatLlmUsage(result.llmUsage)}`);

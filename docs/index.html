@@ -62,7 +62,7 @@
 
       <section id="results" class="section">
         <h2>当前结果</h2>
-        <p class="section-intro">这些结果来自仓库现有测试与本地运行输出，不伪造 Minecraft 现场截图。缺少的游戏内图片保留为真实截图补充位，便于后续直接替换。</p>
+        <p class="section-intro">这些结果来自仓库现有测试与 Minecraft 游戏内真实截图。A-D 对应四个中文 prompt；每组 1、2 为外景，3 为内饰。</p>
         <div class="metric-grid">
           <div class="metric-card">
             <strong>176 passed</strong>
@@ -91,12 +91,25 @@
 ├── preview.html
 └── run_report.md</pre>
           </div>
-          <div class="placeholder-shot">
-            <div>
-              <strong>真实截图补充位</strong>
-              <span>此处可补充 `preview.html` 浏览器截图，或 Minecraft 内执行 `/function architect:run` 后的游戏内截图。</span>
-            </div>
+          <div class="artifact-frame">
+            <h3>截图说明</h3>
+            <p>A：现代两层家庭别墅。B：日式一层庭院住宅。C：欧式三层大别墅。D：海滨架空度假住宅。</p>
+            <p>所有截图均来自 Minecraft 内执行 `/function architect:run` 后的结果。</p>
           </div>
+        </div>
+        <div class="shot-gallery" aria-label="Minecraft 真实运行截图">
+          <figure class="shot-card"><img src="assets/run-screenshots/A1.jpg" alt="A1 现代两层家庭别墅外景"><figcaption>A1 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/A2.jpg" alt="A2 现代两层家庭别墅外景"><figcaption>A2 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/A3.jpg" alt="A3 现代两层家庭别墅内饰"><figcaption>A3 内饰</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/B1.jpg" alt="B1 日式一层庭院住宅外景"><figcaption>B1 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/B2.jpg" alt="B2 日式一层庭院住宅外景"><figcaption>B2 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/B3.jpg" alt="B3 日式一层庭院住宅内饰"><figcaption>B3 内饰</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/C1.jpg" alt="C1 欧式三层大别墅外景"><figcaption>C1 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/C2.jpg" alt="C2 欧式三层大别墅外景"><figcaption>C2 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/C3.jpg" alt="C3 欧式三层大别墅内饰"><figcaption>C3 内饰</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/D1.jpg" alt="D1 海滨架空度假住宅外景"><figcaption>D1 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/D2.jpg" alt="D2 海滨架空度假住宅外景"><figcaption>D2 外景</figcaption></figure>
+          <figure class="shot-card"><img src="assets/run-screenshots/D3.jpg" alt="D3 海滨架空度假住宅内饰"><figcaption>D3 内饰</figcaption></figure>
         </div>
       </section>
 
@@ -126,7 +139,7 @@
           </div>
           <div class="timeline-item">
             <time>2026-06-19</time>
-            <div><strong>整理提交版本。</strong> 固化 mock 复现路径、展示页、报告和真实截图补充位。</div>
+            <div><strong>整理提交版本。</strong> 固化 mock 复现路径、展示页、报告和真实截图展示。</div>
           </div>
         </div>
       </section>

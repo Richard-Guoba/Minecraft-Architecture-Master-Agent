@@ -583,7 +583,7 @@ function promptAddendum(directives = []) {
 function recommendationForDimension(id, missing = []) {
   const note = missing.length ? `缺口：${missing.slice(0, 3).join('、')}` : '缺口较小，继续保持。';
   return {
-    'template-knowledge': `${note} 优先补充同风格、同场地和有完整室内的高质量模板。`,
+    'template-knowledge': `${note} 优先补充同风格、同场地和有完整室内的设计规则。`,
     'whole-composition': `${note} 下一轮要让体块、立面、屋顶、场地共享同一构图语法。`,
     'space-plan': `${note} 强化从前景到入口再到观景核心的空间顺序。`,
     'view-openings': `${note} 增加观景窗、平台门和面景家具之间的关系。`,

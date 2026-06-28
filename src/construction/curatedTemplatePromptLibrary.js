@@ -257,7 +257,7 @@ export function resolveCuratedTemplatePrompt(id, extraPrompt = '') {
   const profile = findCuratedTemplatePrompt(id);
   if (!profile) {
     const ids = CURATED_TEMPLATE_PROMPT_LIBRARY.map((item) => item.id).join(', ');
-    throw new Error(`未知精选提示词: ${id}。可用提示词: ${ids}`);
+    throw new Error(`未知推荐提示词: ${id}。可用提示词: ${ids}`);
   }
   return {
     profile,
