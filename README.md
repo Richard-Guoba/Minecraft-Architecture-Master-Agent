@@ -11,24 +11,31 @@
 - 推荐 prompt：`docs/recommended-prompts.md`
 - 课程报告：`course_submission/Minecraft_Constructing_Agents_课程报告.pdf`
 
-## 快速运行
+## 指令说明
 
 ```powershell
 npm install
-npm start -- --mode mock "建一个欧式大房子"
 ```
 
-使用推荐 prompt：
+最完整的一条运行指令：
 
 ```powershell
-npm start -- --mode mock --prompt-id modern-waterfront-villa-reference
-npm start -- --list-prompts
+npm start -- --mode llm --datapacks-dir "D:\path\to\world\datapacks" "prompt"
 ```
 
-## API 或 Mock
+各部分含义：
 
-没有 API key 就直接用 `--mode mock`，不会调用外部模型。
-想用自己的 API，就复制 `.env.example` 为 `.env`，填好 provider、key、base URL 和 model 后运行 `npm start -- --mode llm "建一个现代两层房子"`。
+- `npm start`：启动建筑生成程序，默认会在 `out/<timestamp>/` 下生成结果。
+- `--`：把后面的参数交给本项目程序，而不是交给 npm 自己处理。
+- `--mode llm`：使用你在 `.env` 中配置的真实 API 调用模型；使用前先复制 `.env.example` 为 `.env` 并填好 key。没有 API key 时改成 `--mode mock`，会走本地 mock 模式。
+- `--datapacks-dir "D:\path\to\world\datapacks"`：生成完成后，自动把 `architect_datapack` 安装到这个 Minecraft 世界的 `datapacks` 目录。
+- `"prompt"`：你的中文建房需求，例如 `"建一个现代两层家庭别墅，宽31深21，大玻璃窗"`。
+
+如果只想先试运行，可以用：
+
+```powershell
+npm start -- --mode mock "建一个欧式大房子"
+```
 
 ## 输出
 
@@ -55,13 +62,13 @@ run_report.md
 
 `/reload` 只刷新数据包，真正建造入口是 `/function architect:run`。
 
-## 常用命令
+## 其他指令
 
 ```powershell
 npm test
 npm start -- --help
-npm start -- --world "世界名" "建一个欧式大房子"
-npm start -- --datapacks-dir "D:\path\to\world\datapacks" "建一个欧式大房子"
+npm start -- --list-prompts
+npm start -- --mode mock --prompt-id modern-waterfront-villa-reference
 ```
 
 当前课程提交版本测试结果：`176 passed / 0 failed`。
