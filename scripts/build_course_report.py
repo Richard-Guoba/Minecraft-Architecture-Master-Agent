@@ -9,7 +9,7 @@ from docx.shared import Inches, Pt, RGBColor
 from PIL import Image as PILImage
 from PIL import ImageDraw, ImageFont
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
@@ -83,12 +83,6 @@ PAPER = {
             "paragraphs": [
                 "图 2 展示了主流程。流程分为语义决策、确定性几何、质量闭环和数据包导出四段；每段都有明确输入输出，因此可以单独测试和回退。"
             ],
-            "figures": [
-                {
-                    "id": "generation_pipeline",
-                    "caption": "图 2 从中文 prompt 到 Minecraft datapack 的主流程",
-                }
-            ],
             "subsections": [
                 {
                     "heading": "3.1 语义智能体分工",
@@ -102,6 +96,12 @@ PAPER = {
                     "paragraphs": [
                         "几何层是系统稳定性的关键。CSGBuilder 将主体、侧翼、门廊、塔楼等语义体块合并为稀疏 voxel 网格，并抽取外表面、楼板、屋顶和开窗。BSPPartitioner 根据楼层功能和房间权重划分室内空间；AStarPathfinder 根据拓扑关系生成门洞、楼梯和可通行路径。这样可以避免 LLM 直接坐标生成中的穿墙、断路和房间重叠问题。",
                         "导出层将最终网格转换为 Minecraft 数据包。玩家复制 architect_datapack 到世界 datapacks 目录后，执行 /reload 和 /function architect:run 即可触发 clear + build。系统同时输出 preview.html 和 run_report.md，便于不进入游戏时检查结构、流程和统计信息。"
+                    ],
+                    "figures": [
+                        {
+                            "id": "generation_pipeline",
+                            "caption": "图 2 从中文 prompt 到 Minecraft datapack 的主流程",
+                        }
                     ],
                 },
                 {
@@ -136,7 +136,8 @@ PAPER = {
             "heading": "5 实验与结果",
             "paragraphs": [
                 "当前全量测试为 176 项通过、0 项失败，其中包括课程提交文档测试；原项目功能基线为 173 项通过、0 项失败。测试覆盖 Architect fallback、Planner、CSG、BSP、A*、Decorator、模板法则、候选择优、LLM provider、材料目录和可视化输出等模块。",
-                "本地样例 out/2026-06-19-145532212 使用 prompt“建造一个木屋别墅”。run_report.md 记录了 LLM 调用状态、seed、几何统计、装饰数量、模板法则覆盖、QA 状态和 Minecraft 使用步骤。该样例说明系统并非只生成文本，而是在输出前经过结构、材料、连通和命令层面的检查。"
+                "本地样例 out/2026-06-19-145532212 使用 prompt“建造一个木屋别墅”。run_report.md 记录了 LLM 调用状态、seed、几何统计、装饰数量、模板法则覆盖、QA 状态和 Minecraft 使用步骤。该样例说明系统并非只生成文本，而是在输出前经过结构、材料、连通和命令层面的检查。",
+                "为便于后续补充真实截图，仓库另整理了 docs/recommended-prompts.md，其中包含带固定 prompt-id 的推荐样例和截图取景建议。"
             ],
             "table": {
                 "caption": "表 2 本地样例运行结果",
@@ -178,7 +179,8 @@ PAPER = {
                 "Minecraft-Constructing-Agents 项目仓库与 README，https://github.com/CityC196/Minecraft-Constructing-Agents。",
                 "本地样例运行报告：out/2026-06-19-145532212/run_report.md。",
                 "模板吸收与设计法则相关文档：docs/template-assimilation-plan.md。",
-                "课程提交展示页与提交清单：docs/index.html，SUBMISSION.md。"
+                "课程提交展示页与提交清单：docs/index.html，SUBMISSION.md。",
+                "推荐 Prompt 库与截图建议：docs/recommended-prompts.md。"
             ],
         },
     ],
@@ -301,12 +303,12 @@ def make_overall_architecture():
 
 
 def make_generation_pipeline():
-    image, draw = new_canvas(height=980)
+    image, draw = new_canvas(height=820)
     box_font = load_image_font(22, bold=True)
     small_font = load_image_font(18)
     draw_title(draw, "主生成流程", "每一步都有明确输入输出，便于测试、回退和复现")
 
-    top_y = 190
+    top_y = 165
     boxes = [
         ((70, top_y, 260, top_y + 110), "用户 prompt", "#F6F8FA"),
         ((330, top_y, 520, top_y + 110), "buildSpec\n尺寸与偏好", "#F6F8FA"),
@@ -320,7 +322,7 @@ def make_generation_pipeline():
     for idx in range(len(boxes) - 1):
         draw_arrow(draw, (boxes[idx][0][2], top_y + 55), (boxes[idx + 1][0][0], top_y + 55))
 
-    mid_y = 460
+    mid_y = 365
     boxes2 = [
         ((160, mid_y, 430, mid_y + 120), "CSGBuilder\n外壳与屋顶", "#EAF7EF"),
         ((535, mid_y, 805, mid_y + 120), "BSPPartitioner\n房间划分", "#EAF7EF"),
@@ -333,7 +335,7 @@ def make_generation_pipeline():
     for idx in range(len(boxes2) - 1):
         draw_arrow(draw, (boxes2[idx][0][2], mid_y + 60), (boxes2[idx + 1][0][0], mid_y + 60))
 
-    bottom_y = 730
+    bottom_y = 570
     boxes3 = [
         ((210, bottom_y, 500, bottom_y + 110), "QA / Repair\n材料与连通检查", "#FFF4DF"),
         ((620, bottom_y, 910, bottom_y + 110), "Optimizer\n命令压缩", "#FFF4DF"),
@@ -346,8 +348,8 @@ def make_generation_pipeline():
     for idx in range(len(boxes3) - 1):
         draw_arrow(draw, (boxes3[idx][0][2], bottom_y + 55), (boxes3[idx + 1][0][0], bottom_y + 55))
 
-    draw.text((72, 370), "LLM 层：只输出语义 JSON，不直接写坐标", font=small_font, fill="#315B8A")
-    draw.text((72, 645), "程序层：确定性生成坐标、房间、路径和命令", font=small_font, fill="#2E7D5B")
+    draw.text((72, 325), "LLM 层：只输出语义 JSON，不直接写坐标", font=small_font, fill="#315B8A")
+    draw.text((72, 525), "程序层：确定性生成坐标、房间、路径和命令", font=small_font, fill="#2E7D5B")
     save_diagram(image, "generation_pipeline")
 
 
@@ -600,13 +602,21 @@ def add_docx_table(doc, table_data):
     doc.add_paragraph()
 
 
+FIGURE_WIDTHS_IN = {
+    "overall_architecture": 6.15,
+    "generation_pipeline": 5.85,
+    "template_quality_loop": 6.15,
+    "iteration_timeline": 5.95,
+}
+
+
 def add_docx_figures(doc, figures):
     for figure in figures:
         para = doc.add_paragraph()
         para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         para.paragraph_format.first_line_indent = Pt(0)
         run = para.add_run()
-        run.add_picture(str(image_path(figure["id"])), width=Inches(6.3))
+        run.add_picture(str(image_path(figure["id"])), width=Inches(FIGURE_WIDTHS_IN.get(figure["id"], 6.1)))
         para.paragraph_format.space_after = Pt(2)
 
         caption = doc.add_paragraph()
@@ -752,8 +762,9 @@ def pdf_styles(font_name, bold_name):
             fontSize=10.5,
             leading=16,
             firstLineIndent=21,
-            alignment=TA_LEFT,
+            alignment=TA_JUSTIFY,
             spaceAfter=5,
+            wordWrap="CJK",
         ),
         "body_no_indent": ParagraphStyle(
             "PaperBodyNoIndent",
@@ -762,8 +773,9 @@ def pdf_styles(font_name, bold_name):
             fontSize=10.5,
             leading=16,
             firstLineIndent=0,
-            alignment=TA_LEFT,
+            alignment=TA_JUSTIFY,
             spaceAfter=5,
+            wordWrap="CJK",
         ),
         "caption": ParagraphStyle(
             "PaperCaption",
@@ -781,6 +793,7 @@ def pdf_styles(font_name, bold_name):
             fontName=font_name,
             fontSize=8.6,
             leading=11.5,
+            wordWrap="CJK",
         ),
         "table_head": ParagraphStyle(
             "PaperTableHead",
@@ -799,6 +812,7 @@ def pdf_styles(font_name, bold_name):
             leftIndent=16,
             firstLineIndent=-16,
             spaceAfter=3,
+            wordWrap="CJK",
         ),
     }
 
@@ -841,7 +855,7 @@ def add_pdf_figures(story, figures, styles):
         path = image_path(figure["id"])
         with PILImage.open(path) as image:
             aspect = image.height / image.width
-        width = 6.5 * inch
+        width = FIGURE_WIDTHS_IN.get(figure["id"], 6.1) * inch
         story.append(
             KeepTogether(
                 [
