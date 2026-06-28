@@ -82,7 +82,7 @@ PAPER = {
             "heading": "2 系统总体设计",
             "paragraphs": [
                 "系统采用“LLM 语义智能体与本地确定性几何引擎”相结合的混合架构，如图 1 所示。大模型主要负责开放需求理解、风格构思和高层 JSON 决策；本地程序负责坐标、材料、连通性、命令体积和数据包导出等确定性任务。",
-                "这种边界划分是项目最重要的构思修改：我们没有让模型直接写坐标，而是让它提出建筑意图，再由程序把意图变成可检查的 Minecraft 方块网格。"
+                "这种边界划分是项目最重要的构思修改：我们没有让模型直接写坐标，而是让它先提出建筑意图。后续流程把 buildSpec、语义 JSON、voxel 网格、质量报告和 datapack 串成一条链路，使每一步都有可检查的中间产物。"
             ],
             "figures": [
                 {
@@ -95,31 +95,34 @@ PAPER = {
                 "headers": ["层次", "代表模块", "主要职责"],
                 "widths": [1.15, 2.1, 3.25],
                 "rows": [
-                    ["语义层", "ArchitectAgent, PlannerAgent", "将中文需求转化为风格、材料、体块和房间拓扑 JSON"],
-                    ["几何层", "CSGBuilder, BSPPartitioner, AStarPathfinder", "生成外壳、房间、门洞、楼梯和可达路径"],
-                    ["质量层", "QA, Repair, Optimizer", "校验材料、连通性、入口、装饰和命令数量"],
-                    ["导出层", "Exporter", "输出 blueprint.json、mcfunction 和可安装 datapack"],
+                    ["语义层", "ArchitectAgent, PlannerAgent", "把中文 prompt 解析为尺寸、风格、体块、房间节点和连通关系"],
+                    ["几何层", "CSGBuilder, BSPPartitioner, AStarPathfinder", "把语义对象落到 voxel 网格，生成外壳、房间、门洞、楼梯和路径"],
+                    ["质量层", "QA, Repair, Optimizer", "检查材料、入口、可达性、装饰和命令数量，并在导出前修复"],
+                    ["导出层", "Exporter", "输出 blueprint.json、mcfunction、preview.html、run_report.md 和 datapack"],
                 ],
             },
         },
         {
             "heading": "3 方法",
             "paragraphs": [
-                "图 2 展示了主流程。流程分为语义决策、确定性几何、质量闭环和数据包导出四段；每段都有明确输入输出，因此可以单独测试和回退。"
+                "图 2 展示了主流程。流程分为语义决策、确定性几何、质量闭环和数据包导出四段；每段都有明确输入输出，因此可以单独测试和回退。下面按这一顺序说明各模块在哪里工作、接收什么输入、产出什么结果。"
             ],
             "subsections": [
                 {
                     "heading": "3.1 语义智能体分工",
                     "paragraphs": [
-                        "主流程位于 construction_method_v1。用户输入首先被解析为 buildSpec，随后 ArchitectAgent 生成外壳语义，MaterialPaletteAgent 基于 Minecraft Java 1.21.1 方块目录校验材料，PlannerAgent 生成房间节点与连通边，CreativeDesignAgent 决定体块变体、平面排序、屋顶、立面和场地策略。",
+                        "主流程位于 construction_method_v1。用户输入首先被解析为 buildSpec，记录宽深高、楼层数、风格关键词、房间需求和特殊场地条件。随后 ArchitectAgent 生成外壳语义，MaterialPaletteAgent 基于 Minecraft Java 1.21.1 方块目录校验材料，PlannerAgent 生成房间节点与连通边，CreativeDesignAgent 决定体块变体、平面排序、屋顶、立面和场地策略。",
+                        "这些智能体只决定“应该有什么”，不直接决定“每个方块放在哪里”。例如 PlannerAgent 输出的是卧室、厨房、书房等房间节点及其邻接关系；MaterialPaletteAgent 输出的是合法方块集合；CreativeDesignAgent 输出的是开窗、屋顶和场地倾向。这样后面的几何模块可以读取同一份语义对象，而不是解析不稳定的自然语言。",
                         "后续智能体继续细化建筑表现。StructureAgent 给出支撑和荷载路径语义，FacadeAgent、RoofAgent、SiteLandscapeAgent 分别规划立面、屋顶和场地，InteriorDetailAgent 与 DecoratorAgent 负责房间级家具、灯光、植物和功能台面。整个过程中，LLM 的输出被约束为 JSON 语义对象，而不是直接写入坐标命令。"
                     ],
                 },
                 {
                     "heading": "3.2 确定性几何落地",
                     "paragraphs": [
-                        "几何层是系统稳定性的关键。CSGBuilder 将主体、侧翼、门廊、塔楼等语义体块合并为稀疏 voxel 网格，并抽取外表面、楼板、屋顶和开窗。BSPPartitioner 根据楼层功能和房间权重划分室内空间；AStarPathfinder 根据拓扑关系生成门洞、楼梯和可通行路径。这样可以避免 LLM 直接坐标生成中的穿墙、断路和房间重叠问题。",
-                        "导出层将最终网格转换为 Minecraft 数据包。玩家复制 architect_datapack 到世界 datapacks 目录后，执行 /reload 和 /function architect:run 即可触发 clear + build。系统同时输出 preview.html 和 run_report.md，便于不进入游戏时检查结构、流程和统计信息。"
+                        "几何层是系统稳定性的关键。CSGBuilder 读取 ArchitectAgent 和 CreativeDesignAgent 的体块语义，将主体、侧翼、门廊、塔楼、露台等体块合并为稀疏 voxel 网格，并从网格中抽取外表面、楼板、屋顶和开窗位置。它解决的是建筑外壳和结构连续性问题。",
+                        "BSPPartitioner 接收 PlannerAgent 的房间节点、楼层信息和房间权重，在 CSGBuilder 给出的可用室内空间中切分房间。它负责把“客厅、卧室、厨房、书房”等语义需求变成不重叠的空间区域，并尽量保留开放客餐厅、庭院朝向、塔楼房间等特殊语义。",
+                        "AStarPathfinder 再根据房间连通图工作：它不重新设计房间，而是在已有网格上寻找可通行路径，生成门洞、楼梯和跨房间通路。这样可以把 PlannerAgent 的抽象连接变成 Minecraft 中能走通的路径，避免 LLM 直接坐标生成中常见的穿墙、断路和房间孤立问题。",
+                        "导出层将最终网格转换为 Minecraft 数据包。玩家复制 architect_datapack 到世界 datapacks 目录后，执行 /reload 和 /function architect:run 即可触发 clear + build。系统同时输出 preview.html、blueprint.json 和 run_report.md，便于不进入游戏时检查结构、流程和统计信息。"
                     ],
                     "figures": [
                         {
@@ -131,8 +134,9 @@ PAPER = {
                 {
                     "heading": "3.3 质量检查与可复现导出",
                     "paragraphs": [
-                        "在生成末端，系统不会直接信任任何单个智能体输出，而是把结构、材料、入口、房间可达性、装饰和命令数量放入统一检查。若发现缺入口、断路、非法方块或命令过多，Repair 与 Optimizer 会在导出前进行修复和压缩。",
-                        "如图 3 所示，质量闭环的目标是让一次中文 prompt 最终落到可复现的工程产物：同一个 seed 可以复现同一份 blueprint、预览页、运行报告和 Minecraft 数据包。"
+                        "在生成末端，系统不会直接信任任何单个智能体输出，而是把结构、材料、入口、房间可达性、装饰和命令数量放入统一检查。QA 主要检查方块是否合法、建筑是否有入口、房间是否可达、装饰是否落在房间内，以及 mcfunction 命令是否过多。",
+                        "若发现缺入口、断路、非法方块或命令过多，Repair 与 Optimizer 会在导出前进行修复和压缩。Repair 偏向修结构和连通性，Optimizer 偏向把相邻同材质方块压缩为 fill 命令，以降低 datapack 体积和运行成本。",
+                        "如图 3 所示，质量闭环的目标是让一次中文 prompt 最终落到可复现的工程产物：同一个 seed 可以复现同一份 blueprint、预览页、运行报告和 Minecraft 数据包。mock 模式也是这一目标的一部分；没有 API key 时，系统仍能用固定回退逻辑跑通完整流程，便于课堂复现和测试。"
                     ],
                     "figures": [
                         {
@@ -147,7 +151,8 @@ PAPER = {
             "heading": "4 实现过程与构思迭代",
             "paragraphs": [
                 "项目的主要工作并不是一次性写出最终架构，而是在多轮实现中逐步修改问题定义。图 4 概括了 Git 历史中几个关键阶段：从初始 agent，到多智能体拆分、语义规划、本地几何、质量检查和提交版本整理。",
-                "这些变化反映了项目构思的转向。最初我们关注“如何生成一个房子”，后来逐步意识到课程项目更需要展示智能体系统如何分工、如何约束大模型、如何把开放语义落地为可靠工程产物。"
+                "这些变化反映了项目构思的转向。最初我们关注“如何生成一个房子”，后来逐步意识到课程项目更需要展示智能体系统如何分工、如何约束大模型、如何把开放语义落地为可靠工程产物。",
+                "具体来说，早期单智能体方案暴露出坐标不稳定和结构难检查的问题；多智能体拆分后，项目把“想法生成”和“确定性落地”分开。加入 CSG、BSP 和 A* 后，系统能够分别处理外壳、房间和路径。加入 QA、Repair 和 Optimizer 后，输出才从一次生成结果变成可以复现、检查和安装的提交物。"
             ],
             "figures": [
                 {
@@ -159,9 +164,9 @@ PAPER = {
         {
             "heading": "5 实验与结果",
             "paragraphs": [
-                "当前全量测试为 176 项通过、0 项失败，其中包括课程提交文档测试；原项目功能基线为 173 项通过、0 项失败。测试覆盖 Architect fallback、Planner、CSG、BSP、A*、Decorator、候选择优、LLM provider、材料目录和可视化输出等模块。",
+                "当前全量测试为 176 项通过、0 项失败，其中包括课程提交文档测试；原项目功能基线为 173 项通过、0 项失败。测试覆盖 Architect fallback、Planner、CSG、BSP、A*、Decorator、候选择优、LLM provider、材料目录和可视化输出等模块。换言之，测试不是只看最终文件是否生成，而是分别检查语义解析、几何落地、路径连通、装饰写入和导出展示是否稳定。",
                 "本地样例 out/2026-06-19-145532212 使用 prompt“建造一个木屋别墅”。run_report.md 记录了 LLM 调用状态、seed、几何统计、装饰数量、QA 状态和 Minecraft 使用步骤。该样例说明系统并非只生成文本，而是在输出前经过结构、材料、连通和命令层面的检查。",
-                "为展示实际运行效果，我们补充了四组 Minecraft 游戏内截图。A-D 分别对应现代两层家庭别墅、日式一层庭院住宅、欧式三层大别墅和海滨架空度假住宅；每组 1、2 为外景，3 为内饰。"
+                "为展示实际运行效果，我们补充了四组 Minecraft 游戏内截图。A-D 分别对应现代两层家庭别墅、日式一层庭院住宅、欧式三层大别墅和海滨架空度假住宅；每组 1、2 为外景，3 为内饰。外景主要观察体块、屋顶、窗、入口和场地是否响应 prompt；内饰主要观察房间层次、家具、灯光、地毯、植物和展示柜等细节是否被 DecoratorAgent 落地。"
             ],
             "table": {
                 "caption": "表 2 本地样例运行结果",
@@ -190,7 +195,8 @@ PAPER = {
         {
             "heading": "6 讨论",
             "paragraphs": [
-                "从课程要求看，项目的整体性体现在所有模块都围绕同一条主线协作：中文需求输入、智能体语义决策、本地几何落地、质量检查和数据包导出。项目的创新性主要体现在三点。第一，系统清晰区分 LLM 与程序算法的职责，避免让大模型直接处理坐标和命令。第二，语义 JSON 与本地几何之间有清晰接口，便于单独测试和回退。第三，项目保留 mock 兜底和自动化测试，使没有 token 或现场网络时仍能复现完整流程。",
+                "从课程要求看，项目的整体性体现在所有模块都围绕同一条主线协作：中文需求输入、智能体语义决策、本地几何落地、质量检查和数据包导出。项目的创新性主要体现在三点。第一，系统清晰区分 LLM 与程序算法的职责，避免让大模型直接处理坐标和命令。第二，语义 JSON 与本地几何之间有清晰接口，便于单独测试和回退，例如可以单独检查 Planner 的房间图，也可以单独检查 A* 路径是否连通。第三，项目保留 mock 兜底和自动化测试，使没有 token 或现场网络时仍能复现完整流程。",
+                "选择 datapack 作为主交付形式也是一种工程取舍。相比实时机器人逐块放置，datapack 更容易在课堂环境中复制、安装和验证；相比只输出网页预览，datapack 又能进入 Minecraft 世界运行。preview.html、run_report.md 和游戏截图则分别提供了离线结构检查、过程记录和玩家视角验证。",
                 "项目也存在局限。当前版本不是 Mineflayer 实时机器人，也不模拟玩家逐块放置；GDMC HTTP 客户端虽然保留，但主交付仍是数据包导出。自动检查可以发现结构、材料和连通问题，却不能完全替代玩家视角下的尺度、镜头、路径和 block readability 检查。后续可补充更多人工评分样本，以及更严格的视觉检查。"
             ],
         },
