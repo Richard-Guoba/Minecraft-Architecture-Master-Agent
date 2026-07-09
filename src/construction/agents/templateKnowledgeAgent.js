@@ -51,7 +51,7 @@ export class TemplateKnowledgeAgent {
           active: false,
           prompt,
           references: [],
-          warnings: ['case library v2 not found; using v1 template knowledge']
+          warnings: [corpus.case_library_v2_error || 'case library v2 not found; using v1 template knowledge']
         };
     return {
       source: 'local-template-knowledge-agent',
@@ -82,7 +82,11 @@ export class TemplateKnowledgeAgent {
       }
       const caseLibraryV2File = path.join(path.dirname(this.analysisFile), 'case_library.v2.json');
       if (fs.existsSync(caseLibraryV2File)) {
-        corpus.case_library_v2 = JSON.parse(fs.readFileSync(caseLibraryV2File, 'utf8'));
+        try {
+          corpus.case_library_v2 = JSON.parse(fs.readFileSync(caseLibraryV2File, 'utf8'));
+        } catch {
+          corpus.case_library_v2_error = 'case library v2 not usable; using v1 template knowledge';
+        }
       }
       const designLawFile = path.join(path.dirname(this.analysisFile), 'design_laws.json');
       if (fs.existsSync(designLawFile)) {
