@@ -95,12 +95,11 @@ function scoreCase(item, promptTokens, context) {
 }
 
 function explainReference(item, rank, promptTokens, context) {
-  const residentialInterior = wantsResidentialInterior(promptTokens, context);
-  const teaches = (item.knowledge_units || [])
-    .filter((unit) => !(residentialInterior && item.identity?.typology === 'arena' && unit.area === 'interior'))
+  const safeUnits = safeKnowledgeUnits(item, promptTokens, context);
+  const teaches = safeUnits
     .slice(0, 4)
     .map((unit) => ({ area: unit.area, claim: unit.claim, confidence: unit.confidence }));
-  const targets = [...new Set((item.knowledge_units || []).flatMap((unit) => unit.integration_targets || []))].slice(0, 8);
+  const targets = [...new Set(safeUnits.flatMap((unit) => unit.integration_targets || []))].slice(0, 8);
 
   return {
     rank,
@@ -119,6 +118,22 @@ function explainReference(item, rank, promptTokens, context) {
     integration_targets: targets.length ? targets : ['TemplateKnowledgeAgent'],
     explanation: `${item.match_score >= 45 ? 'Matches' : 'Backfilled'} ${[item.identity?.style_family, item.identity?.typology, ...(item.retrieval?.explanation_seeds || [])].filter(Boolean).join(', ')}. Best used for ${teaches.map((unit) => unit.area).join(', ') || 'risk-controlled inspiration'}.`
   };
+}
+
+function safeKnowledgeUnits(item = {}, promptTokens, context = {}) {
+  const review = item.review || {};
+  const allowedAreas = allowedLearningAreas(review);
+  const blockedAreas = blockedLearningAreas(review);
+  const residentialInterior = wantsResidentialInterior(promptTokens, context);
+
+  return (item.knowledge_units || []).filter((unit) => {
+    const area = normalizeToken(unit?.area);
+    if (!area) return false;
+    if (blockedAreas.has(area)) return false;
+    if (allowedAreas && !allowedAreas.has(area)) return false;
+    if (residentialInterior && item.identity?.typology === 'arena' && area === 'interior') return false;
+    return true;
+  });
 }
 
 function tokenSet(prompt = '', context = {}) {
@@ -212,6 +227,19 @@ function wantsResidentialInterior(promptTokens, context = {}) {
   const residential = promptTokens.has('house') || normalizeToken(context.typology || '') === 'house';
   const interior = ['interior', 'furnished', 'living', 'kitchen', 'bedroom'].some((token) => promptTokens.has(token));
   return residential && interior;
+}
+
+function allowedLearningAreas(review = {}) {
+  if (review.status !== 'limited') return null;
+  return learningAreaSet(review.approved_learning_areas || []);
+}
+
+function blockedLearningAreas(review = {}) {
+  return learningAreaSet(review.blocked_learning_areas || []);
+}
+
+function learningAreaSet(areas = []) {
+  return new Set((Array.isArray(areas) ? areas : []).map((area) => normalizeToken(area)).filter(Boolean));
 }
 
 function diversitySlot(item = {}) {

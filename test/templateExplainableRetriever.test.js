@@ -44,6 +44,21 @@ test('explainable retriever excludes rejected cases and arena interiors for resi
   }
 });
 
+test('explainable retriever honors limited review approved and blocked learning areas', () => {
+  const retriever = new ExplainableTemplateRetriever({ knowledgeBase: knowledgeBaseFixture() });
+  const result = retriever.run({
+    prompt: '做一个带室内陈设和水边过渡的地形整合方案',
+    context: { typology: 'house' },
+    limit: 8
+  });
+
+  const limited = result.references.find((item) => item.case_id === 'house-limited-review');
+  assert.ok(limited);
+  assert.deepEqual(limited.teaches.map((unit) => unit.area), ['site']);
+  assert.equal(limited.teaches.some((unit) => unit.area === 'interior'), false);
+  assert.deepEqual(limited.integration_targets, ['TemplateSiteSceneStrategy']);
+});
+
 test('queryTemplateKnowledge CLI prints explained references from a provided v2 file', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-query-kb-'));
   const kbFile = path.join(root, 'case_library.v2.json');
@@ -63,6 +78,30 @@ test('queryTemplateKnowledge CLI prints explained references from a provided v2 
   assert.match(result.stdout, /Template references/);
   assert.match(result.stdout, /Modern Lake Villa/);
   assert.match(result.stdout, /teaches/);
+});
+
+test('query:templates package script runs against a provided v2 file', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-query-script-kb-'));
+  const kbFile = path.join(root, 'case_library.v2.json');
+  await fs.writeFile(kbFile, `${JSON.stringify(knowledgeBaseFixture(), null, 2)}\n`, 'utf8');
+  const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+
+  const result = spawnSync(process.execPath, [
+    npmCli,
+    'run',
+    'query:templates',
+    '--',
+    '--knowledge-base',
+    kbFile,
+    '建一个湖边现代两层别墅，带大玻璃和精致内饰'
+  ], {
+    cwd: process.cwd(),
+    encoding: 'utf8'
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Template references/);
+  assert.match(result.stdout, /Modern Lake Villa/);
 });
 
 function knowledgeBaseFixture() {
@@ -127,6 +166,21 @@ function knowledgeBaseFixture() {
         priority: { global_score: 78, area_scores: { site: 88 }, risk_penalty: 0 },
         retrieval: { search_tokens: ['watermill', 'water-edge', 'coastal', 'house'], prompt_affinities: ['house', 'waterfront'], diversity_slots: ['site'], explanation_seeds: ['coastal water edge'] },
         risk_controls: ['scale details into the requested footprint']
+      },
+      {
+        case_id: 'house-limited-review',
+        title: 'Limited Review House',
+        file: 'House/Limited Review House.schematic',
+        identity: { style_family: 'modern', typology: 'house', category: 'House', scale_bucket: 'medium' },
+        review: { status: 'limited', confidence: 0.6, approved_learning_areas: ['site'], blocked_learning_areas: ['interior'] },
+        tags: { style: [{ id: 'modern' }], typology: [{ id: 'house' }], site: [{ id: 'water-edge' }], interior: [{ id: 'furnished' }] },
+        knowledge_units: [
+          unit('limited-site', 'site', 'Use stepped waterfront transitions and arrival framing.', ['TemplateSiteSceneStrategy']),
+          unit('limited-interior', 'interior', 'Do not expose this interior learning unit in limited mode.', ['InteriorDetailAgent'])
+        ],
+        priority: { global_score: 76, area_scores: { site: 88, interior: 82 }, risk_penalty: 6 },
+        retrieval: { search_tokens: ['modern', 'house', 'water-edge', 'interior'], prompt_affinities: ['house', 'waterfront', 'interior'], diversity_slots: ['site'], explanation_seeds: ['limited waterfront house'] },
+        risk_controls: ['use only approved learning areas from manual review']
       },
       {
         case_id: 'arenas-amphitheatre-arena',
