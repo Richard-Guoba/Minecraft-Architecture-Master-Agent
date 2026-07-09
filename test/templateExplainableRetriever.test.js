@@ -59,6 +59,64 @@ test('explainable retriever honors limited review approved and blocked learning 
   assert.deepEqual(limited.integration_targets, ['TemplateSiteSceneStrategy']);
 });
 
+test('explainable retriever ignores blocked interior and room-type tokens while scoring limited cases', () => {
+  const fixture = knowledgeBaseFixture();
+  fixture.cases = [{
+    case_id: 'house-limited-blocked-room-type',
+    title: 'Limited Blocked Room Type',
+    file: 'House/Limited Blocked Room Type.schematic',
+    identity: { style_family: 'modern', typology: 'house', category: 'House', scale_bucket: 'medium' },
+    review: { status: 'limited', confidence: 0.8, approved_learning_areas: ['site'], blocked_learning_areas: ['interior'] },
+    tags: { style: [{ id: 'modern' }], typology: [{ id: 'house' }], site: [{ id: 'water-edge' }], room_types: [{ id: 'kitchen' }] },
+    knowledge_units: [
+      {
+        id: 'blocked-interior',
+        area: 'interior',
+        claim: 'Blocked kitchen lesson must not score or teach.',
+        evidence: ['fixture'],
+        confidence: 0.9,
+        use_as: ['interior'],
+        avoid_when: [],
+        integration_targets: ['InteriorDetailAgent'],
+        source_fields: ['fixture']
+      }
+    ],
+    priority: { global_score: 100, area_scores: { interior: 100 }, risk_penalty: 0 },
+    retrieval: { search_tokens: ['kitchen', 'living', 'interior'], prompt_affinities: ['kitchen', 'interior'], diversity_slots: ['interior'], explanation_seeds: ['blocked kitchen'] },
+    risk_controls: ['use only approved learning areas from manual review']
+  }];
+
+  const result = new ExplainableTemplateRetriever({ knowledgeBase: fixture }).run({
+    prompt: '住宅厨房和客厅室内布局',
+    context: { typology: 'house' },
+    limit: 8
+  });
+
+  assert.equal(result.references.some((item) => item.case_id === 'house-limited-blocked-room-type'), false);
+});
+
+test('explainable retriever caps requested limits at 8 references', () => {
+  const fixture = knowledgeBaseFixture();
+  const base = fixture.cases[0];
+  fixture.cases = Array.from({ length: 12 }, (_, index) => ({
+    ...base,
+    case_id: `house-modern-lake-villa-${index}`,
+    title: `Modern Lake Villa ${index}`,
+    retrieval: {
+      ...base.retrieval,
+      diversity_slots: [`slot-${index}`]
+    }
+  }));
+
+  const result = new ExplainableTemplateRetriever({ knowledgeBase: fixture }).run({
+    prompt: 'modern lake house glass interior',
+    context: { style_family: 'modern', typology: 'house' },
+    limit: 99
+  });
+
+  assert.equal(result.references.length, 8);
+});
+
 test('queryTemplateKnowledge CLI prints explained references from a provided v2 file', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-query-kb-'));
   const kbFile = path.join(root, 'case_library.v2.json');

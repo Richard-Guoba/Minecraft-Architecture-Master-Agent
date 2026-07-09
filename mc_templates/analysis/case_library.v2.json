@@ -1,8 +1,8 @@
 {
   "source": "template-knowledge-base-v2",
   "schema_version": 2,
-  "generated_at": "2026-07-09T11:30:15.246Z",
-  "knowledge_base_id": "sha256:fafd6d42eb01e39feb3841926765c2c6a4a0518a28f3e849d2651cf5e7dbabc0",
+  "generated_at": "2026-07-09T00:00:00.000Z",
+  "knowledge_base_id": "sha256:5173a28680cccee7b547353692af4d89a18047bac2a30b17f4654b06e92793bd",
   "inputs": {
     "case_library": "mc_templates/analysis/case_library.json",
     "template_index": "mc_templates/analysis/template_index.json",
@@ -17,12 +17,14 @@
     "review_status_counts": {
       "pending": 64
     },
-    "reviewed_case_count": 0
+    "reviewed_case_count": 0,
+    "overlay_error_count": 0,
+    "overlay_errors": []
   },
   "cases": [
     {
       "case_id": "arenas-amphitheatre-arena",
-      "case_version": "sha256:0ddaa3949e9faca2beb6c02a7f7fd2efcfe6a07ea823945108af57dfc90e476b",
+      "case_version": "sha256:928dfb4e004f83234a7bf4bd1e99cfa5d2501146252f65085aef7e9a7983ee1f",
       "title": "Amphitheatre Arena",
       "file": "Arenas/Amphitheatre Arena - (mcbuild_org).schematic",
       "identity": {
@@ -137,9 +139,18 @@
         }
       ],
       "unknown_tag_count": 3,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (3)."
+        "Unknown taxonomy tags preserved for review (3).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -713,27 +724,6 @@
             "case_library.feature_card",
             "case_library.learning_roles"
           ]
-        },
-        {
-          "id": "arenas-amphitheatre-arena:landmark-composition:amphitheatre-arena-teaches-landmark-composition-",
-          "area": "landmark-composition",
-          "claim": "Amphitheatre Arena teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
         }
       ],
       "priority": {
@@ -745,14 +735,13 @@
           "facade": 76,
           "interior": 90,
           "massing": 72,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "5 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -808,7 +797,6 @@
           "interior",
           "interior-clause",
           "interior-pattern",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "layered",
@@ -923,6 +911,7 @@
         "monumental-scale-normalize-before-use",
         "non-residential-interior-noise",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -935,7 +924,7 @@
     },
     {
       "case_id": "arenas-baseball-field",
-      "case_version": "sha256:d37be46569ca77d331985d1710e256d8a4b0965cf51e02c3fad244b2bdc07dc7",
+      "case_version": "sha256:8c466936225088b232b0fde47e15fbd6d0dd1f9313958f3cecef38a963602fa2",
       "title": "Baseball Field",
       "file": "Arenas/Baseball Field - (mcbuild_org).schematic",
       "identity": {
@@ -1025,9 +1014,18 @@
         }
       ],
       "unknown_tag_count": 3,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (3)."
+        "Unknown taxonomy tags preserved for review (3).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -1440,42 +1438,20 @@
             "case_library.feature_card",
             "case_library.learning_roles"
           ]
-        },
-        {
-          "id": "arenas-baseball-field:landmark-composition:baseball-field-teaches-landmark-composition-thro",
-          "area": "landmark-composition",
-          "claim": "Baseball Field teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
         }
       ],
       "priority": {
-        "global_score": 15,
-        "risk_penalty": 25,
+        "global_score": 13,
+        "risk_penalty": 27,
         "review_bonus": 0,
         "area_scores": {
           "massing": 72,
-          "interior": 90,
-          "landmark-composition": 75
+          "interior": 90
         },
         "high_value_rank_reason": [
           "usable interior knowledge",
           "2 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -1521,7 +1497,6 @@
           "internal",
           "island",
           "keep",
-          "landmark-composition",
           "landmark_presence",
           "legible",
           "light",
@@ -1607,6 +1582,7 @@
         "arena-not-for-room-mining",
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -1619,7 +1595,7 @@
     },
     {
       "case_id": "arenas-colosseum",
-      "case_version": "sha256:909c3897a3635a53a26da1a571e6cfec9e405dd5afa4e38ffcebf645d16918bd",
+      "case_version": "sha256:3f087a80ac7279b3fc50c0f00d76c586036fa4b9032f6add7c7c60c3b9459f2f",
       "title": "Colosseum",
       "file": "Arenas/Colosseum - (mcbuild_org).schematic",
       "identity": {
@@ -1727,9 +1703,18 @@
         }
       ],
       "unknown_tag_count": 2,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (2)."
+        "Unknown taxonomy tags preserved for review (2).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -2153,27 +2138,6 @@
             "case_library.feature_card",
             "case_library.learning_roles"
           ]
-        },
-        {
-          "id": "arenas-colosseum:landmark-composition:colosseum-teaches-landmark-composition-through-s",
-          "area": "landmark-composition",
-          "claim": "Colosseum teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
         }
       ],
       "priority": {
@@ -2185,14 +2149,13 @@
           "facade": 76,
           "interior": 80,
           "massing": 72,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "5 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -2244,7 +2207,6 @@
           "interior",
           "internal",
           "keep",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "layered",
@@ -2364,6 +2326,7 @@
         "monumental-scale-normalize-before-use",
         "non-residential-interior-noise",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -2376,7 +2339,7 @@
     },
     {
       "case_id": "arenas-skywars-lobby",
-      "case_version": "sha256:98e94c1f6cc9665a286fd1e68ff1b3bff4330e4b3d47545c3d72d9dd7daff82a",
+      "case_version": "sha256:621b56a3e0c299e41840c0d2c7bd93b50340bd27f96dde92288258f708280cca",
       "title": "Skywars Lobby",
       "file": "Arenas/Skywars Lobby - (mcbuild_org).schematic",
       "identity": {
@@ -2506,9 +2469,18 @@
         }
       ],
       "unknown_tag_count": 4,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (4)."
+        "Unknown taxonomy tags preserved for review (4).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -3418,27 +3390,6 @@
             "case_library.feature_card",
             "case_library.learning_roles"
           ]
-        },
-        {
-          "id": "arenas-skywars-lobby:landmark-composition:skywars-lobby-teaches-landmark-composition-throu",
-          "area": "landmark-composition",
-          "claim": "Skywars Lobby teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
         }
       ],
       "priority": {
@@ -3450,14 +3401,13 @@
           "facade": 76,
           "interior": 90,
           "massing": 72,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "3 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -3512,7 +3462,6 @@
           "interior",
           "interior-pattern",
           "internal",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "layered",
@@ -3631,6 +3580,7 @@
         "missing-source-note",
         "non-residential-interior-noise",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -3643,7 +3593,7 @@
     },
     {
       "case_id": "arenas-tennis-court",
-      "case_version": "sha256:386b7d8107b39243bc6a4fad4413fe80596c0145f326f4b8e79810f0d38bc729",
+      "case_version": "sha256:bb705332355055df7a933f427f7d29f30d1453f599ad9ace2b47cab52ed9c350",
       "title": "Tennis Court",
       "file": "Arenas/Tennis Court - (mcbuild_org).schematic",
       "identity": {
@@ -3780,9 +3730,18 @@
         }
       ],
       "unknown_tag_count": 5,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (5)."
+        "Unknown taxonomy tags preserved for review (5).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -4665,27 +4624,6 @@
             "case_library.feature_card",
             "case_library.learning_roles"
           ]
-        },
-        {
-          "id": "arenas-tennis-court:landmark-composition:tennis-court-teaches-landmark-composition-throug",
-          "area": "landmark-composition",
-          "claim": "Tennis Court teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
         }
       ],
       "priority": {
@@ -4697,14 +4635,13 @@
           "facade": 76,
           "interior": 90,
           "massing": 72,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "3 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -4758,7 +4695,6 @@
           "identity",
           "interior",
           "interior-pattern",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "layer",
@@ -4880,6 +4816,7 @@
         "missing-source-note",
         "non-residential-interior-noise",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -4892,7 +4829,7 @@
     },
     {
       "case_id": "arenas-the-colosseum-mcbuild-org",
-      "case_version": "sha256:20db3ad1253c73d05d52d002d672c681acbe5623edd29c7c959d02b2a48a7a8f",
+      "case_version": "sha256:543878d68049ed85ee6d96dbc18208fe19f7c9a0ffab05524ba58a3cac212573",
       "title": "The Colosseum - (mcbuild_org)",
       "file": "Arenas/The Colosseum - (mcbuild_org).schematic",
       "identity": {
@@ -5000,10 +4937,19 @@
         }
       ],
       "unknown_tag_count": 2,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source URL.",
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (2)."
+        "Unknown taxonomy tags preserved for review (2).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -5427,27 +5373,6 @@
             "case_library.feature_card",
             "case_library.learning_roles"
           ]
-        },
-        {
-          "id": "arenas-the-colosseum-mcbuild-org:landmark-composition:the-colosseum-mcbuild-org-teaches-landmark-compo",
-          "area": "landmark-composition",
-          "claim": "The Colosseum - (mcbuild_org) teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
         }
       ],
       "priority": {
@@ -5459,14 +5384,13 @@
           "facade": 76,
           "interior": 80,
           "massing": 72,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "5 risk controls",
-          "3 warnings"
+          "4 warnings"
         ]
       },
       "retrieval": {
@@ -5518,7 +5442,6 @@
           "interior",
           "internal",
           "keep",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "layered",
@@ -5644,6 +5567,7 @@
         "monumental-scale-normalize-before-use",
         "non-residential-interior-noise",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags",
         "weak-text-metadata"
       ],
@@ -5657,7 +5581,7 @@
     },
     {
       "case_id": "buildings-beach-hotel",
-      "case_version": "sha256:6146208b45264b75d613a0d54355870a66884f4c4734bba7690c039ec31cfa35",
+      "case_version": "sha256:9324447065fdda3054426a433aa60b6ef930abd3c19bdbaef66d78b8008fcb99",
       "title": "Beach Hotel",
       "file": "Buildings/Beach Hotel - (mcbuild_org).schematic",
       "identity": {
@@ -5873,9 +5797,18 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (9)."
+        "Unknown taxonomy tags preserved for review (9).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -6513,27 +6446,6 @@
           ]
         },
         {
-          "id": "buildings-beach-hotel:landmark-composition:beach-hotel-teaches-landmark-composition-through",
-          "area": "landmark-composition",
-          "claim": "Beach Hotel teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "buildings-beach-hotel:massing:beach-hotel-teaches-massing-through-massing-scor",
           "area": "massing",
           "claim": "Beach Hotel teaches massing through massing score 82, typology public-building",
@@ -6557,22 +6469,21 @@
         }
       ],
       "priority": {
-        "global_score": 90,
-        "risk_penalty": 14,
+        "global_score": 88,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "interior": 90,
           "massing": 90,
           "facade": 76,
-          "roof": 74,
-          "landmark-composition": 90
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -6622,7 +6533,6 @@
           "interior-rich-reference",
           "interior_reference",
           "just",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "large",
@@ -6752,6 +6662,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -6764,7 +6675,7 @@
     },
     {
       "case_id": "buildings-futuristic-building",
-      "case_version": "sha256:bb45acf8f64721abc36c061ef0541a7dae9ac6e8b0f4b8f924f480443e83bd2f",
+      "case_version": "sha256:80a9bf316c035087ba6beb7f0e8ddfc192a1403b59e2988ceb9d2382b40d7d4d",
       "title": "Futuristic Building",
       "file": "Buildings/Futuristic Building - (mcbuild_org).schematic",
       "identity": {
@@ -6938,9 +6849,18 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (9)."
+        "Unknown taxonomy tags preserved for review (9).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -7980,27 +7900,6 @@
           ]
         },
         {
-          "id": "buildings-futuristic-building:landmark-composition:futuristic-building-teaches-landmark-composition",
-          "area": "landmark-composition",
-          "claim": "Futuristic Building teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "buildings-futuristic-building:massing:futuristic-building-teaches-massing-through-mass",
           "area": "massing",
           "claim": "Futuristic Building teaches massing through massing score 70, typology public-building",
@@ -8046,22 +7945,21 @@
         }
       ],
       "priority": {
-        "global_score": 68,
-        "risk_penalty": 14,
+        "global_score": 66,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "facade": 76,
           "interior": 90,
           "massing": 90,
-          "roof": 74,
-          "landmark-composition": 90
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -8118,7 +8016,6 @@
           "interior",
           "interior_reference",
           "just",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "landscape-composition",
@@ -8242,6 +8139,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -8254,7 +8152,7 @@
     },
     {
       "case_id": "buildings-giant-church",
-      "case_version": "sha256:0406ca0479f962741e0fbd3028123091b192a5c774b8e73f0f5f311079006864",
+      "case_version": "sha256:a64c8c0dbfd2eb53c5b81edf36ac9bff4e3b8e494145afbf8934b7f004262e9a",
       "title": "Giant Church",
       "file": "Buildings/Giant Church - (mcbuild_org).schematic",
       "identity": {
@@ -8468,9 +8366,18 @@
         }
       ],
       "unknown_tag_count": 10,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (10)."
+        "Unknown taxonomy tags preserved for review (10).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -9401,27 +9308,6 @@
           ]
         },
         {
-          "id": "buildings-giant-church:landmark-composition:giant-church-teaches-landmark-composition-throug",
-          "area": "landmark-composition",
-          "claim": "Giant Church teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "buildings-giant-church:massing:giant-church-teaches-massing-through-massing-sco",
           "area": "massing",
           "claim": "Giant Church teaches massing through massing score 56, typology temple",
@@ -9445,22 +9331,21 @@
         }
       ],
       "priority": {
-        "global_score": 74,
-        "risk_penalty": 14,
+        "global_score": 72,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "facade": 76,
           "interior": 90,
           "massing": 75,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -9519,7 +9404,6 @@
           "interior-rich-reference",
           "interior_reference",
           "just",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "large",
@@ -9642,6 +9526,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -9654,7 +9539,7 @@
     },
     {
       "case_id": "buildings-grand-hotel",
-      "case_version": "sha256:1e21ea6aa028c2c2523457fc180547354d1235dbdc217f7c6da33d1dea66321a",
+      "case_version": "sha256:96e5a38fe9e2cf45649818c60c19ef206f189d15b22c864338df2d64640fbc06",
       "title": "Grand Hotel",
       "file": "Buildings/Grand Hotel - (mcbuild_org).schematic",
       "identity": {
@@ -9894,9 +9779,18 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (9)."
+        "Unknown taxonomy tags preserved for review (9).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -10643,27 +10537,6 @@
           ]
         },
         {
-          "id": "buildings-grand-hotel:landmark-composition:grand-hotel-teaches-landmark-composition-through",
-          "area": "landmark-composition",
-          "claim": "Grand Hotel teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "buildings-grand-hotel:massing:grand-hotel-teaches-massing-through-massing-scor",
           "area": "massing",
           "claim": "Grand Hotel teaches massing through massing score 46, typology public-building",
@@ -10708,22 +10581,21 @@
         }
       ],
       "priority": {
-        "global_score": 86,
-        "risk_penalty": 14,
+        "global_score": 84,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "facade": 76,
           "interior": 90,
           "massing": 75,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -10784,7 +10656,6 @@
           "interior_reference",
           "just",
           "kitchen",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "large",
@@ -10910,6 +10781,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -10922,7 +10794,7 @@
     },
     {
       "case_id": "buildings-great-library",
-      "case_version": "sha256:c57834b9765646620319735e1486c8f54eddf1b3f87ab811d7aa7f9a3671db26",
+      "case_version": "sha256:d1521b2b7624679e995c90e4b2a798a94213bb8249fd21bce286e6230f0cbf3e",
       "title": "Great Library",
       "file": "Buildings/Great Library  - (mcbuild_org).schematic",
       "identity": {
@@ -11135,9 +11007,18 @@
         }
       ],
       "unknown_tag_count": 11,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (11)."
+        "Unknown taxonomy tags preserved for review (11).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -12181,27 +12062,6 @@
           ]
         },
         {
-          "id": "buildings-great-library:landmark-composition:great-library-teaches-landmark-composition-throu",
-          "area": "landmark-composition",
-          "claim": "Great Library teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "buildings-great-library:massing:great-library-teaches-massing-through-massing-sc",
           "area": "massing",
           "claim": "Great Library teaches massing through massing score 72, typology public-building",
@@ -12225,22 +12085,21 @@
         }
       ],
       "priority": {
-        "global_score": 79,
-        "risk_penalty": 14,
+        "global_score": 77,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "massing": 90,
           "facade": 90,
           "roof": 74,
           "interior": 90,
-          "site": 78,
-          "landmark-composition": 90
+          "site": 78
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -12298,7 +12157,6 @@
           "interior-rich-reference",
           "interior_reference",
           "just",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "large",
@@ -12418,6 +12276,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -12430,7 +12289,7 @@
     },
     {
       "case_id": "buildings-great-pyramid",
-      "case_version": "sha256:fa79d1c95f75722a672f2de7b9196d7520a9a85c3d926236c910bf433ead4add",
+      "case_version": "sha256:400a78a970eb2235ba63181b22130b77bc63047c2af74167915716dbbaf8a528",
       "title": "Great Pyramid",
       "file": "Buildings/Great Pyramid - (mcbuild_org).schematic",
       "identity": {
@@ -12616,9 +12475,18 @@
         }
       ],
       "unknown_tag_count": 8,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (8)."
+        "Unknown taxonomy tags preserved for review (8).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -13892,27 +13760,6 @@
           ]
         },
         {
-          "id": "buildings-great-pyramid:landmark-composition:great-pyramid-teaches-landmark-composition-throu",
-          "area": "landmark-composition",
-          "claim": "Great Pyramid teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "buildings-great-pyramid:massing:great-pyramid-teaches-massing-through-massing-sc",
           "area": "massing",
           "claim": "Great Pyramid teaches massing through massing score 46, typology public-building",
@@ -13936,21 +13783,20 @@
         }
       ],
       "priority": {
-        "global_score": 76,
-        "risk_penalty": 14,
+        "global_score": 74,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "massing": 75,
           "facade": 76,
-          "interior": 90,
-          "landmark-composition": 75
+          "interior": 90
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -14006,7 +13852,6 @@
           "interior_reference",
           "kitchen",
           "kitchen_work_wall",
-          "landmark-composition",
           "landmark_presence",
           "layered",
           "layered-interior",
@@ -14121,6 +13966,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -14133,7 +13979,7 @@
     },
     {
       "case_id": "buildings-modern-apartment-building",
-      "case_version": "sha256:cd05770b72faed93329d398a38bca50a226070e51530c4e92bc19b41232c3859",
+      "case_version": "sha256:40745595169c4641d8adba7a6d3422ed564d4754e748cbe94a93468b862da815",
       "title": "Modern Apartment Building",
       "file": "Buildings/Modern Apartment Building - (mcbuild_org).schematic",
       "identity": {
@@ -14347,9 +14193,18 @@
         }
       ],
       "unknown_tag_count": 10,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (10)."
+        "Unknown taxonomy tags preserved for review (10).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -15324,27 +15179,6 @@
           ]
         },
         {
-          "id": "buildings-modern-apartment-building:landmark-composition:modern-apartment-building-teaches-landmark-compo",
-          "area": "landmark-composition",
-          "claim": "Modern Apartment Building teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "buildings-modern-apartment-building:massing:modern-apartment-building-teaches-massing-throug",
           "area": "massing",
           "claim": "Modern Apartment Building teaches massing through massing score 64, typology public-building",
@@ -15368,22 +15202,21 @@
         }
       ],
       "priority": {
-        "global_score": 85,
-        "risk_penalty": 14,
+        "global_score": 83,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "facade": 76,
           "interior": 90,
           "massing": 75,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -15440,7 +15273,6 @@
           "just",
           "kitchen",
           "kitchen_work_wall",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "landscape-composition",
@@ -15568,6 +15400,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -15580,7 +15413,7 @@
     },
     {
       "case_id": "castles-disney-fort",
-      "case_version": "sha256:14583dffbe2e1d74d66f9e7216e545e900de905037a9d063df7e85d543752d57",
+      "case_version": "sha256:8899a7658f149487179b88794ec537107c86121e10ba58aee876912de7946641",
       "title": "Disney Fort",
       "file": "Castles/Disney Fort - (mcbuild_org).schematic",
       "identity": {
@@ -15750,9 +15583,18 @@
         }
       ],
       "unknown_tag_count": 6,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (6)."
+        "Unknown taxonomy tags preserved for review (6).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -16231,27 +16073,6 @@
           ]
         },
         {
-          "id": "castles-disney-fort:landmark-composition:disney-fort-teaches-landmark-composition-through",
-          "area": "landmark-composition",
-          "claim": "Disney Fort teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "castles-disney-fort:massing:disney-fort-teaches-massing-through-massing-scor",
           "area": "massing",
           "claim": "Disney Fort teaches massing through massing score 92, typology castle",
@@ -16327,14 +16148,13 @@
           "facade": 76,
           "interior": 90,
           "massing": 90,
-          "roof": 74,
-          "landmark-composition": 90
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "2 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -16390,7 +16210,6 @@
           "interior",
           "interior-rich-reference",
           "interior_reference",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "landscape-composition",
@@ -16525,6 +16344,7 @@
         "monumental-scale-normalize-before-use",
         "pending-review",
         "spatial-analysis-skipped",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -16537,7 +16357,7 @@
     },
     {
       "case_id": "castles-gotic-castle",
-      "case_version": "sha256:865aba485a4ed0dd63d92432c32d3b980532d816122fc25059292cb509b9da99",
+      "case_version": "sha256:fb95d78b29c3937b2404b54fd6af7a30927083ed80dcc8ea01d8dff4c85ab296",
       "title": "Gotic castle",
       "file": "Castles/Gotic castle - (mcbuild_org).schematic",
       "identity": {
@@ -16750,9 +16570,18 @@
         }
       ],
       "unknown_tag_count": 11,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (11)."
+        "Unknown taxonomy tags preserved for review (11).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -17500,27 +17329,6 @@
           ]
         },
         {
-          "id": "castles-gotic-castle:landmark-composition:gotic-castle-teaches-landmark-composition-throug",
-          "area": "landmark-composition",
-          "claim": "Gotic castle teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "castles-gotic-castle:massing:gotic-castle-teaches-massing-through-massing-sco",
           "area": "massing",
           "claim": "Gotic castle teaches massing through massing score 92, typology castle",
@@ -17544,22 +17352,21 @@
         }
       ],
       "priority": {
-        "global_score": 88,
-        "risk_penalty": 14,
+        "global_score": 86,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "facade": 76,
           "interior": 90,
           "massing": 90,
-          "roof": 74,
-          "landmark-composition": 90
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -17612,7 +17419,6 @@
           "interior",
           "interior-rich-reference",
           "interior_reference",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "landscape-composition",
@@ -17738,6 +17544,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -17750,7 +17557,7 @@
     },
     {
       "case_id": "castles-hogwarts-castle",
-      "case_version": "sha256:4a4cc1c4014e6dc31f801b31d0424c4151ecad87d45f814b504c801e27c22b16",
+      "case_version": "sha256:b47f76f8281cc6beb19e2879ee8d3a9240cb9a670376fe0f08f8dd0349413d26",
       "title": "Hogwarts Castle",
       "file": "Castles/Hogwarts Castle - (mcbuild_org).schematic",
       "identity": {
@@ -17905,9 +17712,18 @@
         }
       ],
       "unknown_tag_count": 5,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (5)."
+        "Unknown taxonomy tags preserved for review (5).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -18260,27 +18076,6 @@
           ]
         },
         {
-          "id": "castles-hogwarts-castle:landmark-composition:hogwarts-castle-teaches-landmark-composition-thr",
-          "area": "landmark-composition",
-          "claim": "Hogwarts Castle teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "castles-hogwarts-castle:massing:hogwarts-castle-teaches-massing-through-massing-",
           "area": "massing",
           "claim": "Hogwarts Castle teaches massing through massing score 92, typology castle",
@@ -18326,22 +18121,21 @@
         }
       ],
       "priority": {
-        "global_score": 52,
-        "risk_penalty": 24,
+        "global_score": 50,
+        "risk_penalty": 26,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "interior": 80,
           "massing": 90,
           "facade": 76,
-          "roof": 74,
-          "landmark-composition": 90
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -18389,7 +18183,6 @@
           "internal",
           "keep",
           "kitchen",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "layered",
@@ -18513,6 +18306,7 @@
         "missing-source-note",
         "pending-review",
         "spatial-analysis-skipped",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -18525,7 +18319,7 @@
     },
     {
       "case_id": "castles-medieval-castle",
-      "case_version": "sha256:1f0b50d3de81aed5e9efdaffb8a7dc03114d2e068a75b603e5f4796d28f23e4e",
+      "case_version": "sha256:99ef3900d5ea728897ef644c237f5b25199bdfe1fd40272942d212ec574c33eb",
       "title": "Medieval Castle",
       "file": "Castles/Medieval Castle - (mcbuild_org).schematic",
       "identity": {
@@ -18693,9 +18487,18 @@
         }
       ],
       "unknown_tag_count": 7,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (7)."
+        "Unknown taxonomy tags preserved for review (7).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -19010,27 +18813,6 @@
           ]
         },
         {
-          "id": "castles-medieval-castle:landmark-composition:medieval-castle-teaches-landmark-composition-thr",
-          "area": "landmark-composition",
-          "claim": "Medieval Castle teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "castles-medieval-castle:massing:medieval-castle-teaches-massing-through-massing-",
           "area": "massing",
           "claim": "Medieval Castle teaches massing through massing score 56, typology castle",
@@ -19054,20 +18836,19 @@
         }
       ],
       "priority": {
-        "global_score": 49,
-        "risk_penalty": 24,
+        "global_score": 47,
+        "risk_penalty": 26,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "massing": 75,
-          "interior": 90,
-          "landmark-composition": 75
+          "interior": 90
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -19108,7 +18889,6 @@
           "interior",
           "interior-clause",
           "interior-pattern",
-          "landmark-composition",
           "landmark_presence",
           "layered-terrain",
           "layered_terrain_base",
@@ -19213,6 +18993,7 @@
         "exterior-only-reference",
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -19225,7 +19006,7 @@
     },
     {
       "case_id": "castles-medieval-castle-3",
-      "case_version": "sha256:09e33f3d094dbd60eb78a2438b8bd5d246431f62d32ccba949c9cccad98f2bb0",
+      "case_version": "sha256:9c2aa869675dc98f4d48c87ea724f49f0c21f923f64e586cf69a104c847cd010",
       "title": "Medieval Castle 3",
       "file": "Castles/Medieval Castle 3 - (mcbuild_org).schematic",
       "identity": {
@@ -19427,9 +19208,18 @@
         }
       ],
       "unknown_tag_count": 6,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (6)."
+        "Unknown taxonomy tags preserved for review (6).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -19910,27 +19700,6 @@
           ]
         },
         {
-          "id": "castles-medieval-castle-3:landmark-composition:medieval-castle-3-teaches-landmark-composition-t",
-          "area": "landmark-composition",
-          "claim": "Medieval Castle 3 teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "castles-medieval-castle-3:massing:medieval-castle-3-teaches-massing-through-massin",
           "area": "massing",
           "claim": "Medieval Castle 3 teaches massing through massing score 56, typology castle",
@@ -19962,14 +19731,13 @@
           "facade": 76,
           "interior": 90,
           "massing": 75,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "2 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -20019,7 +19787,6 @@
           "interior-rich-reference",
           "interior_reference",
           "kitchen",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "layered",
@@ -20151,6 +19918,7 @@
         "monumental-scale-normalize-before-use",
         "pending-review",
         "spatial-analysis-skipped",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -20163,7 +19931,7 @@
     },
     {
       "case_id": "castles-medieval-castle-1",
-      "case_version": "sha256:c5d805fe528d3fa77b6624caa1ddddd0df1a97ab9da5b9c8c4589c667f40c366",
+      "case_version": "sha256:6059e1343caeed6a8a32b6c1ccc3cd91af3a466b1915737b5e35c1f2ed496f30",
       "title": "Medieval Castle_1",
       "file": "Castles/Medieval Castle_1 - (mcbuild_org).schematic",
       "identity": {
@@ -20365,9 +20133,18 @@
         }
       ],
       "unknown_tag_count": 6,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (6)."
+        "Unknown taxonomy tags preserved for review (6).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -20848,27 +20625,6 @@
           ]
         },
         {
-          "id": "castles-medieval-castle-1:landmark-composition:medieval-castle-1-teaches-landmark-composition-t",
-          "area": "landmark-composition",
-          "claim": "Medieval Castle_1 teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "castles-medieval-castle-1:massing:medieval-castle-1-teaches-massing-through-massin",
           "area": "massing",
           "claim": "Medieval Castle_1 teaches massing through massing score 56, typology castle",
@@ -20900,14 +20656,13 @@
           "facade": 76,
           "interior": 90,
           "massing": 75,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "2 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -20958,7 +20713,6 @@
           "interior-rich-reference",
           "interior_reference",
           "kitchen",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "layered",
@@ -21090,6 +20844,7 @@
         "monumental-scale-normalize-before-use",
         "pending-review",
         "spatial-analysis-skipped",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -21102,7 +20857,7 @@
     },
     {
       "case_id": "castles-small-medium-castle",
-      "case_version": "sha256:a39217ad2aa7a0a66a171f923652ae8896235309158c278965597ca7e30ade42",
+      "case_version": "sha256:2b4087d0f3d7ff6dc510f638e343624bab72979545e260d77a3c0a7bb469e76d",
       "title": "Small_Medium Castle",
       "file": "Castles/Small_Medium Castle - (mcbuild_org).schematic",
       "identity": {
@@ -21299,9 +21054,18 @@
         }
       ],
       "unknown_tag_count": 10,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (10)."
+        "Unknown taxonomy tags preserved for review (10).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -22086,27 +21850,6 @@
           ]
         },
         {
-          "id": "castles-small-medium-castle:landmark-composition:small-medium-castle-teaches-landmark-composition",
-          "area": "landmark-composition",
-          "claim": "Small_Medium Castle teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "castles-small-medium-castle:massing:small-medium-castle-teaches-massing-through-mass",
           "area": "massing",
           "claim": "Small_Medium Castle teaches massing through massing score 38, typology castle",
@@ -22130,20 +21873,19 @@
         }
       ],
       "priority": {
-        "global_score": 57,
-        "risk_penalty": 24,
+        "global_score": 55,
+        "risk_penalty": 26,
         "review_bonus": 0,
         "area_scores": {
           "massing": 72,
           "facade": 90,
           "roof": 74,
-          "interior": 90,
-          "landmark-composition": 75
+          "interior": 90
         },
         "high_value_rank_reason": [
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -22197,7 +21939,6 @@
           "interior-rich-reference",
           "interior_reference",
           "kitchen",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "layer",
@@ -22319,6 +22060,7 @@
         "exterior-edge-room-noise",
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -22331,7 +22073,7 @@
     },
     {
       "case_id": "castles-spawn-m-dieval-village",
-      "case_version": "sha256:ae19777cc6553223bbe96347410678774694d448cc23520038e35eb08c07a6a6",
+      "case_version": "sha256:d2ffa3aa4eb94b47fe2597e10fb9e56c3f0583228b9234b4489b72503624da05",
       "title": "Spawn Médieval Village",
       "file": "Castles/Spawn Médieval Village  - (mcbuild_org).schematic",
       "identity": {
@@ -22569,9 +22311,18 @@
         }
       ],
       "unknown_tag_count": 10,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (10)."
+        "Unknown taxonomy tags preserved for review (10).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -23437,27 +23188,6 @@
           ]
         },
         {
-          "id": "castles-spawn-m-dieval-village:landmark-composition:spawn-m-dieval-village-teaches-landmark-composit",
-          "area": "landmark-composition",
-          "claim": "Spawn Médieval Village teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "castles-spawn-m-dieval-village:massing:spawn-m-dieval-village-teaches-massing-through-m",
           "area": "massing",
           "claim": "Spawn Médieval Village teaches massing through massing score 56, typology castle",
@@ -23481,22 +23211,21 @@
         }
       ],
       "priority": {
-        "global_score": 72,
-        "risk_penalty": 14,
+        "global_score": 70,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "facade": 76,
           "interior": 90,
           "massing": 75,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -23553,7 +23282,6 @@
           "interior",
           "interior-rich-reference",
           "interior_reference",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "layered",
@@ -23682,6 +23410,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -23694,7 +23423,7 @@
     },
     {
       "case_id": "house-a-small-modern-house",
-      "case_version": "sha256:4e44a3b339f676bb841471517a1712b166d3b766db2ae398c00f43ac2a9c2c57",
+      "case_version": "sha256:5b7cb427edb2ccf0f95ca62340db5f7bfbd4ddab9a755ed82e573a696f06e522",
       "title": "A Small Modern House",
       "file": "House/A Small Modern House - (mcbuild_org).schematic",
       "identity": {
@@ -23916,6 +23645,7 @@
         }
       ],
       "unknown_tag_count": 11,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (11)."
@@ -25443,7 +25173,7 @@
     },
     {
       "case_id": "house-big-minecraft-modern-house",
-      "case_version": "sha256:31c31a5b96493b3b9b51cb09829a9cb45e0e59faef290c9673866f7080daccd9",
+      "case_version": "sha256:5c7399193f9875b7c48fbca71eeefd71b2efb23a28068184e0731c13301f9b17",
       "title": "Big minecraft modern house",
       "file": "House/Big minecraft modern house - (mcbuild_org).schematic",
       "identity": {
@@ -25673,6 +25403,7 @@
         }
       ],
       "unknown_tag_count": 10,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (10)."
@@ -27090,7 +26821,7 @@
     },
     {
       "case_id": "house-big-spruce-house",
-      "case_version": "sha256:44de6e962c2d0ce55fcafe638da64db2846ecba09d33a99f3a58aa2bc6ea23c0",
+      "case_version": "sha256:023076aa1734368fd6bb4552a23a38afb8b3206a693cf704248645dde2e9c005",
       "title": "Big spruce house",
       "file": "House/Big spruce house - (mcbuild_org).schematic",
       "identity": {
@@ -27274,6 +27005,7 @@
         }
       ],
       "unknown_tag_count": 8,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (8)."
@@ -28277,7 +28009,7 @@
     },
     {
       "case_id": "house-cave-house",
-      "case_version": "sha256:ddfb04a1282ca98ba52b717d8d4ccf43c81c0825c27a4888db98cd3cde773eae",
+      "case_version": "sha256:c74d1ac065b23b813726b6258e8e04425ec0e304e141d52b30fe784249394d49",
       "title": "Cave House",
       "file": "House/Cave House - (mcbuild_org).schematic",
       "identity": {
@@ -28469,6 +28201,7 @@
         }
       ],
       "unknown_tag_count": 8,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (8)."
@@ -29947,7 +29680,7 @@
     },
     {
       "case_id": "house-classic-modern-house",
-      "case_version": "sha256:44044abdbfd82491d4577d9bac8688a0535d66f2892c60c6316faf6b42145b27",
+      "case_version": "sha256:83125bde6b141cab9487d744ca251b137ac989bca84e9b298a9644ea4f843ef0",
       "title": "Classic Modern House",
       "file": "House/Classic Modern House - (mcbuild_org).schematic",
       "identity": {
@@ -30176,6 +29909,7 @@
         }
       ],
       "unknown_tag_count": 11,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (11)."
@@ -31557,7 +31291,7 @@
     },
     {
       "case_id": "house-colonial-mansion-1",
-      "case_version": "sha256:233890affab147321dce881e9372598ca7274dde209920d1b7bd48f7a3dde500",
+      "case_version": "sha256:872e96bb1c89c20acd01390e61fd9ed1b728808bdf0f9f8921c2b7e5e8690ef7",
       "title": "Colonial Mansion 1",
       "file": "House/Colonial Mansion 1 - (mcbuild_org).schematic",
       "identity": {
@@ -31795,6 +31529,7 @@
         }
       ],
       "unknown_tag_count": 10,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (10)."
@@ -33049,7 +32784,7 @@
     },
     {
       "case_id": "house-dark-mansion",
-      "case_version": "sha256:241140fd0afd8f465c98a3a94714df3382d3b88b71419056453493f1d477d628",
+      "case_version": "sha256:c2a760910efd39c624f01978b645dfdb5a3135fad79d0e31665ff1438b1d4157",
       "title": "Dark Mansion",
       "file": "House/Dark Mansion - (mcbuild_org).schematic",
       "identity": {
@@ -33232,6 +32967,7 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (9)."
@@ -34281,7 +34017,7 @@
     },
     {
       "case_id": "house-dream-survival-house",
-      "case_version": "sha256:4fe75a6dd611156d889d47ae20bd48c428d819165382bb0f6947f486fca12418",
+      "case_version": "sha256:328e2ffffb373af741d6abf440b7412cd0a333c33be1352c4607cd49049ace1b",
       "title": "Dream Survival House",
       "file": "House/Dream Survival House - (mcbuild_org).schematic",
       "identity": {
@@ -34488,6 +34224,7 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (9)."
@@ -36004,7 +35741,7 @@
     },
     {
       "case_id": "house-haunted-house",
-      "case_version": "sha256:7630adc1c7a0684fbb39c7a189041560ec0aecebc7cc22eff3afedf1bf08465f",
+      "case_version": "sha256:723567e741b069b4e19bcc87238b72541c093822d8684c41fc78ad669fb82a86",
       "title": "Haunted House",
       "file": "House/Haunted House - (mcbuild_org).schematic",
       "identity": {
@@ -36204,6 +35941,7 @@
         }
       ],
       "unknown_tag_count": 8,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (8)."
@@ -36955,7 +36693,7 @@
     },
     {
       "case_id": "house-iron-man-s-mansion",
-      "case_version": "sha256:c560db56fb45f72775f6a1ee79bcf0a1460055784ac9d4146e99d19e397113da",
+      "case_version": "sha256:898353489fbf6f1be574205079c6ab890e595ae1332fbb4057b2ed8532172358",
       "title": "Iron Man's Mansion",
       "file": "House/Iron Man's Mansion - (mcbuild_org).schematic",
       "identity": {
@@ -37145,6 +36883,7 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (9)."
@@ -38191,7 +37930,7 @@
     },
     {
       "case_id": "house-lakehouse",
-      "case_version": "sha256:23f3a5bbcf3ff7ddaac95720060b065001a5d47e6bde47eb9edcfea4dac99888",
+      "case_version": "sha256:7f50f80849d106129464fd2d5919d8da6fcc7b8b457214dc7fa0cc7d0e974228",
       "title": "Lakehouse",
       "file": "House/Lakehouse - (mcbuild_org).schematic",
       "identity": {
@@ -38414,6 +38153,7 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (9)."
@@ -39942,7 +39682,7 @@
     },
     {
       "case_id": "house-large-3-story-mansion",
-      "case_version": "sha256:32d9972c2b6c4bc0bf6d1ac6e3c8093651085071a044cc46ba7e978213cfc5c9",
+      "case_version": "sha256:99557b36330ac1808e5abe309d3f82496adc5726af66d905009b07870c899882",
       "title": "LARGE 3 story Mansion",
       "file": "House/LARGE 3 story Mansion - (mcbuild_org).schematic",
       "identity": {
@@ -40171,6 +39911,7 @@
         }
       ],
       "unknown_tag_count": 11,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (11)."
@@ -41640,7 +41381,7 @@
     },
     {
       "case_id": "house-luxurious-cove-house",
-      "case_version": "sha256:944b2a56e32da6624fbd8f6d08f86cde92f74860a06dd01d737c2f0eb3973f6a",
+      "case_version": "sha256:040a3dfd07b1f812ba7b279beff7ccdb0c88959ba41b9809e5f64a3c1a6b402c",
       "title": "Luxurious Cove House",
       "file": "House/Luxurious Cove House - (mcbuild_org).schematic",
       "identity": {
@@ -41879,6 +41620,7 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (9)."
@@ -42794,7 +42536,7 @@
     },
     {
       "case_id": "house-market-with-the-villagers",
-      "case_version": "sha256:4e6bf1e63b8131e7dbbda182758c578b6a9ba38ba8ffd3d7c4b37c0ead9c1f5c",
+      "case_version": "sha256:426e984f358e74db8b0635be78c1b814d16ba548fa954b42dad1edef32102ea7",
       "title": "Market with the villagers",
       "file": "House/Market with the villagers - (mcbuild_org).schematic",
       "identity": {
@@ -42984,6 +42726,7 @@
         }
       ],
       "unknown_tag_count": 10,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (10)."
@@ -44146,7 +43889,7 @@
     },
     {
       "case_id": "house-medieval-home",
-      "case_version": "sha256:576d9b7e9b2fff68d65d969b92f56a8aabdc9677d074977d4b508299ce7ff1be",
+      "case_version": "sha256:2ed1dd866a39b5ea050487b5e2fda83b8b04b15a8604e49e24d9a056eb23f954",
       "title": "Medieval Home",
       "file": "House/Medieval Home - (mcbuild_org).schematic",
       "identity": {
@@ -44375,6 +44118,7 @@
         }
       ],
       "unknown_tag_count": 11,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (11)."
@@ -45197,7 +44941,7 @@
     },
     {
       "case_id": "house-medieval-spruce-wood-house",
-      "case_version": "sha256:8f2eabfdba004f8c16e47392c0f83efeacc08c9ff05fb639bcc2a1287e9356d1",
+      "case_version": "sha256:9590841e606d1311a4f677706ac3e86757e969e22d8610f02a9283ad68906368",
       "title": "Medieval Spruce Wood House",
       "file": "House/Medieval Spruce Wood House - (mcbuild_org).schematic",
       "identity": {
@@ -45448,6 +45192,7 @@
         }
       ],
       "unknown_tag_count": 13,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (13)."
@@ -46906,7 +46651,7 @@
     },
     {
       "case_id": "house-mega-mansion",
-      "case_version": "sha256:da66fca831ce7115b0b0147f2b1117e277c2dbbabb29bba119c5ee23dceda272",
+      "case_version": "sha256:7ba662585c8e72a6a5018393d31d878460722f6b316cf9578dc647f63b480a1b",
       "title": "Mega Mansion",
       "file": "House/Mega Mansion - (mcbuild_org).schematic",
       "identity": {
@@ -47121,6 +46866,7 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (9)."
@@ -48196,7 +47942,7 @@
     },
     {
       "case_id": "house-modern-estate",
-      "case_version": "sha256:468edcbde9a595c4b70e92c23f31a1b1d9b56f0395b8f334fbdf46381cce3f79",
+      "case_version": "sha256:c5c11d45f1a7cd7b5b9d6695bd8c7a4f7cbd30241b7b79c5eaf520d7d932db72",
       "title": "Modern Estate",
       "file": "House/Modern Estate - (mcbuild_org).schematic",
       "identity": {
@@ -48357,6 +48103,7 @@
         }
       ],
       "unknown_tag_count": 7,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (7)."
@@ -49182,7 +48929,7 @@
     },
     {
       "case_id": "house-modern-house-110-mcbuild-org",
-      "case_version": "sha256:5261cd772f92a5d9ffd4e9ab32d19aaea1502968443087a1a6df87c7d44bb30c",
+      "case_version": "sha256:1ae368921176940c7edbd056ea009ac9ce777277b2995654bc937fbe87d46ea8",
       "title": "Modern House #110 - (mcbuild_org)",
       "file": "House/Modern House #110 - (mcbuild_org).schematic",
       "identity": {
@@ -49418,6 +49165,7 @@
         }
       ],
       "unknown_tag_count": 12,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source URL.",
         "Missing source note.",
@@ -50775,7 +50523,7 @@
     },
     {
       "case_id": "house-modern-house-10",
-      "case_version": "sha256:0befeb60667d58677bd7c0eeed7dcc22baeec5e93efcef142a98144fc586c64b",
+      "case_version": "sha256:31c240d66ebea44705a86b5685479e4ce740aafa8c2105a90238c67f74487cb1",
       "title": "Modern House 10",
       "file": "House/Modern House 10 - (mcbuild_org).schematic",
       "identity": {
@@ -51013,6 +50761,7 @@
         }
       ],
       "unknown_tag_count": 10,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (10)."
@@ -52537,7 +52286,7 @@
     },
     {
       "case_id": "house-modern-house-3",
-      "case_version": "sha256:2e239b7a7d922b5de0aa0c6803731011af110cfb89e640cac7c435bab3438ad8",
+      "case_version": "sha256:7114a4feb00146a4092f455a71d24efc95cd3368e3488099e1bcbec4841a1b61",
       "title": "Modern house 3",
       "file": "House/Modern house 3 - (mcbuild_org).schematic",
       "identity": {
@@ -52682,6 +52431,7 @@
         }
       ],
       "unknown_tag_count": 6,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (6)."
@@ -53415,7 +53165,7 @@
     },
     {
       "case_id": "house-modern-mansion",
-      "case_version": "sha256:fa85d1b5d6c870bac12d4fb0e2ee02c68dcf47c9311da05e229472f6859f13b9",
+      "case_version": "sha256:db65fd8e00852d8fa5ebf699f89080280089b68c29f14d500cc869af428c58f3",
       "title": "Modern Mansion",
       "file": "House/Modern Mansion - (mcbuild_org).schematic",
       "identity": {
@@ -53605,6 +53355,7 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (9)."
@@ -54578,7 +54329,7 @@
     },
     {
       "case_id": "house-ninja-house",
-      "case_version": "sha256:96b09937d761076fbe637f4e557561bdbfbcab0ba8b53bff6a860bd478fa8b46",
+      "case_version": "sha256:b5aad8eb6bd28e922372e405a7ee0abc4cec6f3cb64b785f9f6e01d550feb10b",
       "title": "Ninja House",
       "file": "House/Ninja House - (mcbuild_org).schematic",
       "identity": {
@@ -54785,6 +54536,7 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (9)."
@@ -55770,7 +55522,7 @@
     },
     {
       "case_id": "house-round-medieval-house",
-      "case_version": "sha256:ef6e70794ed4ac64fd5fbb5d0bcf938bd8afcc249c2fe27ad74a27954b0f915b",
+      "case_version": "sha256:dc452826c7b4e965fc8bed6fecf3594048233211d0c0fc9b1cb4e6b3fbf831c8",
       "title": "Round Medieval House",
       "file": "House/Round Medieval House - (mcbuild_org).schematic",
       "identity": {
@@ -55949,6 +55701,7 @@
         }
       ],
       "unknown_tag_count": 11,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (11)."
@@ -56838,7 +56591,7 @@
     },
     {
       "case_id": "house-sandstone-mansion",
-      "case_version": "sha256:8e5addfdde36df04903ba0cdc3624cf86ea6d7173ebbe83f6de914ab58d0afb1",
+      "case_version": "sha256:b63b725fdaf87e3b63706a4e382529b7359479d252d2ed0055ca2bbc3fc26418",
       "title": "Sandstone Mansion",
       "file": "House/Sandstone Mansion - (mcbuild_org).schematic",
       "identity": {
@@ -57007,6 +56760,7 @@
         }
       ],
       "unknown_tag_count": 8,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (8)."
@@ -57765,7 +57519,7 @@
     },
     {
       "case_id": "house-tavern",
-      "case_version": "sha256:be783aeb445c2783e97e4e6b98955bddf9d71877053003ad51c4c6d4d2936224",
+      "case_version": "sha256:f3a823d973305f627b5c832c6e2e82fb6c270b14979d69813bf1edb9d27bb1e2",
       "title": "Tavern",
       "file": "House/Tavern - (mcbuild_org).schematic",
       "identity": {
@@ -57993,6 +57747,7 @@
         }
       ],
       "unknown_tag_count": 12,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (12)."
@@ -59547,7 +59302,7 @@
     },
     {
       "case_id": "house-villa",
-      "case_version": "sha256:951605336e231ba6309e241075d7183de8a4a482261ae65eb383c83e13f47558",
+      "case_version": "sha256:dd6541f4ddf253a5a2d62dde574ad83bda9307b102e5635f9f550e751b50982e",
       "title": "Villa",
       "file": "House/Villa - (mcbuild_org).schematic",
       "identity": {
@@ -59778,6 +59533,7 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (9)."
@@ -61258,7 +61014,7 @@
     },
     {
       "case_id": "house-watermill",
-      "case_version": "sha256:fc2d1b6e342e425dc45e3dd0b05a1c973c32f84128574e0e6215e897768f252b",
+      "case_version": "sha256:b59d6bc6250b294e6faa3d258fd550a4ab66e2f45826ece022616581cd986a2f",
       "title": "Watermill",
       "file": "House/Watermill - (mcbuild_org).schematic",
       "identity": {
@@ -61486,6 +61242,7 @@
         }
       ],
       "unknown_tag_count": 12,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (12)."
@@ -63012,7 +62769,7 @@
     },
     {
       "case_id": "house-white-house-mcbuild-org",
-      "case_version": "sha256:8064d809e26a29554428cb8a0a63f16c49b211964b0ece7128a0de69547abb67",
+      "case_version": "sha256:283431ed60fbf963c84631fd973df61c491efdc92f408535f649d74393491477",
       "title": "White House - (mcbuild_org)",
       "file": "House/White House - (mcbuild_org).schematic",
       "identity": {
@@ -63168,6 +62925,7 @@
         }
       ],
       "unknown_tag_count": 4,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source URL.",
         "Missing source note.",
@@ -63789,7 +63547,7 @@
     },
     {
       "case_id": "house-wood-modern-house",
-      "case_version": "sha256:d9ecc09742aa14e096de0d5cb7a5ff4afe8d7a25b2514836da92e80292e86e9c",
+      "case_version": "sha256:5c4a7654d52cd9bba4ec58bca0eafaf5a309012655954ba1b477ce9981f02507",
       "title": "Wood Modern House",
       "file": "House/Wood Modern House - (mcbuild_org).schematic",
       "identity": {
@@ -64025,6 +63783,7 @@
         }
       ],
       "unknown_tag_count": 12,
+      "unknown_learning_areas": [],
       "warnings": [
         "Missing source note.",
         "Unknown taxonomy tags preserved for review (12)."
@@ -65493,7 +65252,7 @@
     },
     {
       "case_id": "temples-japanese-pagoda-plus-tea-house",
-      "case_version": "sha256:5d1ea2ad63272929013c8513fc000f2f96e1eb8615b3af5bb0a86430503ec72a",
+      "case_version": "sha256:b2af2f2f8d0554cc69ccbcd1620369818b5e74efa01a865053c67c229144f528",
       "title": "Japanese pagoda Plus Tea House",
       "file": "Temples/Japanese pagoda Plus Tea House - (mcbuild_org).schematic",
       "identity": {
@@ -65698,9 +65457,18 @@
         }
       ],
       "unknown_tag_count": 11,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (11)."
+        "Unknown taxonomy tags preserved for review (11).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -66503,27 +66271,6 @@
           ]
         },
         {
-          "id": "temples-japanese-pagoda-plus-tea-house:landmark-composition:japanese-pagoda-plus-tea-house-teaches-landmark-",
-          "area": "landmark-composition",
-          "claim": "Japanese pagoda Plus Tea House teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "temples-japanese-pagoda-plus-tea-house:massing:japanese-pagoda-plus-tea-house-teaches-massing-t",
           "area": "massing",
           "claim": "Japanese pagoda Plus Tea House teaches massing through massing score 88, typology temple",
@@ -66568,22 +66315,21 @@
         }
       ],
       "priority": {
-        "global_score": 76,
-        "risk_penalty": 14,
+        "global_score": 74,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "facade": 76,
           "interior": 90,
           "massing": 90,
-          "roof": 90,
-          "landmark-composition": 90
+          "roof": 90
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -66638,7 +66384,6 @@
           "interior_reference",
           "internal",
           "japanese",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "landscape-composition",
@@ -66762,6 +66507,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -66774,7 +66520,7 @@
     },
     {
       "case_id": "temples-japanese-temple-mcbuild-org",
-      "case_version": "sha256:abf0f0246e0f42d53309a496fae829b99711b42d19845783440031993f8c4df2",
+      "case_version": "sha256:1d90c359ad2089ba498269574970ebbd6dc9038841918e836ba1a6d5f6a6328c",
       "title": "Japanese temple - (mcbuild_org)",
       "file": "Temples/Japanese temple - (mcbuild_org).schematic",
       "identity": {
@@ -67016,10 +66762,19 @@
         }
       ],
       "unknown_tag_count": 14,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source URL.",
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (14)."
+        "Unknown taxonomy tags preserved for review (14).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -67678,27 +67433,6 @@
           ]
         },
         {
-          "id": "temples-japanese-temple-mcbuild-org:landmark-composition:japanese-temple-mcbuild-org-teaches-landmark-com",
-          "area": "landmark-composition",
-          "claim": "Japanese temple - (mcbuild_org) teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "temples-japanese-temple-mcbuild-org:massing:japanese-temple-mcbuild-org-teaches-massing-thro",
           "area": "massing",
           "claim": "Japanese temple - (mcbuild_org) teaches massing through massing score 84, typology temple",
@@ -67751,15 +67485,14 @@
           "facade": 90,
           "interior": 90,
           "massing": 90,
-          "roof": 90,
-          "landmark-composition": 90
+          "roof": 90
         },
         "high_value_rank_reason": [
           "strong reference score",
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "3 warnings"
+          "4 warnings"
         ]
       },
       "retrieval": {
@@ -67813,7 +67546,6 @@
           "interior-rich-reference",
           "interior_reference",
           "japanese",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "landscape-composition",
@@ -67947,6 +67679,7 @@
         "missing-source-note",
         "missing-source-url",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags",
         "weak-text-metadata"
       ],
@@ -67960,7 +67693,7 @@
     },
     {
       "case_id": "temples-parthenon-spawn-mcbuild-org",
-      "case_version": "sha256:c1ac7191fc6e2d53f35e51d91eaa2596d77989d77bbd65f7a14b2c450966bc5d",
+      "case_version": "sha256:ad930af8df9620151b3b172d283f5e36bc95658a2c70b92f45c48d250e284360",
       "title": "Parthenon Spawn - (mcbuild_org)",
       "file": "Temples/Parthenon Spawn - (mcbuild_org).schematic",
       "identity": {
@@ -68167,10 +67900,19 @@
         }
       ],
       "unknown_tag_count": 9,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source URL.",
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (9)."
+        "Unknown taxonomy tags preserved for review (9).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -68699,27 +68441,6 @@
           ]
         },
         {
-          "id": "temples-parthenon-spawn-mcbuild-org:landmark-composition:parthenon-spawn-mcbuild-org-teaches-landmark-com",
-          "area": "landmark-composition",
-          "claim": "Parthenon Spawn - (mcbuild_org) teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "temples-parthenon-spawn-mcbuild-org:facade:parthenon-spawn-mcbuild-org-teaches-facade-throu",
           "area": "facade",
           "claim": "Parthenon Spawn - (mcbuild_org) teaches facade through detail score 41, stair/slab 0.1303, fence 0.0004",
@@ -68772,14 +68493,13 @@
           "facade": 76,
           "interior": 90,
           "massing": 72,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "3 warnings"
+          "4 warnings"
         ]
       },
       "retrieval": {
@@ -68839,7 +68559,6 @@
           "interior-rich-reference",
           "interior_reference",
           "japanese",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "layer",
@@ -68970,6 +68689,7 @@
         "missing-source-note",
         "missing-source-url",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags",
         "weak-text-metadata"
       ],
@@ -68983,7 +68703,7 @@
     },
     {
       "case_id": "temples-the-sky-city-of-athalux-mcbuild-org",
-      "case_version": "sha256:33a27ee4bba609ae6e244625648d903fc9da1b9f2b448f1bbfa854de1af198a5",
+      "case_version": "sha256:55ac1f9e41d72ad03d99e4dabffb7cd50be653478af833ae529d93fc7374b35b",
       "title": "The Sky City of Athalux - (mcbuild_org)",
       "file": "Temples/The Sky City of Athalux - (mcbuild_org).schematic",
       "identity": {
@@ -69114,10 +68834,19 @@
         }
       ],
       "unknown_tag_count": 4,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source URL.",
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (4)."
+        "Unknown taxonomy tags preserved for review (4).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -69527,27 +69256,6 @@
           ]
         },
         {
-          "id": "temples-the-sky-city-of-athalux-mcbuild-org:landmark-composition:the-sky-city-of-athalux-mcbuild-org-teaches-land",
-          "area": "landmark-composition",
-          "claim": "The Sky City of Athalux - (mcbuild_org) teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "temples-the-sky-city-of-athalux-mcbuild-org:massing:the-sky-city-of-athalux-mcbuild-org-teaches-mass",
           "area": "massing",
           "claim": "The Sky City of Athalux - (mcbuild_org) teaches massing through massing score 46, typology temple",
@@ -69579,14 +69287,13 @@
           "facade": 76,
           "interior": 80,
           "massing": 75,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "2 risk controls",
-          "3 warnings"
+          "4 warnings"
         ]
       },
       "retrieval": {
@@ -69640,7 +69347,6 @@
           "interior",
           "japanese",
           "just",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "large",
@@ -69778,6 +69484,7 @@
         "missing-source-url",
         "monumental-scale-normalize-before-use",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags",
         "weak-text-metadata"
       ],
@@ -69791,7 +69498,7 @@
     },
     {
       "case_id": "temples-tower-of-gods-mcbuild-org",
-      "case_version": "sha256:da3b5823809381b701f71ac8d2940a0720100915f3c972155cb77ae8ca0f1bf4",
+      "case_version": "sha256:abbdff9a573ad1d238c21b2d61560de2b50e69987f879e92b7500012dae8b4b3",
       "title": "Tower of Gods - (mcbuild_org)",
       "file": "Temples/Tower of Gods - (mcbuild_org).schematic",
       "identity": {
@@ -69960,10 +69667,19 @@
         }
       ],
       "unknown_tag_count": 7,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source URL.",
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (7)."
+        "Unknown taxonomy tags preserved for review (7).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -70542,27 +70258,6 @@
           ]
         },
         {
-          "id": "temples-tower-of-gods-mcbuild-org:landmark-composition:tower-of-gods-mcbuild-org-teaches-landmark-compo",
-          "area": "landmark-composition",
-          "claim": "Tower of Gods - (mcbuild_org) teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "temples-tower-of-gods-mcbuild-org:massing:tower-of-gods-mcbuild-org-teaches-massing-throug",
           "area": "massing",
           "claim": "Tower of Gods - (mcbuild_org) teaches massing through massing score 72, typology tower",
@@ -70615,14 +70310,13 @@
           "massing": 90,
           "facade": 76,
           "roof": 74,
-          "interior": 90,
-          "landmark-composition": 90
+          "interior": 90
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "3 warnings"
+          "4 warnings"
         ]
       },
       "retrieval": {
@@ -70675,7 +70369,6 @@
           "interior-rich-reference",
           "interior_reference",
           "japanese",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "layer",
@@ -70802,6 +70495,7 @@
         "missing-source-note",
         "missing-source-url",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags",
         "weak-text-metadata"
       ],
@@ -70815,7 +70509,7 @@
     },
     {
       "case_id": "temples-ygdrassil-s-retreat",
-      "case_version": "sha256:8fe30305a970ba7e10dfe1721e63792834e6e2290b1a06135890e17bab35b48e",
+      "case_version": "sha256:6866c66da9c334d20d484f814167887e6602d82170584671990f0cf2eccd52fd",
       "title": "Ygdrassil's Retreat",
       "file": "Temples/Ygdrassil's Retreat - (mcbuild_org).schematic",
       "identity": {
@@ -70985,9 +70679,18 @@
         }
       ],
       "unknown_tag_count": 6,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (6)."
+        "Unknown taxonomy tags preserved for review (6).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -71760,27 +71463,6 @@
           ]
         },
         {
-          "id": "temples-ygdrassil-s-retreat:landmark-composition:ygdrassil-s-retreat-teaches-landmark-composition",
-          "area": "landmark-composition",
-          "claim": "Ygdrassil's Retreat teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "temples-ygdrassil-s-retreat:massing:ygdrassil-s-retreat-teaches-massing-through-mass",
           "area": "massing",
           "claim": "Ygdrassil's Retreat teaches massing through massing score 40, typology temple",
@@ -71804,22 +71486,21 @@
         }
       ],
       "priority": {
-        "global_score": 71,
-        "risk_penalty": 14,
+        "global_score": 69,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "facade": 76,
           "interior": 90,
           "massing": 72,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -71875,7 +71556,6 @@
           "interior-rich-reference",
           "interior_reference",
           "japanese",
-          "landmark-composition",
           "landmark_presence",
           "landscape-composition",
           "layer",
@@ -71999,6 +71679,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -72011,7 +71692,7 @@
     },
     {
       "case_id": "tower-big-ben-mcbuild-org",
-      "case_version": "sha256:045a16cec4aac59148443b2a4f60abf435c6a72bde38e5c445a96a453704646f",
+      "case_version": "sha256:11f88d680ab0c57a9afa283dd83a8eabeacabf13400ba461bb12563fa5d7471f",
       "title": "Big Ben - (mcbuild_org)",
       "file": "Tower/Big Ben - (mcbuild_org).schematic",
       "identity": {
@@ -72195,10 +71876,19 @@
         }
       ],
       "unknown_tag_count": 8,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source URL.",
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (8)."
+        "Unknown taxonomy tags preserved for review (8).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -72805,27 +72495,6 @@
           ]
         },
         {
-          "id": "tower-big-ben-mcbuild-org:landmark-composition:big-ben-mcbuild-org-teaches-landmark-composition",
-          "area": "landmark-composition",
-          "claim": "Big Ben - (mcbuild_org) teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "tower-big-ben-mcbuild-org:massing:big-ben-mcbuild-org-teaches-massing-through-mass",
           "area": "massing",
           "claim": "Big Ben - (mcbuild_org) teaches massing through massing score 72, typology tower",
@@ -72877,14 +72546,13 @@
           "site": 90,
           "massing": 90,
           "facade": 76,
-          "interior": 90,
-          "landmark-composition": 90
+          "interior": 90
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "3 warnings"
+          "4 warnings"
         ]
       },
       "retrieval": {
@@ -72939,7 +72607,6 @@
           "interior-pattern",
           "interior-rich-reference",
           "interior_reference",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "layer",
@@ -73064,6 +72731,7 @@
         "missing-source-note",
         "missing-source-url",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags",
         "weak-text-metadata"
       ],
@@ -73077,7 +72745,7 @@
     },
     {
       "case_id": "tower-clock-tower",
-      "case_version": "sha256:d6c5a6c978635de78b9021feb32332016615d6a995665e0a296a395642f1c9d6",
+      "case_version": "sha256:7742ef6a938609f8dbc1d11b22ef15747b159be64d3ce49b666371c82e9b55d5",
       "title": "Clock Tower",
       "file": "Tower/Clock Tower - (mcbuild_org).schematic",
       "identity": {
@@ -73253,9 +72921,18 @@
         }
       ],
       "unknown_tag_count": 8,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (8)."
+        "Unknown taxonomy tags preserved for review (8).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -73880,27 +73557,6 @@
           ]
         },
         {
-          "id": "tower-clock-tower:landmark-composition:clock-tower-teaches-landmark-composition-through",
-          "area": "landmark-composition",
-          "claim": "Clock Tower teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "tower-clock-tower:massing:clock-tower-teaches-massing-through-massing-scor",
           "area": "massing",
           "claim": "Clock Tower teaches massing through massing score 64, typology tower",
@@ -73946,21 +73602,20 @@
         }
       ],
       "priority": {
-        "global_score": 69,
-        "risk_penalty": 14,
+        "global_score": 67,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "facade": 76,
           "interior": 90,
-          "massing": 75,
-          "landmark-composition": 75
+          "massing": 75
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -74013,7 +73668,6 @@
           "interior-pattern",
           "interior-usable-reference",
           "interior_reference",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "landscape-composition",
@@ -74128,6 +73782,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -74140,7 +73795,7 @@
     },
     {
       "case_id": "tower-eiffel-tower",
-      "case_version": "sha256:fa42ea1595a8cf8d3b83edbe6a58c9a02da1bc230272ff1351f9312a95d97219",
+      "case_version": "sha256:ffb2c87fc933ade9b82c03bc81cf057b5fc554e3239aeaea76a37476b53e8cb3",
       "title": "Eiffel Tower",
       "file": "Tower/Eiffel Tower - (mcbuild_org).schematic",
       "identity": {
@@ -74316,9 +73971,18 @@
         }
       ],
       "unknown_tag_count": 8,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (8)."
+        "Unknown taxonomy tags preserved for review (8).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -75235,27 +74899,6 @@
           ]
         },
         {
-          "id": "tower-eiffel-tower:landmark-composition:eiffel-tower-teaches-landmark-composition-throug",
-          "area": "landmark-composition",
-          "claim": "Eiffel Tower teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "tower-eiffel-tower:massing:eiffel-tower-teaches-massing-through-massing-sco",
           "area": "massing",
           "claim": "Eiffel Tower teaches massing through massing score 76, typology tower",
@@ -75279,22 +74922,21 @@
         }
       ],
       "priority": {
-        "global_score": 85,
-        "risk_penalty": 14,
+        "global_score": 83,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "interior": 90,
           "massing": 90,
           "facade": 76,
-          "roof": 74,
-          "landmark-composition": 90
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -75346,7 +74988,6 @@
           "interior_reference",
           "kitchen",
           "kitchen_work_wall",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "layered",
@@ -75465,6 +75106,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -75477,7 +75119,7 @@
     },
     {
       "case_id": "tower-lighthouse",
-      "case_version": "sha256:27f47d197e7f83a6ed2dd923172552e141e4b19377f8d96b82f4e0349fbdc7da",
+      "case_version": "sha256:85b49714d6b9e04da51a0555c85bd82f75c2cd56806b8691c9a24613b1eada15",
       "title": "Lighthouse",
       "file": "Tower/Lighthouse  - (mcbuild_org).schematic",
       "identity": {
@@ -75653,9 +75295,18 @@
         }
       ],
       "unknown_tag_count": 8,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (8)."
+        "Unknown taxonomy tags preserved for review (8).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -76312,27 +75963,6 @@
           ]
         },
         {
-          "id": "tower-lighthouse:landmark-composition:lighthouse-teaches-landmark-composition-through-",
-          "area": "landmark-composition",
-          "claim": "Lighthouse teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "tower-lighthouse:massing:lighthouse-teaches-massing-through-massing-score",
           "area": "massing",
           "claim": "Lighthouse teaches massing through massing score 72, typology tower",
@@ -76379,22 +76009,21 @@
         }
       ],
       "priority": {
-        "global_score": 67,
-        "risk_penalty": 14,
+        "global_score": 65,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 78,
           "interior": 90,
           "massing": 90,
           "roof": 74,
-          "facade": 76,
-          "landmark-composition": 90
+          "facade": 76
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -76446,7 +76075,6 @@
           "interior-rich-reference",
           "interior_reference",
           "island",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "layered",
@@ -76564,6 +76192,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -76576,7 +76205,7 @@
     },
     {
       "case_id": "tower-modern-hospital",
-      "case_version": "sha256:c5dc1938d2e8b20b5a63ab4e84cda3371c6f33d70981ff81364641704ab0787d",
+      "case_version": "sha256:d3d8112571d556cb7e8715894ade7cfc228d8f75690d711330f92c6a164157a8",
       "title": "Modern Hospital",
       "file": "Tower/Modern Hospital - (mcbuild_org).schematic",
       "identity": {
@@ -76796,9 +76425,18 @@
         }
       ],
       "unknown_tag_count": 11,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (11)."
+        "Unknown taxonomy tags preserved for review (11).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -77638,27 +77276,6 @@
           ]
         },
         {
-          "id": "tower-modern-hospital:landmark-composition:modern-hospital-teaches-landmark-composition-thr",
-          "area": "landmark-composition",
-          "claim": "Modern Hospital teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.75,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "tower-modern-hospital:massing:modern-hospital-teaches-massing-through-massing-",
           "area": "massing",
           "claim": "Modern Hospital teaches massing through massing score 60, typology tower",
@@ -77704,22 +77321,21 @@
         }
       ],
       "priority": {
-        "global_score": 54,
-        "risk_penalty": 25,
+        "global_score": 52,
+        "risk_penalty": 27,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "facade": 76,
           "interior": 90,
           "massing": 75,
-          "roof": 74,
-          "landmark-composition": 75
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "2 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -77771,7 +77387,6 @@
           "interior",
           "interior_reference",
           "just",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "landscape-composition",
@@ -77899,6 +77514,7 @@
         "missing-source-note",
         "monumental-scale-normalize-before-use",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -77911,7 +77527,7 @@
     },
     {
       "case_id": "tower-modern-futuristic-building",
-      "case_version": "sha256:b3d96f51aa80b99c9e2c5952246072c65d671701e8c74164a9763db92189f496",
+      "case_version": "sha256:3a154516a7c0d3b0ba67bb7dbe882f0f080f7f7e73843f055fba5320cdd253c3",
       "title": "Modern_Futuristic Building",
       "file": "Tower/Modern_Futuristic Building - (mcbuild_org).schematic",
       "identity": {
@@ -78100,9 +77716,18 @@
         }
       ],
       "unknown_tag_count": 10,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (10)."
+        "Unknown taxonomy tags preserved for review (10).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -79077,27 +78702,6 @@
           ]
         },
         {
-          "id": "tower-modern-futuristic-building:landmark-composition:modern-futuristic-building-teaches-landmark-comp",
-          "area": "landmark-composition",
-          "claim": "Modern_Futuristic Building teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "tower-modern-futuristic-building:massing:modern-futuristic-building-teaches-massing-throu",
           "area": "massing",
           "claim": "Modern_Futuristic Building teaches massing through massing score 82, typology tower",
@@ -79121,22 +78725,21 @@
         }
       ],
       "priority": {
-        "global_score": 70,
-        "risk_penalty": 14,
+        "global_score": 68,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "site": 90,
           "facade": 76,
           "interior": 90,
           "massing": 90,
-          "roof": 74,
-          "landmark-composition": 90
+          "roof": 74
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -79192,7 +78795,6 @@
           "interior",
           "interior_reference",
           "just",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "landscape-composition",
@@ -79319,6 +78921,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {
@@ -79331,7 +78934,7 @@
     },
     {
       "case_id": "tower-stark-tower",
-      "case_version": "sha256:c2eb215f3ed7d6f2d95f70df9c1acd48b21d748839a496c9597e3ea089392567",
+      "case_version": "sha256:0be8cd0d1984459181fabcc671e8606fd9522ef5b0dca0ee6c231a31de14d9e1",
       "title": "Stark Tower",
       "file": "Tower/Stark Tower - (mcbuild_org).schematic",
       "identity": {
@@ -79482,9 +79085,18 @@
         }
       ],
       "unknown_tag_count": 8,
+      "unknown_learning_areas": [
+        {
+          "raw": "landmark-composition",
+          "role": "landmark_presence",
+          "evidence": "score 0",
+          "reason": "unknown-v1-learning-area"
+        }
+      ],
       "warnings": [
         "Missing source note.",
-        "Unknown taxonomy tags preserved for review (8)."
+        "Unknown taxonomy tags preserved for review (8).",
+        "Unknown v1 learning areas require review (1)."
       ],
       "knowledge_units": [
         {
@@ -79938,27 +79550,6 @@
           ]
         },
         {
-          "id": "tower-stark-tower:landmark-composition:stark-tower-teaches-landmark-composition-through",
-          "area": "landmark-composition",
-          "claim": "Stark Tower teaches landmark-composition through score 0",
-          "evidence": [
-            "score 0"
-          ],
-          "confidence": 0.9,
-          "use_as": [
-            "phase2-massing-roof-mining"
-          ],
-          "avoid_when": [],
-          "integration_targets": [
-            "TemplateKnowledgeAgent"
-          ],
-          "source_fields": [
-            "case_library.semantic_clauses",
-            "case_library.feature_card",
-            "case_library.learning_roles"
-          ]
-        },
-        {
           "id": "tower-stark-tower:massing:stark-tower-teaches-massing-through-massing-scor",
           "area": "massing",
           "claim": "Stark Tower teaches massing through massing score 76, typology tower",
@@ -80004,21 +79595,20 @@
         }
       ],
       "priority": {
-        "global_score": 51,
-        "risk_penalty": 14,
+        "global_score": 49,
+        "risk_penalty": 16,
         "review_bonus": 0,
         "area_scores": {
           "massing": 90,
           "facade": 76,
           "interior": 90,
-          "site": 78,
-          "landmark-composition": 90
+          "site": 78
         },
         "high_value_rank_reason": [
           "usable site knowledge",
           "usable interior knowledge",
           "1 risk controls",
-          "2 warnings"
+          "3 warnings"
         ]
       },
       "retrieval": {
@@ -80067,7 +79657,6 @@
           "interior_reference",
           "island",
           "just",
-          "landmark-composition",
           "landmark_presence",
           "landmark_reveal",
           "large",
@@ -80179,6 +79768,7 @@
       "review_priority_signals": [
         "missing-source-note",
         "pending-review",
+        "unknown-learning-area",
         "unknown-taxonomy-tags"
       ],
       "lineage": {

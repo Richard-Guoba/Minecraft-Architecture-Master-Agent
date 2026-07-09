@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -12,6 +13,7 @@ import {
 } from '../src/construction/templates/templateKnowledgeBaseV2.js';
 import { normalizeTemplateKnowledgeBaseV2Inputs } from '../src/construction/templates/schematicAnalyzer.js';
 import { parseTemplateReviewOverlay, mergeReviewRecords } from '../src/construction/templates/templateReviewOverlay.js';
+import { loadTagTaxonomy } from '../src/construction/templates/templateTagTaxonomy.js';
 
 test('knowledge base v2 converts v1 cases into reviewed knowledge units', () => {
   const reviewOverlay = mergeReviewRecords(parseTemplateReviewOverlay(JSON.stringify({
@@ -158,6 +160,87 @@ test('knowledge base v2 preserves unknown tags and applies risk overrides', () =
   assert.ok(modern.warnings.some((item) => /missing source url/i.test(item)));
 });
 
+test('knowledge base v2 uses taxonomy overrides and surfaces overlay validation errors in reports', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-kb-v2-taxonomy-'));
+  const taxonomyFile = path.join(root, 'tag_taxonomy.json');
+  await fs.writeFile(taxonomyFile, `${JSON.stringify({
+    schema_version: 1,
+    groups: {
+      typology: ['arena', 'house'],
+      style: ['classical', 'modern'],
+      site: ['garden', 'terrain-integrated', 'water-edge'],
+      massing: ['long-bar', 'vertical-landmark'],
+      roof: ['flat-terrace'],
+      facade: ['large-glass'],
+      interior: ['furnished'],
+      quality: ['high-value-reference', 'showcase-reference'],
+      room_types: ['kitchen', 'living']
+    }
+  })}\n`, 'utf8');
+  const taxonomy = await loadTagTaxonomy(taxonomyFile);
+  const parsed = parseTemplateReviewOverlay([
+    JSON.stringify({
+      record_id: 'review-custom-tag',
+      case_id: 'house-modern-lake-villa',
+      reviewed_by: 'human',
+      reviewed_at: '2026-07-09T00:00:00.000Z',
+      status: 'approved',
+      confidence: 0.9,
+      manual_tags: [{ group: 'quality', id: 'showcase-reference', evidence: 'curator override' }]
+    }),
+    JSON.stringify({
+      record_id: 'review-invalid-tag',
+      case_id: 'arenas-amphitheatre-arena',
+      reviewed_by: 'human',
+      reviewed_at: '2026-07-09T00:00:01.000Z',
+      status: 'approved',
+      confidence: 0.9,
+      manual_tags: [{ group: 'quality', id: 'missing-from-custom-taxonomy' }]
+    })
+  ].join('\n'), { taxonomy });
+
+  const kb = buildTemplateKnowledgeBaseV2({
+    caseLibrary: caseLibraryFixture(),
+    templateIndex: templateIndexFixture(),
+    reviewOverlay: mergeReviewRecords(parsed.records),
+    overlayErrors: parsed.errors,
+    taxonomy
+  });
+  const modern = kb.cases.find((item) => item.case_id === 'house-modern-lake-villa');
+
+  assert.ok(modern.tags.quality.some((tag) => tag.id === 'showcase-reference'));
+  assert.equal(kb.summary.overlay_error_count, 1);
+  assert.match(kb.summary.overlay_errors[0].message, /missing-from-custom-taxonomy/);
+  assert.match(renderTemplatePriorityReport(kb), /Overlay errors/);
+  assert.match(renderTemplatePriorityReport(kb), /line 2/);
+});
+
+test('knowledge base v2 emits only canonical knowledge areas and flags unknown v1 areas for review', () => {
+  const cases = caseLibraryFixture().cases.map((item) => item.case_id === 'house-modern-lake-villa'
+    ? {
+        ...item,
+        learnable_areas: [
+          ...item.learnable_areas,
+          { area: 'landmark-composition', priority: 'high', role: 'landmark_presence', evidence: 'legacy landmark role', next_phase: 'phase2-massing-roof-mining' }
+        ]
+      }
+    : item);
+  const kb = buildTemplateKnowledgeBaseV2({
+    caseLibrary: { ...caseLibraryFixture(), cases },
+    templateIndex: templateIndexFixture()
+  });
+  const canonicalAreas = new Set(['site', 'massing', 'facade', 'roof', 'space-planning', 'interior', 'materials', 'risk']);
+  const modern = kb.cases.find((item) => item.case_id === 'house-modern-lake-villa');
+
+  for (const item of kb.cases) {
+    for (const unit of item.knowledge_units) assert.ok(canonicalAreas.has(unit.area), unit.area);
+    for (const area of Object.keys(item.priority.area_scores)) assert.ok(canonicalAreas.has(area), area);
+  }
+  assert.equal(modern.knowledge_units.some((unit) => unit.area === 'landmark-composition'), false);
+  assert.ok(modern.review_priority_signals.includes('unknown-learning-area'));
+  assert.ok(modern.warnings.some((item) => /unknown v1 learning areas/i.test(item)));
+});
+
 test('knowledge base v2 review queue includes metadata-risk cases beyond explicit review flags', () => {
   const kb = buildTemplateKnowledgeBaseV2({
     generatedAt: '2026-07-09T00:00:00.000Z',
@@ -214,6 +297,30 @@ test('knowledge base v2 artifact writer result shape is analyzer-friendly', asyn
   ].sort());
   assert.equal(result.knowledgeBase.summary.case_count, 2);
   assert.equal(result.retrievalIndex.case_count, 2);
+});
+
+test('knowledge base v2 artifact generation is byte-stable for unchanged inputs', async () => {
+  const firstRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-kb-v2-stable-a-'));
+  const secondRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-kb-v2-stable-b-'));
+  const first = await writeTemplateKnowledgeBaseV2Artifacts({
+    outputDir: firstRoot,
+    caseLibrary: caseLibraryFixture(),
+    templateIndex: templateIndexFixture()
+  });
+  await delay(5);
+  const second = await writeTemplateKnowledgeBaseV2Artifacts({
+    outputDir: secondRoot,
+    caseLibrary: caseLibraryFixture(),
+    templateIndex: templateIndexFixture()
+  });
+
+  const firstKb = await fs.readFile(first.knowledgeBaseFile, 'utf8');
+  const secondKb = await fs.readFile(second.knowledgeBaseFile, 'utf8');
+  const firstReport = await fs.readFile(first.priorityReportFile, 'utf8');
+  const secondReport = await fs.readFile(second.priorityReportFile, 'utf8');
+  assert.equal(firstKb, secondKb);
+  assert.equal(firstReport, secondReport);
+  assert.equal(JSON.parse(firstKb).knowledge_base_id, JSON.parse(secondKb).knowledge_base_id);
 });
 
 test('schematic analyzer normalizes v2 artifact input paths to forward slashes', () => {

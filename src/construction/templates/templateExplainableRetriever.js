@@ -1,6 +1,6 @@
 const SOURCE = 'template-explainable-retriever-v1';
 const DEFAULT_LIMIT = 8;
-const MAX_LIMIT = 12;
+const MAX_LIMIT = 8;
 const MIN_LIMIT = 1;
 
 const PROMPT_HINTS = Object.freeze([
@@ -35,6 +35,9 @@ const TOKEN_ALIASES = Object.freeze({
   deck: 'terrace',
   rooftop: 'roof'
 });
+
+const CANONICAL_AREAS = new Set(['site', 'massing', 'facade', 'roof', 'space-planning', 'interior', 'materials', 'risk']);
+const ROOM_TYPE_TOKENS = new Set(['living', 'kitchen', 'bedroom', 'bathroom', 'study', 'storage', 'workshop', 'corridor-or-gallery', 'entry-or-lobby', 'tower-room', 'chapel-or-ceremonial-hall']);
 
 export class ExplainableTemplateRetriever {
   constructor({ knowledgeBase } = {}) {
@@ -71,25 +74,23 @@ function inactive(reason, prompt) {
 }
 
 function scoreCase(item, promptTokens, context) {
-  const retrievalTokens = [
-    ...(item.retrieval?.search_tokens || []),
-    ...(item.retrieval?.prompt_affinities || []),
-    ...(item.retrieval?.explanation_seeds || [])
-  ].flatMap((entry) => splitNormalized(entry));
+  const safeUnits = safeKnowledgeUnits(item, promptTokens, context);
+  const retrievalTokens = safeRetrievalTokens(item).flatMap((entry) => splitNormalized(entry));
   const tokens = new Set(retrievalTokens.map(expandToken).flat());
   const matched = [...promptTokens].filter((token) => tokens.has(token) || tokens.has(aliasToken(token)));
   const style = normalizeToken(context.style_family || context.style || '');
   const typology = normalizeToken(context.typology || '');
   const styleScore = style && normalizeToken(item.identity?.style_family) === style ? 18 : 0;
   const typologyScore = typology && normalizeToken(item.identity?.typology) === typology ? 14 : 0;
-  const unitScore = Math.min(24, (item.knowledge_units || []).length * 4);
+  const unitScore = Math.min(24, safeUnits.length * 4);
   const reviewBonus = item.review?.status === 'approved' ? 14 : item.review?.status === 'limited' ? 4 : 0;
   const riskPenalty = Number(item.priority?.risk_penalty || 0);
   const baseScore = Number(item.priority?.global_score || 0) * 0.18;
+  const score = Math.max(0, Math.round(matched.length * 8 + styleScore + typologyScore + unitScore + reviewBonus + baseScore - riskPenalty));
 
   return {
     ...item,
-    match_score: Math.max(0, Math.round(matched.length * 8 + styleScore + typologyScore + unitScore + reviewBonus + baseScore - riskPenalty)),
+    match_score: matched.length || safeUnits.length ? score : 0,
     matched_signals: matched.map((token) => `token:${token}`)
   };
 }
@@ -128,10 +129,27 @@ function safeKnowledgeUnits(item = {}, promptTokens, context = {}) {
 
   return (item.knowledge_units || []).filter((unit) => {
     const area = normalizeToken(unit?.area);
-    if (!area) return false;
+    if (!area || !CANONICAL_AREAS.has(area)) return false;
     if (blockedAreas.has(area)) return false;
     if (allowedAreas && !allowedAreas.has(area)) return false;
     if (residentialInterior && item.identity?.typology === 'arena' && area === 'interior') return false;
+    return true;
+  });
+}
+
+function safeRetrievalTokens(item = {}) {
+  const review = item.review || {};
+  const allowedAreas = allowedLearningAreas(review);
+  const blockedAreas = blockedLearningAreas(review);
+  return [
+    ...(item.retrieval?.search_tokens || []),
+    ...(item.retrieval?.prompt_affinities || []),
+    ...(item.retrieval?.explanation_seeds || [])
+  ].filter((entry) => {
+    const area = retrievalTokenArea(entry);
+    if (!area) return true;
+    if (blockedAreas.has(area)) return false;
+    if (allowedAreas && !allowedAreas.has(area)) return false;
     return true;
   });
 }
@@ -240,6 +258,16 @@ function blockedLearningAreas(review = {}) {
 
 function learningAreaSet(areas = []) {
   return new Set((Array.isArray(areas) ? areas : []).map((area) => normalizeToken(area)).filter(Boolean));
+}
+
+function retrievalTokenArea(value = '') {
+  const tokens = splitNormalized(value);
+  for (const token of tokens) {
+    const normalized = aliasToken(token);
+    if (CANONICAL_AREAS.has(normalized)) return normalized;
+    if (ROOM_TYPE_TOKENS.has(normalized)) return 'interior';
+  }
+  return '';
 }
 
 function diversitySlot(item = {}) {

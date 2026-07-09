@@ -51,6 +51,9 @@ if (result.knowledgeBaseV2?.summary) {
   console.log(`Stage 2 KB v2 case library: ${result.knowledgeBaseV2.artifacts.knowledgeBase}.`);
   console.log(`Stage 2 KB v2 retrieval index: ${result.knowledgeBaseV2.artifacts.retrievalIndex}.`);
   console.log(`Stage 2 KB v2 review queue: ${result.knowledgeBaseV2.artifacts.reviewQueue}.`);
+  for (const error of result.knowledgeBaseV2.overlayErrors || []) {
+    console.log(`Stage 2 KB v2 overlay error line ${error.line}: ${error.message}`);
+  }
 }
 
 function parseArgs(argv) {

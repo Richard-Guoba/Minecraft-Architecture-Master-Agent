@@ -64,6 +64,23 @@ test('review overlay parser accepts valid lines and reports invalid lines', () =
   assert.match(parsed.errors[0].message, /invalid json/i);
 });
 
+test('review overlay parser reports tag validation errors with line numbers', () => {
+  const parsed = parseTemplateReviewOverlay(JSON.stringify({
+    record_id: 'review-invalid-tag',
+    case_id: 'house-tavern',
+    reviewed_by: 'human',
+    reviewed_at: '2026-07-09T00:00:00.000Z',
+    status: 'approved',
+    confidence: 0.9,
+    manual_tags: [{ group: 'quality', id: 'not-in-taxonomy' }]
+  }));
+
+  assert.equal(parsed.records.length, 0);
+  assert.equal(parsed.errors.length, 1);
+  assert.equal(parsed.errors[0].line, 1);
+  assert.match(parsed.errors[0].message, /unknown tag quality:not-in-taxonomy/i);
+});
+
 test('review overlay merge uses newest record per case and preserves lineage', () => {
   const parsed = parseTemplateReviewOverlay([
     JSON.stringify({

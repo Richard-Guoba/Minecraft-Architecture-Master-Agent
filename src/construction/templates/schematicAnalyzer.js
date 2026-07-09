@@ -8,7 +8,9 @@ import { analyzeTemplateComposition } from './templateCompositionMiner.js';
 import { analyzeSpatialLayout } from './templateSpatialAnalyzer.js';
 import { parseTemplateReviewOverlay, mergeReviewRecords } from './templateReviewOverlay.js';
 import { writeTemplateKnowledgeBaseV2Artifacts } from './templateKnowledgeBaseV2.js';
+import { loadTagTaxonomy } from './templateTagTaxonomy.js';
 
+const DEFAULT_TEMPLATE_KB_V2_GENERATED_AT = '2026-07-09T00:00:00.000Z';
 const MCBUILD_URL_PATTERN = /https?:\/\/\S+/i;
 const AIR_IDS = new Set([0]);
 const WATER_IDS = new Set([8, 9]);
@@ -206,20 +208,28 @@ export async function analyzeTemplateCorpus({
   await fs.writeFile(path.join(absoluteOutput, 'template_gap_report.md'), report, 'utf8');
 
   const reviewOverlayPath = path.join(absoluteRoot, 'curation', 'template_reviews.jsonl');
+  const tagTaxonomyPath = path.join(absoluteRoot, 'curation', 'tag_taxonomy.json');
   let reviewText = '';
   try {
     reviewText = await fs.readFile(reviewOverlayPath, 'utf8');
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
   }
-  const reviewOverlay = mergeReviewRecords(parseTemplateReviewOverlay(reviewText).records);
+  const taxonomy = await loadTagTaxonomy(tagTaxonomyPath);
+  const parsedReviewOverlay = parseTemplateReviewOverlay(reviewText, {
+    taxonomy,
+    strict: !continueOnError
+  });
+  const reviewOverlay = mergeReviewRecords(parsedReviewOverlay.records);
   const knowledgeBaseV2Result = await writeTemplateKnowledgeBaseV2Artifacts({
     outputDir: absoluteOutput,
-    generatedAt,
+    generatedAt: stableTemplateKnowledgeBaseV2GeneratedAt(),
     caseLibrary,
     templateIndex: { corpus, templates },
     designLawBook,
     reviewOverlay,
+    taxonomy,
+    overlayErrors: parsedReviewOverlay.errors,
     inputs: normalizeTemplateKnowledgeBaseV2Inputs({ rootDir, outputDir })
   });
 
@@ -236,13 +246,23 @@ export async function analyzeTemplateCorpus({
         retrievalIndex: knowledgeBaseV2Result.retrievalIndexFile,
         priorityReport: knowledgeBaseV2Result.priorityReportFile,
         reviewQueue: knowledgeBaseV2Result.reviewQueueFile
-      }
+      },
+      overlayErrors: parsedReviewOverlay.errors
     },
     templates,
     importErrors,
     fetchedPages: fetched,
     pageCache
   };
+}
+
+function stableTemplateKnowledgeBaseV2GeneratedAt() {
+  const epoch = process.env.SOURCE_DATE_EPOCH;
+  if (epoch !== undefined) {
+    const seconds = Number(epoch);
+    if (Number.isFinite(seconds)) return new Date(seconds * 1000).toISOString();
+  }
+  return DEFAULT_TEMPLATE_KB_V2_GENERATED_AT;
 }
 
 export function normalizeTemplateKnowledgeBaseV2Inputs({

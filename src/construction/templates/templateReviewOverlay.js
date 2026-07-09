@@ -96,7 +96,8 @@ function normalizeTags(value, taxonomy) {
   const result = [];
   for (const tag of Array.isArray(value) ? value : []) {
     const validation = validateTagRecord(tag, taxonomy);
-    if (validation.ok) result.push(validation.normalized);
+    if (!validation.ok) throw new Error(validation.error || 'invalid manual tag');
+    result.push(validation.normalized);
   }
   return result;
 }

@@ -7,7 +7,10 @@ import { defaultReviewForCase } from './templateReviewOverlay.js';
 const SOURCE = 'template-knowledge-base-v2';
 const SCHEMA_VERSION = 2;
 const RETRIEVAL_SOURCE = 'template-retrieval-index-v2';
+const DEFAULT_STABLE_GENERATED_AT = '2026-07-09T00:00:00.000Z';
 const DOCUMENTED_TAG_GROUPS = Object.freeze(['typology', 'style', 'site', 'massing', 'roof', 'facade', 'interior', 'quality', 'room_types']);
+const CANONICAL_KNOWLEDGE_AREAS = Object.freeze(['site', 'massing', 'facade', 'roof', 'space-planning', 'interior', 'materials', 'risk']);
+const CANONICAL_KNOWLEDGE_AREA_SET = new Set(CANONICAL_KNOWLEDGE_AREAS);
 
 const TAG_ALIASES = Object.freeze({
   'terrain-integrated': { group: 'site', id: 'terrain-integrated' },
@@ -21,21 +24,24 @@ const TAG_ALIASES = Object.freeze({
 });
 
 export function buildTemplateKnowledgeBaseV2({
-  generatedAt = new Date().toISOString(),
+  generatedAt,
   caseLibrary = {},
   templateIndex = {},
   designLawBook = {},
   reviewOverlay = new Map(),
-  inputs = {}
+  inputs = {},
+  taxonomy = DEFAULT_TAG_TAXONOMY,
+  overlayErrors = []
 } = {}) {
   const cases = (caseLibrary.cases || []).map((card) =>
-    buildCaseV2(card, reviewOverlay.get(card.case_id) || defaultReviewForCase(card.case_id))
+    buildCaseV2(card, reviewOverlay.get(card.case_id) || defaultReviewForCase(card.case_id), taxonomy)
   );
-  const summary = summarizeCases(cases, caseLibrary, templateIndex);
+  const normalizedOverlayErrors = normalizeOverlayErrors(overlayErrors);
+  const summary = summarizeCases(cases, caseLibrary, templateIndex, normalizedOverlayErrors);
   const base = {
     source: SOURCE,
     schema_version: SCHEMA_VERSION,
-    generated_at: generatedAt,
+    generated_at: generatedAt || stableGeneratedAt(),
     knowledge_base_id: '',
     inputs: {
       case_library: inputs.case_library || 'mc_templates/analysis/case_library.json',
@@ -88,7 +94,7 @@ export function renderTemplatePriorityReport(knowledgeBase = {}) {
     .sort((a, b) => b.priority.global_score - a.priority.global_score || a.title.localeCompare(b.title))
     .map((item, index) => `| ${index + 1} | ${item.title} | ${item.identity.style_family} | ${item.identity.typology} | ${item.review.status} | ${item.priority.global_score} | ${Object.keys(item.priority.area_scores).join(', ')} | ${(item.priority.high_value_rank_reason || []).join('; ')} |`)
     .join('\n');
-  return `# Template Priority Report\n\nGenerated: ${knowledgeBase.generated_at || ''}\n\n| Rank | Case | Style | Typology | Review | Score | Areas | Reason |\n| --- | --- | --- | --- | --- | ---: | --- | --- |\n${rows || '| - | none | - | - | - | 0 | - | - |'}\n`;
+  return `# Template Priority Report\n\nGenerated: ${knowledgeBase.generated_at || ''}\n${renderOverlayErrors(knowledgeBase)}\n| Rank | Case | Style | Typology | Review | Score | Areas | Reason |\n| --- | --- | --- | --- | --- | ---: | --- | --- |\n${rows || '| - | none | - | - | - | 0 | - | - |'}\n`;
 }
 
 export function renderTemplateReviewQueue(knowledgeBase = {}) {
@@ -97,7 +103,7 @@ export function renderTemplateReviewQueue(knowledgeBase = {}) {
     .sort((a, b) => b.priority.risk_penalty - a.priority.risk_penalty || b.priority.global_score - a.priority.global_score)
     .map((item, index) => `| ${index + 1} | ${item.title} | ${item.review.status} | ${item.priority.global_score} | ${(item.review_priority_signals || []).join(', ') || '-'} | ${(item.risk_controls || []).slice(0, 2).join('; ') || (item.warnings || []).slice(0, 2).join('; ')} |`)
     .join('\n');
-  return `# Template Review Queue\n\nGenerated: ${knowledgeBase.generated_at || ''}\n\n| Rank | Case | Review | Score | Flags | Risk Controls |\n| --- | --- | --- | ---: | --- | --- |\n${rows || '| - | none | - | 0 | - | - |'}\n`;
+  return `# Template Review Queue\n\nGenerated: ${knowledgeBase.generated_at || ''}\n${renderOverlayErrors(knowledgeBase)}\n| Rank | Case | Review | Score | Flags | Risk Controls |\n| --- | --- | --- | ---: | --- | --- |\n${rows || '| - | none | - | 0 | - | - |'}\n`;
 }
 
 export async function writeTemplateKnowledgeBaseV2Artifacts({
@@ -107,7 +113,9 @@ export async function writeTemplateKnowledgeBaseV2Artifacts({
   templateIndex,
   designLawBook,
   reviewOverlay,
-  inputs
+  inputs,
+  taxonomy = DEFAULT_TAG_TAXONOMY,
+  overlayErrors = []
 } = {}) {
   const knowledgeBase = buildTemplateKnowledgeBaseV2({
     generatedAt,
@@ -115,7 +123,9 @@ export async function writeTemplateKnowledgeBaseV2Artifacts({
     templateIndex,
     designLawBook,
     reviewOverlay,
-    inputs
+    inputs,
+    taxonomy,
+    overlayErrors
   });
   const retrievalIndex = buildTemplateRetrievalIndexV2(knowledgeBase);
   await fs.mkdir(outputDir, { recursive: true });
@@ -130,20 +140,21 @@ export async function writeTemplateKnowledgeBaseV2Artifacts({
   return { knowledgeBase, retrievalIndex, knowledgeBaseFile, retrievalIndexFile, priorityReportFile, reviewQueueFile };
 }
 
-function buildCaseV2(card = {}, review = {}) {
+function buildCaseV2(card = {}, review = {}, taxonomy = DEFAULT_TAG_TAXONOMY) {
   const allowedAreas = allowedLearningAreas(review);
   const blocked = new Set(review.blocked_learning_areas || []);
   const restrictedAreas = restrictedLearningAreas(review, allowedAreas, blocked);
-  const tagState = buildTags(card, review);
-  const warnings = buildWarnings(card, review, tagState.unknown_tags);
-  const knowledgeUnits = buildKnowledgeUnits(card)
+  const tagState = buildTags(card, review, taxonomy);
+  const unitState = buildKnowledgeUnits(card);
+  const knowledgeUnits = unitState.units
     .filter((unit) => !blocked.has(unit.area))
     .filter((unit) => !allowedAreas || allowedAreas.has(unit.area));
+  const warnings = buildWarnings(card, review, tagState.unknown_tags, unitState.unknown_areas);
   const riskControls = applyRiskOverrides(
     [...new Set([...(card.risk_controls || []), ...riskControlsFromFlags(card.review_flags || [])])],
     review.risk_overrides || []
   );
-  const reviewPrioritySignals = buildReviewPrioritySignals(card, review, warnings, tagState.unknown_tags);
+  const reviewPrioritySignals = buildReviewPrioritySignals(card, review, warnings, tagState.unknown_tags, unitState.unknown_areas);
   const priority = buildPriority(card, review, knowledgeUnits, riskControls, warnings, reviewPrioritySignals);
   const result = {
     case_id: card.case_id,
@@ -178,6 +189,7 @@ function buildCaseV2(card = {}, review = {}) {
     tags: tagState.tags,
     unknown_tags: tagState.unknown_tags,
     unknown_tag_count: tagState.unknown_tags.length,
+    unknown_learning_areas: unitState.unknown_areas,
     warnings,
     knowledge_units: knowledgeUnits,
     priority,
@@ -197,7 +209,9 @@ function buildCaseV2(card = {}, review = {}) {
 
 function buildKnowledgeUnits(card = {}) {
   const units = [];
+  const unknownAreas = [];
   const add = (area, claim, evidence, confidence, useAs, targets) => {
+    if (!CANONICAL_KNOWLEDGE_AREA_SET.has(area)) return;
     units.push({
       id: `${card.case_id}:${area}:${slug(claim).slice(0, 48)}`,
       area,
@@ -218,7 +232,16 @@ function buildKnowledgeUnits(card = {}) {
     if (/interior|room|focal|lighting|furniture/i.test(clause)) add('interior', clause, 'semantic clause', 0.8, ['room identity', 'decorator pattern guidance'], ['InteriorDetailAgent', 'DecoratorAgent']);
   }
   for (const area of card.learnable_areas || []) {
-    const normalizedArea = normalizeArea(area.area || area.role);
+    const normalizedArea = normalizeLearnableArea(area);
+    if (!normalizedArea) {
+      unknownAreas.push({
+        raw: area.area || area.role || '',
+        role: area.role || '',
+        evidence: area.evidence || '',
+        reason: 'unknown-v1-learning-area'
+      });
+      continue;
+    }
     add(
       normalizedArea,
       `${card.title} teaches ${normalizedArea} through ${area.evidence || area.role}`,
@@ -228,11 +251,10 @@ function buildKnowledgeUnits(card = {}) {
       integrationTargets(normalizedArea)
     );
   }
-  return dedupeById(units);
+  return { units: dedupeById(units), unknown_areas: unknownAreas };
 }
 
-function buildTags(card = {}, review = {}) {
-  const taxonomy = DEFAULT_TAG_TAXONOMY;
+function buildTags(card = {}, review = {}, taxonomy = DEFAULT_TAG_TAXONOMY) {
   const grouped = Object.fromEntries(DOCUMENTED_TAG_GROUPS.map((group) => [group, []]));
   const unknownTags = [];
   const add = (candidate) => {
@@ -344,7 +366,7 @@ function riskControlsFromFlags(flags = []) {
 
 function normalizeArea(value = '') {
   const raw = String(value || '').trim().toLowerCase();
-  if (!raw) return 'site';
+  if (!raw) return null;
   if (raw.startsWith('site')) return 'site';
   if (raw.includes('massing')) return 'massing';
   if (raw.includes('facade')) return 'facade';
@@ -353,7 +375,13 @@ function normalizeArea(value = '') {
   if (raw.includes('interior') || raw.includes('room')) return 'interior';
   if (raw.includes('material')) return 'materials';
   if (raw.includes('risk')) return 'risk';
-  return raw;
+  return null;
+}
+
+function normalizeLearnableArea(area = {}) {
+  const explicitArea = String(area.area || '').trim();
+  if (explicitArea) return normalizeArea(explicitArea);
+  return normalizeArea(area.role || '');
 }
 
 function integrationTargets(area) {
@@ -370,7 +398,7 @@ function integrationTargets(area) {
   return table[area] || ['TemplateKnowledgeAgent'];
 }
 
-function summarizeCases(cases = [], caseLibrary = {}, templateIndex = {}) {
+function summarizeCases(cases = [], caseLibrary = {}, templateIndex = {}, overlayErrors = []) {
   const reviewStatusCounts = {};
   for (const item of cases) {
     reviewStatusCounts[item.review.status] = (reviewStatusCounts[item.review.status] || 0) + 1;
@@ -380,7 +408,9 @@ function summarizeCases(cases = [], caseLibrary = {}, templateIndex = {}) {
     template_count: Number(templateIndex.corpus?.template_count || 0),
     source_case_library: caseLibrary.source || '',
     review_status_counts: reviewStatusCounts,
-    reviewed_case_count: cases.filter((item) => item.review.status !== 'pending').length
+    reviewed_case_count: cases.filter((item) => item.review.status !== 'pending').length,
+    overlay_error_count: overlayErrors.length,
+    overlay_errors: overlayErrors
   };
 }
 
@@ -508,16 +538,17 @@ function restrictedLearningAreas(review = {}, allowedAreas, blockedAreas = new S
   return restricted;
 }
 
-function buildWarnings(card = {}, review = {}, unknownTags = []) {
+function buildWarnings(card = {}, review = {}, unknownTags = [], unknownAreas = []) {
   const warnings = [];
   if (!card.source_url) warnings.push('Missing source URL.');
   if (!card.source_note) warnings.push('Missing source note.');
   if (review.status === 'research-only') warnings.push('Source license status is research-only.');
   if (unknownTags.length) warnings.push(`Unknown taxonomy tags preserved for review (${unknownTags.length}).`);
+  if (unknownAreas.length) warnings.push(`Unknown v1 learning areas require review (${unknownAreas.length}).`);
   return warnings;
 }
 
-function buildReviewPrioritySignals(card = {}, review = {}, warnings = [], unknownTags = []) {
+function buildReviewPrioritySignals(card = {}, review = {}, warnings = [], unknownTags = [], unknownAreas = []) {
   const signals = [];
   if (review.status === 'pending') signals.push('pending-review');
   if (review.status === 'limited') signals.push('limited-review');
@@ -525,8 +556,32 @@ function buildReviewPrioritySignals(card = {}, review = {}, warnings = [], unkno
   if (!card.source_url) signals.push('missing-source-url');
   if (!card.source_note) signals.push('missing-source-note');
   if (unknownTags.length) signals.push('unknown-taxonomy-tags');
+  if (unknownAreas.length) signals.push('unknown-learning-area');
   if (warnings.some((item) => /research-only/i.test(item))) signals.push('license-review');
   return [...new Set(signals)].sort();
+}
+
+function normalizeOverlayErrors(errors = []) {
+  return (Array.isArray(errors) ? errors : []).map((error) => ({
+    line: Number(error.line || 0),
+    message: String(error.message || error.error || error)
+  }));
+}
+
+function renderOverlayErrors(knowledgeBase = {}) {
+  const errors = knowledgeBase.summary?.overlay_errors || [];
+  if (!errors.length) return '';
+  const lines = errors.map((error) => `- line ${error.line || '?'}: ${error.message}`);
+  return `\n## Overlay errors\n\n${lines.join('\n')}\n`;
+}
+
+function stableGeneratedAt() {
+  const epoch = process.env.SOURCE_DATE_EPOCH;
+  if (epoch !== undefined) {
+    const seconds = Number(epoch);
+    if (Number.isFinite(seconds)) return new Date(seconds * 1000).toISOString();
+  }
+  return DEFAULT_STABLE_GENERATED_AT;
 }
 
 function applyRiskOverrides(riskControls = [], overrides = []) {

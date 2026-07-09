@@ -2,7 +2,7 @@
   "source": "template-retrieval-index-v2",
   "schema_version": 2,
   "case_count": 64,
-  "token_count": 389,
+  "token_count": 388,
   "token_to_cases": {
     "1": [
       "castles-medieval-castle-1",
@@ -3549,42 +3549,6 @@
       "temples-japanese-pagoda-plus-tea-house",
       "temples-japanese-temple-mcbuild-org",
       "temples-tower-of-gods-mcbuild-org",
-      "tower-big-ben-mcbuild-org",
-      "tower-clock-tower",
-      "tower-eiffel-tower",
-      "tower-lighthouse",
-      "tower-modern-futuristic-building",
-      "tower-modern-hospital",
-      "tower-stark-tower"
-    ],
-    "landmark-composition": [
-      "arenas-amphitheatre-arena",
-      "arenas-baseball-field",
-      "arenas-colosseum",
-      "arenas-skywars-lobby",
-      "arenas-tennis-court",
-      "arenas-the-colosseum-mcbuild-org",
-      "buildings-beach-hotel",
-      "buildings-futuristic-building",
-      "buildings-giant-church",
-      "buildings-grand-hotel",
-      "buildings-great-library",
-      "buildings-great-pyramid",
-      "buildings-modern-apartment-building",
-      "castles-disney-fort",
-      "castles-gotic-castle",
-      "castles-hogwarts-castle",
-      "castles-medieval-castle",
-      "castles-medieval-castle-1",
-      "castles-medieval-castle-3",
-      "castles-small-medium-castle",
-      "castles-spawn-m-dieval-village",
-      "temples-japanese-pagoda-plus-tea-house",
-      "temples-japanese-temple-mcbuild-org",
-      "temples-parthenon-spawn-mcbuild-org",
-      "temples-the-sky-city-of-athalux-mcbuild-org",
-      "temples-tower-of-gods-mcbuild-org",
-      "temples-ygdrassil-s-retreat",
       "tower-big-ben-mcbuild-org",
       "tower-clock-tower",
       "tower-eiffel-tower",
@@ -9201,42 +9165,6 @@
       "tower-modern-hospital",
       "tower-stark-tower"
     ],
-    "landmark-composition": [
-      "arenas-amphitheatre-arena",
-      "arenas-baseball-field",
-      "arenas-colosseum",
-      "arenas-skywars-lobby",
-      "arenas-tennis-court",
-      "arenas-the-colosseum-mcbuild-org",
-      "buildings-beach-hotel",
-      "buildings-futuristic-building",
-      "buildings-giant-church",
-      "buildings-grand-hotel",
-      "buildings-great-library",
-      "buildings-great-pyramid",
-      "buildings-modern-apartment-building",
-      "castles-disney-fort",
-      "castles-gotic-castle",
-      "castles-hogwarts-castle",
-      "castles-medieval-castle",
-      "castles-medieval-castle-1",
-      "castles-medieval-castle-3",
-      "castles-small-medium-castle",
-      "castles-spawn-m-dieval-village",
-      "temples-japanese-pagoda-plus-tea-house",
-      "temples-japanese-temple-mcbuild-org",
-      "temples-parthenon-spawn-mcbuild-org",
-      "temples-the-sky-city-of-athalux-mcbuild-org",
-      "temples-tower-of-gods-mcbuild-org",
-      "temples-ygdrassil-s-retreat",
-      "tower-big-ben-mcbuild-org",
-      "tower-clock-tower",
-      "tower-eiffel-tower",
-      "tower-lighthouse",
-      "tower-modern-futuristic-building",
-      "tower-modern-hospital",
-      "tower-stark-tower"
-    ],
     "massing": [
       "arenas-amphitheatre-arena",
       "arenas-baseball-field",
@@ -9479,7 +9407,6 @@
         "interior",
         "interior-clause",
         "interior-pattern",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "layered",
@@ -9553,7 +9480,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -9570,7 +9496,7 @@
       "case_id": "arenas-baseball-field",
       "title": "Baseball Field",
       "file": "Arenas/Baseball Field - (mcbuild_org).schematic",
-      "score": 15,
+      "score": 13,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -9614,7 +9540,6 @@
         "internal",
         "island",
         "keep",
-        "landmark-composition",
         "landmark_presence",
         "legible",
         "light",
@@ -9669,7 +9594,6 @@
       ],
       "areas": [
         "interior",
-        "landmark-composition",
         "massing"
       ],
       "risk_controls": [
@@ -9731,7 +9655,6 @@
         "interior",
         "internal",
         "keep",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "layered",
@@ -9810,7 +9733,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -9880,7 +9802,6 @@
         "interior",
         "interior-pattern",
         "internal",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "layered",
@@ -9961,7 +9882,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -10028,7 +9948,6 @@
         "identity",
         "interior",
         "interior-pattern",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "layer",
@@ -10112,7 +10031,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -10177,7 +10095,6 @@
         "interior",
         "internal",
         "keep",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "layered",
@@ -10259,7 +10176,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -10276,7 +10192,7 @@
       "case_id": "buildings-beach-hotel",
       "title": "Beach Hotel",
       "file": "Buildings/Beach Hotel - (mcbuild_org).schematic",
-      "score": 90,
+      "score": 88,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -10324,7 +10240,6 @@
         "interior-rich-reference",
         "interior_reference",
         "just",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "large",
@@ -10413,7 +10328,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -10426,7 +10340,7 @@
       "case_id": "buildings-futuristic-building",
       "title": "Futuristic Building",
       "file": "Buildings/Futuristic Building - (mcbuild_org).schematic",
-      "score": 68,
+      "score": 66,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -10481,7 +10395,6 @@
         "interior",
         "interior_reference",
         "just",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "landscape-composition",
@@ -10570,7 +10483,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -10583,7 +10495,7 @@
       "case_id": "buildings-giant-church",
       "title": "Giant Church",
       "file": "Buildings/Giant Church - (mcbuild_org).schematic",
-      "score": 74,
+      "score": 72,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -10640,7 +10552,6 @@
         "interior-rich-reference",
         "interior_reference",
         "just",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "large",
@@ -10724,7 +10635,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -10737,7 +10647,7 @@
       "case_id": "buildings-grand-hotel",
       "title": "Grand Hotel",
       "file": "Buildings/Grand Hotel - (mcbuild_org).schematic",
-      "score": 86,
+      "score": 84,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -10796,7 +10706,6 @@
         "interior_reference",
         "just",
         "kitchen",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "large",
@@ -10879,7 +10788,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -10892,7 +10800,7 @@
       "case_id": "buildings-great-library",
       "title": "Great Library",
       "file": "Buildings/Great Library  - (mcbuild_org).schematic",
-      "score": 79,
+      "score": 77,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -10948,7 +10856,6 @@
         "interior-rich-reference",
         "interior_reference",
         "just",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "large",
@@ -11029,7 +10936,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -11042,7 +10948,7 @@
       "case_id": "buildings-great-pyramid",
       "title": "Great Pyramid",
       "file": "Buildings/Great Pyramid - (mcbuild_org).schematic",
-      "score": 76,
+      "score": 74,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -11096,7 +11002,6 @@
         "interior_reference",
         "kitchen",
         "kitchen_work_wall",
-        "landmark-composition",
         "landmark_presence",
         "layered",
         "layered-interior",
@@ -11174,7 +11079,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "site"
       ],
@@ -11186,7 +11090,7 @@
       "case_id": "buildings-modern-apartment-building",
       "title": "Modern Apartment Building",
       "file": "Buildings/Modern Apartment Building - (mcbuild_org).schematic",
-      "score": 85,
+      "score": 83,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -11241,7 +11145,6 @@
         "just",
         "kitchen",
         "kitchen_work_wall",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "landscape-composition",
@@ -11330,7 +11233,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -11397,7 +11299,6 @@
         "interior",
         "interior-rich-reference",
         "interior_reference",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "landscape-composition",
@@ -11491,7 +11392,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -11505,7 +11405,7 @@
       "case_id": "castles-gotic-castle",
       "title": "Gotic castle",
       "file": "Castles/Gotic castle - (mcbuild_org).schematic",
-      "score": 88,
+      "score": 86,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -11556,7 +11456,6 @@
         "interior",
         "interior-rich-reference",
         "interior_reference",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "landscape-composition",
@@ -11645,7 +11544,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -11658,7 +11556,7 @@
       "case_id": "castles-hogwarts-castle",
       "title": "Hogwarts Castle",
       "file": "Castles/Hogwarts Castle - (mcbuild_org).schematic",
-      "score": 52,
+      "score": 50,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -11704,7 +11602,6 @@
         "internal",
         "keep",
         "kitchen",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "layered",
@@ -11791,7 +11688,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -11804,7 +11700,7 @@
       "case_id": "castles-medieval-castle",
       "title": "Medieval Castle",
       "file": "Castles/Medieval Castle - (mcbuild_org).schematic",
-      "score": 49,
+      "score": 47,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -11843,7 +11739,6 @@
         "interior",
         "interior-clause",
         "interior-pattern",
-        "landmark-composition",
         "landmark_presence",
         "layered-terrain",
         "layered_terrain_base",
@@ -11910,7 +11805,6 @@
       ],
       "areas": [
         "interior",
-        "landmark-composition",
         "massing",
         "site"
       ],
@@ -11970,7 +11864,6 @@
         "interior-rich-reference",
         "interior_reference",
         "kitchen",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "layered",
@@ -12057,7 +11950,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -12120,7 +12012,6 @@
         "interior-rich-reference",
         "interior_reference",
         "kitchen",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "layered",
@@ -12207,7 +12098,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -12221,7 +12111,7 @@
       "case_id": "castles-small-medium-castle",
       "title": "Small_Medium Castle",
       "file": "Castles/Small_Medium Castle - (mcbuild_org).schematic",
-      "score": 57,
+      "score": 55,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -12273,7 +12163,6 @@
         "interior-rich-reference",
         "interior_reference",
         "kitchen",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "layer",
@@ -12356,7 +12245,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof"
       ],
@@ -12368,7 +12256,7 @@
       "case_id": "castles-spawn-m-dieval-village",
       "title": "Spawn Médieval Village",
       "file": "Castles/Spawn Médieval Village  - (mcbuild_org).schematic",
-      "score": 72,
+      "score": 70,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -12423,7 +12311,6 @@
         "interior",
         "interior-rich-reference",
         "interior_reference",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "layered",
@@ -12511,7 +12398,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -17000,7 +16886,7 @@
       "case_id": "temples-japanese-pagoda-plus-tea-house",
       "title": "Japanese pagoda Plus Tea House",
       "file": "Temples/Japanese pagoda Plus Tea House - (mcbuild_org).schematic",
-      "score": 76,
+      "score": 74,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -17053,7 +16939,6 @@
         "interior_reference",
         "internal",
         "japanese",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "landscape-composition",
@@ -17140,7 +17025,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -17205,7 +17089,6 @@
         "interior-rich-reference",
         "interior_reference",
         "japanese",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "landscape-composition",
@@ -17297,7 +17180,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -17368,7 +17250,6 @@
         "interior-rich-reference",
         "interior_reference",
         "japanese",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "layer",
@@ -17457,7 +17338,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -17522,7 +17402,6 @@
         "interior",
         "japanese",
         "just",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "large",
@@ -17619,7 +17498,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -17684,7 +17562,6 @@
         "interior-rich-reference",
         "interior_reference",
         "japanese",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "layer",
@@ -17771,7 +17648,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -17784,7 +17660,7 @@
       "case_id": "temples-ygdrassil-s-retreat",
       "title": "Ygdrassil's Retreat",
       "file": "Temples/Ygdrassil's Retreat - (mcbuild_org).schematic",
-      "score": 71,
+      "score": 69,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -17838,7 +17714,6 @@
         "interior-rich-reference",
         "interior_reference",
         "japanese",
-        "landmark-composition",
         "landmark_presence",
         "landscape-composition",
         "layer",
@@ -17926,7 +17801,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -17992,7 +17866,6 @@
         "interior-pattern",
         "interior-rich-reference",
         "interior_reference",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "layer",
@@ -18077,7 +17950,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "site"
       ],
@@ -18089,7 +17961,7 @@
       "case_id": "tower-clock-tower",
       "title": "Clock Tower",
       "file": "Tower/Clock Tower - (mcbuild_org).schematic",
-      "score": 69,
+      "score": 67,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -18140,7 +18012,6 @@
         "interior-pattern",
         "interior-usable-reference",
         "interior_reference",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "landscape-composition",
@@ -18220,7 +18091,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "site"
       ],
@@ -18232,7 +18102,7 @@
       "case_id": "tower-eiffel-tower",
       "title": "Eiffel Tower",
       "file": "Tower/Eiffel Tower - (mcbuild_org).schematic",
-      "score": 85,
+      "score": 83,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -18282,7 +18152,6 @@
         "interior_reference",
         "kitchen",
         "kitchen_work_wall",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "layered",
@@ -18366,7 +18235,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -18379,7 +18247,7 @@
       "case_id": "tower-lighthouse",
       "title": "Lighthouse",
       "file": "Tower/Lighthouse  - (mcbuild_org).schematic",
-      "score": 67,
+      "score": 65,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -18429,7 +18297,6 @@
         "interior-rich-reference",
         "interior_reference",
         "island",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "layered",
@@ -18511,7 +18378,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -18524,7 +18390,7 @@
       "case_id": "tower-modern-hospital",
       "title": "Modern Hospital",
       "file": "Tower/Modern Hospital - (mcbuild_org).schematic",
-      "score": 54,
+      "score": 52,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -18574,7 +18440,6 @@
         "interior",
         "interior_reference",
         "just",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "landscape-composition",
@@ -18661,7 +18526,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -18675,7 +18539,7 @@
       "case_id": "tower-modern-futuristic-building",
       "title": "Modern_Futuristic Building",
       "file": "Tower/Modern_Futuristic Building - (mcbuild_org).schematic",
-      "score": 70,
+      "score": 68,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -18729,7 +18593,6 @@
         "interior",
         "interior_reference",
         "just",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "landscape-composition",
@@ -18820,7 +18683,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "roof",
         "site"
@@ -18833,7 +18695,7 @@
       "case_id": "tower-stark-tower",
       "title": "Stark Tower",
       "file": "Tower/Stark Tower - (mcbuild_org).schematic",
-      "score": 51,
+      "score": 49,
       "review_status": "pending",
       "tokens": [
         "accent",
@@ -18880,7 +18742,6 @@
         "interior_reference",
         "island",
         "just",
-        "landmark-composition",
         "landmark_presence",
         "landmark_reveal",
         "large",
@@ -18959,7 +18820,6 @@
       "areas": [
         "facade",
         "interior",
-        "landmark-composition",
         "massing",
         "site"
       ],
