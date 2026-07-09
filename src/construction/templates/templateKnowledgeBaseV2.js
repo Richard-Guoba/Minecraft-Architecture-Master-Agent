@@ -312,6 +312,10 @@ function buildPriority(card = {}, review = {}, knowledgeUnits = [], riskControls
 function buildRetrieval(card = {}, tags = {}, knowledgeUnits = [], priority = {}, restrictedAreas = new Set()) {
   const tagTokens = Object.values(tags).flat().map((tag) => tag.id);
   const unitAreas = knowledgeUnits.map((unit) => unit.area);
+  const promptAffinities = [...new Set(((card.retrieval && card.retrieval.prompt_affinities) || [])
+    .map((item) => String(item || '').trim())
+    .filter((item) => item && !restrictedAreas.has(normalizeArea(item)) && !restrictedAreas.has(item.toLowerCase())))]
+    .sort();
   const searchTokens = [...new Set([
     ...((card.retrieval && card.retrieval.tokens) || []),
     ...((card.retrieval && card.retrieval.prompt_affinities) || []),
@@ -323,7 +327,7 @@ function buildRetrieval(card = {}, tags = {}, knowledgeUnits = [], priority = {}
     .sort();
   return {
     search_tokens: searchTokens,
-    prompt_affinities: [...new Set(((card.retrieval && card.retrieval.prompt_affinities) || []).map((item) => String(item)))].sort(),
+    prompt_affinities: promptAffinities,
     explanation_seeds: buildExplanationSeeds(card, knowledgeUnits, tags),
     diversity_slots: buildDiversitySlots(priority.area_scores || {})
   };

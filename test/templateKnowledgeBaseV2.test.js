@@ -77,6 +77,9 @@ test('knowledge base v2 suppresses blocked learning areas and ranks review queue
   assert.ok(arena.knowledge_units.some((unit) => unit.area === 'massing'));
   assert.equal(arena.knowledge_units.some((unit) => unit.area === 'interior'), false);
   assert.equal(arena.retrieval.search_tokens.includes('interior'), false);
+  assert.equal(arena.retrieval.prompt_affinities.includes('interior'), false);
+  assert.ok(arena.retrieval.prompt_affinities.includes('classical'));
+  assert.ok(arena.retrieval.prompt_affinities.includes('arena'));
   assert.deepEqual(Object.keys(arena.tags).sort(), ['facade', 'interior', 'massing', 'quality', 'roof', 'room_types', 'site', 'style', 'typology']);
   assert.equal(arena.tags.interior.length, 0);
   assert.ok(arena.priority.review_bonus > 0);
@@ -264,7 +267,7 @@ function caseLibraryFixture() {
           'massing: use a vertical accent or tower-like marker as an arrival/view focus',
           'interior: build room identity from focal walls, storage bands, task zones, textiles, plants, and layered lighting'
         ],
-        retrieval: { tokens: ['classical', 'arena', 'terrain'], prompt_affinities: ['classical', 'arena', 'terrain'] }
+        retrieval: { tokens: ['classical', 'arena', 'terrain'], prompt_affinities: ['classical', 'arena', 'terrain', 'interior'] }
       }
     ]
   };
