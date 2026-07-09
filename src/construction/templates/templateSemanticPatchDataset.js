@@ -73,11 +73,113 @@ export function semanticPatchDatasetJsonl(dataset = {}) {
   return `${(dataset.patches || []).map((patch) => JSON.stringify(patch)).join('\n')}\n`;
 }
 
+export function scoreSemanticPatchTrainingCandidate(patch = {}) {
+  const voxels = Array.isArray(patch.semantic_voxels) ? patch.semantic_voxels : [];
+  const tags = Array.isArray(patch.tags) ? patch.tags.filter(Boolean) : [];
+  const evidenceCount = countUniqueEvidence(voxels);
+  const averageConfidence = averageVoxelConfidence(voxels);
+  const riskText = (patch.risk_controls || []).join(' ').toLowerCase();
+  const reasons = [];
+  const penalties = [];
+  let score = 0;
+
+  if (PATCH_CATEGORIES.includes(patch.category)) {
+    score += 8;
+    reasons.push('recognized category');
+  }
+  if (voxels.length >= 3) {
+    score += 25;
+    reasons.push('semantic voxel density');
+  } else if (voxels.length > 0) {
+    score += 10;
+    reasons.push('minimal semantic voxels');
+  }
+  if (averageConfidence >= 0.7) {
+    score += 20;
+    reasons.push('high-confidence semantic voxels');
+  } else if (averageConfidence >= 0.6) {
+    score += 10;
+    reasons.push('usable-confidence semantic voxels');
+  } else if (averageConfidence >= 0.5) {
+    score += 5;
+    reasons.push('low-confidence semantic voxels');
+  }
+  if (evidenceCount >= 2) {
+    score += 15;
+    reasons.push('multi-evidence patch');
+  } else if (evidenceCount === 1) {
+    score += 6;
+    reasons.push('single-evidence patch');
+  }
+  if (tags.length >= 3) {
+    score += 10;
+    reasons.push('rich tags');
+  } else if (tags.length > 0) {
+    score += 4;
+    reasons.push('basic tags');
+  }
+  if ((patch.risk_controls || []).length) {
+    score += 8;
+    reasons.push('explicit risk controls');
+  }
+
+  if (patch.category === 'interior' && /do not mine domestic rooms|arena-not-for-room-mining|non-residential-interior-noise/.test(riskText)) {
+    score -= 25;
+    penalties.push('interior mining blocked by risk control');
+  }
+  if (/review|limited|approval|manual/.test(riskText)) {
+    score -= 10;
+    penalties.push('review-gated patch');
+  }
+  if (/research-only|rejected|do not use/.test(riskText)) {
+    score -= 30;
+    penalties.push('research or rejection risk');
+  }
+
+  const finalScore = clamp(Math.round(score), 0, 100);
+  return {
+    score: finalScore,
+    band: trainingBandForScore(finalScore),
+    reasons,
+    penalties
+  };
+}
+
+export function rankSemanticPatchTrainingCandidates(dataset = {}, { limit = 20 } = {}) {
+  const patches = Array.isArray(dataset.patches) ? dataset.patches : [];
+  const candidates = patches
+    .map((patch) => ({
+      patch_id: patch.patch_id || '',
+      case_id: patch.case_id || '',
+      category: patch.category || '',
+      title: patch.title || '',
+      ...scoreSemanticPatchTrainingCandidate(patch)
+    }))
+    .sort((a, b) => b.score - a.score
+      || compareString(a.category, b.category)
+      || compareString(a.patch_id, b.patch_id));
+  return candidates.slice(0, normalizedLimit(limit, candidates.length));
+}
+
+export function summarizeSemanticPatchTrainingCandidates(dataset = {}) {
+  const ranked = rankSemanticPatchTrainingCandidates(dataset, { limit: Infinity });
+  const bandCounts = { high: 0, medium: 0, low: 0 };
+  for (const candidate of ranked) {
+    bandCounts[candidate.band] = (bandCounts[candidate.band] || 0) + 1;
+  }
+  return {
+    training_candidate_count: ranked.filter((candidate) => candidate.score >= 60).length,
+    training_band_counts: bandCounts,
+    top_training_candidates: ranked.slice(0, 5)
+  };
+}
+
 export function renderSemanticPatchDatasetReport(dataset = {}) {
   const patches = dataset.patches || [];
   const categoryCounts = countBy(patches, (patch) => patch.category);
   const tagCounts = countTags(patches);
   const riskSummary = summarizePatchRisks(patches);
+  const trainingCandidates = rankSemanticPatchTrainingCandidates(dataset, { limit: 10 });
   const categoryRows = PATCH_CATEGORIES.map((category) => {
     const examples = patches
       .filter((patch) => patch.category === category)
@@ -97,6 +199,12 @@ export function renderSemanticPatchDatasetReport(dataset = {}) {
   const examples = patches.slice(0, 10)
     .map((patch) => `- ${patch.patch_id}: ${patch.title}; tags=${(patch.tags || []).slice(0, 6).join(', ') || '-'}; risk=${(patch.risk_controls || []).slice(0, 1).join('; ') || '-'}`)
     .join('\n') || '- none';
+  const trainingRows = trainingCandidates
+    .map((candidate, index) => {
+      const notes = [...candidate.reasons.slice(0, 3), ...candidate.penalties.map((item) => `penalty: ${item}`).slice(0, 2)].join('; ') || '-';
+      return `| ${index + 1} | ${tableCell(candidate.patch_id)} | ${candidate.category || '-'} | ${candidate.score} | ${candidate.band} | ${tableCell(notes)} |`;
+    })
+    .join('\n') || '| - | - | - | 0 | low | - |';
 
   return `# Stage 6 Semantic Patch Report
 
@@ -123,6 +231,12 @@ ${tagRows}
 | Risk Signal | Count |
 | --- | ---: |
 ${riskRows}
+
+## Training Candidates
+
+| Rank | Patch | Category | Score | Band | Notes |
+| ---: | --- | --- | ---: | --- | --- |
+${trainingRows}
 
 ## Representative Patches
 
@@ -362,6 +476,48 @@ function summarizePatchRisks(patches = []) {
     if (/research-only|rejected|do not use/.test(text)) summary.research_or_reject += 1;
   }
   return summary;
+}
+
+function countUniqueEvidence(voxels = []) {
+  const evidence = new Set();
+  for (const voxel of voxels) {
+    for (const item of Array.isArray(voxel.evidence) ? voxel.evidence : []) {
+      const normalized = String(item || '').trim();
+      if (normalized) evidence.add(normalized);
+    }
+  }
+  return evidence.size;
+}
+
+function averageVoxelConfidence(voxels = []) {
+  const values = voxels
+    .map((voxel) => Number(voxel.confidence))
+    .filter((value) => Number.isFinite(value));
+  if (!values.length) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function trainingBandForScore(score = 0) {
+  if (score >= 80) return 'high';
+  if (score >= 60) return 'medium';
+  return 'low';
+}
+
+function normalizedLimit(limit, fallback) {
+  const value = Number(limit);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(fallback, Math.trunc(value)));
+}
+
+function tableCell(value = '') {
+  return String(value || '')
+    .replace(/\r?\n/g, ' ')
+    .replace(/\|/g, '/')
+    .trim();
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function comparePatch(a = {}, b = {}) {

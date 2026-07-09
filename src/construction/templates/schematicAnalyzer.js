@@ -10,7 +10,7 @@ import { parseTemplateReviewOverlay, mergeReviewRecords } from './templateReview
 import { writeNeuralLabelArtifacts } from './templateNeuralLabels.js';
 import { writeTemplateEmbeddingIndexArtifact } from './templateEmbeddingIndex.js';
 import { writeTemplateKnowledgeBaseV2Artifacts } from './templateKnowledgeBaseV2.js';
-import { writeSemanticVoxelPatchDatasetArtifact } from './templateSemanticPatchDataset.js';
+import { summarizeSemanticPatchTrainingCandidates, writeSemanticVoxelPatchDatasetArtifact } from './templateSemanticPatchDataset.js';
 import { loadTagTaxonomy } from './templateTagTaxonomy.js';
 
 const DEFAULT_TEMPLATE_KB_V2_GENERATED_AT = '2026-07-09T00:00:00.000Z';
@@ -326,7 +326,8 @@ function summarizeSemanticPatchDataset(dataset = {}) {
   }
   return {
     patch_count: Number(dataset.patch_count || 0),
-    category_counts: categoryCounts
+    category_counts: categoryCounts,
+    ...summarizeSemanticPatchTrainingCandidates(dataset)
   };
 }
 

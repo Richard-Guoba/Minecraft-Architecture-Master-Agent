@@ -342,9 +342,73 @@ node --test test/templateSemanticPatchDataset.test.js test/templateKnowledgeBase
 
 Expected: PASS.
 
+---
+
+### Task 6: Semantic Patch Training Candidate Ranking
+
+**Files:**
+- Modify: `src/construction/templates/templateSemanticPatchDataset.js`
+- Modify: `src/construction/templates/schematicAnalyzer.js`
+- Modify: `src/analyzeTemplateCorpus.js`
+- Test: `test/templateSemanticPatchDataset.test.js`
+- Test: `test/templateKnowledgeBaseV2.test.js`
+
+**Interfaces:**
+- Produces: `scoreSemanticPatchTrainingCandidate(patch)`
+- Produces: `rankSemanticPatchTrainingCandidates(dataset, { limit })`
+- Produces: `summarizeSemanticPatchTrainingCandidates(dataset)`
+- Adds training candidate rows to `semantic_patch_report.md`
+- Adds analyzer summary fields `training_candidate_count`, `training_band_counts`, and `top_training_candidates`
+- Adds CLI lines for Stage 6 training candidates and training bands
+
+- [x] **Step 1: Write failing scoring, ranking, report, analyzer, and CLI tests**
+
+Run:
+
+```powershell
+node --test test/templateSemanticPatchDataset.test.js test/templateKnowledgeBaseV2.test.js
+```
+
+Expected before implementation: FAIL because the training candidate exports, report section, analyzer summary fields, and CLI lines are missing.
+
+- [x] **Step 2: Implement deterministic training-readiness scoring**
+
+Score semantic patches with deterministic signals:
+
+- semantic voxel density
+- average semantic voxel confidence
+- evidence count
+- tag richness
+- explicit risk controls
+- penalties for blocked interior mining, review gates, and research/rejection risk
+
+- [x] **Step 3: Add ranked candidates to report, analyzer summary, and CLI output**
+
+Report includes a `Training Candidates` table with rank, patch id, category, score, band, and notes.
+
+Analyzer summary includes candidate count, band counts, and the top five ranked candidates.
+
+CLI prints:
+
+```text
+Stage 6 training candidates: <count>.
+Stage 6 training bands: <json>.
+```
+
+- [x] **Step 4: Run focused tests and real-corpus smoke**
+
+Run:
+
+```powershell
+node --test test/templateSemanticPatchDataset.test.js test/templateKnowledgeBaseV2.test.js test/templateSemanticPatchCompleter.test.js
+npm run analyze:templates -- --offline --out .tmp/stage6-quality-analysis
+```
+
+Expected: PASS and real corpus emits training candidate counts and band distribution.
+
 ## Self-Review Checklist
 
-- Spec coverage: Tasks cover dataset schema, four patch categories, deterministic completion, conflict repair, and fallback safety.
+- Spec coverage: Tasks cover dataset schema, four patch categories, deterministic completion, conflict repair, inspection reports, training candidate ranking, and fallback safety.
 - Placeholder scan: The plan has no placeholder markers or unbounded implementation notes.
 - Type consistency: Dataset and completer function names match across tasks.
 - Runtime safety: No task wires patch completion into datapack generation by default.

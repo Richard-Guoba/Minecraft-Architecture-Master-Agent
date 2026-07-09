@@ -6,8 +6,11 @@ import assert from 'node:assert/strict';
 import {
   PATCH_CATEGORIES,
   buildSemanticVoxelPatchDataset,
+  rankSemanticPatchTrainingCandidates,
   renderSemanticPatchDatasetReport,
   semanticPatchDatasetJsonl,
+  scoreSemanticPatchTrainingCandidate,
+  summarizeSemanticPatchTrainingCandidates,
   writeSemanticVoxelPatchDatasetArtifact
 } from '../src/construction/templates/templateSemanticPatchDataset.js';
 
@@ -102,6 +105,55 @@ test('semantic patch report summarizes category counts, tags, risk, and examples
   assert.match(report, /review-gated/);
   assert.match(report, /house-modern-lake-villa:facade:large-glass/);
   assert.match(report, /do not copy block-for-block/);
+  assert.match(report, /Training Candidates/);
+  assert.match(report, /\| Rank \| Patch \| Category \| Score \| Band \| Notes \|/);
+  assert.match(report, /high-confidence semantic voxels/);
+});
+
+test('semantic patch training candidates are scored, ranked, and risk penalized', () => {
+  const strongFacade = patchCandidateFixture({
+    patch_id: 'modern-facade',
+    category: 'facade',
+    tags: ['large-glass', 'modern', 'house', 'water-edge'],
+    confidence: 0.92,
+    evidence: ['facade unit', 'label unit'],
+    risk_controls: ['change exact dimensions and detail placement; do not copy block-for-block']
+  });
+  const riskyInterior = patchCandidateFixture({
+    patch_id: 'arena-interior',
+    category: 'interior',
+    tags: ['arena', 'furnished', 'classical'],
+    confidence: 0.88,
+    evidence: ['interior unit', 'label unit'],
+    risk_controls: [
+      'use this case for exterior, site, public approach, or seating rhythm; do not mine domestic rooms',
+      'arena-not-for-room-mining'
+    ]
+  });
+  const thinRoof = patchCandidateFixture({
+    patch_id: 'thin-roof',
+    category: 'roof',
+    tags: ['roof'],
+    confidence: 0.66,
+    evidence: ['roof unit'],
+    risk_controls: [],
+    semantic_voxels: [{ x: 0, y: 0, z: 0, role: 'roof-surface', occupancy: 'solid' }]
+  });
+  const dataset = { patches: [riskyInterior, thinRoof, strongFacade] };
+
+  const ranked = rankSemanticPatchTrainingCandidates(dataset, { limit: 2 });
+  const riskyScore = scoreSemanticPatchTrainingCandidate(riskyInterior);
+  const summary = summarizeSemanticPatchTrainingCandidates(dataset);
+
+  assert.deepEqual(ranked.map((candidate) => candidate.patch_id), ['modern-facade', 'arena-interior']);
+  assert.equal(ranked[0].band, 'high');
+  assert.ok(ranked[0].score > ranked[1].score);
+  assert.ok(ranked[0].reasons.includes('high-confidence semantic voxels'));
+  assert.ok(riskyScore.penalties.includes('interior mining blocked by risk control'));
+  assert.ok(riskyScore.score < ranked[0].score);
+  assert.deepEqual(summary.training_band_counts, { high: 1, medium: 1, low: 1 });
+  assert.equal(summary.training_candidate_count, 2);
+  assert.equal(summary.top_training_candidates[0].patch_id, 'modern-facade');
 });
 
 test('semantic patch dataset does not learn from limited cases without approved areas', () => {
@@ -218,5 +270,35 @@ function unit(id, area, claim, targets) {
     avoid_when: ['do not copy block-for-block'],
     integration_targets: targets,
     source_fields: ['fixture']
+  };
+}
+
+function patchCandidateFixture({
+  patch_id,
+  category,
+  tags = [],
+  confidence = 0.8,
+  evidence = ['fixture evidence'],
+  risk_controls = [],
+  semantic_voxels
+}) {
+  const voxels = semantic_voxels || [
+    { x: 0, y: 0, z: 0, role: 'frame', occupancy: 'solid' },
+    { x: 1, y: 0, z: 0, role: 'detail', occupancy: 'replaceable' },
+    { x: 2, y: 0, z: 0, role: 'opening', occupancy: 'air' }
+  ];
+  return {
+    patch_id,
+    case_id: `${patch_id}-case`,
+    title: `${patch_id} patch`,
+    category,
+    tags,
+    semantic_voxels: voxels.map((voxel) => ({
+      ...voxel,
+      material_role: voxel.material_role || 'fixture',
+      confidence,
+      evidence
+    })),
+    risk_controls
   };
 }

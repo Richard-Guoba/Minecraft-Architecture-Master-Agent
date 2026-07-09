@@ -65,6 +65,8 @@ if (result.stage5?.summary) {
 if (result.stage6?.summary) {
   console.log(`Stage 6 semantic patches: ${result.stage6.summary.patch_count}.`);
   console.log(`Stage 6 patch categories: ${JSON.stringify(result.stage6.summary.category_counts || {})}.`);
+  console.log(`Stage 6 training candidates: ${result.stage6.summary.training_candidate_count}.`);
+  console.log(`Stage 6 training bands: ${JSON.stringify(result.stage6.summary.training_band_counts || {})}.`);
   console.log(`Stage 6 patch dataset: ${result.stage6.artifacts.semanticPatchDataset}.`);
   console.log(`Stage 6 patch jsonl: ${result.stage6.artifacts.semanticPatchJsonl}.`);
   console.log(`Stage 6 patch report: ${result.stage6.artifacts.semanticPatchReport}.`);
