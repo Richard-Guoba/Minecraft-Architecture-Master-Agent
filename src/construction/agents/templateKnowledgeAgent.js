@@ -73,15 +73,24 @@ export class TemplateKnowledgeAgent {
   }
 
   buildRetrievalExplanation(corpus, prompt, context) {
+    const rule = new ExplainableTemplateRetriever({ knowledgeBase: corpus.case_library_v2 }).run({ prompt, context, limit: 8 });
     if (this.neuralRetrieval) {
-      return new NeuralTemplateRetriever({
+      if (corpus.neural_labels_error) {
+        return {
+          ...rule,
+          mode: 'rule-only-fallback',
+          fallback_used: true,
+          warnings: [...(rule.warnings || []), corpus.neural_labels_error].filter(Boolean)
+        };
+      }
+      return appendRetrievalWarnings(new NeuralTemplateRetriever({
         knowledgeBase: corpus.case_library_v2,
         embeddingIndex: corpus.embedding_index,
         neuralLabels: corpus.neural_labels || []
-      }).run({ prompt, context, limit: 8 });
+      }).run({ prompt, context, limit: 8 }), [corpus.embedding_index_error]);
     }
     return {
-      ...new ExplainableTemplateRetriever({ knowledgeBase: corpus.case_library_v2 }).run({ prompt, context, limit: 8 }),
+      ...rule,
       mode: 'rule-only'
     };
   }
@@ -120,6 +129,7 @@ export class TemplateKnowledgeAgent {
             .map((line) => JSON.parse(line));
         } catch {
           corpus.neural_labels = [];
+          corpus.neural_labels_error = 'neural labels not usable; using rule-only template retrieval';
         }
       }
       const designLawFile = path.join(path.dirname(this.analysisFile), 'design_laws.json');
@@ -1372,4 +1382,13 @@ function clampNumber(value, min, max, fallback = min) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, parsed));
+}
+
+function appendRetrievalWarnings(explanation = {}, warnings = []) {
+  const extras = warnings.filter(Boolean);
+  if (!extras.length) return explanation;
+  return {
+    ...explanation,
+    warnings: [...(explanation.warnings || []), ...extras]
+  };
 }
