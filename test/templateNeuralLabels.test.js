@@ -120,6 +120,28 @@ test('explicit interior-noise risk flag adds interior blocked_learning_areas', (
   assert.deepEqual(modern.review_guidance.blocked_learning_areas, ['interior', 'site']);
 });
 
+test('suggested learning areas preserve evidence from repeated knowledge units', () => {
+  const records = buildNeuralLabelRecords({
+    knowledgeBase: knowledgeBaseFixture({
+      review: { status: 'approved', approved_learning_areas: [], blocked_learning_areas: [] },
+      review_priority_signals: [],
+      knowledge_units: [
+        { id: 'site-unit-1', area: 'site', claim: 'Use water edge deck transitions.', confidence: 0.85 },
+        { id: 'site-unit-2', area: 'site', claim: 'Use foreground site framing.', confidence: 0.85 },
+        { id: 'interior-a', area: 'interior', claim: 'Use layered lighting.', confidence: 0.79 }
+      ]
+    }),
+    generatedLabels: [generatedLabelFixture()]
+  });
+
+  const modern = records.find((item) => item.case_id === 'house-modern-lake-villa');
+  assert.ok(modern);
+  const siteArea = modern.suggested_learning_areas.find((item) => item.area === 'site');
+  assert.ok(siteArea);
+  assert.ok(siteArea.evidence.includes('knowledge unit site-unit-1 site confidence 0.85'));
+  assert.ok(siteArea.evidence.includes('knowledge unit site-unit-2 site confidence 0.85'));
+});
+
 test('generated labels jsonl parser reports invalid lines without discarding valid records', () => {
   const parsed = parseGeneratedLabelsJsonl([
     JSON.stringify(generatedLabelFixture()),

@@ -205,7 +205,7 @@ function suggestedLearningAreas(caseRecord = {}, suggestions = []) {
     if (!area) continue;
     const existing = areas.get(area);
     const confidence = Math.max(Number(existing?.confidence || 0), Number(unit.confidence || 0.65));
-    const evidence = `knowledge unit ${area} confidence ${Number(unit.confidence || 0.65)}`;
+    const evidence = `knowledge unit ${unit.id || 'unknown'} ${area} confidence ${Number(unit.confidence || 0.65)}`;
     if (existing) {
       existing.confidence = confidence;
       existing.evidence.push(evidence);
