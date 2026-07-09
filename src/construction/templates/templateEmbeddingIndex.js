@@ -158,6 +158,7 @@ export function queryEmbeddingIndex({ index = {}, prompt = '', limit = 8 } = {})
 export function validateEmbeddingIndex(index = {}, knowledgeBase = {}, neuralLabels) {
   const hasNeuralLabels = arguments.length > 2;
   const cases = new Map((knowledgeBase.cases || []).map((item) => [item.case_id, item]));
+  const indexedCaseIds = new Set((index.cases || []).map((item) => item.case_id).filter(Boolean));
   const labelsByCase = new Map((hasNeuralLabels ? (neuralLabels || []) : []).map((item) => [item.case_id, item]));
   const validCaseIds = [];
   const staleCaseIds = [];
@@ -177,6 +178,10 @@ export function validateEmbeddingIndex(index = {}, knowledgeBase = {}, neuralLab
       continue;
     }
     validCaseIds.push(item.case_id);
+  }
+  const missingCaseIds = [...cases.keys()].filter((caseId) => !indexedCaseIds.has(caseId));
+  if (missingCaseIds.length) {
+    warnings.push(`embedding index missing knowledge-base cases (${missingCaseIds.length}/${cases.size}): ${missingCaseIds.join(', ')}`);
   }
   if (staleCaseIds.length) {
     warnings.push(`stale or invalid vectors: ${staleCaseIds.join(', ')}`);

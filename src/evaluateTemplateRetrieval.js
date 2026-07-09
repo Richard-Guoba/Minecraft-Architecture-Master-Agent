@@ -7,6 +7,7 @@ import { parseGeneratedLabelsJsonl } from './construction/templates/templateNeur
 import { NeuralTemplateRetriever } from './construction/templates/templateNeuralRetriever.js';
 
 const __filename = fileURLToPath(import.meta.url);
+const STABLE_DEFAULT_GENERATED_AT = '2026-07-09T00:00:00.000Z';
 
 export const DEFAULT_RETRIEVAL_EVAL_SET = {
   source: 'stage5-retrieval-eval-set-v1',
@@ -57,7 +58,7 @@ export function evaluateTemplateRetrieval({ knowledgeBase = {}, embeddingIndex, 
 
   return {
     source: 'stage5-template-retrieval-eval-v1',
-    generated_at: effectiveEmbeddingIndex.generated_at || new Date().toISOString(),
+    generated_at: stableGeneratedAt(effectiveEmbeddingIndex.generated_at),
     prompt_count: prompts.length,
     prompts
   };
@@ -199,6 +200,11 @@ async function readNeuralLabels(file) {
   } catch {
     return undefined;
   }
+}
+
+function stableGeneratedAt(value) {
+  const timestamp = String(value || '').trim();
+  return timestamp || STABLE_DEFAULT_GENERATED_AT;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {

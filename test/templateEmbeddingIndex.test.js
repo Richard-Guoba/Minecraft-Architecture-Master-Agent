@@ -175,6 +175,24 @@ test('embedding validation detects stale label hashes', () => {
   assert.ok(validation.warnings.some((item) => /label/i.test(item)));
 });
 
+test('embedding validation rejects indexes missing knowledge-base cases', () => {
+  const baseCase = caseFixture();
+  const addedCase = tavernFixture();
+  const index = buildTemplateEmbeddingIndex({
+    knowledgeBase: { cases: [baseCase] },
+    neuralLabels: [neuralLabelFixture()],
+    generatedAt: '2026-07-09T00:00:00.000Z',
+    dimensions: 32
+  });
+
+  const validation = validateEmbeddingIndex(index, { cases: [baseCase, addedCase] }, [neuralLabelFixture()]);
+
+  assert.equal(validation.ok, false);
+  assert.deepEqual(validation.validCaseIds, ['house-modern-lake-villa']);
+  assert.deepEqual(validation.staleCaseIds, []);
+  assert.ok(validation.warnings.some((item) => /missing.*house-tavern/i.test(item)));
+});
+
 test('embedding artifact writer persists index json', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-embedding-index-'));
   try {

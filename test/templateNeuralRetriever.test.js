@@ -70,6 +70,35 @@ test('neural retriever falls back to rule-only when embedding labels are stale',
   assert.ok(result.warnings.some((item) => /stale|changed label_record_hash/i.test(item)));
 });
 
+test('neural retriever falls back to rule-only when embedding index misses knowledge-base cases', () => {
+  const knowledgeBase = knowledgeBaseFixture();
+  const partialKnowledgeBase = {
+    ...knowledgeBase,
+    cases: [knowledgeBase.cases[0]]
+  };
+  const embeddingIndex = buildTemplateEmbeddingIndex({
+    knowledgeBase: partialKnowledgeBase,
+    neuralLabels: neuralLabelsFixture(),
+    generatedAt: '2026-07-09T00:00:00.000Z',
+    dimensions: 64
+  });
+
+  const result = new NeuralTemplateRetriever({
+    knowledgeBase,
+    embeddingIndex,
+    neuralLabels: neuralLabelsFixture()
+  }).run({
+    prompt: 'build a lakeside modern villa with large glass',
+    context: { style_family: 'modern', typology: 'house' },
+    limit: 8
+  });
+
+  assert.equal(result.source, 'template-explainable-retriever-v1');
+  assert.equal(result.mode, 'rule-only-fallback');
+  assert.equal(result.fallback_used, true);
+  assert.ok(result.warnings.some((item) => /missing.*arenas-amphitheatre-arena/i.test(item)));
+});
+
 test('neural retriever does not promote arena interiors for residential interior prompts', () => {
   const knowledgeBase = safeEmbeddingOnlyFixture();
   const embeddingIndex = buildTemplateEmbeddingIndex({

@@ -29,6 +29,17 @@ test('retrieval evaluation compares rule and neural results', () => {
   assert.ok(result.prompts[0].fusion_top.length > 0);
 });
 
+test('retrieval evaluation uses stable timestamp when embedding index timestamp is unavailable', () => {
+  const result = evaluateTemplateRetrieval({
+    knowledgeBase: knowledgeBaseFixture(),
+    embeddingIndex: {},
+    neuralLabels: neuralLabelsFixture(),
+    evalSet: DEFAULT_RETRIEVAL_EVAL_SET
+  });
+
+  assert.equal(result.generated_at, '2026-07-09T00:00:00.000Z');
+});
+
 test('retrieval evaluation report renders prompt sections', () => {
   const result = evaluateTemplateRetrieval({
     knowledgeBase: knowledgeBaseFixture(),
