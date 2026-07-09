@@ -51,6 +51,75 @@ test('neural label builder preserves unknown aliases as review evidence', () => 
   assert.equal(modern.review_guidance.review_priority, 'high');
 });
 
+test('neural label builder merges duplicate generated rows for the same file', () => {
+  const records = buildNeuralLabelRecords({
+    knowledgeBase: knowledgeBaseFixture(),
+    generatedLabels: [
+      {
+        ...generatedLabelFixture(),
+        tags: ['landscape-composition'],
+        quality_tags: ['interior-rich-reference'],
+        composition_patterns: {
+          site: ['foreground_scene']
+        },
+        learning_roles: ['interior_reference']
+      },
+      {
+        ...generatedLabelFixture(),
+        tags: ['water-edge', 'strange-unknown-duplicate'],
+        quality_tags: ['site-rich-reference'],
+        composition_patterns: {
+          site: ['garden_forecourt'],
+          facade: ['large_glass_bands']
+        },
+        learning_roles: ['water_edge'],
+        room_reference_candidates: ['living']
+      }
+    ]
+  });
+
+  const modern = records.find((item) => item.case_id === 'house-modern-lake-villa');
+  assert.ok(modern);
+  const siteWater = modern.suggested_tags.find((tag) => tag.group === 'site' && tag.id === 'water-edge');
+  assert.ok(siteWater);
+  assert.ok(siteWater.evidence.length >= 2);
+  const tagKeys = modern.suggested_tags.map((tag) => `${tag.group}:${tag.id}`).sort();
+  assert.ok(tagKeys.includes('facade:large-glass'));
+  assert.ok(tagKeys.includes('interior:room-layout-rich'));
+  assert.ok(tagKeys.includes('site:garden'));
+  assert.ok(modern.unknown_suggestions.some((item) => item.raw === 'strange-unknown-duplicate'));
+});
+
+test('high risk penalty alone does not block interior learning area', () => {
+  const records = buildNeuralLabelRecords({
+    knowledgeBase: knowledgeBaseFixture({
+      priority: { global_score: 75, risk_penalty: 99 },
+      review: { status: 'approved', approved_learning_areas: [], blocked_learning_areas: [] },
+      review_priority_signals: []
+    }),
+    generatedLabels: [generatedLabelFixture()]
+  });
+
+  const modern = records.find((item) => item.case_id === 'house-modern-lake-villa');
+  assert.ok(modern);
+  assert.deepEqual(modern.review_guidance.blocked_learning_areas, []);
+});
+
+test('explicit interior-noise risk flag adds interior blocked_learning_areas', () => {
+  const records = buildNeuralLabelRecords({
+    knowledgeBase: knowledgeBaseFixture({
+      priority: { global_score: 75, risk_penalty: 99 },
+      review: { status: 'approved', approved_learning_areas: ['site'], blocked_learning_areas: ['site'] },
+      risk_controls: ['arena-not-for-room-mining', 'non-residential-interior-noise']
+    }),
+    generatedLabels: [generatedLabelFixture()]
+  });
+
+  const modern = records.find((item) => item.case_id === 'house-modern-lake-villa');
+  assert.ok(modern);
+  assert.deepEqual(modern.review_guidance.blocked_learning_areas, ['interior', 'site']);
+});
+
 test('generated labels jsonl parser reports invalid lines without discarding valid records', () => {
   const parsed = parseGeneratedLabelsJsonl([
     JSON.stringify(generatedLabelFixture()),
@@ -82,8 +151,8 @@ test('neural label artifact writer writes stable jsonl', async () => {
   }
 });
 
-function knowledgeBaseFixture() {
-  return {
+function knowledgeBaseFixture(overrides = {}) {
+  const base = {
     source: 'template-knowledge-base-v2',
     schema_version: 2,
     cases: [
@@ -114,6 +183,34 @@ function knowledgeBaseFixture() {
       }
     ]
   };
+
+  if (!Object.keys(overrides).length) return base;
+
+  const source = base;
+  const caseRecord = source.cases[0];
+  if (overrides.review) {
+    caseRecord.review = { ...caseRecord.review, ...overrides.review };
+  }
+  if (overrides.priority) {
+    caseRecord.priority = { ...caseRecord.priority, ...overrides.priority };
+  }
+  if (overrides.risk_controls) {
+    caseRecord.risk_controls = overrides.risk_controls;
+  }
+  if (overrides.review_priority_signals) {
+    caseRecord.review_priority_signals = overrides.review_priority_signals;
+  }
+  if (overrides.tags) {
+    caseRecord.tags = overrides.tags;
+  }
+  if (overrides.knowledge_units) {
+    caseRecord.knowledge_units = overrides.knowledge_units;
+  }
+  if (overrides.unknown_tags) {
+    caseRecord.unknown_tags = overrides.unknown_tags;
+  }
+
+  return source;
 }
 
 function generatedLabelFixture() {

@@ -84,7 +84,7 @@ export function buildNeuralLabelRecords({
   generatedLabels = [],
   taxonomy = DEFAULT_TAG_TAXONOMY
 } = {}) {
-  const labelsByFile = new Map((generatedLabels || []).map((item) => [normalizePath(item.file), item]));
+  const labelsByFile = mergeGeneratedLabelsByFile(generatedLabels || []);
   return (knowledgeBase.cases || []).map((caseRecord) => {
     const generated = labelsByFile.get(normalizePath(caseRecord.file)) || {};
     return buildRecord(caseRecord, generated, taxonomy);
@@ -203,10 +203,18 @@ function suggestedLearningAreas(caseRecord = {}, suggestions = []) {
   for (const unit of caseRecord.knowledge_units || []) {
     const area = normalizeToken(unit.area);
     if (!area) continue;
+    const existing = areas.get(area);
+    const confidence = Math.max(Number(existing?.confidence || 0), Number(unit.confidence || 0.65));
+    const evidence = `knowledge unit ${area} confidence ${Number(unit.confidence || 0.65)}`;
+    if (existing) {
+      existing.confidence = confidence;
+      existing.evidence.push(evidence);
+      continue;
+    }
     areas.set(area, {
       area,
-      confidence: Math.max(Number(areas.get(area)?.confidence || 0), Number(unit.confidence || 0.65)),
-      evidence: [`knowledge unit ${area} confidence ${Number(unit.confidence || 0.65)}`]
+      confidence,
+      evidence: [evidence]
     });
   }
   for (const tag of suggestions) {
@@ -230,20 +238,101 @@ function reviewGuidance(caseRecord = {}, suggestions = [], learningAreas = [], u
     .filter((item) => item.confidence >= 0.72 && item.area !== 'risk')
     .map((item) => item.area)
     .sort();
-  const riskPenalty = Number(caseRecord.priority?.risk_penalty || 0);
   const reviewSignals = caseRecord.review_priority_signals || [];
   const needsHumanReview = caseRecord.review?.status === 'pending' || unknown.length > 0 || reviewSignals.length > 0;
-  const suggestedStatus = riskPenalty >= 18 ? 'limited' : safeAreas.length >= 2 ? 'limited' : 'pending';
+  const suggestedStatus = safeAreas.length >= 2 ? 'limited' : 'pending';
+  const blockedLearningAreas = resolveBlockedLearningAreas(caseRecord);
   return {
     suggested_status: suggestedStatus,
     approved_learning_areas: safeAreas,
-    blocked_learning_areas: riskPenalty >= 18 ? ['interior'] : [],
+    blocked_learning_areas: blockedLearningAreas,
     needs_human_review: needsHumanReview,
     review_priority: unknown.length || Number(caseRecord.priority?.global_score || 0) >= 80 ? 'high' : 'normal',
     reason: needsHumanReview
       ? 'pending or ambiguous case with Stage 5 label suggestions'
       : 'case has enough deterministic evidence for low-priority review'
   };
+}
+
+function resolveBlockedLearningAreas(caseRecord = {}) {
+  const blocked = new Set(Array.isArray(caseRecord.review?.blocked_learning_areas) ? caseRecord.review.blocked_learning_areas : []);
+  const riskSignals = []
+    .concat(caseRecord.review_priority_signals || [])
+    .concat(caseRecord.risk_controls || [])
+    .concat(caseRecord.review?.review_signals || [])
+    .map((item) => String(item || '').toLowerCase());
+
+  for (const signal of riskSignals) {
+    if (signal.includes('arena-not-for-room-mining') || signal.includes('non-residential-interior-noise') || signal.includes('exterior-only-reference')) {
+      blocked.add('interior');
+    }
+  }
+  return [...blocked].filter(Boolean).sort();
+}
+
+function mergeGeneratedLabelsByFile(records = []) {
+  const map = new Map();
+  for (const item of records) {
+    const key = normalizePath(item?.file);
+    if (!key) continue;
+    const current = map.get(key);
+    if (!current) {
+      map.set(key, cloneGeneratedRecord(item));
+      continue;
+    }
+    map.set(key, mergeGeneratedRecords(current, item));
+  }
+  return map;
+}
+
+function mergeGeneratedRecords(base = {}, next = {}) {
+  return {
+    ...base,
+    ...next,
+    tags: [...stringArray(base.tags), ...stringArray(next.tags)],
+    quality_tags: [...stringArray(base.quality_tags), ...stringArray(next.quality_tags)],
+    learning_roles: [...stringArray(base.learning_roles), ...stringArray(next.learning_roles)],
+    room_reference_candidates: [...stringArray(base.room_reference_candidates), ...stringArray(next.room_reference_candidates)],
+    composition_patterns: mergeCompositionPatterns(base.composition_patterns, next.composition_patterns),
+    unknown_tags: [...concatArrayValues(base.unknown_tags), ...concatArrayValues(next.unknown_tags)],
+    file: base.file || next.file
+  };
+}
+
+function mergeCompositionPatterns(base = {}, next = {}) {
+  const result = { ...(base || {}) };
+  for (const [group, values] of Object.entries(next || {})) {
+    const prior = Array.isArray(result[group]) ? result[group] : [];
+    result[group] = [...prior, ...stringArray(values)];
+  }
+  return result;
+}
+
+function cloneGeneratedRecord(item = {}) {
+  const safe = item || {};
+  return {
+    ...safe,
+    tags: stringArray(safe.tags),
+    quality_tags: stringArray(safe.quality_tags),
+    learning_roles: stringArray(safe.learning_roles),
+    room_reference_candidates: stringArray(safe.room_reference_candidates),
+    composition_patterns: normalizeCompositionPatterns(safe.composition_patterns),
+    unknown_tags: concatArrayValues(safe.unknown_tags)
+  };
+}
+
+function concatArrayValues(value) {
+  if (Array.isArray(value)) return value.flatMap((item) => concatArrayValues(item));
+  if (value === undefined || value === null) return [];
+  return [value];
+}
+
+function normalizeCompositionPatterns(value = {}) {
+  const out = {};
+  for (const [group, patterns] of Object.entries(value || {})) {
+    out[group] = stringArray(patterns);
+  }
+  return out;
 }
 
 function existingTags(caseRecord = {}) {
