@@ -220,13 +220,7 @@ export async function analyzeTemplateCorpus({
     templateIndex: { corpus, templates },
     designLawBook,
     reviewOverlay,
-    inputs: {
-      case_library: path.join(outputDir, 'case_library.json'),
-      template_index: path.join(outputDir, 'template_index.json'),
-      design_laws: path.join(outputDir, 'design_laws.json'),
-      review_overlay: path.join(rootDir, 'curation', 'template_reviews.jsonl'),
-      tag_taxonomy: path.join(rootDir, 'curation', 'tag_taxonomy.json')
-    }
+    inputs: normalizeTemplateKnowledgeBaseV2Inputs({ rootDir, outputDir })
   });
 
   return {
@@ -248,6 +242,19 @@ export async function analyzeTemplateCorpus({
     importErrors,
     fetchedPages: fetched,
     pageCache
+  };
+}
+
+export function normalizeTemplateKnowledgeBaseV2Inputs({
+  rootDir = 'mc_templates',
+  outputDir = path.join(rootDir, 'analysis')
+} = {}) {
+  return {
+    case_library: path.join(outputDir, 'case_library.json').replaceAll('\\', '/'),
+    template_index: path.join(outputDir, 'template_index.json').replaceAll('\\', '/'),
+    design_laws: path.join(outputDir, 'design_laws.json').replaceAll('\\', '/'),
+    review_overlay: path.join(rootDir, 'curation', 'template_reviews.jsonl').replaceAll('\\', '/'),
+    tag_taxonomy: path.join(rootDir, 'curation', 'tag_taxonomy.json').replaceAll('\\', '/')
   };
 }
 

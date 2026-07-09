@@ -10,6 +10,7 @@ import {
   renderTemplateReviewQueue,
   writeTemplateKnowledgeBaseV2Artifacts
 } from '../src/construction/templates/templateKnowledgeBaseV2.js';
+import { normalizeTemplateKnowledgeBaseV2Inputs } from '../src/construction/templates/schematicAnalyzer.js';
 import { parseTemplateReviewOverlay, mergeReviewRecords } from '../src/construction/templates/templateReviewOverlay.js';
 
 test('knowledge base v2 converts v1 cases into reviewed knowledge units', () => {
@@ -213,6 +214,21 @@ test('knowledge base v2 artifact writer result shape is analyzer-friendly', asyn
   ].sort());
   assert.equal(result.knowledgeBase.summary.case_count, 2);
   assert.equal(result.retrievalIndex.case_count, 2);
+});
+
+test('schematic analyzer normalizes v2 artifact input paths to forward slashes', () => {
+  const inputs = normalizeTemplateKnowledgeBaseV2Inputs({
+    rootDir: 'mc_templates',
+    outputDir: 'mc_templates\\analysis'
+  });
+
+  assert.deepEqual(inputs, {
+    case_library: 'mc_templates/analysis/case_library.json',
+    template_index: 'mc_templates/analysis/template_index.json',
+    design_laws: 'mc_templates/analysis/design_laws.json',
+    review_overlay: 'mc_templates/curation/template_reviews.jsonl',
+    tag_taxonomy: 'mc_templates/curation/tag_taxonomy.json'
+  });
 });
 
 function caseLibraryFixture() {

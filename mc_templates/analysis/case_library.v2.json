@@ -4,11 +4,11 @@
   "generated_at": "2026-07-09T10:43:49.790Z",
   "knowledge_base_id": "sha256:20e2752c8ab55863cadf4623423c5ca9c838bce11de24d6036a2387b34a761ac",
   "inputs": {
-    "case_library": "mc_templates\\analysis\\case_library.json",
-    "template_index": "mc_templates\\analysis\\template_index.json",
-    "design_laws": "mc_templates\\analysis\\design_laws.json",
-    "review_overlay": "mc_templates\\curation\\template_reviews.jsonl",
-    "tag_taxonomy": "mc_templates\\curation\\tag_taxonomy.json"
+    "case_library": "mc_templates/analysis/case_library.json",
+    "template_index": "mc_templates/analysis/template_index.json",
+    "design_laws": "mc_templates/analysis/design_laws.json",
+    "review_overlay": "mc_templates/curation/template_reviews.jsonl",
+    "tag_taxonomy": "mc_templates/curation/tag_taxonomy.json"
   },
   "summary": {
     "case_count": 64,
