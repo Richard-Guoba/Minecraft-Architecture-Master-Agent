@@ -4,7 +4,9 @@ Minecraft Architecture Master Agent is a Node.js research and engineering projec
 
 The long-term goal is not a one-shot prompt-to-block toy. The project is being shaped into a hybrid architecture agent that can retrieve references, propose concepts, build, critique, repair, benchmark, and learn from its own runs.
 
-[Project Site](https://cityc196.github.io/Minecraft-Constructing-Agents/) | [Homepage Source](docs/index.html) | [Architecture](docs/architecture.md) | [Roadmap](docs/roadmap.md) | [Stage 1 Baseline](docs/benchmarks/stage1-readiness-baseline.md)
+[Static Homepage Source](docs/index.html) | [Architecture](docs/architecture.md) | [Roadmap](docs/roadmap.md) | [Stage 1 Baseline](docs/benchmarks/stage1-readiness-baseline.md)
+
+The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled from the `docs/` folder without adding a frontend build step.
 
 ## Current Status
 
