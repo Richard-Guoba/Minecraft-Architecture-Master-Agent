@@ -220,6 +220,72 @@ npm test
 
 Expected: PASS.
 
+---
+
+### Task 4: Offline Semantic Patch Artifacts
+
+**Files:**
+- Modify: `src/construction/templates/schematicAnalyzer.js`
+- Modify: `src/analyzeTemplateCorpus.js`
+- Test: `test/templateKnowledgeBaseV2.test.js`
+
+**Interfaces:**
+- Consumes: `writeSemanticVoxelPatchDatasetArtifact({ outputDir, knowledgeBase, neuralLabels, generatedAt })`
+- Produces: analyzer return field `stage6.summary` and `stage6.artifacts`
+- Produces: CLI lines for Stage 6 semantic patch count, category counts, dataset path, and JSONL path
+
+- [x] **Step 1: Write failing analyzer and CLI tests**
+
+Run:
+
+```powershell
+node --test test/templateKnowledgeBaseV2.test.js
+```
+
+Expected before implementation: FAIL because `result.stage6` is missing and CLI output does not mention Stage 6 semantic patches.
+
+- [x] **Step 2: Wire Stage 6 artifact writing into analyzer**
+
+Add `writeSemanticVoxelPatchDatasetArtifact()` after Stage 5 label and embedding artifacts so it receives the final KB v2 cases and neural labels.
+
+- [x] **Step 3: Add analyzer summary and artifact paths**
+
+Return:
+
+```js
+stage6: {
+  summary: {
+    patch_count,
+    category_counts
+  },
+  artifacts: {
+    semanticPatchDataset,
+    semanticPatchJsonl
+  }
+}
+```
+
+- [x] **Step 4: Add CLI output**
+
+Print:
+
+```text
+Stage 6 semantic patches: <count>.
+Stage 6 patch categories: <json>.
+Stage 6 patch dataset: <path>.
+Stage 6 patch jsonl: <path>.
+```
+
+- [x] **Step 5: Run focused tests**
+
+Run:
+
+```powershell
+node --test test/templateKnowledgeBaseV2.test.js
+```
+
+Expected: PASS.
+
 ## Self-Review Checklist
 
 - Spec coverage: Tasks cover dataset schema, four patch categories, deterministic completion, conflict repair, and fallback safety.

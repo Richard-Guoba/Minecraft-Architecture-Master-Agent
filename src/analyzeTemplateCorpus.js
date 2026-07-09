@@ -62,6 +62,12 @@ if (result.stage5?.summary) {
   console.log(`Stage 5 neural labels file: ${result.stage5.artifacts.neuralLabels}.`);
   console.log(`Stage 5 embedding index: ${result.stage5.artifacts.embeddingIndex}.`);
 }
+if (result.stage6?.summary) {
+  console.log(`Stage 6 semantic patches: ${result.stage6.summary.patch_count}.`);
+  console.log(`Stage 6 patch categories: ${JSON.stringify(result.stage6.summary.category_counts || {})}.`);
+  console.log(`Stage 6 patch dataset: ${result.stage6.artifacts.semanticPatchDataset}.`);
+  console.log(`Stage 6 patch jsonl: ${result.stage6.artifacts.semanticPatchJsonl}.`);
+}
 
 function parseArgs(argv) {
   const result = {};

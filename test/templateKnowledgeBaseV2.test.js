@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -299,16 +300,8 @@ test('knowledge base v2 artifact writer result shape is analyzer-friendly', asyn
   assert.equal(result.retrievalIndex.case_count, 2);
 });
 
-test('analyzeTemplateCorpus writes Stage 5 neural artifacts after KB v2', async () => {
-  const root = path.resolve('.tmp', `template-stage5-analysis-${Date.now()}`);
-  const templatesRoot = path.join(root, 'mc_templates');
-  const houseDir = path.join(templatesRoot, 'House');
-  await fs.mkdir(houseDir, { recursive: true });
-  await fs.writeFile(path.join(houseDir, 'data.txt'), 'A Small Modern House https://mcbuild.org/schematics/example\n', 'utf8');
-
-  const source = path.join(process.cwd(), 'mc_templates', 'House', 'A Small Modern House - (mcbuild_org).schematic');
-  const target = path.join(houseDir, 'A Small Modern House - (mcbuild_org).schematic');
-  await fs.copyFile(source, target);
+test('analyzeTemplateCorpus writes Stage 5 neural artifacts and Stage 6 semantic patch artifacts after KB v2', async () => {
+  const { root, templatesRoot } = await createSingleTemplateCorpus('template-stage6-analysis');
 
   try {
     const { analyzeTemplateCorpus } = await import('../src/construction/templates/schematicAnalyzer.js');
@@ -327,6 +320,40 @@ test('analyzeTemplateCorpus writes Stage 5 neural artifacts after KB v2', async 
     assert.match(labels, /stage5-neural-labels-v1/);
     assert.equal(index.source, 'stage5-template-embedding-index-v1');
     assert.equal(index.case_count, 1);
+
+    assert.ok(result.stage6.artifacts.semanticPatchDataset.endsWith('semantic_patch_dataset.json'));
+    assert.ok(result.stage6.artifacts.semanticPatchJsonl.endsWith('semantic_patch_dataset.jsonl'));
+    assert.equal(result.stage6.summary.patch_count, result.stage6.summary.category_counts.facade + result.stage6.summary.category_counts.interior + result.stage6.summary.category_counts.roof + result.stage6.summary.category_counts.courtyard);
+    const patchDataset = JSON.parse(await fs.readFile(result.stage6.artifacts.semanticPatchDataset, 'utf8'));
+    const patchRows = (await fs.readFile(result.stage6.artifacts.semanticPatchJsonl, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+    assert.equal(patchDataset.source, 'stage6-semantic-voxel-patch-dataset-v1');
+    assert.equal(patchDataset.patch_count, patchRows.length);
+    assert.ok(patchDataset.patch_count > 0);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('analyzeTemplateCorpus CLI prints Stage 6 semantic patch artifact summary', async () => {
+  const { root, templatesRoot } = await createSingleTemplateCorpus('template-stage6-cli');
+
+  try {
+    const result = spawnSync(process.execPath, [
+      'src/analyzeTemplateCorpus.js',
+      '--root',
+      templatesRoot,
+      '--out',
+      path.join(templatesRoot, 'analysis'),
+      '--offline'
+    ], {
+      cwd: process.cwd(),
+      encoding: 'utf8'
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Stage 6 semantic patches:/);
+    assert.match(result.stdout, /Stage 6 patch dataset:/);
+    assert.match(result.stdout, /semantic_patch_dataset\.json/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -370,6 +397,19 @@ test('schematic analyzer normalizes v2 artifact input paths to forward slashes',
     tag_taxonomy: 'mc_templates/curation/tag_taxonomy.json'
   });
 });
+
+async function createSingleTemplateCorpus(prefix) {
+  const root = path.resolve('.tmp', `${prefix}-${Date.now()}-${Math.round(Math.random() * 100000)}`);
+  const templatesRoot = path.join(root, 'mc_templates');
+  const houseDir = path.join(templatesRoot, 'House');
+  await fs.mkdir(houseDir, { recursive: true });
+  await fs.writeFile(path.join(houseDir, 'data.txt'), 'A Small Modern House https://mcbuild.org/schematics/example\n', 'utf8');
+
+  const source = path.join(process.cwd(), 'mc_templates', 'House', 'A Small Modern House - (mcbuild_org).schematic');
+  const target = path.join(houseDir, 'A Small Modern House - (mcbuild_org).schematic');
+  await fs.copyFile(source, target);
+  return { root, templatesRoot };
+}
 
 function caseLibraryFixture() {
   return {
