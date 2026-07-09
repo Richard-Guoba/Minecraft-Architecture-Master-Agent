@@ -55,6 +55,13 @@ if (result.knowledgeBaseV2?.summary) {
     console.log(`Stage 2 KB v2 overlay error line ${error.line}: ${error.message}`);
   }
 }
+if (result.stage5?.summary) {
+  console.log(`Stage 5 neural labels: ${result.stage5.summary.neural_label_count}.`);
+  console.log(`Stage 5 embedding cases: ${result.stage5.summary.embedding_case_count}.`);
+  console.log(`Stage 5 embedding model: ${result.stage5.summary.embedding_model.provider}/${result.stage5.summary.embedding_model.model}.`);
+  console.log(`Stage 5 neural labels file: ${result.stage5.artifacts.neuralLabels}.`);
+  console.log(`Stage 5 embedding index: ${result.stage5.artifacts.embeddingIndex}.`);
+}
 
 function parseArgs(argv) {
   const result = {};

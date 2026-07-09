@@ -299,6 +299,39 @@ test('knowledge base v2 artifact writer result shape is analyzer-friendly', asyn
   assert.equal(result.retrievalIndex.case_count, 2);
 });
 
+test('analyzeTemplateCorpus writes Stage 5 neural artifacts after KB v2', async () => {
+  const root = path.resolve('.tmp', `template-stage5-analysis-${Date.now()}`);
+  const templatesRoot = path.join(root, 'mc_templates');
+  const houseDir = path.join(templatesRoot, 'House');
+  await fs.mkdir(houseDir, { recursive: true });
+  await fs.writeFile(path.join(houseDir, 'data.txt'), 'A Small Modern House https://mcbuild.org/schematics/example\n', 'utf8');
+
+  const source = path.join(process.cwd(), 'mc_templates', 'House', 'A Small Modern House - (mcbuild_org).schematic');
+  const target = path.join(houseDir, 'A Small Modern House - (mcbuild_org).schematic');
+  await fs.copyFile(source, target);
+
+  try {
+    const { analyzeTemplateCorpus } = await import('../src/construction/templates/schematicAnalyzer.js');
+    const result = await analyzeTemplateCorpus({
+      rootDir: templatesRoot,
+      outputDir: path.join(templatesRoot, 'analysis'),
+      fetchPages: false,
+      continueOnError: false,
+      cwd: process.cwd()
+    });
+
+    assert.ok(result.stage5.artifacts.neuralLabels.endsWith('neural_labels.jsonl'));
+    assert.ok(result.stage5.artifacts.embeddingIndex.endsWith('embedding_index.json'));
+    const labels = await fs.readFile(result.stage5.artifacts.neuralLabels, 'utf8');
+    const index = JSON.parse(await fs.readFile(result.stage5.artifacts.embeddingIndex, 'utf8'));
+    assert.match(labels, /stage5-neural-labels-v1/);
+    assert.equal(index.source, 'stage5-template-embedding-index-v1');
+    assert.equal(index.case_count, 1);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('knowledge base v2 artifact generation is byte-stable for unchanged inputs', async () => {
   const firstRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-kb-v2-stable-a-'));
   const secondRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-kb-v2-stable-b-'));

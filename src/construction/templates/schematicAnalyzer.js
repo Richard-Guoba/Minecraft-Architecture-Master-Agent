@@ -7,6 +7,8 @@ import { buildTemplateDesignLawBook, designLawsJsonl, interiorLawsJsonl, renderT
 import { analyzeTemplateComposition } from './templateCompositionMiner.js';
 import { analyzeSpatialLayout } from './templateSpatialAnalyzer.js';
 import { parseTemplateReviewOverlay, mergeReviewRecords } from './templateReviewOverlay.js';
+import { writeNeuralLabelArtifacts } from './templateNeuralLabels.js';
+import { writeTemplateEmbeddingIndexArtifact } from './templateEmbeddingIndex.js';
 import { writeTemplateKnowledgeBaseV2Artifacts } from './templateKnowledgeBaseV2.js';
 import { loadTagTaxonomy } from './templateTagTaxonomy.js';
 
@@ -232,6 +234,18 @@ export async function analyzeTemplateCorpus({
     overlayErrors: parsedReviewOverlay.errors,
     inputs: normalizeTemplateKnowledgeBaseV2Inputs({ rootDir, outputDir })
   });
+  const neuralLabelResult = await writeNeuralLabelArtifacts({
+    outputDir: absoluteOutput,
+    knowledgeBase: knowledgeBaseV2Result.knowledgeBase,
+    generatedLabels: labels,
+    taxonomy
+  });
+  const embeddingIndexResult = await writeTemplateEmbeddingIndexArtifact({
+    outputDir: absoluteOutput,
+    knowledgeBase: knowledgeBaseV2Result.knowledgeBase,
+    neuralLabels: neuralLabelResult.records,
+    generatedAt: stableTemplateKnowledgeBaseV2GeneratedAt()
+  });
 
   return {
     outputDir: absoluteOutput,
@@ -248,6 +262,17 @@ export async function analyzeTemplateCorpus({
         reviewQueue: knowledgeBaseV2Result.reviewQueueFile
       },
       overlayErrors: parsedReviewOverlay.errors
+    },
+    stage5: {
+      summary: {
+        neural_label_count: neuralLabelResult.records.length,
+        embedding_case_count: embeddingIndexResult.index.case_count,
+        embedding_model: embeddingIndexResult.index.embedding_model
+      },
+      artifacts: {
+        neuralLabels: neuralLabelResult.file,
+        embeddingIndex: embeddingIndexResult.file
+      }
     },
     templates,
     importErrors,
