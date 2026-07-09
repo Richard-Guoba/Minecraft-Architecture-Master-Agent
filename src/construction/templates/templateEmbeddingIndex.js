@@ -155,8 +155,10 @@ export function queryEmbeddingIndex({ index = {}, prompt = '', limit = 8 } = {})
     .slice(0, clampLimit(limit));
 }
 
-export function validateEmbeddingIndex(index = {}, knowledgeBase = {}) {
+export function validateEmbeddingIndex(index = {}, knowledgeBase = {}, neuralLabels) {
+  const hasNeuralLabels = arguments.length > 2;
   const cases = new Map((knowledgeBase.cases || []).map((item) => [item.case_id, item]));
+  const labelsByCase = new Map((hasNeuralLabels ? (neuralLabels || []) : []).map((item) => [item.case_id, item]));
   const validCaseIds = [];
   const staleCaseIds = [];
   const warnings = [];
@@ -165,14 +167,21 @@ export function validateEmbeddingIndex(index = {}, knowledgeBase = {}) {
   if (!dimensions) warnings.push('embedding index dimensions missing');
   for (const item of index.cases || []) {
     const current = cases.get(item.case_id);
+    const labelRecord = labelsByCase.get(item.case_id);
+    const currentLabelRecord = labelRecord || {};
+    const currentLabelHash = `sha256:${hashJson(currentLabelRecord)}`;
     const vectorOk = Array.isArray(item.vector) && item.vector.length === dimensions;
-    if (!current || !vectorOk || item.lineage?.case_version !== (current.case_version || '')) {
+    const labelHashMatch = !hasNeuralLabels || item.lineage?.label_record_hash === currentLabelHash;
+    if (!current || !vectorOk || item.lineage?.case_version !== (current.case_version || '') || !labelHashMatch) {
       staleCaseIds.push(item.case_id);
       continue;
     }
     validCaseIds.push(item.case_id);
   }
-  if (staleCaseIds.length) warnings.push(`stale or invalid vectors: ${staleCaseIds.join(', ')}`);
+  if (staleCaseIds.length) {
+    warnings.push(`stale or invalid vectors: ${staleCaseIds.join(', ')}`);
+    if (hasNeuralLabels) warnings.push(`stale or changed label_record_hash for case(s): ${staleCaseIds.join(', ')}`);
+  }
   return {
     ok: warnings.length === 0 && validCaseIds.length > 0,
     validCaseIds,
