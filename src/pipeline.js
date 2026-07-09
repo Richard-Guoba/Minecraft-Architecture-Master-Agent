@@ -21,6 +21,7 @@ export async function runPipeline({
   candidateForceRounds = false,
   concepts = 0,
   conceptStrategy = 'select',
+  critics = true,
   cwd = process.cwd(),
   minecraftDir,
   world,
@@ -52,7 +53,8 @@ export async function runPipeline({
       datapacksDir,
       autoBuild,
       concepts: conceptCount,
-      conceptStrategy: normalizedConceptStrategy
+      conceptStrategy: normalizedConceptStrategy,
+      critics
     });
   }
 
@@ -73,7 +75,8 @@ export async function runPipeline({
     datapacksDir,
     autoBuild,
     conceptCount,
-    conceptStrategy: normalizedConceptStrategy
+    conceptStrategy: normalizedConceptStrategy,
+    critics
   });
 
   return {
@@ -95,6 +98,7 @@ export async function runCandidatePipeline({
   candidateForceRounds = false,
   concepts = 0,
   conceptStrategy = 'select',
+  critics = true,
   cwd = process.cwd(),
   minecraftDir,
   world,
@@ -140,7 +144,8 @@ export async function runCandidatePipeline({
           datapacksDir: undefined,
           autoBuild,
           conceptCount,
-          conceptStrategy: normalizedConceptStrategy
+          conceptStrategy: normalizedConceptStrategy,
+          critics
         });
         const record = {
           id,

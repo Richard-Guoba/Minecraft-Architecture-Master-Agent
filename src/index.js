@@ -27,6 +27,7 @@ function parseArgs(argv) {
     candidateForceRounds: false,
     concepts: 0,
     conceptStrategy: 'select',
+    critics: true,
     minecraftDir: process.env.MINECRAFT_DIR,
     world: undefined,
     datapacksDir: process.env.ARCHITECT_DATAPACKS_DIR || resolveDatapacksTarget(process.env.ARCHITECT_DATAPACKS_TARGET),
@@ -76,6 +77,8 @@ function parseArgs(argv) {
       const value = argv[++i] || 'select';
       if (!['select', 'fuse'].includes(value)) throw new Error(`无效概念策略: ${value}`);
       options.conceptStrategy = value;
+    } else if (arg === '--no-critics') {
+      options.critics = false;
     } else if (arg === '--minecraft-dir') {
       options.minecraftDir = path.resolve(argv[++i] || '');
     } else if (arg === '--world') {
@@ -137,6 +140,7 @@ Options:
   --seed <number>            Deterministic design seed. Omit it to generate a random seed.
   --concepts <n>             Enable Stage 3 Concept Studio with 2-5 concepts before construction.
   --concept-strategy <mode>  select or fuse. Defaults to select.
+  --no-critics               Disable Stage 4 Critic Council report and critic_council.json.
   --candidates <n>           Generate n candidates and auto-select the strongest local result.
   --auto-select              Shortcut for --candidates 3.
   --candidate-rounds <n>     Run up to n reflection rounds. Defaults to 1.
@@ -215,6 +219,7 @@ async function main() {
     candidateForceRounds: options.candidateForceRounds,
     concepts: options.concepts,
     conceptStrategy: options.conceptStrategy,
+    critics: options.critics,
     cwd: projectRoot,
     minecraftDir: options.minecraftDir,
     world: options.world,
@@ -239,6 +244,10 @@ async function main() {
   if (result.conceptStudio) {
     console.log(`Concept Studio: ${result.conceptStudio.selected_concept_id} / ${result.conceptStudio.concept_count} concepts / ${result.conceptStudio.strategy}`);
     console.log(`概念报告: ${result.artifacts.conceptStudioReport}`);
+  }
+  if (result.criticCouncil) {
+    console.log(`Critic Council: ${result.criticCouncil.readiness} / ${result.criticCouncil.overall_score}/100 / ${result.criticCouncil.warning_count} warnings`);
+    console.log(`批评产物: ${result.artifacts.criticCouncil}`);
   }
   console.log(`数据包: ${result.artifacts.datapackDir}`);
   if (result.artifacts.installedDatapackDir) {

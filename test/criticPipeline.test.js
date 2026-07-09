@@ -36,3 +36,51 @@ test('pipeline writes critic council artifacts and blueprint metadata by default
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test('pipeline suppresses critic council artifacts when critics are disabled', async () => {
+  const root = path.resolve('.tmp', `architect-critic-off-${Date.now()}`);
+  try {
+    const result = await runPipeline({
+      prompt: '建一个欧式大房子',
+      mode: 'mock',
+      mcVersion: '1.21',
+      outRoot: path.join(root, 'out'),
+      cwd: process.cwd(),
+      seed: 1,
+      critics: false
+    });
+
+    assert.equal(result.criticCouncil, undefined);
+    assert.equal(result.blueprint.criticCouncil, undefined);
+    assert.equal(result.artifacts.criticCouncil, undefined);
+    const runReport = await fs.readFile(result.artifacts.report, 'utf8');
+    assert.doesNotMatch(runReport, /## Stage 4 Critic Council/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('candidate pipeline passes critic options into candidate runs', async () => {
+  const root = path.resolve('.tmp', `architect-critic-candidate-${Date.now()}`);
+  try {
+    const result = await runPipeline({
+      prompt: '建一个湖边现代别墅，带大玻璃、水边平台和前景花园',
+      mode: 'mock',
+      mcVersion: '1.21',
+      outRoot: path.join(root, 'out'),
+      cwd: process.cwd(),
+      seed: 8111,
+      candidates: 2,
+      candidateTargetScore: 100,
+      candidateForceRounds: true,
+      critics: false
+    });
+
+    assert.equal(result.candidateSelection.active, true);
+    assert.equal(result.criticCouncil, undefined);
+    assert.equal(result.blueprint.criticCouncil, undefined);
+    assert.equal(result.artifacts.criticCouncil, undefined);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
