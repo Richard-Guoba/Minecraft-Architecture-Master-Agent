@@ -25,15 +25,16 @@ export function buildCaseEmbeddingDocument(caseRecord = {}, labelRecord = {}) {
   const parts = [];
   const add = (value, weightLabel = '') => {
     const raw = String(value || '').trim();
-    if (raw) parts.push(weightLabel ? `${weightLabel}:${raw}` : raw);
     for (const token of tokenize(value)) {
       tokens.add(token);
-      parts.push(weightLabel ? `${weightLabel}:${token}` : token);
+      if (weightLabel) parts.push(`${weightLabel}:${token}`);
+      parts.push(token);
     }
+    if (raw) parts.push(raw);
   };
 
   add(caseRecord.title, 'title');
-  add(caseRecord.file, 'file');
+  add(fileStem(caseRecord.file), 'file');
   add(caseRecord.identity?.category, 'identity');
   add(caseRecord.identity?.typology, 'identity');
   add(caseRecord.identity?.style_family, 'identity');
@@ -72,7 +73,7 @@ export function buildCaseEmbeddingDocument(caseRecord = {}, labelRecord = {}) {
 
 export function vectorizeText(text = '', { dimensions = DEFAULT_DIMENSIONS } = {}) {
   const vector = Array.from({ length: dimensions }, () => 0);
-  for (const token of tokenize(text)) {
+  for (const token of tokenize(text, { includeSource: true })) {
     const bucket = hashToken(token) % dimensions;
     const sign = hashToken(`sign:${token}`) % 2 === 0 ? 1 : -1;
     vector[bucket] += sign * tokenWeight(token);
@@ -144,7 +145,13 @@ export function queryEmbeddingIndex({ index = {}, prompt = '', limit = 8 } = {})
       tokens: item.tokens || [],
       risk_penalty: Number(item.risk_penalty || 0)
     }))
-    .sort((a, b) => b.embedding_score - a.embedding_score || a.title.localeCompare(b.title))
+    .sort((a, b) => {
+      const scoreDelta = b.embedding_score - a.embedding_score;
+      if (scoreDelta !== 0) return scoreDelta;
+      const titleDelta = compareStableString(a.title, b.title);
+      if (titleDelta !== 0) return titleDelta;
+      return compareStableString(a.case_id, b.case_id);
+    })
     .slice(0, clampLimit(limit));
 }
 
@@ -188,14 +195,25 @@ export async function writeTemplateEmbeddingIndexArtifact({
   return { index, file };
 }
 
-function tokenize(value = '') {
-  const raw = String(value || '').toLowerCase().replaceAll('_', '-');
+function tokenize(value = '', { includeSource = false } = {}) {
+  const raw = String(value || '')
+    .toLowerCase()
+    .replaceAll('_', '-');
+  const tokensPattern = includeSource ? /[^\p{Letter}\p{Number}:-]+/gu : /[^\p{Letter}\p{Number}-]+/gu;
   const base = raw
-    .split(/[^\p{Letter}\p{Number}-]+/gu)
+    .split(tokensPattern)
     .map((item) => normalizeToken(item))
     .filter(Boolean);
   const expanded = [];
   for (const token of base) {
+    const [source, tokenValue] = includeSource ? splitTokenSource(token) : [null, token];
+    if (source) {
+      expanded.push(`${source}:${tokenValue}`);
+      expanded.push(tokenValue);
+      if (TOKEN_ALIASES[tokenValue]) expanded.push(`${source}:${TOKEN_ALIASES[tokenValue]}`);
+      if (TOKEN_ALIASES[tokenValue]) expanded.push(TOKEN_ALIASES[tokenValue]);
+      continue;
+    }
     expanded.push(token);
     if (TOKEN_ALIASES[token]) expanded.push(TOKEN_ALIASES[token]);
   }
@@ -206,8 +224,37 @@ function normalizeToken(value = '') {
   return String(value || '').trim().toLowerCase().replaceAll('_', '-').replace(/^-|-$/g, '');
 }
 
+function splitTokenSource(value = '') {
+  const token = String(value || '');
+  const index = token.indexOf(':');
+  if (index <= 0) return [null, token];
+  return [token.slice(0, index), token.slice(index + 1)];
+}
+
+function fileStem(value = '') {
+  const normalized = String(value || '').replaceAll('\\', '/');
+  const base = path.posix.basename(normalized);
+  const extension = path.posix.extname(base);
+  return extension ? normalizeToken(base.slice(0, -extension.length)) : normalizeToken(base);
+}
+
+function compareStableString(left = '', right = '') {
+  const first = String(left || '');
+  const second = String(right || '');
+  if (first === second) return 0;
+  return first < second ? -1 : 1;
+}
+
 function tokenWeight(token = '') {
-  if (token.includes(':identity')) return 1.4;
+  const [source, plain] = splitTokenSource(token);
+  if (source) {
+    if (source === 'identity') return 1.5;
+    if (source === 'suggested-tag' || source === 'suggested-tag-group' || source === 'tag' || source === 'tag-group') return 1.35;
+    if (source === 'title' || source === 'claim') return 1.0;
+    return 1.0;
+  }
+  const value = plain || token;
+  if (value.includes('identity')) return 1.4;
   if (token.includes('large-glass') || token.includes('water-edge')) return 1.3;
   if (token.length >= 8) return 1.1;
   return 1;

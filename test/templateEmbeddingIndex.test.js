@@ -35,6 +35,92 @@ test('deterministic token vectors are stable and normalized', () => {
   assert.ok(Math.abs(norm - 1) < 0.000001);
 });
 
+test('source weighting increases importance for identity and suggested-tag fields', () => {
+  const markerToken = 'qvortex';
+  const lowWeightCase = {
+    case_id: 'low-weight',
+    case_version: 'sha256:low',
+    title: `A ${markerToken} touch`,
+    file: 'House/Low Weight.schematic',
+    identity: { category: 'House', typology: 'house', style_family: '', scale_bucket: 'medium' },
+    knowledge_units: [{ area: 'site', claim: `This ${markerToken} idea appears only in prose.` }],
+    priority: { risk_penalty: 0 }
+  };
+  const highWeightCase = {
+    case_id: 'high-weight',
+    case_version: 'sha256:high',
+    title: 'A concise note',
+    file: 'House/High Weight.schematic',
+    identity: { category: 'House', typology: 'house', style_family: markerToken, scale_bucket: 'medium' },
+    knowledge_units: [{ area: 'site', claim: 'Simple site notes.' }],
+    priority: { risk_penalty: 0 }
+  };
+
+  const lowDocument = buildCaseEmbeddingDocument(lowWeightCase, {});
+  const highDocument = buildCaseEmbeddingDocument(highWeightCase, {
+    suggested_tags: [{ group: 'facade', id: markerToken, confidence: 0.86 }]
+  });
+
+  const query = vectorizeText(markerToken, { dimensions: 4096 });
+  const lowScore = cosineSimilarity(query, vectorizeText(lowDocument.document, { dimensions: 4096 }));
+  const highScore = cosineSimilarity(query, vectorizeText(highDocument.document, { dimensions: 4096 }));
+
+  assert.ok(highScore > lowScore);
+});
+
+test('document tokens use file stem and avoid directory names or extensions', () => {
+  const withPath = buildCaseEmbeddingDocument({
+    case_id: 'file-stem',
+    case_version: 'sha256:file',
+    title: 'Modern Lake Villa',
+    file: 'Folder/Sub/Modern Lake Villa.schematic',
+    identity: { category: 'House', typology: 'house', style_family: 'modern', scale_bucket: 'medium' },
+    knowledge_units: [{ area: 'site', claim: 'Deck on water edge.' }],
+    priority: { risk_penalty: 0 }
+  }, {});
+
+  assert.equal(withPath.tokens.includes('folder'), false);
+  assert.equal(withPath.tokens.includes('sub'), false);
+  assert.equal(withPath.tokens.includes('schematic'), false);
+  assert.equal(withPath.tokens.includes('modern'), true);
+  assert.equal(withPath.tokens.includes('lake'), true);
+});
+
+test('query tie-breaking is deterministic with equal scores', () => {
+  const identicalBase = {
+    case_version: 'sha256:tie',
+    title: 'Unrelated',
+    file: 'House/Tie Case.schematic',
+    identity: { category: 'House', typology: 'house', style_family: 'modern', scale_bucket: 'medium' },
+    review: { status: 'pending' },
+    tags: {
+      typology: [{ id: 'house' }]
+    },
+    knowledge_units: [{ area: 'site', claim: 'Unique neutral text.' }],
+    retrieval: { search_tokens: ['modern', 'house'], prompt_affinities: ['water-edge'] },
+    priority: { risk_penalty: 0 },
+    risk_controls: ['no direct block copy'],
+    review_flags: []
+  };
+
+  const index = buildTemplateEmbeddingIndex({
+    knowledgeBase: { cases: [
+      { ...identicalBase, case_id: 'case-b', file: 'House/Tie Case.schematic' },
+      { ...identicalBase, case_id: 'case-a', file: 'House/Tie Case.schematic' }
+    ] },
+    dimensions: 64
+  });
+
+  const matches = queryEmbeddingIndex({
+    index,
+    prompt: 'unmatched-token',
+    limit: 2
+  });
+
+  assert.equal(matches[0].case_id, 'case-a');
+  assert.equal(matches[1].case_id, 'case-b');
+});
+
 test('embedding index query ranks matching cases above unrelated cases', () => {
   const index = buildTemplateEmbeddingIndex({
     knowledgeBase: { cases: [caseFixture(), tavernFixture()] },
@@ -140,4 +226,20 @@ function neuralLabelFixture() {
       { area: 'site', confidence: 0.9, evidence: ['fixture'] }
     ]
   };
+}
+
+function cosineSimilarity(a = [], b = []) {
+  const limit = Math.min(a.length, b.length);
+  let sum = 0;
+  let aNorm = 0;
+  let bNorm = 0;
+  for (let index = 0; index < limit; index += 1) {
+    const aValue = Number(a[index] || 0);
+    const bValue = Number(b[index] || 0);
+    sum += aValue * bValue;
+    aNorm += aValue * aValue;
+    bNorm += bValue * bValue;
+  }
+  if (!aNorm || !bNorm) return 0;
+  return sum / Math.sqrt(aNorm * bNorm);
 }
