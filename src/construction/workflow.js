@@ -27,6 +27,7 @@ import { ConstructionEvaluationAgent } from './agents/constructionEvaluationAgen
 import { ConceptStudioAgent } from './agents/conceptStudioAgent.js';
 import { ConceptSelectionAgent } from './agents/conceptSelectionAgent.js';
 import { ConceptFusionAgent } from './agents/conceptFusionAgent.js';
+import { CriticCouncilAgent } from './agents/criticCouncilAgent.js';
 import { CSGBuilder, computeBounds } from './engine/csgBuilder.js';
 import { BSPPartitioner } from './engine/bspPartitioner.js';
 import { AStarPathfinder } from './engine/pathfinder.js';
@@ -48,7 +49,8 @@ export async function runConstructionWorkflow({
   datapacksDir,
   autoBuild = false,
   conceptCount = 0,
-  conceptStrategy = 'select'
+  conceptStrategy = 'select',
+  critics = true
 }) {
   if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
 
@@ -297,11 +299,18 @@ export async function runConstructionWorkflow({
     }
   });
   blueprint.architectureScorecard = compactArchitectureScorecard(architectureScorecard);
+  const criticCouncil = critics
+    ? new CriticCouncilAgent().run({ blueprint, validation, architectureScorecard })
+    : undefined;
+  if (criticCouncil?.active) {
+    blueprint.criticCouncil = compactCriticCouncil(criticCouncil);
+  }
 
   const artifacts = await exportArtifacts({
     outputDir,
     blueprint,
     conceptStudio,
+    criticCouncil,
     architectureScorecard,
     validation,
     prompt,
@@ -345,6 +354,7 @@ export async function runConstructionWorkflow({
     templateInteriorDensityRepair: blueprint.templateInteriorDensityRepair,
     interiorClearanceRepair: blueprint.interiorClearanceRepair,
     architectureScorecard,
+    ...(criticCouncil?.active ? { criticCouncil } : {}),
     geometry: blueprint.geometry,
     blueprint,
     validation,
@@ -800,7 +810,7 @@ function clampConceptCount(value) {
   return Math.max(2, Math.min(5, Math.round(number)));
 }
 
-async function exportArtifacts({ outputDir, blueprint, conceptStudio, architectureScorecard, validation, prompt, mcVersion, autoBuild, minecraftDir, world, datapacksDir }) {
+async function exportArtifacts({ outputDir, blueprint, conceptStudio, criticCouncil, architectureScorecard, validation, prompt, mcVersion, autoBuild, minecraftDir, world, datapacksDir }) {
   const datapackDir = path.join(outputDir, 'architect_datapack');
   const functionDir = path.join(datapackDir, 'data', 'architect', 'function');
   await ensureDir(functionDir);
@@ -816,11 +826,13 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, architectu
   const architectureScorecardPath = path.join(outputDir, 'architecture_scorecard.json');
   const conceptStudioPath = conceptStudio?.active ? path.join(outputDir, 'concept_studio.json') : undefined;
   const conceptStudioReportPath = conceptStudio?.active ? path.join(outputDir, 'concept_studio_report.md') : undefined;
+  const criticCouncilPath = criticCouncil?.active ? path.join(outputDir, 'critic_council.json') : undefined;
 
   await writeJson(blueprintPath, blueprint);
   await writeJson(architectureScorecardPath, architectureScorecard);
   if (conceptStudioPath) await writeJson(conceptStudioPath, serializeConceptStudio(conceptStudio));
   if (conceptStudioReportPath) await fs.writeFile(conceptStudioReportPath, renderConceptStudioReport(conceptStudio), 'utf8');
+  if (criticCouncilPath) await writeJson(criticCouncilPath, serializeCriticCouncil(criticCouncil));
   await writeJson(path.join(datapackDir, 'pack.mcmeta'), {
     pack: {
       pack_format: packFormatFor(mcVersion),
@@ -854,6 +866,7 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, architectu
     previewHtml: previewPath,
     report: reportPath,
     ...(conceptStudioPath ? { conceptStudio: conceptStudioPath, conceptStudioReport: conceptStudioReportPath } : {}),
+    ...(criticCouncilPath ? { criticCouncil: criticCouncilPath } : {}),
     installedDatapackDir
   };
 }
@@ -973,6 +986,7 @@ function renderReport({ prompt, blueprint, architectureScorecard, validation, mc
     '2. 站在目标位置运行 /function architect:run。它会自动 clear + build。'
   ].join('\n');
   const conceptStudioSection = renderConceptStudioSection(blueprint);
+  const criticCouncilSection = renderCriticCouncilSection(blueprint);
 
   return `# Minecraft 建筑智能体运行报告
 
@@ -1042,7 +1056,7 @@ ${templateLawCoverageLine}
 ${templateLawRepairLine}
 ${templateAssimilationLine}
 
-${conceptStudioSection}
+${conceptStudioSection}${criticCouncilSection}
 ## 结构框架 JSON
 
 - 来源：${blueprint.structure?.source || 'unknown'}
@@ -1126,6 +1140,80 @@ function renderTemplateMemorySection(blueprint = {}) {
     const risks = (item.risk_controls || []).slice(0, 1).join('；');
     return `- ${item.title}: 匹配 ${(item.matched_signals || []).slice(0, 4).join(' / ') || item.diversity_slot}。学习 ${teaches || '通用构图参考'}；控制 ${risks || '不复制原模板细节'}。`;
   }).join('\n')}\n`;
+}
+
+function serializeCriticCouncil(criticCouncil = {}) {
+  return {
+    source: criticCouncil.source,
+    version: criticCouncil.version,
+    active: Boolean(criticCouncil.active),
+    summary: criticCouncil.summary,
+    readiness: criticCouncil.readiness,
+    overall_score: criticCouncil.overall_score,
+    critic_count: criticCouncil.critic_count,
+    critical_count: criticCouncil.critical_count,
+    warning_count: criticCouncil.warning_count,
+    satisfied_count: criticCouncil.satisfied_count,
+    critics: criticCouncil.critics || [],
+    top_findings: criticCouncil.top_findings || [],
+    repair_directives: criticCouncil.repair_directives || [],
+    next_iteration_directives: criticCouncil.next_iteration_directives || [],
+    warnings: criticCouncil.warnings || []
+  };
+}
+
+function renderCriticCouncilSection(blueprint = {}) {
+  const council = blueprint.criticCouncil;
+  if (!council?.active) return '';
+  const topFindings = (council.top_findings || [])
+    .slice(0, 3)
+    .map((item) => `${item.id}(${item.severity})`)
+    .join('、') || 'none';
+  const repairDirectives = (council.repair_directives || [])
+    .slice(0, 3)
+    .map((item) => item.id)
+    .join('、') || 'preserve-current-quality';
+  const criticStatuses = (council.critics || [])
+    .map((critic) => `${critic.id}:${critic.status}`)
+    .join('、') || 'none';
+  return `## Stage 4 Critic Council
+
+- Readiness: ${council.readiness || 'unknown'}
+- Overall score: ${council.overall_score || 0}/100
+- Critics: ${council.critic_count || 0}
+- Critical findings: ${council.critical_count || 0}
+- Warnings: ${council.warning_count || 0}
+- Critic statuses: ${criticStatuses}
+- Top findings: ${topFindings}
+- Repair directives: ${repairDirectives}
+- Summary: ${council.summary || 'none'}
+`;
+}
+
+function compactCriticCouncil(criticCouncil = {}) {
+  return {
+    source: criticCouncil.source,
+    version: criticCouncil.version,
+    active: Boolean(criticCouncil.active),
+    readiness: criticCouncil.readiness,
+    overall_score: criticCouncil.overall_score,
+    critic_count: criticCouncil.critic_count,
+    critical_count: criticCouncil.critical_count,
+    warning_count: criticCouncil.warning_count,
+    summary: criticCouncil.summary,
+    critics: (criticCouncil.critics || []).map((critic) => ({
+      id: critic.id,
+      label: critic.label,
+      status: critic.status,
+      score: critic.score,
+      finding_count: (critic.findings || []).length,
+      satisfied_count: (critic.satisfied || []).length
+    })),
+    top_findings: (criticCouncil.top_findings || []).slice(0, 8),
+    repair_directives: (criticCouncil.repair_directives || []).slice(0, 8),
+    next_iteration_directives: (criticCouncil.next_iteration_directives || []).slice(0, 8),
+    warnings: criticCouncil.warnings || []
+  };
 }
 
 function serializeConceptStudio(conceptStudio = {}) {
