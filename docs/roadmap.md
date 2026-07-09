@@ -616,6 +616,8 @@ RTX 4060 适合：
 - 生成失败率下降。
 - 人工点评中的重复问题明显减少。
 
+当前 MVP 状态：Stage 4 首版以默认开启的 Critic Council 落地。它汇总 buildability、connectivity、habitation、style、composition 和 site 六类 critic，输出 `critic_council.json`、run report 小节、compact blueprint metadata、repair directives 和 next-iteration directives。首版不做无限重建循环，后续可以把高优先级 repair directives 接入候选选择或多轮自动修复。
+
 ### Stage 5：神经检索和自动标注
 
 目标：把神经网络用于最稳的地方，先提高学习效率。

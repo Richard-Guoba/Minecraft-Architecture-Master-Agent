@@ -13,16 +13,18 @@ The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled f
 - Main pipeline: `construction_method_v1`
 - Target: Minecraft Java 1.21 / 1.21.1 datapacks
 - Runtime: Node.js ESM, no Python required for normal generation
-- Knowledge layer: Template Knowledge Base v2 with reviewed case cards and explainable retrieval
+- Knowledge layer: Template Knowledge Base v2 with reviewed case cards, explainable retrieval, and design laws
+- Concept layer: Stage 3 Concept Studio can generate, select, or fuse multiple explainable design concepts before construction
+- Critique layer: Stage 4 Critic Council summarizes buildability, connectivity, habitation, style, composition, and site findings
 - Benchmark readiness: 10/10 baseline prompts generated, average scorecard 100/100, red flags 0, repair priority queue empty
-- Next major stage: Stage 3 Concept Studio, where one prompt produces multiple explainable design concepts before construction
+- Next major stage: Stage 5 neural retrieval and automatic tagging
 
 ## Quick Start
 
 ```powershell
 npm install
 npm test
-npm start -- --mode mock "建一个湖边现代两层别墅，带大玻璃、水边平台和前景花园"
+npm start -- --mode mock --concepts 3 "建一个湖边现代两层别墅，带大玻璃、水边平台和前景花园"
 ```
 
 Mock mode is deterministic and does not need an API key. It is the safest way to check the full local pipeline.
@@ -42,6 +44,9 @@ raw_build.mcfunction
 preview.html
 run_report.md
 architecture_scorecard.json
+concept_studio.json
+concept_studio_report.md
+critic_council.json
 ```
 
 To build in Minecraft, copy `architect_datapack/` into a world's `datapacks` folder, then run:
@@ -59,13 +64,14 @@ The pipeline separates design intent from block placement:
 Prompt
 -> ArchitectAgent: style, massing, materials, facade, roof, site semantics
 -> PlannerAgent: room graph, circulation, privacy, functional topology
+-> ConceptStudioAgent: multi-concept design options, selection, or conservative fusion
 -> CreativeDesignAgent: design variation and template-guided composition
 -> Structure/Facade/Roof/Site agents: specialist semantic plans
 -> CSGBuilder: shell, volumes, roofs, facade, site, structure modules
 -> BSPPartitioner: room rectangles and floor organization
 -> AStarPathfinder: doors, entry path, stairs, room connectivity
 -> InteriorDetailAgent + DecoratorAgent: room-fit furnishings and style layers
--> QA/Repair/Optimizer/Evaluation: validation, repair hints, command compression, scorecard
+-> QA/Repair/Optimizer/Evaluation/Critic Council: validation, repair hints, command compression, scorecard, multi-critic review
 -> Datapack, preview, report, benchmark artifacts
 ```
 
@@ -99,6 +105,8 @@ npm test
 npm run benchmark:baseline -- --out out/stage1-readiness-baseline
 npm run query:templates -- "建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰"
 npm run analyze:templates -- --offline
+npm start -- --mode mock --seed 7101 --concepts 3 --concept-strategy fuse "建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰"
+npm start -- --mode mock --no-critics "建一个欧式大房子"
 npm start -- --help
 npm start -- --list-prompts
 ```
@@ -116,6 +124,6 @@ The project has moved past early showcase packaging. Current work should optimiz
 
 1. Keep the benchmark and scorecard stable.
 2. Make reference retrieval and template memory more useful.
-3. Add Stage 3 Concept Studio for multi-concept design selection.
-4. Add richer critic/repair loops.
+3. Preserve Stage 3 Concept Studio as the concept-first planning layer.
+4. Use Stage 4 Critic Council findings to guide repair priorities.
 5. Use neural models later for retrieval, tagging, parameter prediction, and local semantic-voxel patch completion.
