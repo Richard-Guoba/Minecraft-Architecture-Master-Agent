@@ -1,45 +1,37 @@
-# Minecraft Constructing Agents
+# Minecraft Architecture Master Agent
 
-输入一句中文建房需求，生成 Minecraft Java 可安装的数据包，并输出 `blueprint.json`、`preview.html` 和 `run_report.md`。
+Minecraft Architecture Master Agent is a Node.js research and engineering project for turning natural-language building requests into Minecraft Java datapacks. The system keeps language-model output at the semantic planning layer, then uses deterministic local geometry, routing, decoration, validation, scoring, and export code to produce runnable builds.
 
-核心思路：LLM 只负责风格、材料、体块和房间拓扑等高层语义；坐标、房间、门洞、楼梯、装饰、校验和命令导出由本地 JavaScript 程序完成。
+The long-term goal is not a one-shot prompt-to-block toy. The project is being shaped into a hybrid architecture agent that can retrieve references, propose concepts, build, critique, repair, benchmark, and learn from its own runs.
 
-## 课程项目提交入口
+[Project Site](https://cityc196.github.io/Minecraft-Constructing-Agents/) | [Homepage Source](docs/index.html) | [Architecture](docs/architecture.md) | [Roadmap](docs/roadmap.md) | [Stage 1 Baseline](docs/benchmarks/stage1-readiness-baseline.md)
 
-- 展示页：`docs/index.html`
-- 提交清单：`SUBMISSION.md`
-- 推荐 prompt：`docs/recommended-prompts.md`
-- 课程报告：`course_submission/Minecraft_Constructing_Agents_课程报告.pdf`
+## Current Status
 
-## 指令说明
+- Main pipeline: `construction_method_v1`
+- Target: Minecraft Java 1.21 / 1.21.1 datapacks
+- Runtime: Node.js ESM, no Python required for normal generation
+- Knowledge layer: Template Knowledge Base v2 with reviewed case cards and explainable retrieval
+- Benchmark readiness: 10/10 baseline prompts generated, average scorecard 100/100, red flags 0, repair priority queue empty
+- Next major stage: Stage 3 Concept Studio, where one prompt produces multiple explainable design concepts before construction
+
+## Quick Start
 
 ```powershell
 npm install
+npm test
+npm start -- --mode mock "建一个湖边现代两层别墅，带大玻璃、水边平台和前景花园"
 ```
 
-最完整的一条运行指令：
+Mock mode is deterministic and does not need an API key. It is the safest way to check the full local pipeline.
+
+To use an LLM provider, copy `.env.example` to `.env`, fill in the provider settings, then run:
 
 ```powershell
-npm start -- --mode llm --datapacks-dir "D:\path\to\world\datapacks" "prompt"
+npm start -- --mode llm "建一个日式茶屋住宅，深檐木格栅，水景庭院，动线安静"
 ```
 
-各部分含义：
-
-- `npm start`：启动建筑生成程序，默认会在 `out/<timestamp>/` 下生成结果。
-- `--`：把后面的参数交给本项目程序，而不是交给 npm 自己处理。
-- `--mode llm`：使用你在 `.env` 中配置的真实 API 调用模型；使用前先复制 `.env.example` 为 `.env` 并填好 key。没有 API key 时改成 `--mode mock`，会走本地 mock 模式。
-- `--datapacks-dir "D:\path\to\world\datapacks"`：生成完成后，自动把 `architect_datapack` 安装到这个 Minecraft 世界的 `datapacks` 目录。
-- `"prompt"`：你的中文建房需求，例如 `"建一个现代两层家庭别墅，宽31深21，大玻璃窗"`。
-
-如果只想先试运行，可以用：
-
-```powershell
-npm start -- --mode mock "建一个欧式大房子"
-```
-
-## 输出
-
-运行后终端会打印 `out/<timestamp>/`，常见文件如下：
+The output is written under `out/<timestamp>/`:
 
 ```text
 blueprint.json
@@ -47,33 +39,81 @@ architect_datapack/
 raw_build.mcfunction
 preview.html
 run_report.md
+architecture_scorecard.json
 ```
 
-建议先看 `preview.html` 和 `run_report.md`。
-
-## 在 Minecraft 中建造
-
-把 `out/<timestamp>/architect_datapack` 复制到世界的 `datapacks` 目录，然后进游戏执行：
+To build in Minecraft, copy `architect_datapack/` into a world's `datapacks` folder, then run:
 
 ```text
 /reload
 /function architect:run
 ```
 
-`/reload` 只刷新数据包，真正建造入口是 `/function architect:run`。
+## What The System Does
 
-## 其他指令
+The pipeline separates design intent from block placement:
+
+```text
+Prompt
+-> ArchitectAgent: style, massing, materials, facade, roof, site semantics
+-> PlannerAgent: room graph, circulation, privacy, functional topology
+-> CreativeDesignAgent: design variation and template-guided composition
+-> Structure/Facade/Roof/Site agents: specialist semantic plans
+-> CSGBuilder: shell, volumes, roofs, facade, site, structure modules
+-> BSPPartitioner: room rectangles and floor organization
+-> AStarPathfinder: doors, entry path, stairs, room connectivity
+-> InteriorDetailAgent + DecoratorAgent: room-fit furnishings and style layers
+-> QA/Repair/Optimizer/Evaluation: validation, repair hints, command compression, scorecard
+-> Datapack, preview, report, benchmark artifacts
+```
+
+The LLM never has to output exact XYZ block coordinates. It produces semantic JSON; local JavaScript turns that into legal Minecraft geometry.
+
+## Repository Map
+
+```text
+src/
+  construction/              Active generation, evaluation, template, and export pipeline
+  llm/                       Provider adapters and JSON parsing helpers
+  lib/                       Shared filesystem and Minecraft-world helpers
+test/                        Node test suite for agents, geometry, templates, reports, and benchmarks
+mc_templates/
+  analysis/                  Generated template analysis, design laws, KB v2 artifacts
+  curation/                  Human review overlay and tag taxonomy
+docs/
+  index.html                 GitHub Pages project homepage
+  architecture.md            System architecture overview
+  roadmap.md                 Long-term Architecture Master roadmap
+  benchmarks/                Versioned benchmark summaries
+  parameter-tree/            Parameter tree viewer and example
+```
+
+See [docs/project-map.md](docs/project-map.md) for a more detailed guide.
+
+## Main Commands
 
 ```powershell
 npm test
-npm run benchmark:baseline -- --limit 3 --out out/baseline-smoke
+npm run benchmark:baseline -- --out out/stage1-readiness-baseline
+npm run query:templates -- "建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰"
+npm run analyze:templates -- --offline
 npm start -- --help
 npm start -- --list-prompts
-npm start -- --mode mock --prompt-id modern-waterfront-villa-reference
 ```
 
-当前课程提交版本测试结果：`176 passed / 0 failed`。
+## Boundaries
 
-## 边界
+- This repository produces Minecraft datapacks; it is not a Mineflayer real-time player bot.
+- It does not download Minecraft or simulate survival-mode resource gathering.
+- Generated `out/` artifacts, local credentials, and temporary files are intentionally not committed.
+- Python is reserved for optional future learning/training workflows, not for normal generation.
 
-当前主交付是 Minecraft 数据包，不是 Mineflayer 实时连服机器人；不自动下载 Minecraft，也不模拟玩家逐块放置。
+## Development Direction
+
+The project has moved past early showcase packaging. Current work should optimize for long-term capability:
+
+1. Keep the benchmark and scorecard stable.
+2. Make reference retrieval and template memory more useful.
+3. Add Stage 3 Concept Studio for multi-concept design selection.
+4. Add richer critic/repair loops.
+5. Use neural models later for retrieval, tagging, parameter prediction, and local semantic-voxel patch completion.

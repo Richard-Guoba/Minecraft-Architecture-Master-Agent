@@ -2,68 +2,98 @@
 
 ## 项目概览
 
-- 项目名称：Minecraft Constructing Agents。
-- 课程背景：本项目是“大语言模型与信息决策”课程项目，主题围绕大语言模型智能体系统构建。
-- 项目目标：把中文自然语言建房需求转换为 Minecraft Java 1.21 可执行的数据包，使其能在单人创造超平坦世界中自动生成建筑。
-- 当前重点：按 `CONSTRUCTION_METHORD.pdf` 落地的 construction_method_v1，不是实时 Mineflayer 游戏机器人。
-- 核心演示流程：用户输入需求 -> ArchitectAgent 生成外壳语义 JSON -> PlannerAgent 生成房间拓扑 JSON -> CSGBuilder 生成空心外壳 -> BSPPartitioner 切分室内房间 -> AStarPathfinder 打通门洞和楼梯 -> InteriorDetail/Decorator 写入内饰 -> Minecraft 数据包导出。
+- 项目名称：Minecraft Architecture Master Agent。
+- 仓库名称：Minecraft Constructing Agents。
+- 项目目标：把中文或英文自然语言建房需求转换为 Minecraft Java 1.21 / 1.21.1 可执行数据包，并逐步发展成具备参考检索、概念生成、评价、修复和长期记忆的混合建筑智能体。
+- 当前主线：`construction_method_v1`，即 LLM 负责高层语义 JSON，本地 JavaScript 负责确定性几何、路径、室内、校验、评分和数据包导出。
+- 重要边界：这不是实时 Mineflayer 玩家机器人，也不包含生存模式资源采集或自动下载 Minecraft。
+
+## 主流程
+
+```text
+用户需求
+-> ArchitectAgent: 风格、体块、材料、立面、屋顶、场地语义
+-> PlannerAgent: 房间拓扑、隐私等级、动线和 BSP 提示
+-> CreativeDesignAgent: 设计变体和模板知识库参考
+-> Structure/Facade/Roof/Site agents: 专项语义计划
+-> CSGBuilder: 空心外壳、体块、屋顶、立面、场地和结构模块
+-> BSPPartitioner: 室内房间矩形
+-> AStarPathfinder: 入口、门洞、楼梯和房间连通
+-> InteriorDetailAgent + DecoratorAgent: 房间功能内饰和风格装饰
+-> QA / Repair / Optimizer / Evaluation: 校验、修复提示、命令压缩、评分
+-> datapack、preview、run_report、architecture_scorecard
+```
+
+LLM 不直接输出具体 XYZ 方块坐标。语义 JSON 由本地 Node.js 代码转成合法 Minecraft 几何和命令。
 
 ## 项目要求
 
 - 目标游戏版本：Minecraft Java 1.21 / 1.21.1。
 - 数据包格式：`pack_format: 48`。
 - 数据包函数路径：`data/architect/function/`，使用 Minecraft 1.21 要求的单数 `function` 目录。
-- 用户命令：
-  - 本地运行：`npm start -- "建一个欧式大房子"`。
-  - 可复现变体：`npm start -- --seed 12345 "建一个欧式大房子"`；不传 `--seed` 时 CLI 会自动随机一个 seed 并打印。
-  - 自动安装到世界：`npm start -- --world "世界名" "建一个欧式大房子"`。
-  - 查看可识别世界：`npm start -- --list-worlds`。
-  - 如需打开 Minecraft/启动器，配置 `MINECRAFT_LAUNCH_COMMAND` 后使用 `--launch`。
-  - 游戏内运行：先执行 `/reload` 刷新数据包，再执行 `/function architect:run` 建造。
-- `out/<timestamp>/` 目录下必须生成以下产物：
-  - `blueprint.json`
-  - `architect_datapack/`
-  - `raw_build.mcfunction`
-  - `preview.html`
-  - `run_report.md`
-- 默认流水线必须在没有 API key 的情况下可运行，并使用规则兜底。
-- CLI 输出必须提示本次是否调用并采用 LLM；`--mode mock` 应显示未调用。
-- 默认 LLM 通道为智谱 API：设置 `LLM_PROVIDER=zhipu` 后，通过 chat completions 接口生成 Architect/Planner JSON。
-- Codex 和 OpenAI 兼容通道保留：设置 `LLM_PROVIDER=codex` 或 `LLM_PROVIDER=openai-compatible` 后，可切换到对应通道；DeepSeek 使用 `OPENAI_BASE_URL=https://api.deepseek.com`，默认高配模型为 `deepseek-v4-pro`。
-- 本地 `.env` 优先级高于外层环境变量，避免 Codex/系统环境里的 API key 覆盖项目配置。
-- Windows 运行只需要 Node.js 20+，不需要 Python。
-- `/reload` 只刷新数据包，不自动建造；一键建造入口为 `/function architect:run`，内部执行 clear + build。
-- 严禁提交 `.env` 或任何 API key。密钥只能保存在本地。
-- 不要提交生成的 `out/` 产物、本地临时文件或课程 PDF。
-- 完成有意义的代码改动前，运行 `npm test`。
+- Windows 普通运行只需要 Node.js 20+，不需要 Python。
+- 默认流水线必须在没有 API key 的情况下可运行，`--mode mock` 是最稳的可复现检查方式。
+- 本地 `.env` 优先级高于外层环境变量，避免 Codex 或系统环境里的 API key 覆盖项目配置。
+- 严禁提交 `.env`、API key、生成的 `out/` 产物、本地临时文件或旧展示打包产物。
+- 完成有意义的代码改动前，运行 `npm test`。涉及 benchmark 或评分逻辑时，也要运行对应 benchmark/evaluation 命令。
 
-## 当前范围
+## 常用命令
 
-- 已实现：Node.js ESM 命令行入口、JavaScript orchestrator、ArchitectAgent、MaterialPaletteAgent、PlannerAgent、InteriorDetailAgent、50+ 方块房间功能内饰专家、50+ 方块建筑风格内饰专家、缤纷软装层、DecoratorAgent 方块写入、Minecraft Java 1.21.1 全量方块目录校验、CSG 空心外壳、BSP 室内切分、A* 门洞/楼梯、Minecraft 1.21 数据包输出、自动安装到本地世界、一键建造函数、本地 HTML 预览和测试。
-- 已实现的主要演示风格：欧式大体量、现代两层、江南/中式小院、木屋；其中欧式会生成对称侧翼和门廊，现代会生成玻璃侧翼，江南/中式会生成庭院/水景语义。
-- 部分实现：LLM 可以参与 Architect/Planner 两个语义 JSON；复杂 CSG 形体、更多 A* 连通约束、GDMC 批量接口和真实游戏内直接渲染仍是后续增强方向。
-- v1 暂不包含：Mineflayer 连服控制、生存模式资源采集、模拟玩家逐块放置、自动下载 Minecraft。启动 Minecraft 仅支持通过 `MINECRAFT_LAUNCH_COMMAND` 调用用户已配置的启动器命令。
+```powershell
+npm install
+npm test
+npm start -- --mode mock "建一个湖边现代两层别墅，带大玻璃、水边平台和前景花园"
+npm start -- --mode llm "建一个日式茶屋住宅，深檐木格栅，水景庭院，动线安静"
+npm start -- --list-prompts
+npm start -- --list-worlds
+npm run benchmark:baseline -- --out out/stage1-readiness-baseline
+npm run query:templates -- "建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰"
+npm run analyze:templates -- --offline
+```
 
-## 开发命令
+游戏内运行：
 
-- 运行测试：`npm test`
-- 运行 20 条覆盖式 prompt 批量评价：`npm run evaluate:prompts`
-- 运行 100 条居住功能性 prompt 批量评价：`npm run evaluate:habitation`
-- 运行 10 条装饰合理性 prompt 批量评价：`npm run evaluate:decoration -- --mode auto` 或 `npm run evaluate:decoration -- --mode llm`
-- 生成演示输出：`npm start -- "建一个欧式大房子"`
-- 安装到世界：`npm start -- --world "世界名" "建一个欧式大房子"`
-- 强制使用规则兜底模式：`npm start -- --mode mock "建一个欧式大房子"`
-- 强制使用 LLM 模式：`npm start -- --mode llm "请建一个有江南水乡风格的中式小两层"`
+```text
+/reload
+/function architect:run
+```
 
-## 仓库信息
+`/reload` 只刷新数据包，不会建造。`architect:run` 会自动执行 `architect:clear` 和 `architect:build`。
 
-- GitHub 地址：https://github.com/CityC196/Minecraft-Constructing-Agents.git
-- 主分支：`main`
+## 输出产物
+
+`out/<timestamp>/` 目录下通常生成：
+
+```text
+blueprint.json
+architect_datapack/
+raw_build.mcfunction
+preview.html
+run_report.md
+architecture_scorecard.json
+```
+
+这些运行产物默认不提交。需要长期保留的结果应整理成轻量 benchmark 文档或明确的数据集资产。
+
+## 当前能力范围
+
+- 已实现：Node.js ESM CLI、construction workflow、语义 agents、Template Knowledge Base v2、Minecraft Java 1.21.1 方块目录校验、CSG 空心外壳、BSP 室内切分、A* 门洞/楼梯、室内与装饰写入、QA/repair/evaluation、数据包导出、HTML 预览、运行报告和 scorecard。
+- 已验证：Stage 1 readiness baseline 已达到 10/10 prompts、平均 scorecard 100/100、red flags 0、repair priorities 0。
+- 下一阶段：Stage 3 Concept Studio，让同一 prompt 先生成多个可解释设计方案，再选择或融合后进入建造。
+- 暂不包含：Mineflayer 连服控制、生存模式资源采集、模拟玩家逐块放置、自动下载 Minecraft。启动 Minecraft 仅支持通过用户配置的 `MINECRAFT_LAUNCH_COMMAND` 调用启动器命令。
+
+## 文档入口
+
+- `README.md`：GitHub 仓库首页。
+- `docs/index.html`：GitHub Pages 首页。
+- `docs/project-map.md`：仓库结构说明。
+- `docs/architecture.md`：当前系统架构。
+- `docs/roadmap.md`：长期 Architecture Master 路线图。
+- `docs/benchmarks/`：可提交的轻量 benchmark 记录。
 
 ## 同步规则
 
-- 每次修改代码前，都必须检查本地仓库是否与 GitHub 同步。
+- 修改代码前检查本地仓库是否与 GitHub 同步。
 - 先运行 `git fetch origin`，再比较 `HEAD` 与 `origin/main`。
-- 如果本地仓库与 GitHub 不同步，以 GitHub 为准。
-- 编辑前优先把本地代码更新到 `origin/main`。不要静默覆盖未提交的本地改动；必须先说明差异，并有意识地保留或解决。
-- 不要提交或推送无关的生成文件、本地密钥、课程 PDF 或 `out/` 产物。
+- 如果本地仓库与 GitHub 不同步，以 GitHub 为准同步，但不要静默覆盖未提交的本地改动。
+- 不要提交或推送无关生成文件、本地密钥、旧展示打包产物或 `out/` 产物。
