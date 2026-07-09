@@ -70,8 +70,12 @@ function tokenSet(prompt) {
 
 function archetypePromptBonus(concept, prompt, options) {
   const archetype = String(concept.archetype || '');
+  const wantsWaterView = /湖|水|滨水|water|lake/.test(prompt) || Boolean(options.buildSpec?.site?.water_feature);
+  const wantsLargeGlass = /glass|玻璃/.test(prompt) || Boolean(options.buildSpec?.facade?.large_glass) || options.buildSpec?.facade?.glazing_ratio === 'high';
+  const wantsOutdoorPlatform = /平台|deck|露台|terrace/.test(prompt) || Boolean(options.buildSpec?.site?.patio);
   let score = 0;
   if (archetype === 'view-courtyard' && /湖|水|water|glass|玻璃|平台/.test(prompt)) score += 16;
+  if (archetype === 'view-courtyard' && wantsWaterView && wantsLargeGlass && wantsOutdoorPlatform) score += 8;
   if (archetype === 'formal-axis' && /庄园|城堡|对称|axis|formal|manor/.test(prompt)) score += 14;
   if (archetype === 'compact-patio' && /紧凑|小|compact|patio|露台/.test(prompt)) score += 14;
   if (archetype === 'vertical-landmark' && /塔|地标|tower|lookout/.test(prompt)) score += 16;

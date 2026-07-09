@@ -7,6 +7,11 @@ const COMPATIBLE_ADOPTIONS = [
   ['interior.decor_density', 'interior density'],
   ['facade.entry_detail_style', 'entry detail']
 ];
+const COMPATIBLE_REFINEMENTS = [
+  ['interior.display_strategy', 'interior display strategy'],
+  ['facade.entry_detail_style', 'entry detail'],
+  ['interior.decor_density', 'interior density']
+];
 const CONFLICT_FIELDS = [
   'massing_variant',
   'roof.style',
@@ -57,6 +62,16 @@ export class ConceptFusionAgent {
       setPath(basePatch, field, donorValue);
       adopted_elements.push({ field, label, value: donorValue, from: donor.id });
     }
+    if (!adopted_elements.length) {
+      for (const [field, label] of COMPATIBLE_REFINEMENTS) {
+        const baseValue = getPath(basePatch, field);
+        const donorValue = getPath(donorPatch, field);
+        if (donorValue === undefined || baseValue === undefined || sameValue(baseValue, donorValue)) continue;
+        setPath(basePatch, field, donorValue);
+        adopted_elements.push({ field, label, value: donorValue, previous: baseValue, from: donor.id, mode: 'refinement' });
+        break;
+      }
+    }
     const concept = {
       ...base,
       id: `concept-fused-${base.id}`,
@@ -97,6 +112,10 @@ function setPath(object, path, value) {
     current = current[key];
   }
   current[keys[keys.length - 1]] = value;
+}
+
+function sameValue(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function clone(value) {

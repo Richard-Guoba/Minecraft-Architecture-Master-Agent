@@ -21,6 +21,7 @@ test('pipeline writes concept studio artifacts and blueprint metadata when enabl
     assert.equal(result.validation.ok, true);
     assert.equal(result.conceptStudio.active, true);
     assert.equal(result.conceptStudio.concept_count, 3);
+    assert.equal(result.conceptStudio.selection.selected_archetype, 'view-courtyard');
     assert.equal(result.blueprint.conceptStudio.active, true);
     assert.equal(result.blueprint.conceptStudio.selected_concept_id, result.conceptStudio.selected_concept_id);
     assert.equal(result.creativeDesign.concept_studio.selected_concept_id, result.conceptStudio.selected_concept_id);

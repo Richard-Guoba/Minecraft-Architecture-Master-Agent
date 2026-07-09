@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { ConceptStudioAgent } from '../src/construction/agents/conceptStudioAgent.js';
 import { ConceptSelectionAgent } from '../src/construction/agents/conceptSelectionAgent.js';
 
 test('ConceptSelectionAgent chooses the strongest prompt-matching concept', () => {
@@ -57,6 +58,65 @@ test('ConceptSelectionAgent penalizes high risk and missing patch support', () =
 
   assert.equal(selection.selected_concept_id, 'safe');
   assert.ok(selection.ranking.find((item) => item.concept_id === 'risky').risk_penalty >= 20);
+});
+
+test('ConceptSelectionAgent favors water-view courtyard for lakefront glass deck prompts', async () => {
+  const prompt = '建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰';
+  const architecture = { style: '现代', style_family: 'modern', typology: 'house' };
+  const buildSpec = {
+    seed: 7101,
+    floors: 2,
+    roof_style: 'flat',
+    facade: { large_glass: true },
+    site: { water_feature: true }
+  };
+  const topology = {
+    nodes: [
+      { id: 'living', type: 'living', floor: 0 },
+      { id: 'kitchen', type: 'kitchen', floor: 0 },
+      { id: 'study', type: 'study', floor: 1 }
+    ],
+    edges: []
+  };
+  const templateKnowledge = {
+    active: true,
+    retrieval_explanation: {
+      active: true,
+      references: [
+        {
+          case_id: 'house-modern-waterfront',
+          title: 'Modern Waterfront House',
+          diversity_slot: 'modern-house-water-glass',
+          matched_signals: ['token:modern', 'token:water-edge', 'token:large-glass'],
+          teaches: [
+            { area: 'facade', claim: 'Large glass should serve view-facing rooms.' },
+            { area: 'site', claim: 'Use deck edges as transition between house and water.' }
+          ],
+          risk_controls: ['change exact dimensions and detail placement']
+        }
+      ],
+      warnings: []
+    }
+  };
+
+  const studio = await new ConceptStudioAgent({ mode: 'mock' }).run(
+    prompt,
+    architecture,
+    buildSpec,
+    topology,
+    templateKnowledge,
+    { count: 3, strategy: 'select', seed: 7101 }
+  );
+  const selection = new ConceptSelectionAgent().run(studio.concepts, {
+    prompt,
+    architecture,
+    buildSpec,
+    templateKnowledge
+  });
+  const viewConcept = studio.concepts.find((item) => item.archetype === 'view-courtyard');
+
+  assert.equal(selection.selected_archetype, 'view-courtyard');
+  assert.equal(selection.selected_concept_id, viewConcept.id);
 });
 
 function concept(id, archetype, patch = {}) {
