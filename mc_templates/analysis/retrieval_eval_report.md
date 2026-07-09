@@ -1,6 +1,6 @@
 # Stage 5 Retrieval Evaluation
 
-Generated: 2026-07-09T20:50:07.264Z
+Generated: 2026-07-09T20:55:15.121Z
 Prompts: 10
 
 | Prompt | Rule hits | Fusion hits | Rule unsafe | Fusion unsafe | Mode |
@@ -24,7 +24,7 @@ Rule top: 1. Classic Modern House, 2. Medieval Castle, 3. A Small Modern House, 
 
 Fusion top: 1. Classic Modern House, 2. Modern House 10, 3. Modern Mansion, 4. A Small Modern House, 5. Big minecraft modern house
 
-Warnings: truncated 56 lower-ranked references; truncated 56 lower-ranked references
+Warnings: truncated 56 lower-ranked references
 
 ## japanese-tea-house
 
@@ -34,7 +34,7 @@ Rule top: 1. Ninja House, 2. Medieval Castle, 3. Japanese pagoda Plus Tea House,
 
 Fusion top: 1. Japanese pagoda Plus Tea House, 2. A Small Modern House, 3. Watermill, 4. Medieval Spruce Wood House, 5. Market with the villagers
 
-Warnings: truncated 56 lower-ranked references; truncated 56 lower-ranked references
+Warnings: truncated 56 lower-ranked references
 
 ## medieval-tavern
 
@@ -44,7 +44,7 @@ Rule top: 1. Round Medieval House, 2. Medieval Castle, 3. Tavern, 4. Medieval Ho
 
 Fusion top: 1. Tavern, 2. Round Medieval House, 3. Medieval Home, 4. Big spruce house, 5. Modern Estate
 
-Warnings: truncated 55 lower-ranked references; truncated 55 lower-ranked references
+Warnings: truncated 55 lower-ranked references
 
 ## gothic-castle
 
@@ -54,7 +54,7 @@ Rule top: 1. Hogwarts Castle, 2. Medieval Castle, 3. Spawn Médieval Village, 4.
 
 Fusion top: 1. Spawn Médieval Village, 2. Giant Church, 3. Clock Tower, 4. Gotic castle, 5. Beach Hotel
 
-Warnings: truncated 56 lower-ranked references; truncated 56 lower-ranked references
+Warnings: truncated 56 lower-ranked references
 
 ## classical-temple-axis
 
@@ -64,7 +64,7 @@ Rule top: 1. Great Library, 2. Medieval Castle, 3. Market with the villagers, 4.
 
 Fusion top: 1. Great Library, 2. Market with the villagers, 3. Colonial Mansion 1, 4. Villa, 5. Giant Church
 
-Warnings: truncated 56 lower-ranked references; truncated 56 lower-ranked references
+Warnings: truncated 56 lower-ranked references
 
 ## rustic-survival-house
 
@@ -74,7 +74,7 @@ Rule top: 1. Tavern, 2. Medieval Castle, 3. Market with the villagers, 4. Dark M
 
 Fusion top: 1. Tavern, 2. Dark Mansion, 3. Market with the villagers, 4. Big spruce house, 5. Classic Modern House
 
-Warnings: truncated 56 lower-ranked references; truncated 56 lower-ranked references
+Warnings: truncated 56 lower-ranked references
 
 ## public-library-study
 
@@ -84,7 +84,7 @@ Rule top: 1. Beach Hotel, 2. Medieval Castle, 3. Grand Hotel, 4. Great Library, 
 
 Fusion top: 1. Beach Hotel, 2. Grand Hotel, 3. Great Library, 4. Great Pyramid, 5. Modern Apartment Building
 
-Warnings: truncated 56 lower-ranked references; truncated 56 lower-ranked references
+Warnings: truncated 56 lower-ranked references
 
 ## tower-plaza
 
@@ -94,7 +94,7 @@ Rule top: 1. Eiffel Tower, 2. Medieval Castle, 3. Stark Tower, 4. Clock Tower, 5
 
 Fusion top: 1. Eiffel Tower, 2. Stark Tower, 3. Clock Tower, 4. Modern_Futuristic Building, 5. Lighthouse
 
-Warnings: truncated 55 lower-ranked references; truncated 55 lower-ranked references
+Warnings: truncated 55 lower-ranked references
 
 ## waterfront-hotel
 
@@ -104,7 +104,7 @@ Rule top: 1. Beach Hotel, 2. Medieval Castle, 3. Grand Hotel, 4. Futuristic Buil
 
 Fusion top: 1. Beach Hotel, 2. Grand Hotel, 3. Classic Modern House, 4. Futuristic Building, 5. Big minecraft modern house
 
-Warnings: truncated 56 lower-ranked references; truncated 56 lower-ranked references
+Warnings: truncated 56 lower-ranked references
 
 ## fantasy-terrain-retreat
 
@@ -114,4 +114,4 @@ Rule top: 1. Cave House, 2. Medieval Castle, 3. Beach Hotel, 4. Classic Modern H
 
 Fusion top: 1. Cave House, 2. Beach Hotel, 3. Classic Modern House, 4. Dream Survival House, 5. Villa
 
-Warnings: truncated 56 lower-ranked references; truncated 56 lower-ranked references
+Warnings: truncated 56 lower-ranked references

@@ -50,7 +50,7 @@ export function evaluateTemplateRetrieval({ knowledgeBase = {}, embeddingIndex, 
       unsafe_rule_count: countUnsafe(rule.references, item.avoid),
       unsafe_fusion_count: countUnsafe(fusion.references, item.avoid),
       fusion_mode: fusion.mode || 'fusion',
-      warnings: [...(rule.warnings || []), ...(fusion.warnings || [])]
+      warnings: [...new Set([...(rule.warnings || []), ...(fusion.warnings || [])])]
     };
   });
 

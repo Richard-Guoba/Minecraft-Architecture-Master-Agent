@@ -18,7 +18,7 @@ The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled f
 - Concept layer: Stage 3 Concept Studio can generate, select, or fuse multiple explainable design concepts before construction
 - Critique layer: Stage 4 Critic Council summarizes buildability, connectivity, habitation, style, composition, and site findings
 - Benchmark readiness: 10/10 baseline prompts generated, average scorecard 100/100, red flags 0, repair priority queue empty
-- Next major stage: Stage 5 neural retrieval and automatic tagging
+- Active stage: Stage 5 neural retrieval and automatic tagging
 
 ## Quick Start
 
