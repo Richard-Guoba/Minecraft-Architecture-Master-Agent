@@ -104,6 +104,15 @@ test('expanded agents route utility, resilience, and landscape features into rea
   }
 });
 
+test('patio site plans reserve outdoor living modules', () => {
+  const context = buildAgentContext('建一个湖边现代住宅，带面向水景的露台和前景花园');
+  const counts = moduleCounts(context.shell.grid);
+
+  assert.equal(context.architecture.site_rules.patio, true);
+  assert.equal(context.site.engine_hints.render_outdoor_seating, true);
+  assert.ok(counts.outdoor_living > 0);
+});
+
 test('template-guided sites render terrain layers and composed gardens', () => {
   const prompt = '建一个现代湖边别墅，带花园和自然地形';
   let architecture = buildFallbackArchitecture(prompt);

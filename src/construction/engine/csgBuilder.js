@@ -50,6 +50,7 @@ export class CSGBuilder {
     this.addRoofPlanDetails(grid, volumeBoxes, this.roofPlan);
     this.addSite(grid, architectureJson.site_rules || {});
     this.addSiteLandscape(grid, this.sitePlan);
+    this.refreshPostSurfaceResilience(grid, volumeBoxes);
 
     const structureSummary = summarizeStructurePlan(this.structure);
     const facadeSummary = summarizeFacadePlan(this.facadePlan);
@@ -351,6 +352,14 @@ export class CSGBuilder {
     }
   }
 
+  refreshPostSurfaceResilience(grid, boxes) {
+    const mainBox = boxes.find((box) => box.id === 'main') || boxes[0];
+    if (!mainBox) return;
+    const hints = this.structure?.engine_hints || {};
+    const reinforcementElements = normalizePlanItems(this.structure?.reinforcement_elements);
+    if (hints.render_flood_vents || reinforcementElements.some((item) => item.kind === 'flood-vented-plinth')) this.addFloodVents(grid, mainBox);
+  }
+
   addCornerPilasters(grid, box) {
     const block = this.materials.trim || 'minecraft:smooth_quartz';
     const y1 = 1;
@@ -449,6 +458,11 @@ export class CSGBuilder {
     const block = this.materials.railing || 'minecraft:iron_bars';
     for (let x = box.min_x + 3; x <= box.max_x - 3; x += 5) {
       fillBox(grid, x, 1, box.max_z + 1, x + 1, 1, box.max_z + 1, block, 'flood_vent');
+      fillBox(grid, x, 1, box.min_z - 1, x + 1, 1, box.min_z - 1, block, 'flood_vent');
+    }
+    for (let z = box.min_z + 3; z <= box.max_z - 3; z += 5) {
+      fillBox(grid, box.min_x - 1, 1, z, box.min_x - 1, 1, z + 1, block, 'flood_vent');
+      fillBox(grid, box.max_x + 1, 1, z, box.max_x + 1, 1, z + 1, block, 'flood_vent');
     }
   }
 
@@ -1546,12 +1560,12 @@ export class CSGBuilder {
     if (sitePlan.engine_hints.render_planting_beds) this.addPlantingBeds(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_garden_composition) this.addGardenComposition(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_pool) this.addPool(grid, center, zStart, sitePlan);
-    if (sitePlan.engine_hints.render_outdoor_seating) this.addOutdoorSeating(grid, center, zStart, sitePlan);
     if (sitePlan.engine_hints.render_mailbox) this.addMailbox(grid, center, zStart, sitePlan);
     if (sitePlan.engine_hints.render_accessible_markers) this.addAccessibleMarkers(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_template_site_scenes) this.addTemplateSiteScenes(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_template_approach_sequence) this.addTemplateApproachSequence(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_template_view_frame) this.addTemplateViewFrame(grid, center, zStart, sitePlan);
+    if (sitePlan.engine_hints.render_outdoor_seating) this.addOutdoorSeating(grid, center, zStart, zEnd, sitePlan);
   }
 
   addLayeredTerrain(grid, center, zStart, zEnd, sitePlan = {}) {
@@ -1919,10 +1933,10 @@ export class CSGBuilder {
     }
   }
 
-  addOutdoorSeating(grid, center, zStart, sitePlan = {}) {
+  addOutdoorSeating(grid, center, zStart, zEnd, sitePlan = {}) {
     const seat = sitePlan.materials?.outdoor_seat || this.materials.outdoor_seat || 'minecraft:spruce_stairs[facing=north,half=bottom]';
     const firepit = sitePlan.materials?.firepit || this.materials.firepit || 'minecraft:campfire[lit=false]';
-    const z = zStart + 7;
+    const z = Math.max(zStart + 4, zEnd + 1);
     fillBox(grid, center, 0, z, center, 0, z, firepit, 'outdoor_living');
     fillBox(grid, center - 2, 0, z, center - 2, 0, z, seat, 'outdoor_living');
     fillBox(grid, center + 2, 0, z, center + 2, 0, z, seat, 'outdoor_living');

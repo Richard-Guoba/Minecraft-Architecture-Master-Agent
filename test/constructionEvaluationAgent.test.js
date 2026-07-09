@@ -240,6 +240,29 @@ test('baseline waterfront villa avoids a light-dominated decoration palette', as
   }
 });
 
+test('baseline waterfront villa keeps site comfort modules after the full workflow', async () => {
+  const root = path.resolve('.tmp', `architect-site-comfort-test-${Date.now()}`);
+  const prompt = BASELINE_BENCHMARK_PROMPTS.find((item) => item.id === 'modern-waterfront-villa');
+  try {
+    const result = await runPipeline({
+      prompt: prompt.prompt,
+      mode: 'mock',
+      mcVersion: '1.21',
+      outRoot: path.join(root, 'out'),
+      cwd: process.cwd(),
+      seed: prompt.seed
+    });
+    const evaluation = new ConstructionEvaluationAgent().run(result);
+    const comfort = evaluation.scorecard.dimensions.find((item) => item.id === 'advanced.human-comfort-site');
+
+    assert.ok(result.blueprint.modules.landscape_path > 0 || result.blueprint.modules.entry_path > 0);
+    assert.ok(result.blueprint.modules.outdoor_living > 0);
+    assert.ok(comfort.percent >= 80, comfort.evidence);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('baseline small village keeps vibrant accents distributed after compact density budgeting', async () => {
   const root = path.resolve('.tmp', `architect-village-vibrant-test-${Date.now()}`);
   const prompt = BASELINE_BENCHMARK_PROMPTS.find((item) => item.id === 'small-village-cluster');
