@@ -19,6 +19,8 @@ export async function runPipeline({
   candidateRounds = 1,
   candidateTargetScore = DEFAULT_CANDIDATE_TARGET_SCORE,
   candidateForceRounds = false,
+  concepts = 0,
+  conceptStrategy = 'select',
   cwd = process.cwd(),
   minecraftDir,
   world,
@@ -31,6 +33,8 @@ export async function runPipeline({
 
   const candidateCount = clampInt(candidates, 1, 8, 1);
   const roundCount = clampInt(candidateRounds, 1, 5, 1);
+  const conceptCount = clampInt(concepts, 0, 5, 0);
+  const normalizedConceptStrategy = normalizeConceptStrategy(conceptStrategy);
   if (candidateCount > 1 || roundCount > 1) {
     return runCandidatePipeline({
       prompt,
@@ -46,7 +50,9 @@ export async function runPipeline({
       minecraftDir,
       world,
       datapacksDir,
-      autoBuild
+      autoBuild,
+      concepts: conceptCount,
+      conceptStrategy: normalizedConceptStrategy
     });
   }
 
@@ -65,7 +71,9 @@ export async function runPipeline({
     minecraftDir,
     world,
     datapacksDir,
-    autoBuild
+    autoBuild,
+    conceptCount,
+    conceptStrategy: normalizedConceptStrategy
   });
 
   return {
@@ -402,6 +410,10 @@ function clampInt(value, min, max, fallback = min) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.max(min, Math.min(max, Math.round(number)));
+}
+
+function normalizeConceptStrategy(value) {
+  return String(value || 'select') === 'fuse' ? 'fuse' : 'select';
 }
 
 function pad(value) {
