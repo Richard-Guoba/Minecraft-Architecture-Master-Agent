@@ -1,0 +1,627 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { DEFAULT_TAG_TAXONOMY, validateTagRecord } from './templateTagTaxonomy.js';
+import { defaultReviewForCase } from './templateReviewOverlay.js';
+
+const SOURCE = 'template-knowledge-base-v2';
+const SCHEMA_VERSION = 2;
+const RETRIEVAL_SOURCE = 'template-retrieval-index-v2';
+const DEFAULT_STABLE_GENERATED_AT = '2026-07-09T00:00:00.000Z';
+const DOCUMENTED_TAG_GROUPS = Object.freeze(['typology', 'style', 'site', 'massing', 'roof', 'facade', 'interior', 'quality', 'room_types']);
+const CANONICAL_KNOWLEDGE_AREAS = Object.freeze(['site', 'massing', 'facade', 'roof', 'space-planning', 'interior', 'materials', 'risk']);
+const CANONICAL_KNOWLEDGE_AREA_SET = new Set(CANONICAL_KNOWLEDGE_AREAS);
+
+const TAG_ALIASES = Object.freeze({
+  'terrain-integrated': { group: 'site', id: 'terrain-integrated' },
+  'water-edge': { group: 'site', id: 'water-edge' },
+  'landscape-composition': { group: 'site', id: 'garden' },
+  'glass-emphasis': { group: 'facade', id: 'large-glass' },
+  'furnished-interior': { group: 'interior', id: 'furnished' },
+  'site-rich-reference': { group: 'quality', id: 'high-value-reference' },
+  'interior-rich-reference': { group: 'quality', id: 'high-value-reference' },
+  'review-before-deep-mining': { group: 'quality', id: 'review-before-deep-mining' }
+});
+
+export function buildTemplateKnowledgeBaseV2({
+  generatedAt,
+  caseLibrary = {},
+  templateIndex = {},
+  designLawBook = {},
+  reviewOverlay = new Map(),
+  inputs = {},
+  taxonomy = DEFAULT_TAG_TAXONOMY,
+  overlayErrors = []
+} = {}) {
+  const cases = (caseLibrary.cases || []).map((card) =>
+    buildCaseV2(card, reviewOverlay.get(card.case_id) || defaultReviewForCase(card.case_id), taxonomy)
+  );
+  const normalizedOverlayErrors = normalizeOverlayErrors(overlayErrors);
+  const summary = summarizeCases(cases, caseLibrary, templateIndex, normalizedOverlayErrors);
+  const base = {
+    source: SOURCE,
+    schema_version: SCHEMA_VERSION,
+    generated_at: generatedAt || stableGeneratedAt(),
+    knowledge_base_id: '',
+    inputs: {
+      case_library: inputs.case_library || 'mc_templates/analysis/case_library.json',
+      template_index: inputs.template_index || 'mc_templates/analysis/template_index.json',
+      design_laws: inputs.design_laws || 'mc_templates/analysis/design_laws.json',
+      review_overlay: inputs.review_overlay || 'mc_templates/curation/template_reviews.jsonl',
+      tag_taxonomy: inputs.tag_taxonomy || 'mc_templates/curation/tag_taxonomy.json'
+    },
+    summary,
+    cases,
+    design_law_source: designLawBook.source || ''
+  };
+  base.knowledge_base_id = `sha256:${hashJson({ cases, summary, inputs: base.inputs })}`;
+  return base;
+}
+
+export function buildTemplateRetrievalIndexV2(knowledgeBase = {}) {
+  const tokenToCases = {};
+  const areaToCases = {};
+  for (const item of knowledgeBase.cases || []) {
+    for (const token of item.retrieval?.search_tokens || []) {
+      addIndex(tokenToCases, token, item.case_id);
+    }
+    for (const unit of item.knowledge_units || []) {
+      addIndex(areaToCases, unit.area, item.case_id);
+    }
+  }
+  return {
+    source: RETRIEVAL_SOURCE,
+    schema_version: SCHEMA_VERSION,
+    case_count: (knowledgeBase.cases || []).length,
+    token_count: Object.keys(tokenToCases).length,
+    token_to_cases: sortIndex(tokenToCases),
+    area_to_cases: sortIndex(areaToCases),
+    cases: (knowledgeBase.cases || []).map((item) => ({
+      case_id: item.case_id,
+      title: item.title,
+      file: item.file,
+      score: item.priority.global_score,
+      review_status: item.review.status,
+      tokens: item.retrieval.search_tokens,
+      areas: [...new Set((item.knowledge_units || []).map((unit) => unit.area))].sort(),
+      risk_controls: item.risk_controls
+    }))
+  };
+}
+
+export function renderTemplatePriorityReport(knowledgeBase = {}) {
+  const rows = [...(knowledgeBase.cases || [])]
+    .sort((a, b) => b.priority.global_score - a.priority.global_score || a.title.localeCompare(b.title))
+    .map((item, index) => `| ${index + 1} | ${item.title} | ${item.identity.style_family} | ${item.identity.typology} | ${item.review.status} | ${item.priority.global_score} | ${Object.keys(item.priority.area_scores).join(', ')} | ${(item.priority.high_value_rank_reason || []).join('; ')} |`)
+    .join('\n');
+  return `# Template Priority Report\n\nGenerated: ${knowledgeBase.generated_at || ''}\n${renderOverlayErrors(knowledgeBase)}\n| Rank | Case | Style | Typology | Review | Score | Areas | Reason |\n| --- | --- | --- | --- | --- | ---: | --- | --- |\n${rows || '| - | none | - | - | - | 0 | - | - |'}\n`;
+}
+
+export function renderTemplateReviewQueue(knowledgeBase = {}) {
+  const rows = [...(knowledgeBase.cases || [])]
+    .filter((item) => (item.review_priority_signals || []).length > 0)
+    .sort((a, b) => b.priority.risk_penalty - a.priority.risk_penalty || b.priority.global_score - a.priority.global_score)
+    .map((item, index) => `| ${index + 1} | ${item.title} | ${item.review.status} | ${item.priority.global_score} | ${(item.review_priority_signals || []).join(', ') || '-'} | ${(item.risk_controls || []).slice(0, 2).join('; ') || (item.warnings || []).slice(0, 2).join('; ')} |`)
+    .join('\n');
+  return `# Template Review Queue\n\nGenerated: ${knowledgeBase.generated_at || ''}\n${renderOverlayErrors(knowledgeBase)}\n| Rank | Case | Review | Score | Flags | Risk Controls |\n| --- | --- | --- | ---: | --- | --- |\n${rows || '| - | none | - | 0 | - | - |'}\n`;
+}
+
+export async function writeTemplateKnowledgeBaseV2Artifacts({
+  outputDir,
+  generatedAt,
+  caseLibrary,
+  templateIndex,
+  designLawBook,
+  reviewOverlay,
+  inputs,
+  taxonomy = DEFAULT_TAG_TAXONOMY,
+  overlayErrors = []
+} = {}) {
+  const knowledgeBase = buildTemplateKnowledgeBaseV2({
+    generatedAt,
+    caseLibrary,
+    templateIndex,
+    designLawBook,
+    reviewOverlay,
+    inputs,
+    taxonomy,
+    overlayErrors
+  });
+  const retrievalIndex = buildTemplateRetrievalIndexV2(knowledgeBase);
+  await fs.mkdir(outputDir, { recursive: true });
+  const knowledgeBaseFile = path.join(outputDir, 'case_library.v2.json');
+  const retrievalIndexFile = path.join(outputDir, 'retrieval_index.v2.json');
+  const priorityReportFile = path.join(outputDir, 'template_priority_report.md');
+  const reviewQueueFile = path.join(outputDir, 'template_review_queue.md');
+  await fs.writeFile(knowledgeBaseFile, `${JSON.stringify(knowledgeBase, null, 2)}\n`, 'utf8');
+  await fs.writeFile(retrievalIndexFile, `${JSON.stringify(retrievalIndex, null, 2)}\n`, 'utf8');
+  await fs.writeFile(priorityReportFile, renderTemplatePriorityReport(knowledgeBase), 'utf8');
+  await fs.writeFile(reviewQueueFile, renderTemplateReviewQueue(knowledgeBase), 'utf8');
+  return { knowledgeBase, retrievalIndex, knowledgeBaseFile, retrievalIndexFile, priorityReportFile, reviewQueueFile };
+}
+
+function buildCaseV2(card = {}, review = {}, taxonomy = DEFAULT_TAG_TAXONOMY) {
+  const allowedAreas = allowedLearningAreas(review);
+  const blocked = new Set(review.blocked_learning_areas || []);
+  const restrictedAreas = restrictedLearningAreas(review, allowedAreas, blocked);
+  const tagState = buildTags(card, review, taxonomy);
+  const unitState = buildKnowledgeUnits(card);
+  const knowledgeUnits = unitState.units
+    .filter((unit) => !blocked.has(unit.area))
+    .filter((unit) => !allowedAreas || allowedAreas.has(unit.area));
+  const warnings = buildWarnings(card, review, tagState.unknown_tags, unitState.unknown_areas);
+  const riskControls = applyRiskOverrides(
+    [...new Set([...(card.risk_controls || []), ...riskControlsFromFlags(card.review_flags || [])])],
+    review.risk_overrides || []
+  );
+  const reviewPrioritySignals = buildReviewPrioritySignals(card, review, warnings, tagState.unknown_tags, unitState.unknown_areas);
+  const priority = buildPriority(card, review, knowledgeUnits, riskControls, warnings, reviewPrioritySignals);
+  const result = {
+    case_id: card.case_id,
+    case_version: '',
+    title: card.title || card.case_id,
+    file: card.file,
+    identity: {
+      category: card.category || '',
+      typology: card.typology || 'building',
+      style_family: card.style_family || 'general',
+      scale_bucket: card.feature_card?.scale?.bucket || 'unknown'
+    },
+    source: {
+      url: card.source_url || '',
+      note: card.source_note || '',
+      license_status: review.status === 'research-only' ? 'research-only' : 'unknown',
+      author: '',
+      public_release_allowed: false
+    },
+    review: {
+      status: review.status || 'pending',
+      reviewed_by: review.reviewed_by || '',
+      reviewed_at: review.reviewed_at || '',
+      confidence: Number(review.confidence || 0),
+      notes: review.notes || '',
+      approved_learning_areas: review.approved_learning_areas || [],
+      blocked_learning_areas: review.blocked_learning_areas || [],
+      manual_tags: review.manual_tags || [],
+      risk_overrides: review.risk_overrides || [],
+      review_record_ids: review.review_record_ids || []
+    },
+    tags: tagState.tags,
+    unknown_tags: tagState.unknown_tags,
+    unknown_tag_count: tagState.unknown_tags.length,
+    unknown_learning_areas: unitState.unknown_areas,
+    warnings,
+    knowledge_units: knowledgeUnits,
+    priority,
+    retrieval: buildRetrieval(card, tagState.tags, knowledgeUnits, priority, restrictedAreas),
+    risk_controls: riskControls,
+    review_flags: card.review_flags || [],
+    review_priority_signals: reviewPrioritySignals,
+    lineage: {
+      v1_case_id: card.case_id,
+      input_hashes: { v1_case: `sha256:${hashJson(card)}` },
+      review_record_ids: review.review_record_ids || []
+    }
+  };
+  result.case_version = `sha256:${hashJson({ ...result, case_version: '' })}`;
+  return result;
+}
+
+function buildKnowledgeUnits(card = {}) {
+  const units = [];
+  const unknownAreas = [];
+  const add = (area, claim, evidence, confidence, useAs, targets) => {
+    if (!CANONICAL_KNOWLEDGE_AREA_SET.has(area)) return;
+    units.push({
+      id: `${card.case_id}:${area}:${slug(claim).slice(0, 48)}`,
+      area,
+      claim,
+      evidence: Array.isArray(evidence) ? evidence : [evidence],
+      confidence,
+      use_as: useAs,
+      avoid_when: avoidWhenFor(card, area),
+      integration_targets: targets,
+      source_fields: ['case_library.semantic_clauses', 'case_library.feature_card', 'case_library.learning_roles']
+    });
+  };
+  for (const clause of card.semantic_clauses || []) {
+    if (/site|water|terrain|garden/i.test(clause)) add('site', clause, 'semantic clause', 0.78, ['site composition'], ['TemplateSiteSceneStrategy']);
+    if (/massing|vertical|courtyard|wing/i.test(clause)) add('massing', clause, 'semantic clause', 0.72, ['massing guidance'], ['ArchitectAgent', 'TemplateSpacePlanningStrategy']);
+    if (/facade|glass|wall/i.test(clause)) add('facade', clause, 'semantic clause', 0.76, ['facade rhythm'], ['FacadeAgent']);
+    if (/roof|terrace|eaves/i.test(clause)) add('roof', clause, 'semantic clause', 0.74, ['roof profile'], ['RoofAgent']);
+    if (/interior|room|focal|lighting|furniture/i.test(clause)) add('interior', clause, 'semantic clause', 0.8, ['room identity', 'decorator pattern guidance'], ['InteriorDetailAgent', 'DecoratorAgent']);
+  }
+  for (const area of card.learnable_areas || []) {
+    const normalizedArea = normalizeLearnableArea(area);
+    if (!normalizedArea) {
+      unknownAreas.push({
+        raw: area.area || area.role || '',
+        role: area.role || '',
+        evidence: area.evidence || '',
+        reason: 'unknown-v1-learning-area'
+      });
+      continue;
+    }
+    add(
+      normalizedArea,
+      `${card.title} teaches ${normalizedArea} through ${area.evidence || area.role}`,
+      area.evidence || area.role,
+      priorityConfidence(area.priority),
+      [area.next_phase || normalizedArea],
+      integrationTargets(normalizedArea)
+    );
+  }
+  return { units: dedupeById(units), unknown_areas: unknownAreas };
+}
+
+function buildTags(card = {}, review = {}, taxonomy = DEFAULT_TAG_TAXONOMY) {
+  const grouped = Object.fromEntries(DOCUMENTED_TAG_GROUPS.map((group) => [group, []]));
+  const unknownTags = [];
+  const add = (candidate) => {
+    const normalized = normalizeCandidateTag(candidate);
+    if (!normalized) {
+      if (candidate !== undefined && candidate !== null && String(candidate).trim()) {
+        unknownTags.push({
+          raw: candidate,
+          group: '',
+          id: '',
+          evidence: extractEvidence(candidate),
+          reason: 'unmapped-tag-alias'
+        });
+      }
+      return;
+    }
+    const validation = validateTagRecord(normalized, taxonomy);
+    if (!validation.ok) {
+      unknownTags.push({
+        raw: candidate,
+        group: normalized.group || '',
+        id: normalized.id || '',
+        evidence: extractEvidence(candidate),
+        reason: validation.error || 'unknown-tag'
+      });
+      return;
+    }
+    const tag = validation.normalized;
+    if (!grouped[tag.group].some((item) => item.id === tag.id)) grouped[tag.group].push(tag);
+  };
+
+  add({ group: 'typology', id: normalizeTaxonomyId(card.typology) });
+  add({ group: 'style', id: normalizeTaxonomyId(card.style_family) });
+  for (const raw of card.tags || []) add(raw);
+  for (const raw of card.quality_tags || []) add(raw);
+  for (const raw of review.manual_tags || []) add(raw);
+  for (const room of card.feature_card?.interior?.room_candidates || []) add({ group: 'room_types', id: normalizeTaxonomyId(room.room_type) });
+
+  for (const key of Object.keys(grouped)) {
+    grouped[key].sort((a, b) => a.id.localeCompare(b.id));
+  }
+  return { tags: grouped, unknown_tags: unknownTags };
+}
+
+function buildPriority(card = {}, review = {}, knowledgeUnits = [], riskControls = [], warnings = [], reviewPrioritySignals = []) {
+  const areaScores = {};
+  for (const unit of knowledgeUnits) {
+    areaScores[unit.area] = Math.max(areaScores[unit.area] || 0, Math.round(unit.confidence * 100));
+  }
+
+  const baseScore = Number(card.overall_reference_score || 0);
+  const knowledgeBonus = Math.min(knowledgeUnits.length * 4, 20);
+  const reviewBonus = review.status === 'approved'
+    ? 8
+    : review.status === 'limited'
+      ? Math.min(6, Math.max(2, (review.approved_learning_areas || []).length * 2))
+      : 0;
+  const studyPriorityBonus = card.study_priority === 'high' ? 6 : card.study_priority === 'medium' ? 3 : 0;
+  const reviewSignalPenalty = Math.min(reviewPrioritySignals.length * 2, 10);
+  const controlPenalty = Math.max(0, riskControls.length - 1);
+  const riskPenalty = (card.review_flags || []).length * 8
+    + (review.status === 'pending' ? 8 : 0)
+    + (review.status === 'limited' ? 6 : 0)
+    + reviewSignalPenalty
+    + controlPenalty;
+  const globalScore = Math.max(0, Math.min(100, Math.round(baseScore + knowledgeBonus + reviewBonus + studyPriorityBonus - riskPenalty)));
+
+  return {
+    global_score: globalScore,
+    risk_penalty: riskPenalty,
+    review_bonus: reviewBonus,
+    area_scores: areaScores,
+    high_value_rank_reason: buildRankReasons(card, review, knowledgeUnits, riskControls, warnings)
+  };
+}
+
+function buildRetrieval(card = {}, tags = {}, knowledgeUnits = [], priority = {}, restrictedAreas = new Set()) {
+  const tagTokens = Object.values(tags).flat().map((tag) => tag.id);
+  const unitAreas = knowledgeUnits.map((unit) => unit.area);
+  const promptAffinities = [...new Set(((card.retrieval && card.retrieval.prompt_affinities) || [])
+    .map((item) => String(item || '').trim())
+    .filter((item) => item && !restrictedAreas.has(normalizeArea(item)) && !restrictedAreas.has(item.toLowerCase())))]
+    .sort();
+  const searchTokens = [...new Set([
+    ...((card.retrieval && card.retrieval.tokens) || []),
+    ...((card.retrieval && card.retrieval.prompt_affinities) || []),
+    ...tagTokens,
+    ...unitAreas,
+    ...tokenize(card.title)
+  ])]
+    .filter((token) => !restrictedAreas.has(String(token || '').trim().toLowerCase()))
+    .sort();
+  return {
+    search_tokens: searchTokens,
+    prompt_affinities: promptAffinities,
+    explanation_seeds: buildExplanationSeeds(card, knowledgeUnits, tags),
+    diversity_slots: buildDiversitySlots(priority.area_scores || {})
+  };
+}
+
+function riskControlsFromFlags(flags = []) {
+  const controls = [];
+  for (const flag of flags) {
+    if (flag === 'arena-not-for-room-mining') controls.push('Do not mine domestic rooms from arena references.');
+    if (flag === 'non-residential-interior-noise') controls.push('Treat interior observations as public-space patterns unless a reviewer approves room mining.');
+  }
+  return controls;
+}
+
+function normalizeArea(value = '') {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (raw.startsWith('site')) return 'site';
+  if (raw.includes('massing')) return 'massing';
+  if (raw.includes('facade')) return 'facade';
+  if (raw.includes('roof')) return 'roof';
+  if (raw.includes('space')) return 'space-planning';
+  if (raw.includes('interior') || raw.includes('room')) return 'interior';
+  if (raw.includes('material')) return 'materials';
+  if (raw.includes('risk')) return 'risk';
+  return null;
+}
+
+function normalizeLearnableArea(area = {}) {
+  const explicitArea = String(area.area || '').trim();
+  if (explicitArea) return normalizeArea(explicitArea);
+  return normalizeArea(area.role || '');
+}
+
+function integrationTargets(area) {
+  const table = {
+    site: ['TemplateSiteSceneStrategy'],
+    massing: ['ArchitectAgent', 'TemplateSpacePlanningStrategy'],
+    facade: ['FacadeAgent'],
+    roof: ['RoofAgent'],
+    'space-planning': ['TemplateSpacePlanningStrategy'],
+    interior: ['InteriorDetailAgent', 'DecoratorAgent'],
+    materials: ['DecoratorAgent'],
+    risk: ['TemplateKnowledgeAgent']
+  };
+  return table[area] || ['TemplateKnowledgeAgent'];
+}
+
+function summarizeCases(cases = [], caseLibrary = {}, templateIndex = {}, overlayErrors = []) {
+  const reviewStatusCounts = {};
+  for (const item of cases) {
+    reviewStatusCounts[item.review.status] = (reviewStatusCounts[item.review.status] || 0) + 1;
+  }
+  return {
+    case_count: cases.length,
+    template_count: Number(templateIndex.corpus?.template_count || 0),
+    source_case_library: caseLibrary.source || '',
+    review_status_counts: reviewStatusCounts,
+    reviewed_case_count: cases.filter((item) => item.review.status !== 'pending').length,
+    overlay_error_count: overlayErrors.length,
+    overlay_errors: overlayErrors
+  };
+}
+
+function addIndex(index, key, caseId) {
+  if (!key) return;
+  if (!index[key]) index[key] = [];
+  if (!index[key].includes(caseId)) index[key].push(caseId);
+}
+
+function sortIndex(index) {
+  return Object.fromEntries(
+    Object.entries(index)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => [key, [...value].sort()])
+  );
+}
+
+function hashJson(value) {
+  return crypto.createHash('sha256').update(JSON.stringify(sortValue(value))).digest('hex');
+}
+
+function slug(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function dedupeById(items = []) {
+  const seen = new Set();
+  const result = [];
+  for (const item of items) {
+    if (!item?.id || seen.has(item.id)) continue;
+    seen.add(item.id);
+    result.push(item);
+  }
+  return result;
+}
+
+function priorityConfidence(priority) {
+  const table = { high: 0.9, medium: 0.75, low: 0.6 };
+  return table[String(priority || '').toLowerCase()] || 0.7;
+}
+
+function avoidWhenFor(card = {}, area = '') {
+  if (area === 'interior' && (card.review_flags || []).includes('arena-not-for-room-mining')) {
+    return ['Do not treat public arena interiors as domestic room precedents.'];
+  }
+  if (area === 'site' && card.feature_card?.site?.integrated === false) {
+    return ['Avoid terrain-integrated lessons when the source sits on a flat isolated pad.'];
+  }
+  return [];
+}
+
+function normalizeCandidateTag(candidate) {
+  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+    if (candidate.group && candidate.id) {
+      return { ...candidate, id: normalizeTaxonomyId(candidate.id) };
+    }
+    return null;
+  }
+  const alias = TAG_ALIASES[String(candidate || '').trim()];
+  return alias ? { ...alias } : null;
+}
+
+function normalizeTaxonomyId(value = '') {
+  return String(value || '').trim().toLowerCase().replaceAll('_', '-');
+}
+
+function buildRankReasons(card = {}, review = {}, knowledgeUnits = [], riskControls = [], warnings = []) {
+  const reasons = [];
+  if (Number(card.overall_reference_score || 0) >= 80) reasons.push('strong reference score');
+  if (review.status === 'approved') reasons.push('human approved');
+  if (review.status === 'limited') reasons.push('review-gated areas only');
+  if (knowledgeUnits.some((unit) => unit.area === 'site')) reasons.push('usable site knowledge');
+  if (knowledgeUnits.some((unit) => unit.area === 'interior')) reasons.push('usable interior knowledge');
+  if (riskControls.length) reasons.push(`${riskControls.length} risk controls`);
+  if (warnings.length) reasons.push(`${warnings.length} warnings`);
+  return reasons;
+}
+
+function buildExplanationSeeds(card = {}, knowledgeUnits = [], tags = {}) {
+  const seeds = [];
+  for (const unit of knowledgeUnits.slice(0, 3)) {
+    seeds.push(`${card.title}: ${unit.claim}`);
+  }
+  for (const [group, values] of Object.entries(tags)) {
+    if (!values.length) continue;
+    seeds.push(`${group}: ${values.map((item) => item.id).join(', ')}`);
+  }
+  return [...new Set(seeds)];
+}
+
+function tokenize(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .filter(Boolean);
+}
+
+function sortValue(value) {
+  if (Array.isArray(value)) return value.map((item) => sortValue(item));
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, sortValue(value[key])])
+  );
+}
+
+function allowedLearningAreas(review = {}) {
+  if (review.status !== 'limited') return null;
+  const approved = [...new Set((review.approved_learning_areas || []).map((item) => String(item).trim()).filter(Boolean))];
+  return approved.length ? new Set(approved) : new Set();
+}
+
+function restrictedLearningAreas(review = {}, allowedAreas, blockedAreas = new Set()) {
+  const restricted = new Set([...blockedAreas].map((item) => String(item).trim().toLowerCase()));
+  if (review.status !== 'limited') return restricted;
+  const canonicalAreas = ['site', 'massing', 'facade', 'roof', 'space-planning', 'interior', 'materials', 'risk'];
+  if (!allowedAreas) return restricted;
+  for (const area of canonicalAreas) {
+    if (!allowedAreas.has(area)) restricted.add(area);
+  }
+  return restricted;
+}
+
+function buildWarnings(card = {}, review = {}, unknownTags = [], unknownAreas = []) {
+  const warnings = [];
+  if (!card.source_url) warnings.push('Missing source URL.');
+  if (!card.source_note) warnings.push('Missing source note.');
+  if (review.status === 'research-only') warnings.push('Source license status is research-only.');
+  if (unknownTags.length) warnings.push(`Unknown taxonomy tags preserved for review (${unknownTags.length}).`);
+  if (unknownAreas.length) warnings.push(`Unknown v1 learning areas require review (${unknownAreas.length}).`);
+  return warnings;
+}
+
+function buildReviewPrioritySignals(card = {}, review = {}, warnings = [], unknownTags = [], unknownAreas = []) {
+  const signals = [];
+  if (review.status === 'pending') signals.push('pending-review');
+  if (review.status === 'limited') signals.push('limited-review');
+  for (const flag of card.review_flags || []) signals.push(flag);
+  if (!card.source_url) signals.push('missing-source-url');
+  if (!card.source_note) signals.push('missing-source-note');
+  if (unknownTags.length) signals.push('unknown-taxonomy-tags');
+  if (unknownAreas.length) signals.push('unknown-learning-area');
+  if (warnings.some((item) => /research-only/i.test(item))) signals.push('license-review');
+  return [...new Set(signals)].sort();
+}
+
+function normalizeOverlayErrors(errors = []) {
+  return (Array.isArray(errors) ? errors : []).map((error) => ({
+    line: Number(error.line || 0),
+    message: String(error.message || error.error || error)
+  }));
+}
+
+function renderOverlayErrors(knowledgeBase = {}) {
+  const errors = knowledgeBase.summary?.overlay_errors || [];
+  if (!errors.length) return '';
+  const lines = errors.map((error) => `- line ${error.line || '?'}: ${error.message}`);
+  return `\n## Overlay errors\n\n${lines.join('\n')}\n`;
+}
+
+function stableGeneratedAt() {
+  const epoch = process.env.SOURCE_DATE_EPOCH;
+  if (epoch !== undefined) {
+    const seconds = Number(epoch);
+    if (Number.isFinite(seconds)) return new Date(seconds * 1000).toISOString();
+  }
+  return DEFAULT_STABLE_GENERATED_AT;
+}
+
+function applyRiskOverrides(riskControls = [], overrides = []) {
+  let next = [...new Set((riskControls || []).map((item) => String(item).trim()).filter(Boolean))];
+  for (const override of overrides) {
+    const value = String(override || '');
+    if (value.startsWith('add:')) {
+      const addition = value.slice(4).trim();
+      if (addition && !next.includes(addition)) next.push(addition);
+      continue;
+    }
+    if (value.startsWith('suppress:')) {
+      const needle = value.slice(9).trim().toLowerCase();
+      if (!needle) continue;
+      next = next.filter((item) => {
+        const normalized = item.toLowerCase();
+        if (!normalized.includes(needle)) return true;
+        return isProtectedRiskControl(normalized);
+      });
+    }
+  }
+  return next;
+}
+
+function isProtectedRiskControl(value = '') {
+  return value.includes('source') || value.includes('license');
+}
+
+function buildDiversitySlots(areaScores = {}) {
+  const slots = {};
+  for (const area of ['site', 'massing', 'facade', 'roof', 'interior', 'space-planning', 'materials', 'risk']) {
+    const score = Number(areaScores[area] || 0);
+    slots[area] = score > 0 ? Math.max(1, Math.round(score / 40)) : 0;
+  }
+  return slots;
+}
+
+function extractEvidence(candidate) {
+  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+    return candidate.evidence || candidate.label || '';
+  }
+  return '';
+}

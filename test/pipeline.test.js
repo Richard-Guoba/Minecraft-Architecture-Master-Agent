@@ -70,6 +70,13 @@ test('runs the construction-method workflow as the single active pipeline', asyn
     assert.ok(result.geometry.pathfinder.openedDoorCount > 0);
     assert.equal(result.blueprint.constraints.some((item) => /construction_method_v1/.test(item)), true);
     assert.equal(result.blueprint.constraints.some((item) => /Python is not required/.test(item)), true);
+    assert.ok(result.architectureScorecard);
+    assert.equal(result.architectureScorecard.source, 'local-construction-evaluation-agent');
+    assert.equal(result.architectureScorecard.scorecard.maxScore, 100);
+    assert.ok(result.architectureScorecard.scorecard.dimensions.length > 10);
+    assert.ok(result.blueprint.architectureScorecard);
+    assert.equal(result.blueprint.architectureScorecard.totalScore, result.architectureScorecard.scorecard.totalScore);
+    assert.ok(result.artifacts.architectureScorecard.endsWith('architecture_scorecard.json'));
 
     const pack = JSON.parse(await fs.readFile(path.join(result.artifacts.datapackDir, 'pack.mcmeta'), 'utf8'));
     assert.equal(pack.pack.pack_format, 48);
@@ -88,7 +95,17 @@ test('runs the construction-method workflow as the single active pipeline', asyn
 
     const report = await fs.readFile(result.artifacts.report, 'utf8');
     const preview = await fs.readFile(result.artifacts.previewHtml, 'utf8');
+    const scorecard = JSON.parse(await fs.readFile(result.artifacts.architectureScorecard, 'utf8'));
+    assert.equal(scorecard.source, 'local-construction-evaluation-agent');
+    assert.equal(scorecard.scorecard.maxScore, 100);
+    assert.ok(scorecard.metrics.rooms >= 3);
+    assert.ok(scorecard.weakChecks);
+    const templateMemorySection = report.match(/## 模板参考记忆[\s\S]*?(?=\n## |\s*$)/)?.[0] || '';
     assert.match(report, /PDF 流程对齐/);
+    assert.match(report, /建筑大师评分/);
+    assert.match(report, /总分：/);
+    assert.match(report, /基础分：/);
+    assert.match(report, /高级分：/);
     assert.match(report, /旧 Requirement\/Designer\/Blueprint\/Super agent 流程：已移除/);
     assert.match(report, /Python：未使用/);
     assert.match(report, /LLM 调用：未调用，使用本地规则/);
@@ -102,6 +119,8 @@ test('runs the construction-method workflow as the single active pipeline', asyn
     assert.match(report, /ConstraintRepairAgent/);
     assert.match(report, /结构框架 JSON/);
     assert.match(report, /表皮与场地 JSON/);
+    assert.match(templateMemorySection, /模板参考记忆/);
+    assert.match(templateMemorySection, /Market with the villagers|Colonial Mansion|Villa|Modern|House|Template references/);
     assert.match(report, /CSG：体块/);
     assert.match(report, /Structure：支撑/);
     assert.match(report, /Facade\/Roof\/Site/);

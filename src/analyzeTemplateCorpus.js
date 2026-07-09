@@ -45,6 +45,16 @@ console.log(`Stage 7 clauses: ${path.join(result.outputDir, 'semantic_clauses.js
 console.log(`Stage 7 report: ${path.join(result.outputDir, 'case_library.md')}.`);
 console.log(`Stage 7C design laws: ${path.join(result.outputDir, 'design_laws.json')}.`);
 console.log(`Stage 7C interior laws: ${path.join(result.outputDir, 'interior_laws.jsonl')}.`);
+if (result.knowledgeBaseV2?.summary) {
+  console.log(`Stage 2 KB v2 cases: ${result.knowledgeBaseV2.summary.case_count}.`);
+  console.log(`Stage 2 KB v2 review statuses: ${JSON.stringify(result.knowledgeBaseV2.summary.review_status_counts || {})}.`);
+  console.log(`Stage 2 KB v2 case library: ${result.knowledgeBaseV2.artifacts.knowledgeBase}.`);
+  console.log(`Stage 2 KB v2 retrieval index: ${result.knowledgeBaseV2.artifacts.retrievalIndex}.`);
+  console.log(`Stage 2 KB v2 review queue: ${result.knowledgeBaseV2.artifacts.reviewQueue}.`);
+  for (const error of result.knowledgeBaseV2.overlayErrors || []) {
+    console.log(`Stage 2 KB v2 overlay error line ${error.line}: ${error.message}`);
+  }
+}
 
 function parseArgs(argv) {
   const result = {};

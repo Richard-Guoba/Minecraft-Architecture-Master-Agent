@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "groups": {
+    "typology": ["house", "castle", "tower", "temple", "public-building", "arena", "scene-building"],
+    "style": ["modern", "medieval", "japanese", "classical", "gothic", "coastal", "rustic", "fantasy", "general"],
+    "site": ["flat", "terrain-integrated", "garden", "water-edge", "courtyard", "forest", "urban", "island", "slope"],
+    "massing": ["compact-block", "long-bar", "asymmetric-wings", "balanced-axis", "courtyard-or-void", "vertical-landmark", "stepped-terraces"],
+    "roof": ["flat-terrace", "tower-cap", "layered-eaves", "deep-overhang", "stepped-roofline", "pitched-roof"],
+    "facade": ["large-glass", "formal-symmetry", "vertical-slots", "micro-depth-trim", "rail-balcony", "lit-depth-points"],
+    "interior": ["furnished", "room-layout-rich", "furniture-pattern-rich", "study-library", "vertical-circulation", "sparse-interior"],
+    "quality": ["high-value-reference", "needs-scale-normalization", "research-only", "review-before-deep-mining", "exterior-only"],
+    "room_types": ["living", "kitchen", "bedroom", "bathroom", "study", "storage", "workshop", "corridor-or-gallery", "entry-or-lobby", "tower-room", "chapel-or-ceremonial-hall"]
+  }
+}
