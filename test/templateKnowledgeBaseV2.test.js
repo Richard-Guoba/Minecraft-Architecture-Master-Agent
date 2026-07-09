@@ -193,6 +193,28 @@ test('knowledge base v2 artifact writer writes json and reports', async () => {
   assert.match(queue, /Template Review Queue/);
 });
 
+test('knowledge base v2 artifact writer result shape is analyzer-friendly', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-kb-v2-analyzer-'));
+  const result = await writeTemplateKnowledgeBaseV2Artifacts({
+    outputDir: root,
+    generatedAt: '2026-07-09T00:00:00.000Z',
+    caseLibrary: caseLibraryFixture(),
+    templateIndex: templateIndexFixture(),
+    designLawBook: { source: 'stage7-design-law-book-v1' }
+  });
+
+  assert.deepEqual(Object.keys(result).sort(), [
+    'knowledgeBase',
+    'knowledgeBaseFile',
+    'priorityReportFile',
+    'retrievalIndex',
+    'retrievalIndexFile',
+    'reviewQueueFile'
+  ].sort());
+  assert.equal(result.knowledgeBase.summary.case_count, 2);
+  assert.equal(result.retrievalIndex.case_count, 2);
+});
+
 function caseLibraryFixture() {
   return {
     source: 'stage7-template-case-library-v1',

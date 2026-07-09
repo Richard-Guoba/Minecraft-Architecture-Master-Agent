@@ -6,6 +6,8 @@ import { buildTemplateCaseLibrary, caseClausesJsonl, renderTemplateCaseLibraryRe
 import { buildTemplateDesignLawBook, designLawsJsonl, interiorLawsJsonl, renderTemplateDesignLawReport } from './templateDesignLawDistiller.js';
 import { analyzeTemplateComposition } from './templateCompositionMiner.js';
 import { analyzeSpatialLayout } from './templateSpatialAnalyzer.js';
+import { parseTemplateReviewOverlay, mergeReviewRecords } from './templateReviewOverlay.js';
+import { writeTemplateKnowledgeBaseV2Artifacts } from './templateKnowledgeBaseV2.js';
 
 const MCBUILD_URL_PATTERN = /https?:\/\/\S+/i;
 const AIR_IDS = new Set([0]);
@@ -203,12 +205,45 @@ export async function analyzeTemplateCorpus({
   await fs.writeFile(path.join(absoluteOutput, 'labels.generated.jsonl'), `${labels.map((item) => JSON.stringify(item)).join('\n')}\n`, 'utf8');
   await fs.writeFile(path.join(absoluteOutput, 'template_gap_report.md'), report, 'utf8');
 
+  const reviewOverlayPath = path.join(absoluteRoot, 'curation', 'template_reviews.jsonl');
+  let reviewText = '';
+  try {
+    reviewText = await fs.readFile(reviewOverlayPath, 'utf8');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  const reviewOverlay = mergeReviewRecords(parseTemplateReviewOverlay(reviewText).records);
+  const knowledgeBaseV2Result = await writeTemplateKnowledgeBaseV2Artifacts({
+    outputDir: absoluteOutput,
+    generatedAt,
+    caseLibrary,
+    templateIndex: { corpus, templates },
+    designLawBook,
+    reviewOverlay,
+    inputs: {
+      case_library: path.join(outputDir, 'case_library.json'),
+      template_index: path.join(outputDir, 'template_index.json'),
+      design_laws: path.join(outputDir, 'design_laws.json'),
+      review_overlay: path.join(rootDir, 'curation', 'template_reviews.jsonl'),
+      tag_taxonomy: path.join(rootDir, 'curation', 'tag_taxonomy.json')
+    }
+  });
+
   return {
     outputDir: absoluteOutput,
     corpus,
     caseIndex,
     caseLibrary,
     designLawBook,
+    knowledgeBaseV2: {
+      summary: knowledgeBaseV2Result.knowledgeBase.summary,
+      artifacts: {
+        knowledgeBase: knowledgeBaseV2Result.knowledgeBaseFile,
+        retrievalIndex: knowledgeBaseV2Result.retrievalIndexFile,
+        priorityReport: knowledgeBaseV2Result.priorityReportFile,
+        reviewQueue: knowledgeBaseV2Result.reviewQueueFile
+      }
+    },
     templates,
     importErrors,
     fetchedPages: fetched,
