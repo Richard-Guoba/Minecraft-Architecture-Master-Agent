@@ -14,6 +14,7 @@ The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled f
 - Target: Minecraft Java 1.21 / 1.21.1 datapacks
 - Runtime: Node.js ESM, no Python required for normal generation
 - Knowledge layer: Template Knowledge Base v2 with reviewed case cards, explainable retrieval, and design laws
+- Neural assist layer: Stage 5 artifacts can suggest labels, build deterministic embedding indexes, evaluate retrieval, and opt into fusion retrieval without changing default mock behavior
 - Concept layer: Stage 3 Concept Studio can generate, select, or fuse multiple explainable design concepts before construction
 - Critique layer: Stage 4 Critic Council summarizes buildability, connectivity, habitation, style, composition, and site findings
 - Benchmark readiness: 10/10 baseline prompts generated, average scorecard 100/100, red flags 0, repair priority queue empty
@@ -24,7 +25,10 @@ The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled f
 ```powershell
 npm install
 npm test
+npm run evaluate:retrieval
+npm run query:templates -- --neural "建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰"
 npm start -- --mode mock --concepts 3 "建一个湖边现代两层别墅，带大玻璃、水边平台和前景花园"
+npm start -- --mode mock --neural-retrieval "建一个湖边现代两层别墅，带大玻璃和精致内饰"
 ```
 
 Mock mode is deterministic and does not need an API key. It is the safest way to check the full local pipeline.

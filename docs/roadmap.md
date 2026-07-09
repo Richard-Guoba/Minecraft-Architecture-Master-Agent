@@ -622,6 +622,8 @@ RTX 4060 适合：
 
 目标：把神经网络用于最稳的地方，先提高学习效率。
 
+当前 MVP 状态：Stage 5 首版采用 artifacts-first 策略。离线分析生成 `neural_labels.jsonl` 和 `embedding_index.json`，查询和评估命令可以比较 rule-only 与 fusion retrieval；主生成流程默认仍使用规则检索，只有显式 `--neural-retrieval` 时才读取 Stage 5 fusion，并在 artifact 缺失或失效时回退。
+
 交付：
 
 - 风格/类型/场地分类器。
