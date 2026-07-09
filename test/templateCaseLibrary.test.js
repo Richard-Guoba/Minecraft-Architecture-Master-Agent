@@ -219,6 +219,42 @@ test('TemplateKnowledgeAgent falls back to v1 when v2 case library is malformed'
   assert.ok(knowledge.recommendations.case_feature_priorities.includes('waterfront'));
 });
 
+test('TemplateKnowledgeAgent falls back to v1 when optional v2 case library is absent', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-stage7-knowledge-missing-v2-'));
+  const template = templateFixture({
+    title: 'Modern Lake Villa',
+    file: 'House/Modern Lake Villa.schematic',
+    style_family: 'modern',
+    tags: ['water-edge', 'landscape-composition', 'glass-emphasis', 'furnished-interior'],
+    roles: ['terrain_base', 'garden_scene', 'water_edge', 'interior_reference', 'facade_detail'],
+    composition: {
+      massing_patterns: [pattern('long_bar', 82)],
+      approach_sequence: [pattern('waterfront_transition', 78)],
+      facade_rhythm: [pattern('large_glass_bands', 86)],
+      roof_composition: [pattern('flat_terrace_or_platform', 80)],
+      site_composition: [pattern('water_edge', 88)],
+      view_and_landmark_rules: [pattern('orient_public_rooms_to_view', 82)]
+    }
+  });
+  const library = buildTemplateCaseLibrary({ templates: [template], corpus: { template_count: 1 } });
+  const analysisFile = path.join(root, 'template_index.json');
+  await fs.writeFile(analysisFile, `${JSON.stringify({ corpus: { gap_priorities: [] }, templates: [template] }, null, 2)}\n`, 'utf8');
+  await fs.writeFile(path.join(root, 'case_library.json'), `${JSON.stringify(library, null, 2)}\n`, 'utf8');
+
+  const knowledge = new TemplateKnowledgeAgent({ cwd: process.cwd(), analysisFile }).run(
+    '建一个现代湖边别墅，带大玻璃、水边平台、屋顶露台和精致内饰',
+    { style_family: 'modern', typology: 'house' },
+    { typology: 'house' }
+  );
+
+  assert.equal(knowledge.active, true);
+  assert.equal(knowledge.knowledge_base_version, 1);
+  assert.equal(knowledge.retrieval_explanation.active, false);
+  assert.ok(knowledge.retrieval_explanation.warnings.some((item) => /v2/i.test(item) && /not found|not available|using v1/i.test(item)));
+  assert.ok(knowledge.recommendations.case_library_clauses.length > 0);
+  assert.ok(knowledge.recommendations.case_feature_priorities.includes('waterfront'));
+});
+
 function templateFixture({ title, file, style_family, tags, roles, composition }) {
   return {
     title,
