@@ -2,6 +2,53 @@ import { keyFor } from '../engine/csgBuilder.js';
 import { isBlockingHeadroomBlock, roomBlockingBudget } from './interiorClearanceRepairAgent.js';
 import { interiorSpecialistCapabilities, specialistAgentsForRoom } from './interiorRoomAgents.js';
 
+const TEMPLATE_CONTRACT_ROLES = new Set([
+  'template-view-frame-interior',
+  'template-view-seat',
+  'template-service-wall',
+  'template-quiet-desk',
+  'template-entry-runner',
+  'template-pattern-range',
+  'template-pattern-seat',
+  'template-pattern-desk',
+  'template-pattern-bed',
+  'template-scene-sofa-primary',
+  'template-scene-coffee-table',
+  'template-scene-dining-table',
+  'template-scene-kitchen-island',
+  'template-scene-bar-stool',
+  'template-scene-bed-headboard',
+  'template-scene-study-bookcase',
+  'design-law-focal-wall',
+  'design-law-task-light',
+  'design-law-work-wall-light',
+  'design-law-social-anchor',
+  'design-law-support-surface',
+  'design-law-service-storage',
+  'design-law-bedside-soft-light',
+  'design-law-wardrobe-wall',
+  'design-law-focus-wall-light',
+  'design-law-display-anchor',
+  'design-law-mirror-light',
+  'design-law-inventory-light',
+  'design-law-soft-plant',
+  'design-law-accent-light'
+]);
+
+const LIGHT_VARIANTS_BY_STYLE = {
+  modern: ['minecraft:sea_lantern', 'minecraft:redstone_lamp', 'minecraft:pearlescent_froglight', 'minecraft:end_rod', 'minecraft:copper_bulb'],
+  futuristic: ['minecraft:sea_lantern', 'minecraft:redstone_lamp', 'minecraft:pearlescent_froglight', 'minecraft:end_rod', 'minecraft:copper_bulb'],
+  cyberpunk: ['minecraft:sea_lantern', 'minecraft:redstone_lamp', 'minecraft:pearlescent_froglight', 'minecraft:end_rod', 'minecraft:cyan_candle'],
+  gothic: ['minecraft:soul_lantern', 'minecraft:candle', 'minecraft:blue_candle', 'minecraft:purple_candle', 'minecraft:redstone_lamp'],
+  japanese: ['minecraft:lantern', 'minecraft:candle', 'minecraft:ochre_froglight', 'minecraft:verdant_froglight'],
+  rustic: ['minecraft:lantern', 'minecraft:candle', 'minecraft:ochre_froglight', 'minecraft:glowstone', 'minecraft:copper_bulb'],
+  nordic: ['minecraft:lantern', 'minecraft:candle', 'minecraft:ochre_froglight', 'minecraft:glowstone', 'minecraft:copper_bulb'],
+  alpine: ['minecraft:lantern', 'minecraft:candle', 'minecraft:ochre_froglight', 'minecraft:glowstone', 'minecraft:copper_bulb'],
+  classical: ['minecraft:glowstone', 'minecraft:lantern', 'minecraft:candle', 'minecraft:ochre_froglight', 'minecraft:pearlescent_froglight'],
+  coastal: ['minecraft:sea_lantern', 'minecraft:lantern', 'minecraft:light_blue_candle', 'minecraft:pearlescent_froglight', 'minecraft:copper_bulb'],
+  default: ['minecraft:glowstone', 'minecraft:lantern', 'minecraft:candle', 'minecraft:ochre_froglight', 'minecraft:pearlescent_froglight']
+};
+
 export class ConstructionDecoratorAgent {
   run(rooms, materials = {}, context = {}) {
     const grid = context.grid;
@@ -139,7 +186,126 @@ function furnishRoom(room, materials, context) {
   builder.addTemplateDesignLawLayer();
   const specialists = specialistAgentsForRoom(room, context).map((agent) => agent.run(builder));
 
-  return { blocks: builder.blocks, specialists, specialist: specialists[0] };
+  return { blocks: enforceRoomDecorationBudget(builder.blocks, room), specialists, specialist: specialists[0] };
+}
+
+function enforceRoomDecorationBudget(blocks = [], room = {}) {
+  const budget = roomDecorationBudget(room, blocks.length);
+  if (blocks.length <= budget) return blocks;
+
+  const firstAgentIndexes = firstPlacementIndexesByAgent(blocks);
+  const duplicateCounts = new Map();
+  const ranked = blocks.map((block, index) => {
+    const duplicateKey = `${block.room_id}|${block.role}|${block.placement}|${block.module}`;
+    const duplicateIndex = duplicateCounts.get(duplicateKey) || 0;
+    duplicateCounts.set(duplicateKey, duplicateIndex + 1);
+    return {
+      index,
+      block,
+      priority: decorationPriority(block, room, {
+        firstAgentPlacement: firstAgentIndexes.has(index),
+        duplicateIndex
+      })
+    };
+  });
+
+  const selected = new Set(ranked
+    .sort((a, b) => b.priority - a.priority || a.index - b.index)
+    .slice(0, budget)
+    .map((item) => item.index));
+
+  return blocks.filter((_, index) => selected.has(index));
+}
+
+function roomDecorationBudget(room = {}, count = 0) {
+  const area = roomArea(room);
+  if (area <= 0) return count;
+  if (['corridor', 'stairs'].includes(room.type)) return Math.min(count, 4);
+  const minimum = minimumDecorationBudget(room.type, area);
+  return Math.min(count, Math.max(minimum, Math.floor(area * 0.48)));
+}
+
+function minimumDecorationBudget(type, area) {
+  if (area <= 12) return 4;
+  if (area <= 24) return 6;
+  if (['bathroom', 'storage', 'utility', 'garage'].includes(type)) return 6;
+  if (['kitchen', 'living', 'great_hall', 'dining', 'study', 'tatami', 'tea_room'].includes(type)) return 9;
+  if (['bedroom', 'master_bedroom'].includes(type)) return 8;
+  return 7;
+}
+
+function firstPlacementIndexesByAgent(blocks = []) {
+  const seen = new Set();
+  const indexes = new Set();
+  for (let index = 0; index < blocks.length; index += 1) {
+    const agent = blocks[index].agent_id;
+    if (!agent || seen.has(agent)) continue;
+    seen.add(agent);
+    indexes.add(index);
+  }
+  return indexes;
+}
+
+function decorationPriority(item = {}, room = {}, options = {}) {
+  let score = 0;
+  if (options.firstAgentPlacement) score += 900;
+  if (isHardExperienceAnchor(item)) score += 2000;
+  if (isEssentialDecoration(item, room)) score += 800;
+  score += modulePriority(item.module);
+  if (String(item.role || '').startsWith('semantic-')) score += 120;
+  if (String(item.role || '').startsWith('template-pattern-')) score += 110;
+  if (String(item.role || '').startsWith('template-scene-')) score += 100;
+  if (String(item.role || '').startsWith('design-law-')) score += 90;
+  if (isTemplateContractRole(item)) score += 900;
+  if (String(item.role || '').startsWith('vibrant-')) score += 240;
+  if (isExperienceAnchor(item)) score += 260;
+  if (isRoomIdentityFloor(item, room, options)) score += 700;
+  if (/rug|runner|mat|carpet|floor-zone|floor-accent/i.test(`${item.role || ''} ${item.placement || ''}`)) score -= 80;
+  if (options.duplicateIndex > 0) score -= options.duplicateIndex * 45;
+  if (isWallAlignedRole(item)) score += 35;
+  return score;
+}
+
+function modulePriority(module) {
+  return {
+    decor_utility: 430,
+    decor_storage: 400,
+    decor_furniture: 390,
+    decor_light: 350,
+    decor_plant: 300,
+    decor_detail: 250,
+    decor_floor: 120
+  }[module] || 180;
+}
+
+function isEssentialDecoration(item = {}, room = {}) {
+  const text = `${item.role || ''} ${item.placement || ''} ${blockBase(item.block)} ${room.type || ''}`.toLowerCase();
+  return /bed|hearth|range|smoker|furnace|prep|sink|basin|bath|mat|toilet|shower|desk|lectern|library|bookshelf|table|seat|sofa|bench|wardrobe|storage|barrel|chest|anvil|smithing|workbench|lookout|map|vehicle|composter|planter|plant|potted|bamboo|light|lantern|candle|sea_lantern/.test(text);
+}
+
+function isWallAlignedRole(item = {}) {
+  return /wall|corner|edge|niche|shelf|storage|wardrobe|pantry|library|display|service|work|entry|window/i.test(`${item.role || ''} ${item.placement || ''}`);
+}
+
+function isExperienceAnchor(item = {}) {
+  return /template-view-frame-interior|template-view-seat|template-service-wall|template-quiet-desk|template-entry-runner|potted_bamboo|vehicle-pad|vibrant-rug|vibrant-candle|vibrant-planter|vibrant-display|vibrant-glazed-tile/.test(`${item.role || ''} ${item.placement || ''} ${blockBase(item.block)}`);
+}
+
+function isRoomIdentityFloor(item = {}, room = {}, options = {}) {
+  if (options.duplicateIndex > 0) return false;
+  const text = `${item.role || ''} ${item.placement || ''} ${blockBase(item.block)}`.toLowerCase();
+  if (room.type === 'tatami') return /tatami-mat|lime_carpet/.test(text);
+  if (room.type === 'tea_room') return /tea-mat|green_carpet/.test(text);
+  return false;
+}
+
+function isTemplateContractRole(item = {}) {
+  const role = String(item.role || '');
+  return TEMPLATE_CONTRACT_ROLES.has(role);
+}
+
+function isHardExperienceAnchor(item = {}) {
+  return /low-table|bamboo_slab|vehicle-pad|storage-chest|range-hood|media-wall|wardrobe|reading-lamp|bath-mat|desk|books|smithing_table|workbench|vibrant-glazed-tile/.test(`${item.role || ''} ${item.placement || ''} ${blockBase(item.block)}`);
 }
 
 class RoomFurnishingBuilder {
@@ -972,7 +1138,7 @@ class RoomFurnishingBuilder {
       room_id: this.room.id,
       type: this.room.type,
       role,
-      block,
+      block: decorBlockVariant(block, { module, role, placement, room: this.room, styleFamily: this.styleFamily, index: this.blocks.length }),
       placement,
       module,
       at: point
@@ -1199,6 +1365,31 @@ function blockBase(block) {
   return String(block || '').split('[')[0];
 }
 
+function decorBlockVariant(block, { module, role, placement, room, styleFamily, index = 0 } = {}) {
+  if (String(role || '').startsWith('vibrant')) return block;
+  if (module !== 'decor_light') return block;
+  return lightVariantForStyle(styleFamily, block, `${room?.id || ''}:${room?.type || ''}:${role || ''}:${placement || ''}:${index}`);
+}
+
+function lightVariantForStyle(styleFamily, block, key) {
+  const variants = LIGHT_VARIANTS_BY_STYLE[styleFamily] || LIGHT_VARIANTS_BY_STYLE.default;
+  if (!isGenericLightBlock(block)) return block;
+  const base = blockBase(block);
+  const offset = variants.includes(base) ? 0 : 1;
+  return variants[(hashKey(`${key}:${base}`) + offset) % variants.length];
+}
+
+function isGenericLightBlock(block) {
+  return /lantern|glowstone|sea_lantern|redstone_lamp|froglight|candle|copper_bulb|end_rod/.test(blockBase(block));
+}
+
+function roomArea(room = {}) {
+  const width = Number(room.max_x) - Number(room.min_x) + 1;
+  const depth = Number(room.max_z) - Number(room.min_z) + 1;
+  if (!Number.isFinite(width) || !Number.isFinite(depth)) return 0;
+  return Math.max(0, width) * Math.max(0, depth);
+}
+
 function range(min, max) {
   const values = [];
   for (let value = min; value <= max; value += 1) values.push(value);
@@ -1207,6 +1398,12 @@ function range(min, max) {
 
 function uniqueNumbers(values) {
   return [...new Set(values.filter(Number.isFinite))];
+}
+
+function hashKey(value) {
+  let hash = 0;
+  for (const char of String(value || '')) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash;
 }
 
 function manhattan(a, b) {

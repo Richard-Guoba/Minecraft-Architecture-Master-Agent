@@ -234,19 +234,37 @@ function addGroundFloor(nodes, context) {
   if (shouldHaveDining(context)) nodes.push(room('dining', '餐厅', 'dining', 0, 1.0, 'public', { zone: 'public' }));
   if (footprint === 'winged') nodes.push(room('lounge', '侧厅', 'lounge', 0, 0.9, 'public', { zone: 'public', tags: ['wing-room'] }));
   if (shouldHaveBathroom(context)) nodes.push(room('guest-bath', '客卫', 'bathroom', 0, 0.45, 'service', { zone: 'service' }));
-  if (requested.bedrooms > 0 && Number(buildSpec.floors || 1) <= 1) {
-    nodes.push(room('bedroom', '卧室', 'bedroom', 0, 1.1, 'private', { zone: 'private' }));
-  }
+  addGroundFloorBedroomIfNeeded(nodes, context, 1.1);
 }
 
 function addRequestedGroundFloorEssentials(nodes, context) {
-  const { buildSpec, requested } = context;
   if (shouldHaveBathroom(context)) {
     nodes.push(room(nodes.some((node) => node.id === 'guest-bath') ? 'guest-bath-2' : 'guest-bath', '客卫', 'bathroom', 0, 0.45, 'service', { zone: 'service' }));
   }
-  if (requested.bedrooms > 0 && Number(buildSpec.floors || 1) <= 1) {
-    nodes.push(room(nodes.some((node) => node.id === 'bedroom') ? 'bedroom-2' : 'bedroom', '卧室', 'bedroom', 0, 1.05, 'private', { zone: 'private' }));
-  }
+  addGroundFloorBedroomIfNeeded(nodes, context, 1.05);
+}
+
+function addGroundFloorBedroomIfNeeded(nodes, context, weight = 1.05) {
+  if (!shouldHaveGroundFloorBedroom(nodes, context)) return;
+  nodes.push(room(
+    nodes.some((node) => node.id === 'bedroom') ? 'bedroom-2' : 'bedroom',
+    '卧室',
+    'bedroom',
+    0,
+    weight,
+    'private',
+    { zone: 'private', tags: ['residential-sleeping-program'] }
+  ));
+}
+
+function shouldHaveGroundFloorBedroom(nodes, { prompt, typology, buildSpec, requested }) {
+  if (Number(buildSpec.floors || 1) > 1) return false;
+  if (requested.bedrooms > 0) return true;
+  return isResidentialProgram(prompt, typology) && !hasSleepingNode(nodes);
+}
+
+function hasSleepingNode(nodes) {
+  return nodes.some((node) => ['bedroom', 'master_bedroom', 'tatami', 'tower'].includes(node.type));
 }
 
 function addUpperFloors(nodes, context) {

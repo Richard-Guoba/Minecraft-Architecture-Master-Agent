@@ -163,3 +163,127 @@ test('ConstructionEvaluationAgent reports decoration reasonability metrics', asy
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test('baseline waterfront villa keeps rich decoration below clutter density', async () => {
+  const root = path.resolve('.tmp', `architect-decoration-density-test-${Date.now()}`);
+  const prompt = BASELINE_BENCHMARK_PROMPTS.find((item) => item.id === 'modern-waterfront-villa');
+  try {
+    const result = await runPipeline({
+      prompt: prompt.prompt,
+      mode: 'mock',
+      mcVersion: '1.21',
+      outRoot: path.join(root, 'out'),
+      cwd: process.cwd(),
+      seed: prompt.seed
+    });
+    const evaluation = new ConstructionEvaluationAgent().run(result);
+    const redFlagIds = new Set(evaluation.redFlags.map((item) => item.id));
+
+    assert.equal(redFlagIds.has('decoration.density.not-cluttered'), false);
+    assert.ok(evaluation.metrics.decorationAverageDensity <= 0.65);
+    assert.ok(evaluation.metrics.decorationMaxDensity <= 1);
+    assert.ok(evaluation.metrics.decorationAveragePlacementsPerRoom >= 8);
+    assert.ok(evaluation.metrics.decorationHabitableCoverage >= 90);
+    assert.ok(evaluation.metrics.decorationVibrantRooms >= 3);
+    assert.equal(evaluation.metrics.decorationStyleAnchored, true);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('baseline small village keeps compact rooms below clutter density', async () => {
+  const root = path.resolve('.tmp', `architect-village-density-test-${Date.now()}`);
+  const prompt = BASELINE_BENCHMARK_PROMPTS.find((item) => item.id === 'small-village-cluster');
+  try {
+    const result = await runPipeline({
+      prompt: prompt.prompt,
+      mode: 'mock',
+      mcVersion: '1.21',
+      outRoot: path.join(root, 'out'),
+      cwd: process.cwd(),
+      seed: prompt.seed
+    });
+    const evaluation = new ConstructionEvaluationAgent().run(result);
+    const redFlagIds = new Set(evaluation.redFlags.map((item) => item.id));
+
+    assert.equal(redFlagIds.has('decoration.density.not-cluttered'), false);
+    assert.ok(evaluation.metrics.decorationAverageDensity <= 0.65);
+    assert.ok(evaluation.metrics.decorationMaxDensity <= 1);
+    assert.ok(evaluation.metrics.decorationAveragePlacementsPerRoom >= 8);
+    assert.ok(evaluation.metrics.decorationHabitableCoverage >= 90);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('baseline waterfront villa avoids a light-dominated decoration palette', async () => {
+  const root = path.resolve('.tmp', `architect-decoration-palette-test-${Date.now()}`);
+  const prompt = BASELINE_BENCHMARK_PROMPTS.find((item) => item.id === 'modern-waterfront-villa');
+  try {
+    const result = await runPipeline({
+      prompt: prompt.prompt,
+      mode: 'mock',
+      mcVersion: '1.21',
+      outRoot: path.join(root, 'out'),
+      cwd: process.cwd(),
+      seed: prompt.seed
+    });
+    const evaluation = new ConstructionEvaluationAgent().run(result);
+    const redFlagIds = new Set(evaluation.redFlags.map((item) => item.id));
+
+    assert.equal(redFlagIds.has('decoration.palette.balanced-variety'), false);
+    assert.ok(evaluation.metrics.uniqueDecorBlocks >= 48);
+    assert.ok(evaluation.metrics.decorationDominantBlockShare <= 25);
+    assert.equal(redFlagIds.has('decoration.density.not-cluttered'), false);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('baseline small village keeps vibrant accents distributed after compact density budgeting', async () => {
+  const root = path.resolve('.tmp', `architect-village-vibrant-test-${Date.now()}`);
+  const prompt = BASELINE_BENCHMARK_PROMPTS.find((item) => item.id === 'small-village-cluster');
+  try {
+    const result = await runPipeline({
+      prompt: prompt.prompt,
+      mode: 'mock',
+      mcVersion: '1.21',
+      outRoot: path.join(root, 'out'),
+      cwd: process.cwd(),
+      seed: prompt.seed
+    });
+    const evaluation = new ConstructionEvaluationAgent().run(result);
+    const redFlagIds = new Set(evaluation.redFlags.map((item) => item.id));
+
+    assert.equal(redFlagIds.has('decoration.palette.balanced-variety'), false);
+    assert.equal(redFlagIds.has('decoration.vibrant.distributed'), false);
+    assert.ok(evaluation.metrics.uniqueDecorBlocks >= 24);
+    assert.ok(evaluation.metrics.decorationDominantBlockShare <= 25);
+    assert.ok(evaluation.metrics.decorationVibrantRooms >= 4);
+    assert.equal(redFlagIds.has('decoration.density.not-cluttered'), false);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('baseline small village includes a sleeping room in its residential program', async () => {
+  const root = path.resolve('.tmp', `architect-village-sleeping-program-test-${Date.now()}`);
+  const prompt = BASELINE_BENCHMARK_PROMPTS.find((item) => item.id === 'small-village-cluster');
+  try {
+    const result = await runPipeline({
+      prompt: prompt.prompt,
+      mode: 'mock',
+      mcVersion: '1.21',
+      outRoot: path.join(root, 'out'),
+      cwd: process.cwd(),
+      seed: prompt.seed
+    });
+    const evaluation = new ConstructionEvaluationAgent().run(result);
+    const redFlagIds = new Set(evaluation.redFlags.map((item) => item.id));
+
+    assert.equal(redFlagIds.has('habitation.program.sleeping'), false);
+    assert.ok(evaluation.metrics.bedroomCount >= 1);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

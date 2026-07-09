@@ -15,6 +15,41 @@ const ROLE_TARGETS = {
   designPerObligation: 2
 };
 
+const DENSITY_LIGHT_VARIANTS_BY_STYLE = {
+  modern: ['minecraft:sea_lantern', 'minecraft:redstone_lamp', 'minecraft:pearlescent_froglight', 'minecraft:end_rod', 'minecraft:copper_bulb'],
+  futuristic: ['minecraft:sea_lantern', 'minecraft:redstone_lamp', 'minecraft:pearlescent_froglight', 'minecraft:end_rod', 'minecraft:copper_bulb'],
+  cyberpunk: ['minecraft:sea_lantern', 'minecraft:redstone_lamp', 'minecraft:pearlescent_froglight', 'minecraft:end_rod', 'minecraft:cyan_candle'],
+  gothic: ['minecraft:soul_lantern', 'minecraft:candle', 'minecraft:blue_candle', 'minecraft:purple_candle', 'minecraft:redstone_lamp'],
+  japanese: ['minecraft:lantern', 'minecraft:candle', 'minecraft:ochre_froglight', 'minecraft:verdant_froglight'],
+  rustic: ['minecraft:lantern', 'minecraft:candle', 'minecraft:ochre_froglight', 'minecraft:glowstone', 'minecraft:copper_bulb'],
+  nordic: ['minecraft:lantern', 'minecraft:candle', 'minecraft:ochre_froglight', 'minecraft:glowstone', 'minecraft:copper_bulb'],
+  alpine: ['minecraft:lantern', 'minecraft:candle', 'minecraft:ochre_froglight', 'minecraft:glowstone', 'minecraft:copper_bulb'],
+  classical: ['minecraft:glowstone', 'minecraft:lantern', 'minecraft:candle', 'minecraft:ochre_froglight', 'minecraft:pearlescent_froglight'],
+  coastal: ['minecraft:sea_lantern', 'minecraft:lantern', 'minecraft:light_blue_candle', 'minecraft:pearlescent_froglight', 'minecraft:copper_bulb'],
+  default: ['minecraft:glowstone', 'minecraft:lantern', 'minecraft:candle', 'minecraft:ochre_froglight', 'minecraft:pearlescent_froglight']
+};
+
+const VIBRANT_DENSITY_ANCHORS = [
+  'minecraft:magenta_candle',
+  'minecraft:cyan_banner',
+  'minecraft:yellow_candle',
+  'minecraft:potted_torchflower',
+  'minecraft:orange_stained_glass_pane',
+  'minecraft:purple_candle',
+  'minecraft:lime_banner',
+  'minecraft:potted_blue_orchid',
+  'minecraft:red_candle',
+  'minecraft:green_stained_glass_pane',
+  'minecraft:pink_candle',
+  'minecraft:blue_banner',
+  'minecraft:potted_allium',
+  'minecraft:light_blue_candle',
+  'minecraft:decorated_pot',
+  'minecraft:orange_banner',
+  'minecraft:magenta_glazed_terracotta',
+  'minecraft:cyan_candle'
+];
+
 export class TemplateInteriorDensityRepairAgent {
   run({
     grid,
@@ -35,6 +70,7 @@ export class TemplateInteriorDensityRepairAgent {
       layout,
       materials: architecture.materials || blueprint.materialPalette?.materials || {},
       rooms: importantRooms(layout.rooms || blueprint.layout?.rooms || []),
+      placementCountsByRoom: placementCountsByRoom(decorator.placements || []),
       placements: [],
       applied: [],
       gridPatchCount: 0
@@ -53,6 +89,7 @@ export class TemplateInteriorDensityRepairAgent {
     topUpCategory(context, 'experience', before.experience, targets.experience);
     topUpCategory(context, 'pattern', before.pattern, targets.pattern);
     topUpCategory(context, 'designLaw', before.designLaw, targets.designLaw);
+    topUpVibrantCoverage(context);
 
     refreshDecoratorProfile(context.decorator, context.placements);
     const after = currentCounts(context);
@@ -149,14 +186,74 @@ function topUpCategory(ctx, category, current, target) {
 }
 
 function addDensityPlacement(ctx, room, category, slot) {
+  if (!roomHasDensityCapacity(ctx, room)) return false;
   const spec = densitySpec(ctx, room, category, slot);
   if (!spec) return false;
   const point = densityPoint(room, category, slot, spec.module);
   return addPlacement(ctx, room, spec.role, spec.block, point, spec.placement, spec.module);
 }
 
+function topUpVibrantCoverage(ctx) {
+  const decoratedRooms = ctx.rooms.filter((room) => roomPlacementCount(ctx, room) > 0);
+  if (!decoratedRooms.length) return;
+  const targetRooms = Math.ceil(decoratedRooms.length * 0.6);
+  const vibrantPlacements = ctx.decorator.placements.filter((item) => String(item.role || '').startsWith('vibrant'));
+  const vibrantRooms = new Set(vibrantPlacements.map((item) => item.room_id).filter(Boolean));
+  const vibrantBlocks = new Set(vibrantPlacements.map((item) => blockBase(item.block)).filter(Boolean));
+  let slot = 0;
+  let attempts = 0;
+  const maxAttempts = decoratedRooms.length * VIBRANT_DENSITY_ANCHORS.length;
+
+  while ((vibrantRooms.size < targetRooms || vibrantBlocks.size < 10) && attempts < maxAttempts) {
+    const room = nextVibrantRoom(decoratedRooms, vibrantRooms, attempts);
+    if (roomHasVibrantCapacity(ctx, room)) {
+      const block = nextVibrantBlock(room, slot, vibrantBlocks);
+      const module = vibrantAnchorModule(block);
+      const point = vibrantDensityPoint(room, slot, module);
+      const role = `vibrant-density-anchor-${normalizeRoleToken(room.type || room.id)}-${slot + 1}`;
+      if (addPlacement(ctx, room, role, block, point, 'vibrant-density-room-color-anchor', module)) {
+        vibrantRooms.add(room.id);
+        vibrantBlocks.add(blockBase(block));
+        slot += 1;
+      }
+    }
+    attempts += 1;
+  }
+}
+
+function nextVibrantRoom(rooms = [], vibrantRooms = new Set(), attempts = 0) {
+  const missing = rooms.filter((room) => !vibrantRooms.has(room.id));
+  const pool = missing.length ? missing : rooms;
+  return pool[attempts % pool.length];
+}
+
+function nextVibrantBlock(room = {}, slot = 0, usedBlocks = new Set()) {
+  const start = hashKey(`${room.id || ''}:${room.type || ''}:${room.min_x || 0}:${room.min_z || 0}:${slot}`) % VIBRANT_DENSITY_ANCHORS.length;
+  for (let offset = 0; offset < VIBRANT_DENSITY_ANCHORS.length; offset += 1) {
+    const block = VIBRANT_DENSITY_ANCHORS[(start + offset) % VIBRANT_DENSITY_ANCHORS.length];
+    if (!usedBlocks.has(blockBase(block))) return block;
+  }
+  return VIBRANT_DENSITY_ANCHORS[start];
+}
+
+function vibrantAnchorModule(block) {
+  const base = blockBase(block);
+  if (/_banner$|_stained_glass_pane$|decorated_pot$/.test(base)) return 'decor_detail';
+  if (/_candle$|froglight$|redstone_lamp$|copper_bulb$|end_rod$/.test(base)) return 'decor_light';
+  if (/potted_/.test(base)) return 'decor_plant';
+  return 'decor_floor';
+}
+
+function vibrantDensityPoint(room, slot, module) {
+  const side = ['north', 'east', 'south', 'west'][slot % 4];
+  const offset = (Math.floor(slot / 4) % 3) - 1;
+  const point = module === 'decor_floor' ? centerPoint(room, module) : edgePoint(room, side, offset, module);
+  if (module === 'decor_detail') return { ...point, y: Math.min(room.min_y + 1, room.max_y) };
+  return point;
+}
+
 function densitySpec(ctx, room, category, slot) {
-  const light = ctx.materials.lamp || lightBlockForStyle(ctx.architecture?.style_family, ctx.materials);
+  const light = densityLightBlock(ctx, room, category, slot);
   const accent = ctx.materials.accent || ctx.materials.trim || 'minecraft:smooth_quartz';
   const seat = seatingBlockForStyle(ctx.architecture?.style_family);
   const storage = ctx.materials.furniture || 'minecraft:barrel';
@@ -291,7 +388,50 @@ function addPlacement(ctx, room, role, block, point, placement, module) {
   };
   ctx.decorator.placements.push(placementItem);
   ctx.placements.push(placementItem);
+  ctx.placementCountsByRoom.set(room.id, roomPlacementCount(ctx, room) + 1);
   return true;
+}
+
+function placementCountsByRoom(placements = []) {
+  const counts = new Map();
+  for (const item of placements) {
+    if (!item?.room_id) continue;
+    counts.set(item.room_id, (counts.get(item.room_id) || 0) + 1);
+  }
+  return counts;
+}
+
+function roomHasDensityCapacity(ctx, room) {
+  return roomPlacementCount(ctx, room) < roomDensityBudget(room);
+}
+
+function roomHasVibrantCapacity(ctx, room) {
+  return roomPlacementCount(ctx, room) < roomVibrantBudget(room);
+}
+
+function roomPlacementCount(ctx, room = {}) {
+  return ctx.placementCountsByRoom.get(room.id) || 0;
+}
+
+function roomDensityBudget(room = {}) {
+  const area = roomArea(room);
+  if (area <= 0) return 0;
+  if (['corridor', 'stairs'].includes(room.type)) return Math.min(area, 4);
+  return Math.max(4, Math.min(area, Math.floor(area * 0.62)));
+}
+
+function roomVibrantBudget(room = {}) {
+  const area = roomArea(room);
+  if (area <= 0) return 0;
+  if (['corridor', 'stairs'].includes(room.type)) return Math.min(area, 4);
+  return Math.max(roomDensityBudget(room), Math.min(area, Math.floor(area * 0.72)));
+}
+
+function roomArea(room = {}) {
+  const width = Number(room.max_x) - Number(room.min_x) + 1;
+  const depth = Number(room.max_z) - Number(room.min_z) + 1;
+  if (!Number.isFinite(width) || !Number.isFinite(depth)) return 0;
+  return Math.max(0, width) * Math.max(0, depth);
 }
 
 function findFreeRoomPoint(grid, room, preferred, module) {
@@ -498,6 +638,23 @@ function lightBlockForStyle(styleFamily, materials = {}) {
   return 'minecraft:glowstone';
 }
 
+function densityLightBlock(ctx, room = {}, category = '', slot = 0) {
+  const styleFamily = ctx.architecture?.style_family;
+  const base = ctx.materials.lamp || lightBlockForStyle(styleFamily, ctx.materials);
+  const variants = DENSITY_LIGHT_VARIANTS_BY_STYLE[styleFamily] || DENSITY_LIGHT_VARIANTS_BY_STYLE.default;
+  if (!isGenericLightBlock(base)) return base;
+  const offset = variants.includes(blockBase(base)) ? 0 : 1;
+  return variants[(hashKey(`${room.id || ''}:${room.type || ''}:${category}:${slot}:${base}`) + offset) % variants.length];
+}
+
+function isGenericLightBlock(block) {
+  return /lantern|glowstone|sea_lantern|redstone_lamp|froglight|candle|copper_bulb|end_rod/.test(blockBase(block));
+}
+
+function blockBase(block) {
+  return String(block || '').split('[')[0];
+}
+
 function seatingBlockForStyle(styleFamily) {
   if (styleFamily === 'modern') return 'minecraft:smooth_quartz_stairs[facing=north,half=bottom]';
   if (styleFamily === 'japanese') return 'minecraft:bamboo_slab[type=bottom]';
@@ -516,4 +673,10 @@ function clampInt(value, min, max, fallback = min) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.max(min, Math.min(max, Math.round(number)));
+}
+
+function hashKey(value) {
+  let hash = 0;
+  for (const char of String(value || '')) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash;
 }
