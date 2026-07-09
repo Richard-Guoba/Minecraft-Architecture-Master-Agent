@@ -342,7 +342,7 @@ function existingTags(caseRecord = {}) {
 }
 
 function tagGroupToArea(group) {
-  if (['site', 'massing', 'facade', 'interior'].includes(group)) return group;
+  if (['site', 'massing', 'facade', 'interior', 'roof'].includes(group)) return group;
   if (group === 'room_types') return 'interior';
   return '';
 }

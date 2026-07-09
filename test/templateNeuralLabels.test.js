@@ -22,7 +22,7 @@ test('neural label builder maps known generated aliases into normalized taxonomy
   assert.equal(modern.schema_version, 1);
   assert.equal(modern.review_guidance.suggested_status, 'limited');
   assert.equal(modern.review_guidance.needs_human_review, true);
-  assert.deepEqual(modern.review_guidance.approved_learning_areas.sort(), ['facade', 'interior', 'site'].sort());
+  assert.deepEqual(modern.review_guidance.approved_learning_areas.sort(), ['facade', 'interior', 'roof', 'site'].sort());
   assert.ok(modern.risk_notes.some((item) => /Human review overlay/i.test(item)));
 
   const tagKeys = modern.suggested_tags.map((tag) => `${tag.group}:${tag.id}`).sort();
@@ -31,6 +31,7 @@ test('neural label builder maps known generated aliases into normalized taxonomy
   assert.ok(tagKeys.includes('site:water-edge'));
   assert.ok(tagKeys.includes('site:garden'));
   assert.ok(tagKeys.includes('quality:high-value-reference'));
+  assert.ok(modern.suggested_learning_areas.some((area) => area.area === 'roof'));
   assert.equal(modern.suggested_tags.every((tag) => tag.confidence > 0 && tag.confidence <= 1), true);
   assert.equal(modern.suggested_tags.every((tag) => tag.evidence.length > 0), true);
 });
