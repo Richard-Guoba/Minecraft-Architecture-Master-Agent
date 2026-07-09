@@ -121,6 +121,58 @@ test('explicit interior-noise risk flag adds interior blocked_learning_areas', (
   assert.deepEqual(modern.review_guidance.blocked_learning_areas, ['interior', 'site']);
 });
 
+test('blocked learning areas are excluded from approved_learning_areas', () => {
+  const records = buildNeuralLabelRecords({
+    knowledgeBase: knowledgeBaseFixture({
+      review: {
+        status: 'approved',
+        approved_learning_areas: ['interior', 'site'],
+        blocked_learning_areas: ['interior']
+      },
+      risk_controls: ['non-residential-interior-noise'],
+      review_priority_signals: [],
+      priority: { global_score: 75, risk_penalty: 0 },
+      knowledge_units: [
+        { id: 'interior', area: 'interior', claim: 'Interior learning signal should be blocked.', confidence: 0.9 },
+        { id: 'site', area: 'site', claim: 'Site learning signal.', confidence: 0.9 }
+      ]
+    }),
+    generatedLabels: [generatedLabelFixture()]
+  });
+
+  const modern = records.find((item) => item.case_id === 'house-modern-lake-villa');
+  assert.ok(modern);
+  assert.deepEqual(modern.review_guidance.blocked_learning_areas, ['interior']);
+  assert.deepEqual(modern.review_guidance.approved_learning_areas.includes('interior'), false);
+  assert.deepEqual(modern.review_guidance.approved_learning_areas.includes('site'), true);
+  assert.deepEqual(modern.review_guidance.approved_learning_areas.includes('roof'), true);
+});
+
+test('merge generated rows preserve earlier metadata when later row omits it', () => {
+  const records = buildNeuralLabelRecords({
+    knowledgeBase: knowledgeBaseFixture(),
+    generatedLabels: [
+      {
+        ...generatedLabelFixture(),
+        title: 'Modern Lake Villa',
+        style_family: 'modern'
+      },
+      {
+        ...generatedLabelFixture(),
+        title: '',
+        style_family: undefined,
+        tags: ['water-edge'],
+        learning_roles: ['interior_reference']
+      }
+    ]
+  });
+
+  const modern = records.find((item) => item.case_id === 'house-modern-lake-villa');
+  assert.ok(modern);
+  assert.equal(modern.title, 'Modern Lake Villa');
+  assert.equal(modern.suggested_tags.some((tag) => tag.group === 'interior' && tag.id === 'furnished'), true);
+});
+
 test('suggested learning areas preserve evidence from repeated knowledge units', () => {
   const records = buildNeuralLabelRecords({
     knowledgeBase: knowledgeBaseFixture({

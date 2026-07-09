@@ -157,7 +157,7 @@ function buildRecord(caseRecord = {}, generated = {}, taxonomy = DEFAULT_TAG_TAX
     schema_version: NEURAL_LABEL_SCHEMA_VERSION,
     case_id: caseRecord.case_id,
     file: caseRecord.file,
-    title: caseRecord.title || caseRecord.case_id,
+    title: generated.title || caseRecord.title || caseRecord.case_id,
     suggested_tags: suggestions.sort(sortTags),
     suggested_learning_areas: learningAreas,
     unknown_suggestions: unknown,
@@ -240,11 +240,12 @@ function reviewGuidance(caseRecord = {}, suggestions = [], learningAreas = [], u
     .sort();
   const reviewSignals = caseRecord.review_priority_signals || [];
   const needsHumanReview = caseRecord.review?.status === 'pending' || unknown.length > 0 || reviewSignals.length > 0;
-  const suggestedStatus = safeAreas.length >= 2 ? 'limited' : 'pending';
   const blockedLearningAreas = resolveBlockedLearningAreas(caseRecord);
+  const approvedLearningAreas = safeAreas.filter((area) => !blockedLearningAreas.includes(area));
+  const suggestedStatus = approvedLearningAreas.length >= 2 ? 'limited' : 'pending';
   return {
     suggested_status: suggestedStatus,
-    approved_learning_areas: safeAreas,
+    approved_learning_areas: approvedLearningAreas,
     blocked_learning_areas: blockedLearningAreas,
     needs_human_review: needsHumanReview,
     review_priority: unknown.length || Number(caseRecord.priority?.global_score || 0) >= 80 ? 'high' : 'normal',
@@ -286,7 +287,7 @@ function mergeGeneratedLabelsByFile(records = []) {
 }
 
 function mergeGeneratedRecords(base = {}, next = {}) {
-  return {
+  const merged = {
     ...base,
     ...next,
     tags: [...stringArray(base.tags), ...stringArray(next.tags)],
@@ -297,6 +298,16 @@ function mergeGeneratedRecords(base = {}, next = {}) {
     unknown_tags: [...concatArrayValues(base.unknown_tags), ...concatArrayValues(next.unknown_tags)],
     file: base.file || next.file
   };
+  const scalarKeys = [
+    'file', 'title', 'style_family', 'typology', 'source', 'schema_version'
+  ];
+  for (const key of scalarKeys) {
+    if (!(key in base)) continue;
+    if (!hasValue(next[key])) {
+      merged[key] = base[key];
+    }
+  }
+  return merged;
 }
 
 function mergeCompositionPatterns(base = {}, next = {}) {
@@ -333,6 +344,12 @@ function normalizeCompositionPatterns(value = {}) {
     out[group] = stringArray(patterns);
   }
   return out;
+}
+
+function hasValue(value) {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  return true;
 }
 
 function existingTags(caseRecord = {}) {
