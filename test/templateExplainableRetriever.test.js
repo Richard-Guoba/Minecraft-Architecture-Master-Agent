@@ -165,6 +165,16 @@ test('queryTemplateKnowledge CLI can print neural fusion references', async () =
   assert.match(result.stdout, /Modern Lake Villa/);
 });
 
+test('queryTemplateKnowledge CLI usage mentions --no-neural', () => {
+  const result = spawnSync(process.execPath, ['src/queryTemplateKnowledge.js'], {
+    cwd: process.cwd(),
+    encoding: 'utf8'
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--no-neural/);
+});
+
 test('query:templates package script runs against a provided v2 file', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-query-script-kb-'));
   const kbFile = path.join(root, 'case_library.v2.json');

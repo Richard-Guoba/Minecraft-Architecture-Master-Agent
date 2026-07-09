@@ -101,7 +101,12 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
   const outFile = path.resolve(cwd, args.out || path.join('mc_templates', 'analysis', 'retrieval_eval_report.md'));
 
   const knowledgeBase = JSON.parse(await fs.readFile(kbFile, 'utf8'));
-  const embeddingIndex = JSON.parse(await fs.readFile(indexFile, 'utf8'));
+  let embeddingIndex;
+  try {
+    embeddingIndex = JSON.parse(await fs.readFile(indexFile, 'utf8'));
+  } catch {
+    embeddingIndex = undefined;
+  }
   const outputDir = path.dirname(outFile);
   const result = await writeRetrievalEvalArtifacts({ outputDir, knowledgeBase, embeddingIndex, outFile });
 

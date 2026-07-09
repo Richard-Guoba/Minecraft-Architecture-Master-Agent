@@ -20,7 +20,7 @@ export async function queryTemplateKnowledge({
   const embeddingIndexFile = path.resolve(cwd, args['embedding-index'] || path.join('mc_templates', 'analysis', 'embedding_index.json'));
 
   if (!prompt) {
-    stderr.write('Usage: node src/queryTemplateKnowledge.js [--neural] [--knowledge-base path] [--embedding-index path] "prompt"\n');
+    stderr.write('Usage: node src/queryTemplateKnowledge.js [--neural|--no-neural] [--knowledge-base path] [--embedding-index path] "prompt"\n');
     return 1;
   }
 

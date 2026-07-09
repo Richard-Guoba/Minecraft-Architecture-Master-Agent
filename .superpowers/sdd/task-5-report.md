@@ -65,3 +65,36 @@ Result:
 ## Issues or concerns
 
 - None noted from the implemented task scope.
+
+## Fix: retrieval evaluation fallback safety
+
+- Resolved the CLI wrapper so `npm run evaluate:retrieval` no longer aborts when the default `mc_templates/analysis/embedding_index.json` file is missing.
+- Updated the query CLI usage text to document `--no-neural`.
+
+### Fix TDD Evidence
+
+#### RED
+
+Command:
+
+```powershell
+node --test test/templateRetrievalEvaluation.test.js
+```
+
+Observed failure:
+
+- `evaluate:retrieval CLI falls back when the default embedding index is missing` failed because `src/evaluateTemplateRetrieval.js` exited with status `1` when `mc_templates/analysis/embedding_index.json` was absent.
+
+#### GREEN
+
+Commands:
+
+```powershell
+node --test test/templateExplainableRetriever.test.js test/templateRetrievalEvaluation.test.js
+node --test test/templateEmbeddingIndex.test.js test/templateNeuralLabels.test.js test/templateNeuralRetriever.test.js test/templateExplainableRetriever.test.js test/templateRetrievalEvaluation.test.js
+```
+
+Results:
+
+- `14` tests passed, `0` failed in the focused Stage 5 slice.
+- `38` tests passed, `0` failed in the broader relevant Stage 5 slice.

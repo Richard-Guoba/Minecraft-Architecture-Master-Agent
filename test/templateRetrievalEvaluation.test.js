@@ -66,6 +66,24 @@ test('evaluate:retrieval CLI writes report with provided artifacts', async () =>
   }
 });
 
+test('evaluate:retrieval CLI falls back when the default embedding index is missing', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-retrieval-default-fallback-'));
+  try {
+    const reportFile = path.join(root, 'retrieval_eval_report.md');
+    const result = spawnSync(process.execPath, [
+      'src/evaluateTemplateRetrieval.js',
+      '--out',
+      reportFile
+    ], { cwd: process.cwd(), encoding: 'utf8' });
+
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /Retrieval evaluation wrote/);
+    assert.match(await fs.readFile(reportFile, 'utf8'), /Stage 5 Retrieval Evaluation/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('writeRetrievalEvalArtifacts writes eval set and report', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-retrieval-artifacts-'));
   try {
