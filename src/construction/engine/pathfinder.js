@@ -508,18 +508,42 @@ function fillExteriorApproach(grid, materials, side, spanStart, spanEnd, outside
   const steps = Math.max(1, length);
   if (side === 'south') {
     fillBox(grid, spanStart, 0, outsideCoordinate, spanEnd, 0, outsideCoordinate + steps - 1, pathBlock, 'entry_path');
+    fillLandscapePathEdges(grid, pathBlock, side, spanStart, spanEnd, outsideCoordinate, steps);
     return { axis: 'z', from: { x: spanStart, z: outsideCoordinate }, to: { x: spanEnd, z: outsideCoordinate + steps - 1 }, length: steps };
   }
   if (side === 'north') {
     fillBox(grid, spanStart, 0, outsideCoordinate - steps + 1, spanEnd, 0, outsideCoordinate, pathBlock, 'entry_path');
+    fillLandscapePathEdges(grid, pathBlock, side, spanStart, spanEnd, outsideCoordinate, steps);
     return { axis: 'z', from: { x: spanStart, z: outsideCoordinate - steps + 1 }, to: { x: spanEnd, z: outsideCoordinate }, length: steps };
   }
   if (side === 'east') {
     fillBox(grid, outsideCoordinate, 0, spanStart, outsideCoordinate + steps - 1, 0, spanEnd, pathBlock, 'entry_path');
+    fillLandscapePathEdges(grid, pathBlock, side, spanStart, spanEnd, outsideCoordinate, steps);
     return { axis: 'x', from: { x: outsideCoordinate, z: spanStart }, to: { x: outsideCoordinate + steps - 1, z: spanEnd }, length: steps };
   }
   fillBox(grid, outsideCoordinate - steps + 1, 0, spanStart, outsideCoordinate, 0, spanEnd, pathBlock, 'entry_path');
+  fillLandscapePathEdges(grid, pathBlock, side, spanStart, spanEnd, outsideCoordinate, steps);
   return { axis: 'x', from: { x: outsideCoordinate - steps + 1, z: spanStart }, to: { x: outsideCoordinate, z: spanEnd }, length: steps };
+}
+
+function fillLandscapePathEdges(grid, pathBlock, side, spanStart, spanEnd, outsideCoordinate, steps) {
+  if (side === 'south') {
+    fillBox(grid, spanStart, 0, outsideCoordinate, spanStart, 0, outsideCoordinate + steps - 1, pathBlock, 'landscape_path');
+    fillBox(grid, spanEnd, 0, outsideCoordinate, spanEnd, 0, outsideCoordinate + steps - 1, pathBlock, 'landscape_path');
+    return;
+  }
+  if (side === 'north') {
+    fillBox(grid, spanStart, 0, outsideCoordinate - steps + 1, spanStart, 0, outsideCoordinate, pathBlock, 'landscape_path');
+    fillBox(grid, spanEnd, 0, outsideCoordinate - steps + 1, spanEnd, 0, outsideCoordinate, pathBlock, 'landscape_path');
+    return;
+  }
+  if (side === 'east') {
+    fillBox(grid, outsideCoordinate, 0, spanStart, outsideCoordinate + steps - 1, 0, spanStart, pathBlock, 'landscape_path');
+    fillBox(grid, outsideCoordinate, 0, spanEnd, outsideCoordinate + steps - 1, 0, spanEnd, pathBlock, 'landscape_path');
+    return;
+  }
+  fillBox(grid, outsideCoordinate - steps + 1, 0, spanStart, outsideCoordinate, 0, spanStart, pathBlock, 'landscape_path');
+  fillBox(grid, outsideCoordinate - steps + 1, 0, spanEnd, outsideCoordinate, 0, spanEnd, pathBlock, 'landscape_path');
 }
 
 function addDoorLintel(grid, materials, { side, start, end, boundary, insideStep, thickness, height }) {

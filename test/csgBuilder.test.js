@@ -122,6 +122,19 @@ test('CSGBuilder renders structure-agent braces and anchors for cantilever decks
   assert.ok(shell.csg.structure.bracingElementCount >= 2);
 });
 
+test('CSGBuilder keeps coastal flood vents after facade detailing', () => {
+  const prompt = '建一个海滨日落度假屋，宽33深21，浅色材料，大露台，开放客厅，餐厨一体，主卧和书房，要求入口、露台和窗景都面向海岸线。';
+  const architecture = buildFallbackArchitecture(prompt);
+  const spec = deriveBuildSpec(prompt, architecture);
+  const topology = buildFallbackTopology(prompt, architecture, spec);
+  const structure = buildFallbackStructure(architecture, spec, topology);
+  const shell = new CSGBuilder(spec, architecture.materials).generateShell(architecture, { structure });
+  const counts = moduleCounts(shell.grid);
+
+  assert.equal(structure.engine_hints.render_flood_vents, true);
+  assert.ok(counts.flood_vent > 0);
+});
+
 test('CSGBuilder renders structure-agent trunk core for treehouses', () => {
   const { shell, structure } = buildStructuredShell('建一个树屋，树上小屋，环绕露台，木头和树叶屋顶');
   const counts = moduleCounts(shell.grid);
