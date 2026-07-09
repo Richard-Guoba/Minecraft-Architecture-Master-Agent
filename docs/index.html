@@ -10,159 +10,203 @@
   <body>
     <header class="site-header">
       <a class="brand" href="#top" aria-label="Minecraft Architecture Master Agent home">
-        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-mark" aria-hidden="true">
+          <span></span>
+        </span>
         <span>Minecraft Architecture Master Agent</span>
       </a>
       <nav class="nav" aria-label="Primary navigation">
-        <a href="#pipeline">Pipeline</a>
-        <a href="#capabilities">Capabilities</a>
+        <a class="active" href="#overview">Overview</a>
+        <a href="#architecture">Architecture</a>
         <a href="#benchmarks">Benchmarks</a>
         <a href="#roadmap">Roadmap</a>
-        <a href="https://github.com/CityC196/Minecraft-Constructing-Agents">GitHub</a>
+        <a class="github-link" href="https://github.com/CityC196/Minecraft-Constructing-Agents" aria-label="Open GitHub repository">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.52 2.87 8.35 6.84 9.71.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.72-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.1-1.49-1.1-1.49-.9-.63.07-.62.07-.62 1 .07 1.52 1.05 1.52 1.05.89 1.55 2.34 1.1 2.91.84.09-.66.35-1.1.63-1.35-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.96c.85 0 1.7.12 2.5.35 1.9-1.33 2.74-1.05 2.74-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.07.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.8 0 .27.18.59.69.49A10.08 10.08 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/>
+          </svg>
+          GitHub
+        </a>
       </nav>
     </header>
 
     <main id="top">
-      <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-bg" aria-hidden="true">
-          <img src="assets/architecture-flow.svg" alt="">
-        </div>
-        <div class="hero-inner">
+      <section id="overview" class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy-block">
           <h1 id="hero-title">Minecraft Architecture Master Agent</h1>
           <p class="hero-copy">
-            A long-term hybrid architecture agent that turns natural-language building requests into runnable Minecraft Java datapacks through semantic planning, deterministic geometry, template memory, benchmarking, and repair loops.
+            Research project exploring how semantic agents, deterministic geometry, template memory, benchmarking, and repair loops can turn natural-language prompts into runnable Minecraft Java datapacks.
           </p>
-          <div class="command-row" aria-label="Common commands">
-            <a class="command-link" href="https://github.com/CityC196/Minecraft-Constructing-Agents#readme">README</a>
-            <a class="command-link" href="https://github.com/CityC196/Minecraft-Constructing-Agents/blob/main/docs/architecture.md">Architecture</a>
-            <a class="command-link" href="https://github.com/CityC196/Minecraft-Constructing-Agents/blob/main/docs/roadmap.md">Roadmap</a>
+          <div class="terminal-stack" aria-label="Project commands">
+            <pre class="terminal"><code><span>$</span> npm start -- --mode mock "建一个湖边现代两层别墅，带大玻璃、水边平台和前景花园"</code></pre>
+            <pre class="terminal"><code><span>$</span> npm run benchmark:baseline -- --out out/stage1-readiness-baseline</code></pre>
           </div>
-          <pre class="terminal"><code>npm start -- --mode mock "建一个湖边现代两层别墅，带大玻璃、水边平台和前景花园"</code></pre>
+          <div class="hero-actions">
+            <a href="https://github.com/CityC196/Minecraft-Constructing-Agents#readme">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5a2.5 2.5 0 0 1-2.5 2.5H6.75A2.75 2.75 0 0 1 4 18.25V5.5Zm2.5-.7a.7.7 0 0 0-.7.7v10.82c.3-.12.62-.18.95-.18H18.2V4.8H6.5Zm.25 13.14a.95.95 0 0 0 0 1.9H17.5a.7.7 0 0 0 .7-.7v-1.2H6.75Z"/></svg>
+              Read the README
+            </a>
+            <a href="https://github.com/CityC196/Minecraft-Constructing-Agents/blob/main/docs/architecture.md">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4V4Zm2 2v2h2V6H6Zm8-2h6v6h-6V4Zm2 2v2h2V6h-2ZM4 14h6v6H4v-6Zm2 2v2h2v-2H6Zm8-2h6v6h-6v-6Zm2 2v2h2v-2h-2Z"/></svg>
+              Read the docs
+            </a>
+          </div>
         </div>
+
+        <section class="system-overview" aria-labelledby="system-overview-title">
+          <h2 id="system-overview-title">System Overview</h2>
+          <div class="system-grid">
+            <div class="system-column input-column">
+              <span class="column-label">Input</span>
+              <article class="system-card input-card">
+                <h3>Natural Language Prompt</h3>
+                <p>"Modern waterfront villa with glass, deck, roof terrace, and detailed interiors"</p>
+                <ul>
+                  <li>Seed</li>
+                  <li>Style and site intent</li>
+                  <li>Size and material hints</li>
+                </ul>
+              </article>
+            </div>
+
+            <div class="flow-arrow" aria-hidden="true"></div>
+
+            <div class="system-column semantic-column">
+              <span class="column-label green">Semantic Agents</span>
+              <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5 12 2l8 4.5v9L12 20l-8-4.5v-9Zm2 1.17v6.66l6 3.38 6-3.38V7.67l-6-3.38-6 3.38Z"/></svg><span>Architect intent</span></article>
+              <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4V4Zm2 2v3h3V6H6Zm7-2h7v7h-7V4Zm2 2v3h3V6h-3ZM4 13h7v7H4v-7Zm2 2v3h3v-3H6Zm7-2h7v7h-7v-7Zm2 2v3h3v-3h-3Z"/></svg><span>Room graph planning</span></article>
+              <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v3H5V4Zm0 5h14v3H5V9Zm0 5h14v3H5v-3Zm0 5h9v1H5v-1Z"/></svg><span>Template KB v2 retrieval</span></article>
+              <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Zm0 2.2L17.4 8 12 10.8 6.6 8 12 5.2ZM6 9.7l5 2.6v5.8l-5-2.5V9.7Zm7 8.4v-5.8l5-2.6v5.9l-5 2.5Z"/></svg><span>Concept composition</span></article>
+            </div>
+
+            <div class="flow-arrow" aria-hidden="true"></div>
+
+            <div class="system-column geometry-column">
+              <span class="column-label blue">Deterministic Geometry</span>
+              <article class="system-step blue-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h18v18H3V3Zm2 2v4h4V5H5Zm6 0v4h8V5h-8ZM5 11v8h4v-8H5Zm6 0v8h8v-8h-8Z"/></svg><span>CSG / BSP / A*</span></article>
+              <article class="system-step blue-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.8 3.8L12 12 5.2 8.1 12 4.3Zm-7 5.5 6 3.4v6.5l-6-3.4V9.8Zm8 9.9v-6.5l6-3.4v6.5l-6 3.4Z"/></svg><span>Shell, roof, rooms</span></article>
+              <article class="system-step blue-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v4H5V5Zm0 6h14v8H5v-8Zm2 2v4h10v-4H7Z"/></svg><span>Interior and site modules</span></article>
+              <article class="system-step blue-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10.3 15.6 7.8-7.8 1.4 1.4-9.2 9.2-5-5 1.4-1.4 3.6 3.6Z"/></svg><span>QA, repair, scorecard</span></article>
+            </div>
+
+            <div class="flow-arrow" aria-hidden="true"></div>
+
+            <div class="system-column output-column">
+              <span class="column-label amber">Output</span>
+              <article class="output-card">
+                <h3>Minecraft Java Datapack</h3>
+                <pre><code>out/&lt;timestamp&gt;/
+├─ blueprint.json
+├─ architect_datapack/
+├─ preview.html
+├─ run_report.md
+└─ architecture_scorecard.json</code></pre>
+              </article>
+              <article class="load-card">
+                <strong>Load in Minecraft</strong>
+                <code>/function architect:run</code>
+              </article>
+            </div>
+          </div>
+        </section>
       </section>
 
-      <section class="status-strip" aria-label="Current project status">
-        <div>
-          <strong>210/210</strong>
-          <span>tests passing</span>
-        </div>
-        <div>
-          <strong>10/10</strong>
-          <span>baseline prompts generated</span>
-        </div>
-        <div>
-          <strong>100/100</strong>
-          <span>average scorecard</span>
-        </div>
-        <div>
+      <section id="benchmarks" class="metric-strip" aria-label="Current verified project metrics">
+        <article>
+          <span>Latest Baseline</span>
+          <strong>Stage 1 Readiness</strong>
+          <em>mock mode, July 9 2026</em>
+        </article>
+        <article>
+          <span>Tests Passing</span>
+          <strong>210 / 210</strong>
+          <em>node --test</em>
+        </article>
+        <article>
+          <span>Baseline Prompts</span>
+          <strong>10 / 10</strong>
+          <em>all generated</em>
+        </article>
+        <article>
+          <span>Avg. Scorecard</span>
+          <strong>100 / 100</strong>
+          <em>Stage 1 summary</em>
+        </article>
+        <article>
+          <span>Advanced Score</span>
+          <strong>39.8 / 40</strong>
+          <em>average</em>
+        </article>
+        <article>
+          <span>Repair Queue</span>
           <strong>0</strong>
-          <span>repair priorities</span>
-        </div>
+          <em>priorities open</em>
+        </article>
       </section>
 
-      <section id="pipeline" class="section split">
-        <div>
-          <h2>Built As A Hybrid Agent, Not A Block Matrix Guess</h2>
-          <p>
-            The language model produces high-level semantic JSON. Local JavaScript owns the geometry, rooms, paths, stairs, furniture, validation, scorecards, and datapack export. This keeps the creative layer flexible while keeping Minecraft output reproducible.
-          </p>
-        </div>
-        <ol class="pipeline-list">
-          <li><span>01</span><strong>Prompt understanding</strong><em>Style, typology, site, materials, and constraints.</em></li>
-          <li><span>02</span><strong>Semantic planning</strong><em>Massing, room graph, facade, roof, site, and interior intent.</em></li>
-          <li><span>03</span><strong>Deterministic construction</strong><em>CSG shell, BSP rooms, A* doors and stairs, template-aware site modules.</em></li>
-          <li><span>04</span><strong>Evaluation and export</strong><em>QA, repair hints, scorecard, preview, report, mcfunction, datapack.</em></li>
-        </ol>
-      </section>
+      <section class="summary-band" aria-label="Project summary">
+        <section id="architecture" class="summary-panel pipeline-panel" aria-labelledby="pipeline-title">
+          <h2 id="pipeline-title">Pipeline</h2>
+          <ol class="numbered-list">
+            <li><span>1</span><div><strong>Parse intent</strong><p>Extract style, site, scale, materials, constraints, and design brief.</p></div></li>
+            <li><span>2</span><div><strong>Plan space graph</strong><p>Generate rooms, privacy levels, edges, circulation, and floor hints.</p></div></li>
+            <li><span>3</span><div><strong>Retrieve templates</strong><p>Use KB v2 case cards, laws, and reviewed learning areas as references.</p></div></li>
+            <li><span>4</span><div><strong>Synthesize geometry</strong><p>Turn semantic plans into shells, rooms, roofs, doors, stairs, interiors, and site modules.</p></div></li>
+            <li><span>5</span><div><strong>Export datapack</strong><p>Write Minecraft Java 1.21 commands, preview, report, and scorecard artifacts.</p></div></li>
+            <li><span>6</span><div><strong>Evaluate and repair</strong><p>Run QA, repair hints, score rubric, command optimization, and benchmark reporting.</p></div></li>
+          </ol>
+        </section>
 
-      <section id="capabilities" class="section">
-        <h2>Current Capabilities</h2>
-        <div class="feature-grid">
-          <article>
-            <h3>Construction Pipeline</h3>
-            <p>Generates legal Minecraft Java 1.21 datapacks with shell, roof, windows, rooms, entry approach, stairs, interiors, site modules, preview, report, and scorecard.</p>
-          </article>
-          <article>
-            <h3>Template Memory v2</h3>
-            <p>Converts local schematics into reviewed case cards, knowledge units, retrieval indexes, design laws, and explainable prompt references.</p>
-          </article>
-          <article>
-            <h3>Readable Benchmarks</h3>
-            <p>Runs a fixed 10-prompt Architecture Master baseline and writes JSON, CSV, Markdown, gallery, and human feedback templates.</p>
-          </article>
-          <article>
-            <h3>Repair Readiness</h3>
-            <p>Tracks weak scorecard dimensions and repairs them through tests, generation changes, and rerun baseline evidence.</p>
-          </article>
-        </div>
-      </section>
+        <section id="capabilities" class="summary-panel" aria-labelledby="capabilities-title">
+          <h2 id="capabilities-title">Current Capabilities</h2>
+          <ul class="check-list">
+            <li><strong>Natural language to buildable datapacks</strong><span>Mock mode works without API keys; LLM mode can supply semantic JSON.</span></li>
+            <li><strong>Deterministic geometry engine</strong><span>CSG, BSP, A*, structure modules, facade, roof, site, and interiors.</span></li>
+            <li><strong>Template Knowledge Base v2</strong><span>Reviewed case cards, retrieval index, design laws, and explainable references.</span></li>
+            <li><strong>Benchmark suite</strong><span>Fixed Architecture Master prompt set, summaries, gallery, CSV, and feedback template.</span></li>
+            <li><strong>Repair readiness</strong><span>Stage 1 closed the visible site and comfort repair queue.</span></li>
+            <li><strong>Extensible architecture</strong><span>Agents and evaluators stay modular around `src/construction`.</span></li>
+          </ul>
+        </section>
 
-      <section id="benchmarks" class="section split">
-        <div>
-          <h2>Stage 1 Readiness Baseline</h2>
-          <p>
-            The current main branch has an empty repair queue. The baseline is not the final ambition; it is the stable floor for bigger work like multi-concept design and critic-driven repair.
-          </p>
-          <div class="link-row">
-            <a href="https://github.com/CityC196/Minecraft-Constructing-Agents/blob/main/docs/benchmarks/stage1-readiness-baseline.md">Read Stage 1 summary</a>
-            <a href="https://github.com/CityC196/Minecraft-Constructing-Agents/blob/main/docs/benchmarks/stage0-baseline-c04d104.md">Compare Stage 0</a>
+        <section id="roadmap" class="summary-panel" aria-labelledby="roadmap-title">
+          <h2 id="roadmap-title">Roadmap</h2>
+          <ol class="roadmap-list">
+            <li class="done"><span></span><div><strong>Stage 1 - Baseline Readiness</strong><em>Completed</em><p>Stable benchmark floor, scorecard, and repair closure evidence.</p></div></li>
+            <li class="done"><span></span><div><strong>Stage 2 - Template KB v2</strong><em>Completed</em><p>Reviewed knowledge units, retrieval explanations, and design laws.</p></div></li>
+            <li class="active"><span></span><div><strong>Stage 3 - Concept Studio</strong><em>Next</em><p>Generate several design concepts per prompt before construction.</p></div></li>
+            <li><span></span><div><strong>Stage 4 - Critic Council</strong><em>Planned</em><p>Separate critics for buildability, habitation, style, composition, site, and novelty.</p></div></li>
+          </ol>
+        </section>
+
+        <section class="summary-panel files-panel" aria-labelledby="files-title">
+          <h2 id="files-title">Project Files</h2>
+          <div class="repo-tree" aria-label="Repository structure">
+            <code>src/</code>
+            <span>├─ construction/</span>
+            <span>│  ├─ agents/</span>
+            <span>│  ├─ engine/</span>
+            <span>│  └─ templates/</span>
+            <code>mc_templates/</code>
+            <span>├─ analysis/</span>
+            <span>└─ curation/</span>
+            <code>test/</code>
+            <code>docs/</code>
           </div>
-        </div>
-        <div class="score-table" role="table" aria-label="Stage 1 benchmark metrics">
-          <div role="row"><span role="cell">Generated</span><strong role="cell">10 / 10</strong></div>
-          <div role="row"><span role="cell">Average scorecard</span><strong role="cell">100 / 100</strong></div>
-          <div role="row"><span role="cell">Base score</span><strong role="cell">60 / 60</strong></div>
-          <div role="row"><span role="cell">Advanced score</span><strong role="cell">39.8 / 40</strong></div>
-          <div role="row"><span role="cell">Red flags</span><strong role="cell">0</strong></div>
-          <div role="row"><span role="cell">Repair priorities</span><strong role="cell">0</strong></div>
-        </div>
-      </section>
-
-      <section id="roadmap" class="section">
-        <h2>Next: Concept Studio</h2>
-        <div class="roadmap-grid">
-          <article class="current">
-            <span>Ready</span>
-            <h3>Stable Generation Floor</h3>
-            <p>Baseline, scorecards, template memory, and site/comfort repair loops are in place.</p>
-          </article>
-          <article>
-            <span>Stage 3</span>
-            <h3>Multi-Concept Design</h3>
-            <p>Generate several design concepts per prompt, compare tradeoffs, then build the strongest candidate.</p>
-          </article>
-          <article>
-            <span>Stage 4</span>
-            <h3>Critic Council</h3>
-            <p>Separate buildability, habitation, style, composition, site, and novelty critics with repair plans.</p>
-          </article>
-          <article>
-            <span>Later</span>
-            <h3>Learning Studio</h3>
-            <p>Use neural models for tagging, retrieval, parameter prediction, and local semantic-voxel completion.</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="section split">
-        <div>
-          <h2>Project Files</h2>
-          <p>
-            The repository now keeps its default surface focused on long-term engineering. Legacy showcase reports and screenshots were removed from the main tree; useful project history remains in git and benchmark docs.
-          </p>
-        </div>
-        <div class="file-list">
-          <a href="https://github.com/CityC196/Minecraft-Constructing-Agents#readme"><strong>README.md</strong><span>Main repository entry</span></a>
-          <a href="https://github.com/CityC196/Minecraft-Constructing-Agents/blob/main/docs/project-map.md"><strong>docs/project-map.md</strong><span>Directory guide</span></a>
-          <a href="https://github.com/CityC196/Minecraft-Constructing-Agents/blob/main/docs/architecture.md"><strong>docs/architecture.md</strong><span>Active pipeline architecture</span></a>
-          <a href="https://github.com/CityC196/Minecraft-Constructing-Agents/blob/main/docs/roadmap.md"><strong>docs/roadmap.md</strong><span>Long-term Architecture Master plan</span></a>
-        </div>
+          <ul class="file-notes">
+            <li><strong>Core runtime</strong><span>`src/construction` generation pipeline</span></li>
+            <li><strong>Template memory</strong><span>case cards, indexes, reviews, laws</span></li>
+            <li><strong>Benchmarks</strong><span>versioned summaries under `docs/benchmarks`</span></li>
+            <li><strong>Docs</strong><span>architecture, roadmap, project map, Pages source</span></li>
+          </ul>
+        </section>
       </section>
     </main>
 
     <footer class="footer">
-      <span>Minecraft Architecture Master Agent</span>
-      <a href="https://github.com/CityC196/Minecraft-Constructing-Agents">CityC196/Minecraft-Constructing-Agents</a>
+      <span>MIT License</span>
+      <span>Built for research and reproducibility.</span>
+      <a href="https://github.com/CityC196/Minecraft-Constructing-Agents">Star on GitHub</a>
+      <a href="https://github.com/CityC196/Minecraft-Constructing-Agents/blob/main/docs/project-map.md">Project map</a>
     </footer>
   </body>
 </html>
