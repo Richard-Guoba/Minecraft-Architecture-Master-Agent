@@ -15,18 +15,21 @@ The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled f
 - Runtime: Node.js ESM, no Python required for normal generation
 - Knowledge layer: Template Knowledge Base v2 with reviewed case cards, explainable retrieval, and design laws
 - Neural assist layer: Stage 5 artifacts can suggest labels, build deterministic embedding indexes, evaluate retrieval, and opt into fusion retrieval without changing default mock behavior
+- Semantic patch layer: Stage 6 builds deterministic semantic voxel patch datasets, inspection reports, ranked training candidates, and a read-only `query:patches` review CLI
 - Concept layer: Stage 3 Concept Studio can generate, select, or fuse multiple explainable design concepts before construction
 - Critique layer: Stage 4 Critic Council summarizes buildability, connectivity, habitation, style, composition, and site findings
 - Benchmark readiness: 10/10 baseline prompts generated, average scorecard 100/100, red flags 0, repair priority queue empty
-- Active stage: Stage 5 neural retrieval and automatic tagging
+- Active stage: Stage 6 semantic patch completion MVP is complete; raw patch extraction, neural patch training, and runtime patch generation remain future work
 
 ## Quick Start
 
 ```powershell
 npm install
 npm test
+npm run analyze:templates -- --offline
 npm run evaluate:retrieval
 npm run query:templates -- --neural "建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰"
+npm run query:patches -- --dataset mc_templates/analysis/semantic_patch_dataset.json --category facade --band high
 npm start -- --mode mock --concepts 3 "建一个湖边现代两层别墅，带大玻璃、水边平台和前景花园"
 npm start -- --mode mock --neural-retrieval "建一个湖边现代两层别墅，带大玻璃和精致内饰"
 ```
@@ -109,6 +112,7 @@ npm test
 npm run benchmark:baseline -- --out out/stage1-readiness-baseline
 npm run query:templates -- "建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰"
 npm run analyze:templates -- --offline
+npm run query:patches -- --dataset mc_templates/analysis/semantic_patch_dataset.json --limit 5
 npm start -- --mode mock --seed 7101 --concepts 3 --concept-strategy fuse "建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰"
 npm start -- --mode mock --no-critics "建一个欧式大房子"
 npm start -- --help
@@ -130,4 +134,5 @@ The project has moved past early showcase packaging. Current work should optimiz
 2. Make reference retrieval and template memory more useful.
 3. Preserve Stage 3 Concept Studio as the concept-first planning layer.
 4. Use Stage 4 Critic Council findings to guide repair priorities.
-5. Use neural models later for retrieval, tagging, parameter prediction, and local semantic-voxel patch completion.
+5. Keep Stage 5 neural retrieval optional and artifact-gated so rule-only generation remains reliable.
+6. Use Stage 6 semantic patch artifacts as the reviewable bridge toward future learned roof, facade, interior, and courtyard detail completion.

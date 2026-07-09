@@ -34,11 +34,11 @@
         <div class="hero-copy-block">
           <h1 id="hero-title">Minecraft Architecture Master Agent</h1>
           <p class="hero-copy">
-            Research project exploring how semantic agents, deterministic geometry, template memory, benchmarking, and repair loops can turn natural-language prompts into runnable Minecraft Java datapacks.
+            Research project exploring how semantic agents, deterministic geometry, template memory, semantic patch artifacts, benchmarking, and repair loops can turn natural-language prompts into runnable Minecraft Java datapacks.
           </p>
           <div class="terminal-stack" aria-label="Project commands">
             <pre class="terminal"><code><span>$</span> npm start -- --mode mock --concepts 3 "建一个湖边现代两层别墅，带大玻璃、水边平台和前景花园"</code></pre>
-            <pre class="terminal"><code><span>$</span> npm run benchmark:baseline -- --out out/stage1-readiness-baseline</code></pre>
+            <pre class="terminal"><code><span>$</span> npm run query:patches -- --dataset mc_templates/analysis/semantic_patch_dataset.json --category facade --band high</code></pre>
           </div>
           <div class="hero-actions">
             <a href="https://github.com/Richard-Guoba/Minecraft-Architecture-Master-Agent#readme">
@@ -76,6 +76,8 @@
               <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4V4Zm2 2v3h3V6H6Zm7-2h7v7h-7V4Zm2 2v3h3V6h-3ZM4 13h7v7H4v-7Zm2 2v3h3v-3H6Zm7-2h7v7h-7v-7Zm2 2v3h3v-3h-3Z"/></svg><span>Room graph planning</span></article>
               <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v3H5V4Zm0 5h14v3H5V9Zm0 5h14v3H5v-3Zm0 5h9v1H5v-1Z"/></svg><span>Template KB v2 retrieval</span></article>
               <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Zm0 2.2L17.4 8 12 10.8 6.6 8 12 5.2ZM6 9.7l5 2.6v5.8l-5-2.5V9.7Zm7 8.4v-5.8l5-2.6v5.9l-5 2.5Z"/></svg><span>Concept Studio</span></article>
+              <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v3H4V5Zm2 5h12v3H6v-3Zm3 5h6v4H9v-4Z"/></svg><span>Neural retrieval artifacts</span></article>
+              <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Zm-7-7v3h3V6H6Zm9 0v3h3V6h-3ZM6 15v3h3v-3H6Zm9 0v3h3v-3h-3Z"/></svg><span>Semantic patch candidates</span></article>
             </div>
 
             <div class="flow-arrow" aria-hidden="true"></div>
@@ -93,7 +95,7 @@
             <div class="system-column output-column">
               <span class="column-label amber">Output</span>
               <article class="output-card">
-                <h3>Minecraft Java Datapack</h3>
+                <h3>Datapack and Analysis Artifacts</h3>
                 <pre><code>out/&lt;timestamp&gt;/
 ├─ blueprint.json
 ├─ architect_datapack/
@@ -101,7 +103,12 @@
 ├─ run_report.md
 ├─ architecture_scorecard.json
 ├─ concept_studio.json
-└─ critic_council.json</code></pre>
+└─ critic_council.json
+
+mc_templates/analysis/
+├─ embedding_index.json
+├─ semantic_patch_dataset.json
+└─ semantic_patch_report.md</code></pre>
               </article>
               <article class="load-card">
                 <strong>Load in Minecraft</strong>
@@ -115,28 +122,28 @@
       <section id="benchmarks" class="metric-strip" aria-label="Current verified project metrics">
         <article>
           <span>Latest Stage</span>
-          <strong>Stage 4 Critic Council</strong>
-          <em>default-on review layer</em>
+          <strong>Stage 6 Semantic Patch Completion</strong>
+          <em>artifacts-first patch layer</em>
         </article>
         <article>
           <span>Tests Passing</span>
-          <strong>229 / 229</strong>
+          <strong>291 / 291</strong>
           <em>node --test</em>
+        </article>
+        <article>
+          <span>Semantic Patches</span>
+          <strong>255</strong>
+          <em>real corpus smoke</em>
+        </article>
+        <article>
+          <span>Training Candidates</span>
+          <strong>250</strong>
+          <em>ranked for review</em>
         </article>
         <article>
           <span>Baseline Prompts</span>
           <strong>10 / 10</strong>
           <em>all generated</em>
-        </article>
-        <article>
-          <span>Avg. Scorecard</span>
-          <strong>100 / 100</strong>
-          <em>Stage 1 summary</em>
-        </article>
-        <article>
-          <span>Advanced Score</span>
-          <strong>39.8 / 40</strong>
-          <em>average</em>
         </article>
         <article>
           <span>Repair Queue</span>
@@ -153,9 +160,10 @@
             <li><span>2</span><div><strong>Plan space graph</strong><p>Generate rooms, privacy levels, edges, circulation, and floor hints.</p></div></li>
             <li><span>3</span><div><strong>Retrieve templates</strong><p>Use KB v2 case cards, laws, and reviewed learning areas as references.</p></div></li>
             <li><span>4</span><div><strong>Develop concepts</strong><p>Generate, rank, select, or fuse explainable design concepts before construction.</p></div></li>
-            <li><span>5</span><div><strong>Synthesize geometry</strong><p>Turn semantic plans into shells, rooms, roofs, doors, stairs, interiors, and site modules.</p></div></li>
-            <li><span>6</span><div><strong>Export datapack</strong><p>Write Minecraft Java 1.21 commands, preview, report, scorecard, concept, and critic artifacts.</p></div></li>
+            <li><span>5</span><div><strong>Analyze learning artifacts</strong><p>Build Stage 5 embeddings and Stage 6 semantic patch candidates without changing default generation.</p></div></li>
+            <li><span>6</span><div><strong>Synthesize geometry</strong><p>Turn semantic plans into shells, rooms, roofs, doors, stairs, interiors, and site modules.</p></div></li>
             <li><span>7</span><div><strong>Evaluate and critique</strong><p>Run QA, repair hints, score rubric, command optimization, benchmark reporting, and Critic Council review.</p></div></li>
+            <li><span>8</span><div><strong>Export datapack</strong><p>Write Minecraft Java 1.21 commands, preview, report, scorecard, concept, and critic artifacts.</p></div></li>
           </ol>
         </section>
 
@@ -165,8 +173,10 @@
             <li><strong>Natural language to buildable datapacks</strong><span>Mock mode works without API keys; LLM mode can supply semantic JSON.</span></li>
             <li><strong>Deterministic geometry engine</strong><span>CSG, BSP, A*, structure modules, facade, roof, site, and interiors.</span></li>
             <li><strong>Template Knowledge Base v2</strong><span>Reviewed case cards, retrieval index, design laws, and explainable references.</span></li>
+            <li><strong>Neural retrieval artifacts</strong><span>Stage 5 labels, deterministic embedding indexes, retrieval evaluation, and opt-in fusion retrieval.</span></li>
             <li><strong>Concept Studio</strong><span>Generates, ranks, selects, or fuses multiple explainable concepts before construction.</span></li>
             <li><strong>Critic Council</strong><span>Buildability, connectivity, habitation, style, composition, and site critics produce repair guidance; use `--no-critics` to disable it.</span></li>
+            <li><strong>Semantic patch dataset</strong><span>Stage 6 produces roof, facade, interior, and courtyard patch artifacts plus ranked training candidates via `query:patches`.</span></li>
             <li><strong>Benchmark suite</strong><span>Fixed Architecture Master prompt set, summaries, gallery, CSV, and feedback template.</span></li>
             <li><strong>Repair readiness</strong><span>Stage 1 closed the visible site and comfort repair queue.</span></li>
             <li><strong>Extensible architecture</strong><span>Agents and evaluators stay modular around `src/construction`.</span></li>
@@ -180,7 +190,8 @@
             <li class="done"><span></span><div><strong>Stage 2 - Template KB v2</strong><em>Completed</em><p>Reviewed knowledge units, retrieval explanations, and design laws.</p></div></li>
             <li class="done"><span></span><div><strong>Stage 3 - Concept Studio</strong><em>Completed</em><p>Generate, compare, select, or fuse explainable design concepts per prompt.</p></div></li>
             <li class="done"><span></span><div><strong>Stage 4 - Critic Council</strong><em>Completed</em><p>Separate critics summarize buildability, habitation, style, composition, connectivity, and site repair guidance.</p></div></li>
-            <li class="active"><span></span><div><strong>Stage 5 - Neural Retrieval</strong><em>In progress</em><p>Artifacts-first neural assist suggests labels, builds deterministic embedding indexes, and evaluates fusion retrieval while default generation remains rule-only.</p></div></li>
+            <li class="done"><span></span><div><strong>Stage 5 - Neural Retrieval</strong><em>Completed</em><p>Artifacts-first neural assist suggests labels, builds deterministic embedding indexes, and evaluates fusion retrieval while default generation remains rule-only.</p></div></li>
+            <li class="active"><span></span><div><strong>Stage 6 - Semantic Patch Completion</strong><em>Completed</em><p>Deterministic semantic voxel patch dataset, completion repair boundary, inspection report, training candidate ranking, and `query:patches` review CLI.</p></div></li>
           </ol>
         </section>
 

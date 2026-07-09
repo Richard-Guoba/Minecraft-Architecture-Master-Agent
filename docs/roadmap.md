@@ -641,18 +641,21 @@ RTX 4060 适合：
 
 目标：让建筑细节从规则堆叠变成可学习模式。
 
+当前 MVP 状态：Stage 6 首版已经完成 artifacts-first 语义 patch 边界。离线分析会生成 `semantic_patch_dataset.json`、`semantic_patch_dataset.jsonl` 和 `semantic_patch_report.md`，覆盖 roof、facade、interior、courtyard 四类 semantic voxel patch；运行时提供 deterministic retrieval-completion 和冲突修复边界，但默认不改变 datapack 生成。训练候选会被质量评分和分档，并可通过 `npm run query:patches` 按 category、band、risk 文本和分数查询。真正的 raw schematic patch extraction、神经 patch 模型训练、以及默认生成流程中的自动 patch 注入仍保留为后续工作。
+
 交付：
 
 - semantic voxel patch dataset。
-- 局部补全模型。
-- 屋顶、立面、室内、庭院四类 patch 生成。
+- deterministic 局部补全 baseline，后续可替换为神经补全模型。
+- 屋顶、立面、室内、庭院四类 patch 生成候选。
 - 规则后处理和冲突修复。
+- inspection report、training candidate ranking 和 `query:patches` 查询入口。
 
 成功标准：
 
-- 建筑细节更自然。
-- 立面和屋顶不再明显模板化。
-- 局部模型不会破坏通行和导出。
+- patch 数据集可审查、可复现、可 JSONL 导出。
+- 训练候选能按质量、类别和风险快速筛选。
+- 局部补全边界不会破坏通行、导出或默认规则生成。
 
 ### Stage 7：粗语义体素生成
 
