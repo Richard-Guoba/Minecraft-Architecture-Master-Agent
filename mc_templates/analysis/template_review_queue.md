@@ -1,6 +1,6 @@
 # Template Review Queue
 
-Generated: 2026-07-09T10:43:49.790Z
+Generated: 2026-07-09T11:30:15.246Z
 
 | Rank | Case | Review | Score | Flags | Risk Controls |
 | --- | --- | --- | ---: | --- | --- |

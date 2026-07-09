@@ -1,8 +1,8 @@
 {
   "source": "template-knowledge-base-v2",
   "schema_version": 2,
-  "generated_at": "2026-07-09T10:43:49.790Z",
-  "knowledge_base_id": "sha256:20e2752c8ab55863cadf4623423c5ca9c838bce11de24d6036a2387b34a761ac",
+  "generated_at": "2026-07-09T11:30:15.246Z",
+  "knowledge_base_id": "sha256:fafd6d42eb01e39feb3841926765c2c6a4a0518a28f3e849d2651cf5e7dbabc0",
   "inputs": {
     "case_library": "mc_templates/analysis/case_library.json",
     "template_index": "mc_templates/analysis/template_index.json",

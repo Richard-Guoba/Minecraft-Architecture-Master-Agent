@@ -1,6 +1,6 @@
 # Template Priority Report
 
-Generated: 2026-07-09T10:43:49.790Z
+Generated: 2026-07-09T11:30:15.246Z
 
 | Rank | Case | Style | Typology | Review | Score | Areas | Reason |
 | --- | --- | --- | --- | --- | ---: | --- | --- |
