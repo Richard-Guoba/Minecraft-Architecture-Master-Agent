@@ -406,9 +406,61 @@ npm run analyze:templates -- --offline --out .tmp/stage6-quality-analysis
 
 Expected: PASS and real corpus emits training candidate counts and band distribution.
 
+---
+
+### Task 7: Semantic Patch Candidate Query CLI
+
+**Files:**
+- Modify: `src/construction/templates/templateSemanticPatchDataset.js`
+- Create: `src/querySemanticPatchCandidates.js`
+- Modify: `package.json`
+- Test: `test/templateSemanticPatchDataset.test.js`
+- Create: `test/querySemanticPatchCandidates.test.js`
+
+**Interfaces:**
+- Produces: `filterSemanticPatchTrainingCandidates(dataset, options)`
+- Produces: CLI `src/querySemanticPatchCandidates.js`
+- Produces: npm script `query:patches`
+- Supports filters: `--category`, `--band`, `--risk`, `--min-score`, `--limit`, and `--json`
+
+- [x] **Step 1: Write failing filter and CLI tests**
+
+Run:
+
+```powershell
+node --test test/templateSemanticPatchDataset.test.js test/querySemanticPatchCandidates.test.js
+```
+
+Expected before implementation: FAIL because `filterSemanticPatchTrainingCandidates` and `src/querySemanticPatchCandidates.js` are missing.
+
+- [x] **Step 2: Implement read-only candidate filtering**
+
+Filter candidates after deterministic scoring and before truncating the ranked list. Include patch id, case id, category, title, tags, risk controls, score, band, reasons, and penalties so downstream review tools can inspect why a candidate is included.
+
+- [x] **Step 3: Add query CLI and package script**
+
+CLI reads `semantic_patch_dataset.json` and prints either a readable candidate list or JSON:
+
+```powershell
+npm run query:patches -- --dataset .tmp/stage6-query-analysis/semantic_patch_dataset.json --category facade --band high --limit 3
+npm run query:patches -- --dataset .tmp/stage6-query-analysis/semantic_patch_dataset.json --risk "domestic rooms" --json
+```
+
+- [x] **Step 4: Run focused tests and real-corpus query smoke**
+
+Run:
+
+```powershell
+node --test test/templateSemanticPatchDataset.test.js test/querySemanticPatchCandidates.test.js
+npm run analyze:templates -- --offline --out .tmp/stage6-query-analysis
+npm run query:patches -- --dataset .tmp/stage6-query-analysis/semantic_patch_dataset.json --category facade --band high --limit 3
+```
+
+Expected: PASS and CLI prints ranked real-corpus candidates without mutating generation output.
+
 ## Self-Review Checklist
 
-- Spec coverage: Tasks cover dataset schema, four patch categories, deterministic completion, conflict repair, inspection reports, training candidate ranking, and fallback safety.
+- Spec coverage: Tasks cover dataset schema, four patch categories, deterministic completion, conflict repair, inspection reports, training candidate ranking, read-only candidate querying, and fallback safety.
 - Placeholder scan: The plan has no placeholder markers or unbounded implementation notes.
 - Type consistency: Dataset and completer function names match across tasks.
 - Runtime safety: No task wires patch completion into datapack generation by default.

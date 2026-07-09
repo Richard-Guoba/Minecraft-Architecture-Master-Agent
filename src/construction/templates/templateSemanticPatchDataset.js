@@ -146,18 +146,28 @@ export function scoreSemanticPatchTrainingCandidate(patch = {}) {
 }
 
 export function rankSemanticPatchTrainingCandidates(dataset = {}, { limit = 20 } = {}) {
-  const patches = Array.isArray(dataset.patches) ? dataset.patches : [];
-  const candidates = patches
-    .map((patch) => ({
-      patch_id: patch.patch_id || '',
-      case_id: patch.case_id || '',
-      category: patch.category || '',
-      title: patch.title || '',
-      ...scoreSemanticPatchTrainingCandidate(patch)
-    }))
-    .sort((a, b) => b.score - a.score
-      || compareString(a.category, b.category)
-      || compareString(a.patch_id, b.patch_id));
+  const candidates = scoredSemanticPatchCandidates(dataset);
+  return candidates.slice(0, normalizedLimit(limit, candidates.length));
+}
+
+export function filterSemanticPatchTrainingCandidates(dataset = {}, {
+  category = '',
+  band = '',
+  risk = '',
+  minScore,
+  limit = 20
+} = {}) {
+  const categories = normalizeFilterSet(category);
+  const bands = normalizeFilterSet(band);
+  const riskNeedle = String(risk || '').trim().toLowerCase();
+  const minimumScore = minScore === undefined || minScore === ''
+    ? undefined
+    : Number(minScore);
+  const candidates = scoredSemanticPatchCandidates(dataset)
+    .filter((candidate) => !categories.size || categories.has(candidate.category))
+    .filter((candidate) => !bands.size || bands.has(candidate.band))
+    .filter((candidate) => !riskNeedle || candidate.risk_controls.join(' ').toLowerCase().includes(riskNeedle))
+    .filter((candidate) => !Number.isFinite(minimumScore) || candidate.score >= minimumScore);
   return candidates.slice(0, normalizedLimit(limit, candidates.length));
 }
 
@@ -476,6 +486,39 @@ function summarizePatchRisks(patches = []) {
     if (/research-only|rejected|do not use/.test(text)) summary.research_or_reject += 1;
   }
   return summary;
+}
+
+function scoredSemanticPatchCandidates(dataset = {}) {
+  const patches = Array.isArray(dataset.patches) ? dataset.patches : [];
+  return patches
+    .map(candidateFromPatch)
+    .sort(compareTrainingCandidate);
+}
+
+function candidateFromPatch(patch = {}) {
+  return {
+    patch_id: patch.patch_id || '',
+    case_id: patch.case_id || '',
+    category: patch.category || '',
+    title: patch.title || '',
+    tags: Array.isArray(patch.tags) ? [...patch.tags] : [],
+    risk_controls: Array.isArray(patch.risk_controls) ? [...patch.risk_controls] : [],
+    voxel_count: Array.isArray(patch.semantic_voxels) ? patch.semantic_voxels.length : 0,
+    ...scoreSemanticPatchTrainingCandidate(patch)
+  };
+}
+
+function compareTrainingCandidate(a = {}, b = {}) {
+  return b.score - a.score
+    || compareString(a.category, b.category)
+    || compareString(a.patch_id, b.patch_id);
+}
+
+function normalizeFilterSet(value = '') {
+  const values = Array.isArray(value) ? value : String(value || '').split(',');
+  return new Set(values
+    .map((item) => normalizeToken(item))
+    .filter(Boolean));
 }
 
 function countUniqueEvidence(voxels = []) {

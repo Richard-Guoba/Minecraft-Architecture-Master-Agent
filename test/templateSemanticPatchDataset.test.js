@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   PATCH_CATEGORIES,
   buildSemanticVoxelPatchDataset,
+  filterSemanticPatchTrainingCandidates,
   rankSemanticPatchTrainingCandidates,
   renderSemanticPatchDatasetReport,
   semanticPatchDatasetJsonl,
@@ -154,6 +155,34 @@ test('semantic patch training candidates are scored, ranked, and risk penalized'
   assert.deepEqual(summary.training_band_counts, { high: 1, medium: 1, low: 1 });
   assert.equal(summary.training_candidate_count, 2);
   assert.equal(summary.top_training_candidates[0].patch_id, 'modern-facade');
+});
+
+test('semantic patch training candidates can be filtered for review queues', () => {
+  const dataset = buildSemanticVoxelPatchDataset({
+    knowledgeBase: knowledgeBaseFixture(),
+    neuralLabels: neuralLabelsFixture(),
+    generatedAt: '2026-07-09T00:00:00.000Z'
+  });
+
+  const facadeCandidates = filterSemanticPatchTrainingCandidates(dataset, {
+    category: 'facade',
+    band: 'high',
+    limit: 1
+  });
+  const reviewGated = filterSemanticPatchTrainingCandidates(dataset, {
+    band: 'medium',
+    risk: 'reviewed site',
+    limit: 10
+  });
+
+  assert.equal(facadeCandidates.length, 1);
+  assert.equal(facadeCandidates[0].patch_id, 'house-modern-lake-villa:facade:large-glass');
+  assert.equal(facadeCandidates[0].category, 'facade');
+  assert.equal(facadeCandidates[0].band, 'high');
+  assert.ok(facadeCandidates[0].tags.includes('large-glass'));
+  assert.ok(facadeCandidates[0].risk_controls.some((item) => /block-for-block/i.test(item)));
+  assert.deepEqual([...new Set(reviewGated.map((candidate) => candidate.case_id))], ['house-japanese-courtyard']);
+  assert.ok(reviewGated.every((candidate) => candidate.penalties.includes('review-gated patch')));
 });
 
 test('semantic patch dataset does not learn from limited cases without approved areas', () => {
