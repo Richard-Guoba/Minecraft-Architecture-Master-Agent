@@ -23,6 +23,7 @@ import { TemplateLawAutoRepairAgent } from './agents/templateLawAutoRepairAgent.
 import { TemplateAssimilationAuditAgent } from './agents/templateAssimilationAuditAgent.js';
 import { TemplateInteriorDensityRepairAgent } from './agents/templateInteriorDensityRepairAgent.js';
 import { InteriorClearanceRepairAgent } from './agents/interiorClearanceRepairAgent.js';
+import { ConstructionEvaluationAgent } from './agents/constructionEvaluationAgent.js';
 import { CSGBuilder, computeBounds } from './engine/csgBuilder.js';
 import { BSPPartitioner } from './engine/bspPartitioner.js';
 import { AStarPathfinder } from './engine/pathfinder.js';
@@ -249,10 +250,33 @@ export async function runConstructionWorkflow({
   blueprint.templateAssimilationAudit = new TemplateAssimilationAuditAgent().run(blueprint);
   const validation = validateBlueprint(blueprint);
   if (!validation.ok) throw new Error(`Blueprint validation failed: ${validation.errors.join('; ')}`);
+  const architectureScorecard = new ConstructionEvaluationAgent().run({
+    workflow: 'construction_method_v1',
+    runtime: 'nodejs',
+    prompt,
+    outputDir,
+    mode,
+    seed,
+    seedSource,
+    llmProvider,
+    llmUsage,
+    mcVersion,
+    architecture,
+    topology,
+    buildSpec,
+    geometry: blueprint.geometry,
+    blueprint,
+    validation,
+    artifacts: {
+      previewHtml: path.join(outputDir, 'preview.html')
+    }
+  });
+  blueprint.architectureScorecard = compactArchitectureScorecard(architectureScorecard);
 
   const artifacts = await exportArtifacts({
     outputDir,
     blueprint,
+    architectureScorecard,
     validation,
     prompt,
     mcVersion,
@@ -293,6 +317,7 @@ export async function runConstructionWorkflow({
     templateAssimilationAudit: blueprint.templateAssimilationAudit,
     templateInteriorDensityRepair: blueprint.templateInteriorDensityRepair,
     interiorClearanceRepair: blueprint.interiorClearanceRepair,
+    architectureScorecard,
     geometry: blueprint.geometry,
     blueprint,
     validation,
@@ -706,7 +731,7 @@ function validateBlueprint(blueprint) {
   return new BlueprintQAAgent().run(blueprint);
 }
 
-async function exportArtifacts({ outputDir, blueprint, validation, prompt, mcVersion, autoBuild, minecraftDir, world, datapacksDir }) {
+async function exportArtifacts({ outputDir, blueprint, architectureScorecard, validation, prompt, mcVersion, autoBuild, minecraftDir, world, datapacksDir }) {
   const datapackDir = path.join(outputDir, 'architect_datapack');
   const functionDir = path.join(datapackDir, 'data', 'architect', 'function');
   await ensureDir(functionDir);
@@ -719,8 +744,10 @@ async function exportArtifacts({ outputDir, blueprint, validation, prompt, mcVer
   const rawPath = path.join(outputDir, 'raw_build.mcfunction');
   const previewPath = path.join(outputDir, 'preview.html');
   const reportPath = path.join(outputDir, 'run_report.md');
+  const architectureScorecardPath = path.join(outputDir, 'architecture_scorecard.json');
 
   await writeJson(blueprintPath, blueprint);
+  await writeJson(architectureScorecardPath, architectureScorecard);
   await writeJson(path.join(datapackDir, 'pack.mcmeta'), {
     pack: {
       pack_format: packFormatFor(mcVersion),
@@ -741,10 +768,11 @@ async function exportArtifacts({ outputDir, blueprint, validation, prompt, mcVer
   await fs.writeFile(previewPath, new VisualizationAgent().render({ prompt, blueprint, validation }), 'utf8');
 
   const installedDatapackDir = await installDatapack(datapackDir, minecraftDir, world, datapacksDir);
-  await fs.writeFile(reportPath, renderReport({ prompt, blueprint, validation, mcVersion, autoBuild, datapackDir, buildPath, clearPath, runPath, rawPath, previewPath, installedDatapackDir }), 'utf8');
+  await fs.writeFile(reportPath, renderReport({ prompt, blueprint, architectureScorecard, validation, mcVersion, autoBuild, datapackDir, buildPath, clearPath, runPath, rawPath, previewPath, installedDatapackDir }), 'utf8');
 
   return {
     blueprint: blueprintPath,
+    architectureScorecard: architectureScorecardPath,
     datapackDir,
     buildFunction: buildPath,
     clearFunction: clearPath,
@@ -788,7 +816,7 @@ async function installDatapack(datapackDir, minecraftDir, world, datapacksDir) {
   return targetDir;
 }
 
-function renderReport({ prompt, blueprint, validation, mcVersion, autoBuild, datapackDir, buildPath, clearPath, runPath, rawPath, previewPath, installedDatapackDir }) {
+function renderReport({ prompt, blueprint, architectureScorecard, validation, mcVersion, autoBuild, datapackDir, buildPath, clearPath, runPath, rawPath, previewPath, installedDatapackDir }) {
   const architecture = blueprint.architecture;
   const topology = blueprint.topology;
   const geometry = blueprint.geometry;
@@ -855,6 +883,17 @@ function renderReport({ prompt, blueprint, validation, mcVersion, autoBuild, dat
   const templateAssimilationLine = templateAssimilationAudit.active
     ? `- 模板吸收总审计：${templateAssimilationAudit.percent}%（${templateAssimilationAudit.grade}），距顶级闭环 ${templateAssimilationAudit.top_tier_distance ?? 100} 分，阶段 ${templateAssimilationAudit.stage_progress?.completed_count || 0}/${templateAssimilationAudit.stage_progress?.total_count || 0}，短板 ${(templateAssimilationAudit.gaps || []).slice(0, 3).map((item) => item.id).join('、') || '无'}`
     : '- 模板吸收总审计：未启用';
+  const scorecard = architectureScorecard?.scorecard || blueprint.architectureScorecard || {};
+  const scorecardWeakDimensions = (scorecard.dimensions || [])
+    .filter((item) => Number(item.percent) < 80)
+    .sort((a, b) => Number(a.percent) - Number(b.percent))
+    .slice(0, 3)
+    .map((item) => `${item.label} ${item.percent}%`)
+    .join('、') || '无明显短板';
+  const scorecardRedFlags = (architectureScorecard?.redFlags || [])
+    .slice(0, 3)
+    .map((item) => `${item.category}:${item.label}`)
+    .join('；') || '无';
   const usage = [
     '1. 如果刚复制或更新了数据包，先运行 /reload。这个命令只刷新数据包，不会建造。',
     '2. 站在目标位置运行 /function architect:run。它会自动 clear + build。'
@@ -970,6 +1009,16 @@ ${templateAssimilationLine}
 - 警告：
 ${warnings}
 
+## 建筑大师评分
+
+- 总分：${scorecard.totalScore || 0}/${scorecard.maxScore || 100}（${scorecard.grade || 'D'}）
+- 基础分：${scorecard.baseScore || 0}/${scorecard.baseMaxScore || 60}
+- 高级分：${scorecard.advancedScore || 0}/${scorecard.advancedMaxScore || 40}
+- 检查项：${architectureScorecard?.passedChecks || 0}/${architectureScorecard?.totalChecks || 0} 通过
+- 主要短板：${scorecardWeakDimensions}
+- 高优先级红旗：${scorecardRedFlags}
+- 评分文件：${path.join(path.dirname(previewPath), 'architecture_scorecard.json')}
+
 ## 输出文件
 
 - 数据包目录：${datapackDir}
@@ -985,6 +1034,37 @@ ${usage}
 
 说明：mcfunction 文件内部命令不带斜杠，这是 Minecraft 数据包函数的正常格式。
 `;
+}
+
+function compactArchitectureScorecard(evaluation = {}) {
+  const scorecard = evaluation.scorecard || {};
+  return {
+    source: evaluation.source,
+    version: evaluation.version,
+    totalScore: scorecard.totalScore || 0,
+    maxScore: scorecard.maxScore || 100,
+    percent: scorecard.percent || evaluation.percent || 0,
+    grade: scorecard.grade || evaluation.grade || 'D',
+    baseScore: scorecard.baseScore || 0,
+    baseMaxScore: scorecard.baseMaxScore || 60,
+    advancedScore: scorecard.advancedScore || 0,
+    advancedMaxScore: scorecard.advancedMaxScore || 40,
+    passedChecks: evaluation.passedChecks || 0,
+    totalChecks: evaluation.totalChecks || 0,
+    redFlagCount: Array.isArray(evaluation.redFlags) ? evaluation.redFlags.length : 0,
+    weakCheckCount: Array.isArray(evaluation.weakChecks) ? evaluation.weakChecks.length : 0,
+    weakestDimensions: (scorecard.dimensions || [])
+      .slice()
+      .sort((a, b) => Number(a.percent) - Number(b.percent))
+      .slice(0, 5)
+      .map((item) => ({
+        id: item.id,
+        label: item.label,
+        percent: item.percent,
+        points: item.points,
+        maxPoints: item.maxPoints
+      }))
+  };
 }
 
 function defaultBuildDimensions({ scale, footprint, style, styleFamily, typology }) {

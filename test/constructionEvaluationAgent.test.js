@@ -8,6 +8,7 @@ import { CONSTRUCTION_EVALUATION_PROMPTS } from '../src/construction/evaluationP
 import { HABITATION_EVALUATION_PROMPTS } from '../src/construction/habitationPromptSuite.js';
 import { DECORATION_EVALUATION_PROMPTS } from '../src/construction/decorationPromptSuite.js';
 import { COMPREHENSIVE_EVALUATION_PROMPTS } from '../src/construction/comprehensivePromptSuite.js';
+import { BASELINE_BENCHMARK_PROMPTS } from '../src/construction/baselineBenchmarkSuite.js';
 
 test('ConstructionEvaluationAgent scores a generated blueprint with a long checklist', async () => {
   const root = path.resolve('.tmp', `architect-evaluation-test-${Date.now()}`);
@@ -97,6 +98,21 @@ test('comprehensive prompt suite contains one hundred broad unique prompts', () 
   assert.equal(seeds.size, 100);
   assert.ok(focusTags.size >= 70);
   assert.ok(COMPREHENSIVE_EVALUATION_PROMPTS.every((item) => item.prompt.length >= 45));
+});
+
+test('baseline benchmark suite freezes ten Architecture Master prompts', () => {
+  const ids = new Set(BASELINE_BENCHMARK_PROMPTS.map((item) => item.id));
+  const seeds = new Set(BASELINE_BENCHMARK_PROMPTS.map((item) => item.seed));
+  const focusTags = new Set(BASELINE_BENCHMARK_PROMPTS.flatMap((item) => item.focus));
+
+  assert.equal(BASELINE_BENCHMARK_PROMPTS.length, 10);
+  assert.equal(ids.size, 10);
+  assert.equal(seeds.size, 10);
+  assert.ok(focusTags.has('visual-composition'));
+  assert.ok(focusTags.has('space-planning'));
+  assert.ok(focusTags.has('site-integration'));
+  assert.ok(focusTags.has('creative-narrative'));
+  assert.ok(BASELINE_BENCHMARK_PROMPTS.every((item) => item.prompt.length >= 35));
 });
 
 test('ConstructionEvaluationAgent reports habitation metrics for a residential prompt', async () => {
