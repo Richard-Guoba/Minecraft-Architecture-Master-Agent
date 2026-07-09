@@ -3,6 +3,7 @@ import path from 'node:path';
 import { isKnownMinecraft121Block, normalizeBlockId } from './minecraftBlockCatalog.js';
 import { buildStylePatternStrategy, selectStyleAwareRoomPatternGuidance } from './templatePatternStylePolicy.js';
 import { selectTemplateDesignLaws } from '../templates/templateDesignLawDistiller.js';
+import { ExplainableTemplateRetriever } from '../templates/templateExplainableRetriever.js';
 
 const DEFAULT_ANALYSIS_FILE = path.join('mc_templates', 'analysis', 'template_index.json');
 
@@ -14,7 +15,7 @@ export class TemplateKnowledgeAgent {
 
   run(prompt = '', architecture = {}, buildSpec = {}) {
     const corpus = this.loadCorpus();
-    if (!corpus?.templates?.length) return inactiveKnowledge('template corpus not found or empty');
+    if (!corpus?.templates?.length) return inactiveKnowledge('template corpus not found or empty', corpus);
 
     const scored = corpus.templates
       .map((template) => ({ template, score: scoreTemplate(template, prompt, architecture, buildSpec) }))
@@ -22,7 +23,7 @@ export class TemplateKnowledgeAgent {
       .sort((a, b) => b.score - a.score || b.template.quality - a.template.quality)
       .slice(0, 6);
 
-    if (!scored.length) return inactiveKnowledge('no matching templates');
+    if (!scored.length) return inactiveKnowledge('no matching templates', corpus);
     const caseCards = caseCardsByFile(corpus.case_library);
     const retrieved = scored.map(({ template, score }) => compactTemplate(template, score, caseCards.get(template.file)));
     const recommendations = summarizeRecommendations(retrieved, corpus.corpus, {
@@ -36,11 +37,29 @@ export class TemplateKnowledgeAgent {
       featurePriorities: recommendations.case_feature_priorities || [],
       retrievedCaseIds: retrieved.map((item) => item.case_card?.case_id || item.case_profile?.case_id).filter(Boolean)
     });
+    const retrievalExplanation = corpus.case_library_v2
+      ? new ExplainableTemplateRetriever({ knowledgeBase: corpus.case_library_v2 }).run({
+          prompt,
+          context: {
+            style_family: recommendations.style_family,
+            typology: recommendations.typology
+          },
+          limit: 8
+        })
+      : {
+          source: 'template-explainable-retriever-v1',
+          active: false,
+          prompt,
+          references: [],
+          warnings: ['case library v2 not found; using v1 template knowledge']
+        };
     return {
       source: 'local-template-knowledge-agent',
       active: true,
       analysis_file: path.relative(this.cwd, this.analysisFile).replaceAll('\\', '/'),
       corpus_size: corpus.templates.length,
+      knowledge_base_version: corpus.case_library_v2 ? 2 : 1,
+      retrieval_explanation: retrievalExplanation,
       retrieved,
       recommendations: {
         ...recommendations,
@@ -61,6 +80,10 @@ export class TemplateKnowledgeAgent {
       if (fs.existsSync(caseLibraryFile)) {
         corpus.case_library = JSON.parse(fs.readFileSync(caseLibraryFile, 'utf8'));
       }
+      const caseLibraryV2File = path.join(path.dirname(this.analysisFile), 'case_library.v2.json');
+      if (fs.existsSync(caseLibraryV2File)) {
+        corpus.case_library_v2 = JSON.parse(fs.readFileSync(caseLibraryV2File, 'utf8'));
+      }
       const designLawFile = path.join(path.dirname(this.analysisFile), 'design_laws.json');
       if (fs.existsSync(designLawFile)) {
         corpus.design_law_book = JSON.parse(fs.readFileSync(designLawFile, 'utf8'));
@@ -72,11 +95,28 @@ export class TemplateKnowledgeAgent {
   }
 }
 
-function inactiveKnowledge(reason) {
+function inactiveKnowledge(reason, corpus = {}) {
+  const hasV2 = Boolean(corpus?.case_library_v2);
   return {
     source: 'local-template-knowledge-agent',
     active: false,
     reason,
+    knowledge_base_version: hasV2 ? 2 : 1,
+    retrieval_explanation: hasV2
+      ? {
+          source: 'template-explainable-retriever-v1',
+          active: false,
+          prompt: '',
+          references: [],
+          warnings: [reason]
+        }
+      : {
+          source: 'template-explainable-retriever-v1',
+          active: false,
+          prompt: '',
+          references: [],
+          warnings: ['case library v2 not found; using v1 template knowledge']
+        },
     retrieved: [],
     recommendations: {
       terrain_profile: 'unknown',

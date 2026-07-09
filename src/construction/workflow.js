@@ -1019,6 +1019,8 @@ ${warnings}
 - 高优先级红旗：${scorecardRedFlags}
 - 评分文件：${path.join(path.dirname(previewPath), 'architecture_scorecard.json')}
 
+${renderTemplateMemorySection(blueprint)}
+
 ## 输出文件
 
 - 数据包目录：${datapackDir}
@@ -1034,6 +1036,20 @@ ${usage}
 
 说明：mcfunction 文件内部命令不带斜杠，这是 Minecraft 数据包函数的正常格式。
 `;
+}
+
+function renderTemplateMemorySection(blueprint = {}) {
+  const explanation = blueprint.templateKnowledge?.retrieval_explanation || {};
+  const refs = explanation.references || [];
+  if (!refs.length) {
+    const reason = (explanation.warnings || []).join('; ') || '模板知识库 v2 未启用，当前使用 v1 模板知识。';
+    return `## 模板参考记忆\n\n- ${reason}\n`;
+  }
+  return `## 模板参考记忆\n\n${refs.slice(0, 8).map((item) => {
+    const teaches = (item.teaches || []).slice(0, 2).map((unit) => `${unit.area}: ${unit.claim}`).join('；');
+    const risks = (item.risk_controls || []).slice(0, 1).join('；');
+    return `- ${item.title}: 匹配 ${(item.matched_signals || []).slice(0, 4).join(' / ') || item.diversity_slot}。学习 ${teaches || '通用构图参考'}；控制 ${risks || '不复制原模板细节'}。`;
+  }).join('\n')}\n`;
 }
 
 function compactArchitectureScorecard(evaluation = {}) {

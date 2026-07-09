@@ -100,6 +100,7 @@ test('runs the construction-method workflow as the single active pipeline', asyn
     assert.equal(scorecard.scorecard.maxScore, 100);
     assert.ok(scorecard.metrics.rooms >= 3);
     assert.ok(scorecard.weakChecks);
+    const templateMemorySection = report.match(/## 模板参考记忆[\s\S]*?(?=\n## |\s*$)/)?.[0] || '';
     assert.match(report, /PDF 流程对齐/);
     assert.match(report, /建筑大师评分/);
     assert.match(report, /总分：/);
@@ -118,6 +119,8 @@ test('runs the construction-method workflow as the single active pipeline', asyn
     assert.match(report, /ConstraintRepairAgent/);
     assert.match(report, /结构框架 JSON/);
     assert.match(report, /表皮与场地 JSON/);
+    assert.match(templateMemorySection, /模板参考记忆/);
+    assert.match(templateMemorySection, /Market with the villagers|Colonial Mansion|Villa|Modern|House|Template references/);
     assert.match(report, /CSG：体块/);
     assert.match(report, /Structure：支撑/);
     assert.match(report, /Facade\/Roof\/Site/);
