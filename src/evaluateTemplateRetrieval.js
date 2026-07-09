@@ -26,10 +26,11 @@ export const DEFAULT_RETRIEVAL_EVAL_SET = {
 };
 
 export function evaluateTemplateRetrieval({ knowledgeBase = {}, embeddingIndex, neuralLabels, evalSet = DEFAULT_RETRIEVAL_EVAL_SET } = {}) {
+  const effectiveEmbeddingIndex = embeddingIndex || buildTemplateEmbeddingIndex({ knowledgeBase, neuralLabels });
   const ruleRetriever = new ExplainableTemplateRetriever({ knowledgeBase });
   const neuralRetriever = new NeuralTemplateRetriever({
     knowledgeBase,
-    embeddingIndex: embeddingIndex || buildTemplateEmbeddingIndex({ knowledgeBase, neuralLabels }),
+    embeddingIndex: effectiveEmbeddingIndex,
     neuralLabels
   });
 
@@ -56,7 +57,7 @@ export function evaluateTemplateRetrieval({ knowledgeBase = {}, embeddingIndex, 
 
   return {
     source: 'stage5-template-retrieval-eval-v1',
-    generated_at: new Date().toISOString(),
+    generated_at: effectiveEmbeddingIndex.generated_at || new Date().toISOString(),
     prompt_count: prompts.length,
     prompts
   };

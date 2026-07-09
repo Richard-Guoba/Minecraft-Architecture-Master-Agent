@@ -1,6 +1,6 @@
 # Stage 5 Retrieval Evaluation
 
-Generated: 2026-07-09T20:55:15.121Z
+Generated: 2026-07-09T00:00:00.000Z
 Prompts: 10
 
 | Prompt | Rule hits | Fusion hits | Rule unsafe | Fusion unsafe | Mode |

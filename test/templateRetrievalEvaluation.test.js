@@ -14,14 +14,16 @@ import {
 } from '../src/evaluateTemplateRetrieval.js';
 
 test('retrieval evaluation compares rule and neural results', () => {
+  const embeddingIndex = embeddingIndexFixture();
   const result = evaluateTemplateRetrieval({
     knowledgeBase: knowledgeBaseFixture(),
-    embeddingIndex: embeddingIndexFixture(),
+    embeddingIndex,
     neuralLabels: neuralLabelsFixture(),
     evalSet: DEFAULT_RETRIEVAL_EVAL_SET
   });
 
   assert.equal(result.source, 'stage5-template-retrieval-eval-v1');
+  assert.equal(result.generated_at, embeddingIndex.generated_at);
   assert.ok(result.prompts.length >= 10);
   assert.ok(result.prompts[0].rule_top.length > 0);
   assert.ok(result.prompts[0].fusion_top.length > 0);
