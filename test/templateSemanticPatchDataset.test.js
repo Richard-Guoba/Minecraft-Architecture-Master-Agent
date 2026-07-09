@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   PATCH_CATEGORIES,
   buildSemanticVoxelPatchDataset,
+  renderSemanticPatchDatasetReport,
   semanticPatchDatasetJsonl,
   writeSemanticVoxelPatchDatasetArtifact
 } from '../src/construction/templates/templateSemanticPatchDataset.js';
@@ -72,13 +73,35 @@ test('semantic patch dataset artifact writer persists dataset and jsonl files', 
 
     assert.ok(result.datasetFile.endsWith('semantic_patch_dataset.json'));
     assert.ok(result.jsonlFile.endsWith('semantic_patch_dataset.jsonl'));
+    assert.ok(result.reportFile.endsWith('semantic_patch_report.md'));
     const saved = JSON.parse(await fs.readFile(result.datasetFile, 'utf8'));
     const rows = (await fs.readFile(result.jsonlFile, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+    const report = await fs.readFile(result.reportFile, 'utf8');
     assert.equal(saved.patch_count, result.dataset.patch_count);
     assert.equal(rows.length, result.dataset.patch_count);
+    assert.match(report, /# Stage 6 Semantic Patch Report/);
+    assert.match(report, /Representative Patches/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
+});
+
+test('semantic patch report summarizes category counts, tags, risk, and examples', () => {
+  const dataset = buildSemanticVoxelPatchDataset({
+    knowledgeBase: knowledgeBaseFixture(),
+    neuralLabels: neuralLabelsFixture(),
+    generatedAt: '2026-07-09T00:00:00.000Z'
+  });
+  const report = renderSemanticPatchDatasetReport(dataset);
+
+  assert.match(report, /# Stage 6 Semantic Patch Report/);
+  assert.match(report, /Generated: 2026-07-09T00:00:00.000Z/);
+  assert.match(report, /Total patches: 6/);
+  assert.match(report, /\| facade \| 1 \|/);
+  assert.match(report, /large-glass/);
+  assert.match(report, /review-gated/);
+  assert.match(report, /house-modern-lake-villa:facade:large-glass/);
+  assert.match(report, /do not copy block-for-block/);
 });
 
 test('semantic patch dataset does not learn from limited cases without approved areas', () => {

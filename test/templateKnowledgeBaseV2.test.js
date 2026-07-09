@@ -323,12 +323,15 @@ test('analyzeTemplateCorpus writes Stage 5 neural artifacts and Stage 6 semantic
 
     assert.ok(result.stage6.artifacts.semanticPatchDataset.endsWith('semantic_patch_dataset.json'));
     assert.ok(result.stage6.artifacts.semanticPatchJsonl.endsWith('semantic_patch_dataset.jsonl'));
+    assert.ok(result.stage6.artifacts.semanticPatchReport.endsWith('semantic_patch_report.md'));
     assert.equal(result.stage6.summary.patch_count, result.stage6.summary.category_counts.facade + result.stage6.summary.category_counts.interior + result.stage6.summary.category_counts.roof + result.stage6.summary.category_counts.courtyard);
     const patchDataset = JSON.parse(await fs.readFile(result.stage6.artifacts.semanticPatchDataset, 'utf8'));
     const patchRows = (await fs.readFile(result.stage6.artifacts.semanticPatchJsonl, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+    const patchReport = await fs.readFile(result.stage6.artifacts.semanticPatchReport, 'utf8');
     assert.equal(patchDataset.source, 'stage6-semantic-voxel-patch-dataset-v1');
     assert.equal(patchDataset.patch_count, patchRows.length);
     assert.ok(patchDataset.patch_count > 0);
+    assert.match(patchReport, /Stage 6 Semantic Patch Report/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -353,7 +356,9 @@ test('analyzeTemplateCorpus CLI prints Stage 6 semantic patch artifact summary',
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /Stage 6 semantic patches:/);
     assert.match(result.stdout, /Stage 6 patch dataset:/);
+    assert.match(result.stdout, /Stage 6 patch report:/);
     assert.match(result.stdout, /semantic_patch_dataset\.json/);
+    assert.match(result.stdout, /semantic_patch_report\.md/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

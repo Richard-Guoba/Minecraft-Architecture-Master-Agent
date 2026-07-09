@@ -73,6 +73,63 @@ export function semanticPatchDatasetJsonl(dataset = {}) {
   return `${(dataset.patches || []).map((patch) => JSON.stringify(patch)).join('\n')}\n`;
 }
 
+export function renderSemanticPatchDatasetReport(dataset = {}) {
+  const patches = dataset.patches || [];
+  const categoryCounts = countBy(patches, (patch) => patch.category);
+  const tagCounts = countTags(patches);
+  const riskSummary = summarizePatchRisks(patches);
+  const categoryRows = PATCH_CATEGORIES.map((category) => {
+    const examples = patches
+      .filter((patch) => patch.category === category)
+      .slice(0, 3)
+      .map((patch) => patch.patch_id)
+      .join('<br>') || '-';
+    return `| ${category} | ${categoryCounts[category] || 0} | ${examples} |`;
+  }).join('\n');
+  const tagRows = tagCounts.slice(0, 12)
+    .map((item) => `| ${item.tag} | ${item.count} |`)
+    .join('\n') || '| - | 0 |';
+  const riskRows = [
+    ['copy-control', riskSummary.copy_control],
+    ['review-gated', riskSummary.review_gated],
+    ['research-or-reject', riskSummary.research_or_reject]
+  ].map(([label, count]) => `| ${label} | ${count} |`).join('\n');
+  const examples = patches.slice(0, 10)
+    .map((patch) => `- ${patch.patch_id}: ${patch.title}; tags=${(patch.tags || []).slice(0, 6).join(', ') || '-'}; risk=${(patch.risk_controls || []).slice(0, 1).join('; ') || '-'}`)
+    .join('\n') || '- none';
+
+  return `# Stage 6 Semantic Patch Report
+
+Generated: ${dataset.generated_at || ''}
+
+- Total patches: ${Number(dataset.patch_count || 0)}
+- Categories: ${(dataset.categories || PATCH_CATEGORIES).join(', ')}
+- Schema: ${dataset.source || PATCH_DATASET_SOURCE} v${dataset.schema_version || PATCH_DATASET_SCHEMA_VERSION}
+
+## Category Coverage
+
+| Category | Count | Examples |
+| --- | ---: | --- |
+${categoryRows}
+
+## Top Tags
+
+| Tag | Count |
+| --- | ---: |
+${tagRows}
+
+## Risk Summary
+
+| Risk Signal | Count |
+| --- | ---: |
+${riskRows}
+
+## Representative Patches
+
+${examples}
+`;
+}
+
 export async function writeSemanticVoxelPatchDatasetArtifact({
   outputDir,
   knowledgeBase = {},
@@ -83,9 +140,11 @@ export async function writeSemanticVoxelPatchDatasetArtifact({
   await fs.mkdir(outputDir, { recursive: true });
   const datasetFile = path.join(outputDir, 'semantic_patch_dataset.json');
   const jsonlFile = path.join(outputDir, 'semantic_patch_dataset.jsonl');
+  const reportFile = path.join(outputDir, 'semantic_patch_report.md');
   await fs.writeFile(datasetFile, `${JSON.stringify(dataset, null, 2)}\n`, 'utf8');
   await fs.writeFile(jsonlFile, semanticPatchDatasetJsonl(dataset), 'utf8');
-  return { dataset, datasetFile, jsonlFile };
+  await fs.writeFile(reportFile, renderSemanticPatchDatasetReport(dataset), 'utf8');
+  return { dataset, datasetFile, jsonlFile, reportFile };
 }
 
 function buildPatch(caseRecord = {}, labelRecord = {}, category = '') {
@@ -268,6 +327,41 @@ function dedupeTags(tags = []) {
     result.push(tag);
   }
   return result;
+}
+
+function countBy(items = [], keyFn) {
+  const counts = {};
+  for (const item of items) {
+    const key = keyFn(item);
+    if (!key) continue;
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return counts;
+}
+
+function countTags(patches = []) {
+  const counts = countBy(
+    patches.flatMap((patch) => patch.tags || []),
+    (tag) => tag
+  );
+  return Object.entries(counts)
+    .map(([tag, count]) => ({ tag, count }))
+    .sort((a, b) => b.count - a.count || compareString(a.tag, b.tag));
+}
+
+function summarizePatchRisks(patches = []) {
+  const summary = {
+    copy_control: 0,
+    review_gated: 0,
+    research_or_reject: 0
+  };
+  for (const patch of patches) {
+    const text = (patch.risk_controls || []).join(' ').toLowerCase();
+    if (/copy|block-for-block|exact/.test(text)) summary.copy_control += 1;
+    if (/review|reviewed|limited/.test(text)) summary.review_gated += 1;
+    if (/research-only|rejected|do not use/.test(text)) summary.research_or_reject += 1;
+  }
+  return summary;
 }
 
 function comparePatch(a = {}, b = {}) {

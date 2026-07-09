@@ -285,7 +285,8 @@ export async function analyzeTemplateCorpus({
       summary: summarizeSemanticPatchDataset(semanticPatchResult.dataset),
       artifacts: {
         semanticPatchDataset: semanticPatchResult.datasetFile,
-        semanticPatchJsonl: semanticPatchResult.jsonlFile
+        semanticPatchJsonl: semanticPatchResult.jsonlFile,
+        semanticPatchReport: semanticPatchResult.reportFile
       }
     },
     templates,

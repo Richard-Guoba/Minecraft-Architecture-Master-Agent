@@ -286,6 +286,62 @@ node --test test/templateKnowledgeBaseV2.test.js
 
 Expected: PASS.
 
+---
+
+### Task 5: Semantic Patch Inspection Report
+
+**Files:**
+- Modify: `src/construction/templates/templateSemanticPatchDataset.js`
+- Modify: `src/construction/templates/schematicAnalyzer.js`
+- Modify: `src/analyzeTemplateCorpus.js`
+- Test: `test/templateSemanticPatchDataset.test.js`
+- Test: `test/templateKnowledgeBaseV2.test.js`
+
+**Interfaces:**
+- Produces: `renderSemanticPatchDatasetReport(dataset)`
+- Produces: artifact `semantic_patch_report.md`
+- Produces: analyzer artifact path `stage6.artifacts.semanticPatchReport`
+- Produces: CLI line `Stage 6 patch report: <path>.`
+
+- [x] **Step 1: Write failing report tests**
+
+Run:
+
+```powershell
+node --test test/templateSemanticPatchDataset.test.js test/templateKnowledgeBaseV2.test.js
+```
+
+Expected before implementation: FAIL because `renderSemanticPatchDatasetReport` is not exported and analyzer/CLI do not expose the report path.
+
+- [x] **Step 2: Implement report rendering**
+
+Report sections:
+
+- `# Stage 6 Semantic Patch Report`
+- total patch count and schema
+- category coverage table
+- top tags table
+- risk summary table
+- representative patch list with patch id, title, tags, and first risk control
+
+- [x] **Step 3: Persist report and expose artifact paths**
+
+`writeSemanticVoxelPatchDatasetArtifact()` writes `semantic_patch_report.md` and returns `reportFile`. Analyzer maps it to `stage6.artifacts.semanticPatchReport`.
+
+- [x] **Step 4: Print report path in CLI**
+
+`src/analyzeTemplateCorpus.js` prints `Stage 6 patch report: <path>.`
+
+- [x] **Step 5: Run focused tests**
+
+Run:
+
+```powershell
+node --test test/templateSemanticPatchDataset.test.js test/templateKnowledgeBaseV2.test.js
+```
+
+Expected: PASS.
+
 ## Self-Review Checklist
 
 - Spec coverage: Tasks cover dataset schema, four patch categories, deterministic completion, conflict repair, and fallback safety.
