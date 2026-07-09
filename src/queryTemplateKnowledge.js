@@ -69,11 +69,13 @@ function parseArgs(argv) {
     if (arg.startsWith('--')) {
       const key = arg.slice(2);
       const next = argv[index + 1];
-      if (next && !next.startsWith('--')) {
+      if (BOOLEAN_FLAGS.has(key)) {
+        result[key] = 'true';
+      } else if (VALUE_FLAGS.has(key) && next && !next.startsWith('--')) {
         result[key] = next;
         index += 1;
       } else {
-        result[key] = 'true';
+        result[key] = VALUE_FLAGS.has(key) ? '' : 'true';
       }
     } else {
       result._.push(arg);
@@ -81,6 +83,9 @@ function parseArgs(argv) {
   }
   return result;
 }
+
+const BOOLEAN_FLAGS = new Set(['neural', 'no-neural']);
+const VALUE_FLAGS = new Set(['knowledge-base', 'embedding-index', 'style', 'typology', 'limit']);
 
 function renderResult(result) {
   const lines = ['# Template references', ''];

@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { buildTemplateEmbeddingIndex } from '../src/construction/templates/templateEmbeddingIndex.js';
+import { neuralLabelsJsonl } from '../src/construction/templates/templateNeuralLabels.js';
 import {
   DEFAULT_RETRIEVAL_EVAL_SET,
   evaluateTemplateRetrieval,
@@ -16,6 +17,7 @@ test('retrieval evaluation compares rule and neural results', () => {
   const result = evaluateTemplateRetrieval({
     knowledgeBase: knowledgeBaseFixture(),
     embeddingIndex: embeddingIndexFixture(),
+    neuralLabels: neuralLabelsFixture(),
     evalSet: DEFAULT_RETRIEVAL_EVAL_SET
   });
 
@@ -29,6 +31,7 @@ test('retrieval evaluation report renders prompt sections', () => {
   const result = evaluateTemplateRetrieval({
     knowledgeBase: knowledgeBaseFixture(),
     embeddingIndex: embeddingIndexFixture(),
+    neuralLabels: neuralLabelsFixture(),
     evalSet: DEFAULT_RETRIEVAL_EVAL_SET
   });
   const report = renderRetrievalEvalReport(result);
@@ -44,9 +47,11 @@ test('evaluate:retrieval CLI writes report with provided artifacts', async () =>
   try {
     const kbFile = path.join(root, 'case_library.v2.json');
     const indexFile = path.join(root, 'embedding_index.json');
+    const labelsFile = path.join(root, 'neural_labels.jsonl');
     const reportFile = path.join(root, 'retrieval_eval_report.md');
     await fs.writeFile(kbFile, `${JSON.stringify(knowledgeBaseFixture(), null, 2)}\n`, 'utf8');
     await fs.writeFile(indexFile, `${JSON.stringify(embeddingIndexFixture(), null, 2)}\n`, 'utf8');
+    await fs.writeFile(labelsFile, neuralLabelsJsonl(neuralLabelsFixture()), 'utf8');
 
     const result = spawnSync(process.execPath, [
       'src/evaluateTemplateRetrieval.js',
@@ -79,6 +84,37 @@ test('evaluate:retrieval CLI falls back when the default embedding index is miss
     assert.equal(result.status, 0);
     assert.match(result.stdout, /Retrieval evaluation wrote/);
     assert.match(await fs.readFile(reportFile, 'utf8'), /Stage 5 Retrieval Evaluation/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('retrieval evaluation keeps fusion mode when embedding index and sibling neural labels match', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-retrieval-matching-labels-'));
+  try {
+    const analysisDir = path.join(root, 'mc_templates', 'analysis');
+    const knowledgeBase = knowledgeBaseFixture();
+    const neuralLabels = neuralLabelsFixture();
+    await fs.mkdir(analysisDir, { recursive: true });
+    await fs.writeFile(path.join(analysisDir, 'case_library.v2.json'), `${JSON.stringify(knowledgeBase, null, 2)}\n`, 'utf8');
+    await fs.writeFile(
+      path.join(analysisDir, 'embedding_index.json'),
+      `${JSON.stringify(buildTemplateEmbeddingIndex({ knowledgeBase, neuralLabels, dimensions: 64 }), null, 2)}\n`,
+      'utf8'
+    );
+    await fs.writeFile(path.join(analysisDir, 'neural_labels.jsonl'), neuralLabelsJsonl(neuralLabels), 'utf8');
+
+    const reportFile = path.join(analysisDir, 'retrieval_eval_report.md');
+    const result = spawnSync(process.execPath, [
+      path.join(process.cwd(), 'src/evaluateTemplateRetrieval.js'),
+      '--out',
+      reportFile
+    ], { cwd: root, encoding: 'utf8' });
+
+    assert.equal(result.status, 0);
+    const report = await fs.readFile(reportFile, 'utf8');
+    assert.doesNotMatch(report, /\|\s*rule-only-fallback\s*\|/);
+    assert.doesNotMatch(report, /label_record_hash/i);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -124,5 +160,33 @@ function knowledgeBaseFixture() {
 
 function embeddingIndexFixture() {
   const knowledgeBase = knowledgeBaseFixture();
-  return buildTemplateEmbeddingIndex({ knowledgeBase, dimensions: 64 });
+  return buildTemplateEmbeddingIndex({ knowledgeBase, neuralLabels: neuralLabelsFixture(), dimensions: 64 });
+}
+
+function neuralLabelsFixture() {
+  return [{
+    source: 'stage5-neural-labels-v1',
+    schema_version: 1,
+    case_id: 'house-modern-lake-villa',
+    file: 'House/Modern Lake Villa.schematic',
+    title: 'Modern Lake Villa',
+    suggested_tags: [
+      { group: 'facade', id: 'large-glass', label: 'large glass', confidence: 0.9, source: 'deterministic-labeler', evidence: ['fixture'] },
+      { group: 'site', id: 'water-edge', label: 'water edge', confidence: 0.88, source: 'deterministic-labeler', evidence: ['fixture'] }
+    ],
+    suggested_learning_areas: [
+      { area: 'facade', confidence: 0.9, evidence: ['fixture'] },
+      { area: 'site', confidence: 0.88, evidence: ['fixture'] }
+    ],
+    unknown_suggestions: [],
+    review_guidance: {
+      suggested_status: 'limited',
+      approved_learning_areas: ['facade', 'site'],
+      blocked_learning_areas: [],
+      needs_human_review: true,
+      review_priority: 'high',
+      reason: 'fixture'
+    },
+    risk_notes: ['fixture']
+  }];
 }

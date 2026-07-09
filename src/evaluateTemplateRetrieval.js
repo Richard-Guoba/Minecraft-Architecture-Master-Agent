@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildTemplateEmbeddingIndex } from './construction/templates/templateEmbeddingIndex.js';
 import { ExplainableTemplateRetriever } from './construction/templates/templateExplainableRetriever.js';
+import { parseGeneratedLabelsJsonl } from './construction/templates/templateNeuralLabels.js';
 import { NeuralTemplateRetriever } from './construction/templates/templateNeuralRetriever.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -24,11 +25,12 @@ export const DEFAULT_RETRIEVAL_EVAL_SET = {
   ]
 };
 
-export function evaluateTemplateRetrieval({ knowledgeBase = {}, embeddingIndex, evalSet = DEFAULT_RETRIEVAL_EVAL_SET } = {}) {
+export function evaluateTemplateRetrieval({ knowledgeBase = {}, embeddingIndex, neuralLabels, evalSet = DEFAULT_RETRIEVAL_EVAL_SET } = {}) {
   const ruleRetriever = new ExplainableTemplateRetriever({ knowledgeBase });
   const neuralRetriever = new NeuralTemplateRetriever({
     knowledgeBase,
-    embeddingIndex: embeddingIndex || buildTemplateEmbeddingIndex({ knowledgeBase })
+    embeddingIndex: embeddingIndex || buildTemplateEmbeddingIndex({ knowledgeBase, neuralLabels }),
+    neuralLabels
   });
 
   const prompts = (evalSet.prompts || []).map((item) => {
@@ -83,9 +85,9 @@ export function renderRetrievalEvalReport(result = {}) {
   return `${lines.join('\n')}\n`;
 }
 
-export async function writeRetrievalEvalArtifacts({ outputDir, knowledgeBase = {}, embeddingIndex, evalSet = DEFAULT_RETRIEVAL_EVAL_SET, outFile } = {}) {
+export async function writeRetrievalEvalArtifacts({ outputDir, knowledgeBase = {}, embeddingIndex, neuralLabels, evalSet = DEFAULT_RETRIEVAL_EVAL_SET, outFile } = {}) {
   await fs.mkdir(outputDir, { recursive: true });
-  const result = evaluateTemplateRetrieval({ knowledgeBase, embeddingIndex, evalSet });
+  const result = evaluateTemplateRetrieval({ knowledgeBase, embeddingIndex, neuralLabels, evalSet });
   const evalSetFile = path.join(outputDir, 'retrieval_eval_set.json');
   const reportFile = outFile || path.join(outputDir, 'retrieval_eval_report.md');
   await fs.mkdir(path.dirname(reportFile), { recursive: true });
@@ -107,8 +109,9 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
   } catch {
     embeddingIndex = undefined;
   }
+  const neuralLabels = await readNeuralLabels(path.join(path.dirname(indexFile), 'neural_labels.jsonl'));
   const outputDir = path.dirname(outFile);
-  const result = await writeRetrievalEvalArtifacts({ outputDir, knowledgeBase, embeddingIndex, outFile });
+  const result = await writeRetrievalEvalArtifacts({ outputDir, knowledgeBase, embeddingIndex, neuralLabels, outFile });
 
   console.log(`Retrieval evaluation wrote ${result.reportFile}.`);
   console.log(`Retrieval eval set wrote ${result.evalSetFile}.`);
@@ -186,6 +189,15 @@ function parseArgs(argv = []) {
     }
   }
   return result;
+}
+
+async function readNeuralLabels(file) {
+  try {
+    const parsed = parseGeneratedLabelsJsonl(await fs.readFile(file, 'utf8'));
+    return parsed.records;
+  } catch {
+    return undefined;
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
