@@ -28,6 +28,7 @@ function parseArgs(argv) {
     concepts: 0,
     conceptStrategy: 'select',
     critics: true,
+    neuralRetrieval: false,
     minecraftDir: process.env.MINECRAFT_DIR,
     world: undefined,
     datapacksDir: process.env.ARCHITECT_DATAPACKS_DIR || resolveDatapacksTarget(process.env.ARCHITECT_DATAPACKS_TARGET),
@@ -79,6 +80,10 @@ function parseArgs(argv) {
       options.conceptStrategy = value;
     } else if (arg === '--no-critics') {
       options.critics = false;
+    } else if (arg === '--neural-retrieval') {
+      options.neuralRetrieval = true;
+    } else if (arg === '--no-neural-retrieval') {
+      options.neuralRetrieval = false;
     } else if (arg === '--minecraft-dir') {
       options.minecraftDir = path.resolve(argv[++i] || '');
     } else if (arg === '--world') {
@@ -141,6 +146,8 @@ Options:
   --concepts <n>             Enable Stage 3 Concept Studio with 2-5 concepts before construction.
   --concept-strategy <mode>  select or fuse. Defaults to select.
   --no-critics               Disable Stage 4 Critic Council report and critic_council.json.
+  --neural-retrieval        Opt into Stage 5 neural fusion retrieval when embedding artifacts are valid.
+  --no-neural-retrieval     Keep Stage 5 retrieval disabled. This is the default MVP behavior.
   --candidates <n>           Generate n candidates and auto-select the strongest local result.
   --auto-select              Shortcut for --candidates 3.
   --candidate-rounds <n>     Run up to n reflection rounds. Defaults to 1.
@@ -220,6 +227,7 @@ async function main() {
     concepts: options.concepts,
     conceptStrategy: options.conceptStrategy,
     critics: options.critics,
+    neuralRetrieval: options.neuralRetrieval,
     cwd: projectRoot,
     minecraftDir: options.minecraftDir,
     world: options.world,

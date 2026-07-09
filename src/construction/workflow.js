@@ -50,7 +50,8 @@ export async function runConstructionWorkflow({
   autoBuild = false,
   conceptCount = 0,
   conceptStrategy = 'select',
-  critics = true
+  critics = true,
+  neuralRetrieval = false
 }) {
   if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
 
@@ -71,7 +72,7 @@ export async function runConstructionWorkflow({
     }
   };
   let buildSpec = deriveBuildSpec(prompt, architecture, seed);
-  const templateKnowledge = new TemplateKnowledgeAgent({ cwd }).run(prompt, architecture, buildSpec);
+  const templateKnowledge = new TemplateKnowledgeAgent({ cwd, neuralRetrieval }).run(prompt, architecture, buildSpec);
   architecture = applyTemplateKnowledgeToArchitecture(architecture, templateKnowledge);
   if (architecture.generation_hints?.template_material_patch) {
     materialPalette.materials = architecture.materials;
@@ -1131,11 +1132,14 @@ ${usage}
 function renderTemplateMemorySection(blueprint = {}) {
   const explanation = blueprint.templateKnowledge?.retrieval_explanation || {};
   const refs = explanation.references || [];
+  const mode = explanation.mode || (explanation.source === 'stage5-neural-template-retriever-v1' ? 'fusion' : 'rule-only');
+  const fallback = explanation.fallback_used ? ' fallback' : '';
+  const modeLine = `Retrieval mode: ${mode}${fallback}.`;
   if (!refs.length) {
-    const reason = (explanation.warnings || []).join('; ') || '模板知识库 v2 未启用，当前使用 v1 模板知识。';
-    return `## 模板参考记忆\n\n- ${reason}\n`;
+    const reason = (explanation.warnings || []).join('; ') || blueprint.templateKnowledge?.reason || '模板知识库 v2 未启用，当前使用 v1 模板知识。';
+    return `## 模板参考记忆\n\n- ${modeLine}\n- ${reason}\n`;
   }
-  return `## 模板参考记忆\n\n${refs.slice(0, 8).map((item) => {
+  return `## 模板参考记忆\n\n- ${modeLine}\n${refs.slice(0, 8).map((item) => {
     const teaches = (item.teaches || []).slice(0, 2).map((unit) => `${unit.area}: ${unit.claim}`).join('；');
     const risks = (item.risk_controls || []).slice(0, 1).join('；');
     return `- ${item.title}: 匹配 ${(item.matched_signals || []).slice(0, 4).join(' / ') || item.diversity_slot}。学习 ${teaches || '通用构图参考'}；控制 ${risks || '不复制原模板细节'}。`;
