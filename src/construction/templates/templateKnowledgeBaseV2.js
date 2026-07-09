@@ -7,6 +7,7 @@ import { defaultReviewForCase } from './templateReviewOverlay.js';
 const SOURCE = 'template-knowledge-base-v2';
 const SCHEMA_VERSION = 2;
 const RETRIEVAL_SOURCE = 'template-retrieval-index-v2';
+const DOCUMENTED_TAG_GROUPS = Object.freeze(['typology', 'style', 'site', 'massing', 'roof', 'facade', 'interior', 'quality', 'room_types']);
 
 const TAG_ALIASES = Object.freeze({
   'terrain-integrated': { group: 'site', id: 'terrain-integrated' },
@@ -92,9 +93,9 @@ export function renderTemplatePriorityReport(knowledgeBase = {}) {
 
 export function renderTemplateReviewQueue(knowledgeBase = {}) {
   const rows = [...(knowledgeBase.cases || [])]
-    .filter((item) => item.review.status === 'pending' || item.review.status === 'limited' || item.review_flags?.length)
+    .filter((item) => (item.review_priority_signals || []).length > 0)
     .sort((a, b) => b.priority.risk_penalty - a.priority.risk_penalty || b.priority.global_score - a.priority.global_score)
-    .map((item, index) => `| ${index + 1} | ${item.title} | ${item.review.status} | ${item.priority.global_score} | ${(item.review_flags || []).join(', ') || '-'} | ${(item.risk_controls || []).slice(0, 2).join('; ')} |`)
+    .map((item, index) => `| ${index + 1} | ${item.title} | ${item.review.status} | ${item.priority.global_score} | ${(item.review_priority_signals || []).join(', ') || '-'} | ${(item.risk_controls || []).slice(0, 2).join('; ') || (item.warnings || []).slice(0, 2).join('; ')} |`)
     .join('\n');
   return `# Template Review Queue\n\nGenerated: ${knowledgeBase.generated_at || ''}\n\n| Rank | Case | Review | Score | Flags | Risk Controls |\n| --- | --- | --- | ---: | --- | --- |\n${rows || '| - | none | - | 0 | - | - |'}\n`;
 }
@@ -130,11 +131,20 @@ export async function writeTemplateKnowledgeBaseV2Artifacts({
 }
 
 function buildCaseV2(card = {}, review = {}) {
+  const allowedAreas = allowedLearningAreas(review);
   const blocked = new Set(review.blocked_learning_areas || []);
-  const tags = buildTags(card, review);
-  const knowledgeUnits = buildKnowledgeUnits(card).filter((unit) => !blocked.has(unit.area));
-  const riskControls = [...new Set([...(card.risk_controls || []), ...riskControlsFromFlags(card.review_flags || [])])];
-  const priority = buildPriority(card, review, knowledgeUnits, riskControls);
+  const restrictedAreas = restrictedLearningAreas(review, allowedAreas, blocked);
+  const tagState = buildTags(card, review);
+  const warnings = buildWarnings(card, review, tagState.unknown_tags);
+  const knowledgeUnits = buildKnowledgeUnits(card)
+    .filter((unit) => !blocked.has(unit.area))
+    .filter((unit) => !allowedAreas || allowedAreas.has(unit.area));
+  const riskControls = applyRiskOverrides(
+    [...new Set([...(card.risk_controls || []), ...riskControlsFromFlags(card.review_flags || [])])],
+    review.risk_overrides || []
+  );
+  const reviewPrioritySignals = buildReviewPrioritySignals(card, review, warnings, tagState.unknown_tags);
+  const priority = buildPriority(card, review, knowledgeUnits, riskControls, warnings, reviewPrioritySignals);
   const result = {
     case_id: card.case_id,
     case_version: '',
@@ -165,12 +175,16 @@ function buildCaseV2(card = {}, review = {}) {
       risk_overrides: review.risk_overrides || [],
       review_record_ids: review.review_record_ids || []
     },
-    tags,
+    tags: tagState.tags,
+    unknown_tags: tagState.unknown_tags,
+    unknown_tag_count: tagState.unknown_tags.length,
+    warnings,
     knowledge_units: knowledgeUnits,
     priority,
-    retrieval: buildRetrieval(card, tags, knowledgeUnits),
+    retrieval: buildRetrieval(card, tagState.tags, knowledgeUnits, priority, restrictedAreas),
     risk_controls: riskControls,
     review_flags: card.review_flags || [],
+    review_priority_signals: reviewPrioritySignals,
     lineage: {
       v1_case_id: card.case_id,
       input_hashes: { v1_case: `sha256:${hashJson(card)}` },
@@ -219,14 +233,34 @@ function buildKnowledgeUnits(card = {}) {
 
 function buildTags(card = {}, review = {}) {
   const taxonomy = DEFAULT_TAG_TAXONOMY;
-  const grouped = {};
+  const grouped = Object.fromEntries(DOCUMENTED_TAG_GROUPS.map((group) => [group, []]));
+  const unknownTags = [];
   const add = (candidate) => {
     const normalized = normalizeCandidateTag(candidate);
-    if (!normalized) return;
+    if (!normalized) {
+      if (candidate !== undefined && candidate !== null && String(candidate).trim()) {
+        unknownTags.push({
+          raw: candidate,
+          group: '',
+          id: '',
+          evidence: extractEvidence(candidate),
+          reason: 'unmapped-tag-alias'
+        });
+      }
+      return;
+    }
     const validation = validateTagRecord(normalized, taxonomy);
-    if (!validation.ok) return;
+    if (!validation.ok) {
+      unknownTags.push({
+        raw: candidate,
+        group: normalized.group || '',
+        id: normalized.id || '',
+        evidence: extractEvidence(candidate),
+        reason: validation.error || 'unknown-tag'
+      });
+      return;
+    }
     const tag = validation.normalized;
-    if (!grouped[tag.group]) grouped[tag.group] = [];
     if (!grouped[tag.group].some((item) => item.id === tag.id)) grouped[tag.group].push(tag);
   };
 
@@ -240,10 +274,10 @@ function buildTags(card = {}, review = {}) {
   for (const key of Object.keys(grouped)) {
     grouped[key].sort((a, b) => a.id.localeCompare(b.id));
   }
-  return grouped;
+  return { tags: grouped, unknown_tags: unknownTags };
 }
 
-function buildPriority(card = {}, review = {}, knowledgeUnits = [], riskControls = []) {
+function buildPriority(card = {}, review = {}, knowledgeUnits = [], riskControls = [], warnings = [], reviewPrioritySignals = []) {
   const areaScores = {};
   for (const unit of knowledgeUnits) {
     areaScores[unit.area] = Math.max(areaScores[unit.area] || 0, Math.round(unit.confidence * 100));
@@ -251,20 +285,31 @@ function buildPriority(card = {}, review = {}, knowledgeUnits = [], riskControls
 
   const baseScore = Number(card.overall_reference_score || 0);
   const knowledgeBonus = Math.min(knowledgeUnits.length * 4, 20);
-  const approvalBonus = review.status === 'approved' ? 8 : review.status === 'limited' ? 2 : 0;
+  const reviewBonus = review.status === 'approved'
+    ? 8
+    : review.status === 'limited'
+      ? Math.min(6, Math.max(2, (review.approved_learning_areas || []).length * 2))
+      : 0;
   const studyPriorityBonus = card.study_priority === 'high' ? 6 : card.study_priority === 'medium' ? 3 : 0;
-  const riskPenalty = (card.review_flags || []).length * 8 + (review.status === 'pending' ? 8 : 0) + (review.status === 'limited' ? 6 : 0);
-  const globalScore = Math.max(0, Math.min(100, Math.round(baseScore + knowledgeBonus + approvalBonus + studyPriorityBonus - riskPenalty)));
+  const reviewSignalPenalty = Math.min(reviewPrioritySignals.length * 2, 10);
+  const controlPenalty = Math.max(0, riskControls.length - 1);
+  const riskPenalty = (card.review_flags || []).length * 8
+    + (review.status === 'pending' ? 8 : 0)
+    + (review.status === 'limited' ? 6 : 0)
+    + reviewSignalPenalty
+    + controlPenalty;
+  const globalScore = Math.max(0, Math.min(100, Math.round(baseScore + knowledgeBonus + reviewBonus + studyPriorityBonus - riskPenalty)));
 
   return {
     global_score: globalScore,
     risk_penalty: riskPenalty,
+    review_bonus: reviewBonus,
     area_scores: areaScores,
-    high_value_rank_reason: buildRankReasons(card, review, knowledgeUnits, riskControls)
+    high_value_rank_reason: buildRankReasons(card, review, knowledgeUnits, riskControls, warnings)
   };
 }
 
-function buildRetrieval(card = {}, tags = {}, knowledgeUnits = []) {
+function buildRetrieval(card = {}, tags = {}, knowledgeUnits = [], priority = {}, restrictedAreas = new Set()) {
   const tagTokens = Object.values(tags).flat().map((tag) => tag.id);
   const unitAreas = knowledgeUnits.map((unit) => unit.area);
   const searchTokens = [...new Set([
@@ -273,11 +318,14 @@ function buildRetrieval(card = {}, tags = {}, knowledgeUnits = []) {
     ...tagTokens,
     ...unitAreas,
     ...tokenize(card.title)
-  ])].sort();
+  ])]
+    .filter((token) => !restrictedAreas.has(String(token || '').trim().toLowerCase()))
+    .sort();
   return {
     search_tokens: searchTokens,
     prompt_affinities: [...new Set(((card.retrieval && card.retrieval.prompt_affinities) || []).map((item) => String(item)))].sort(),
-    explanation_seeds: buildExplanationSeeds(card, knowledgeUnits, tags)
+    explanation_seeds: buildExplanationSeeds(card, knowledgeUnits, tags),
+    diversity_slots: buildDiversitySlots(priority.area_scores || {})
   };
 }
 
@@ -398,13 +446,15 @@ function normalizeTaxonomyId(value = '') {
   return String(value || '').trim().toLowerCase().replaceAll('_', '-');
 }
 
-function buildRankReasons(card = {}, review = {}, knowledgeUnits = [], riskControls = []) {
+function buildRankReasons(card = {}, review = {}, knowledgeUnits = [], riskControls = [], warnings = []) {
   const reasons = [];
   if (Number(card.overall_reference_score || 0) >= 80) reasons.push('strong reference score');
   if (review.status === 'approved') reasons.push('human approved');
+  if (review.status === 'limited') reasons.push('review-gated areas only');
   if (knowledgeUnits.some((unit) => unit.area === 'site')) reasons.push('usable site knowledge');
   if (knowledgeUnits.some((unit) => unit.area === 'interior')) reasons.push('usable interior knowledge');
   if (riskControls.length) reasons.push(`${riskControls.length} risk controls`);
+  if (warnings.length) reasons.push(`${warnings.length} warnings`);
   return reasons;
 }
 
@@ -435,4 +485,84 @@ function sortValue(value) {
       .sort()
       .map((key) => [key, sortValue(value[key])])
   );
+}
+
+function allowedLearningAreas(review = {}) {
+  if (review.status !== 'limited') return null;
+  const approved = [...new Set((review.approved_learning_areas || []).map((item) => String(item).trim()).filter(Boolean))];
+  return approved.length ? new Set(approved) : new Set();
+}
+
+function restrictedLearningAreas(review = {}, allowedAreas, blockedAreas = new Set()) {
+  const restricted = new Set([...blockedAreas].map((item) => String(item).trim().toLowerCase()));
+  if (review.status !== 'limited') return restricted;
+  const canonicalAreas = ['site', 'massing', 'facade', 'roof', 'space-planning', 'interior', 'materials', 'risk'];
+  if (!allowedAreas) return restricted;
+  for (const area of canonicalAreas) {
+    if (!allowedAreas.has(area)) restricted.add(area);
+  }
+  return restricted;
+}
+
+function buildWarnings(card = {}, review = {}, unknownTags = []) {
+  const warnings = [];
+  if (!card.source_url) warnings.push('Missing source URL.');
+  if (!card.source_note) warnings.push('Missing source note.');
+  if (review.status === 'research-only') warnings.push('Source license status is research-only.');
+  if (unknownTags.length) warnings.push(`Unknown taxonomy tags preserved for review (${unknownTags.length}).`);
+  return warnings;
+}
+
+function buildReviewPrioritySignals(card = {}, review = {}, warnings = [], unknownTags = []) {
+  const signals = [];
+  if (review.status === 'pending') signals.push('pending-review');
+  if (review.status === 'limited') signals.push('limited-review');
+  for (const flag of card.review_flags || []) signals.push(flag);
+  if (!card.source_url) signals.push('missing-source-url');
+  if (!card.source_note) signals.push('missing-source-note');
+  if (unknownTags.length) signals.push('unknown-taxonomy-tags');
+  if (warnings.some((item) => /research-only/i.test(item))) signals.push('license-review');
+  return [...new Set(signals)].sort();
+}
+
+function applyRiskOverrides(riskControls = [], overrides = []) {
+  let next = [...new Set((riskControls || []).map((item) => String(item).trim()).filter(Boolean))];
+  for (const override of overrides) {
+    const value = String(override || '');
+    if (value.startsWith('add:')) {
+      const addition = value.slice(4).trim();
+      if (addition && !next.includes(addition)) next.push(addition);
+      continue;
+    }
+    if (value.startsWith('suppress:')) {
+      const needle = value.slice(9).trim().toLowerCase();
+      if (!needle) continue;
+      next = next.filter((item) => {
+        const normalized = item.toLowerCase();
+        if (!normalized.includes(needle)) return true;
+        return isProtectedRiskControl(normalized);
+      });
+    }
+  }
+  return next;
+}
+
+function isProtectedRiskControl(value = '') {
+  return value.includes('source') || value.includes('license');
+}
+
+function buildDiversitySlots(areaScores = {}) {
+  const slots = {};
+  for (const area of ['site', 'massing', 'facade', 'roof', 'interior', 'space-planning', 'materials', 'risk']) {
+    const score = Number(areaScores[area] || 0);
+    slots[area] = score > 0 ? Math.max(1, Math.round(score / 40)) : 0;
+  }
+  return slots;
+}
+
+function extractEvidence(candidate) {
+  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+    return candidate.evidence || candidate.label || '';
+  }
+  return '';
 }

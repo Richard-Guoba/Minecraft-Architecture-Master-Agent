@@ -74,7 +74,15 @@ test('knowledge base v2 suppresses blocked learning areas and ranks review queue
   const arena = kb.cases.find((item) => item.case_id === 'arenas-amphitheatre-arena');
   assert.equal(arena.review.status, 'limited');
   assert.ok(arena.knowledge_units.some((unit) => unit.area === 'site'));
+  assert.ok(arena.knowledge_units.some((unit) => unit.area === 'massing'));
   assert.equal(arena.knowledge_units.some((unit) => unit.area === 'interior'), false);
+  assert.equal(arena.retrieval.search_tokens.includes('interior'), false);
+  assert.deepEqual(Object.keys(arena.tags).sort(), ['facade', 'interior', 'massing', 'quality', 'roof', 'room_types', 'site', 'style', 'typology']);
+  assert.equal(arena.tags.interior.length, 0);
+  assert.ok(arena.priority.review_bonus > 0);
+  assert.ok(arena.priority.area_scores.site > arena.priority.area_scores.interior || arena.priority.area_scores.interior === undefined);
+  assert.equal(arena.retrieval.diversity_slots.site > 0, true);
+  assert.equal(arena.retrieval.diversity_slots.interior || 0, 0);
   assert.ok(arena.risk_controls.some((item) => /do not mine domestic rooms/i.test(item)));
 
   const queue = renderTemplateReviewQueue(kb);
@@ -99,6 +107,67 @@ test('knowledge base v2 builds retrieval index and markdown reports', () => {
   const priorityReport = renderTemplatePriorityReport(kb);
   assert.match(priorityReport, /Template Priority Report/);
   assert.match(priorityReport, /Modern Lake Villa/);
+});
+
+test('knowledge base v2 preserves unknown tags and applies risk overrides', () => {
+  const overlay = mergeReviewRecords(parseTemplateReviewOverlay(JSON.stringify({
+    record_id: 'review-modern-override',
+    case_id: 'house-modern-lake-villa',
+    reviewed_by: 'human',
+    reviewed_at: '2026-07-09T01:00:00.000Z',
+    status: 'approved',
+    confidence: 1,
+    approved_learning_areas: ['site', 'facade'],
+    blocked_learning_areas: ['interior'],
+    risk_overrides: ['add:Human review required before copying glazing ratios', 'suppress:safe for normal template retrieval']
+  })).records);
+
+  const cases = caseLibraryFixture().cases.map((item) => item.case_id === 'house-modern-lake-villa'
+    ? {
+        ...item,
+        source_url: '',
+        source_note: '',
+        tags: [...item.tags, 'mystery-balcony'],
+        quality_tags: [...item.quality_tags, 'untracked-quality-signal']
+      }
+    : item);
+
+  const kb = buildTemplateKnowledgeBaseV2({
+    generatedAt: '2026-07-09T01:00:00.000Z',
+    caseLibrary: { ...caseLibraryFixture(), cases },
+    templateIndex: templateIndexFixture(),
+    reviewOverlay: overlay
+  });
+
+  const modern = kb.cases.find((item) => item.case_id === 'house-modern-lake-villa');
+  assert.equal(modern.review.status, 'approved');
+  assert.equal(modern.priority.review_bonus, 8);
+  assert.equal(modern.knowledge_units.some((unit) => unit.area === 'interior'), false);
+  assert.equal(modern.retrieval.search_tokens.includes('interior'), false);
+  assert.ok(modern.risk_controls.includes('Human review required before copying glazing ratios'));
+  assert.equal(modern.risk_controls.some((item) => item === 'safe for normal template retrieval according to current evidence'), false);
+  assert.ok(modern.tags.quality.some((tag) => tag.id === 'high-value-reference'));
+  assert.equal(modern.tags.quality.some((tag) => tag.id === 'untracked-quality-signal'), false);
+  assert.equal(modern.unknown_tag_count, 2);
+  assert.deepEqual(modern.unknown_tags.map((item) => item.raw), ['mystery-balcony', 'untracked-quality-signal']);
+  assert.ok(modern.warnings.some((item) => /unknown taxonomy tags/i.test(item)));
+  assert.ok(modern.warnings.some((item) => /missing source url/i.test(item)));
+});
+
+test('knowledge base v2 review queue includes metadata-risk cases beyond explicit review flags', () => {
+  const kb = buildTemplateKnowledgeBaseV2({
+    generatedAt: '2026-07-09T00:00:00.000Z',
+    caseLibrary: caseLibraryFixture(),
+    templateIndex: templateIndexFixture()
+  });
+
+  const modern = kb.cases.find((item) => item.case_id === 'house-modern-lake-villa');
+  assert.equal(modern.review.status, 'pending');
+  assert.ok(modern.warnings.some((item) => /missing source url/i.test(item)));
+
+  const queue = renderTemplateReviewQueue(kb);
+  assert.match(queue, /Modern Lake Villa/);
+  assert.match(queue, /missing-source-url/);
 });
 
 test('knowledge base v2 artifact writer writes json and reports', async () => {
