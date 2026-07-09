@@ -138,6 +138,33 @@ test('queryTemplateKnowledge CLI prints explained references from a provided v2 
   assert.match(result.stdout, /teaches/);
 });
 
+test('queryTemplateKnowledge CLI can print neural fusion references', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-query-neural-kb-'));
+  const kbFile = path.join(root, 'case_library.v2.json');
+  const indexFile = path.join(root, 'embedding_index.json');
+  const knowledgeBase = knowledgeBaseFixture();
+  const { buildTemplateEmbeddingIndex } = await import('../src/construction/templates/templateEmbeddingIndex.js');
+  await fs.writeFile(kbFile, `${JSON.stringify(knowledgeBase, null, 2)}\n`, 'utf8');
+  await fs.writeFile(indexFile, `${JSON.stringify(buildTemplateEmbeddingIndex({ knowledgeBase }), null, 2)}\n`, 'utf8');
+
+  const result = spawnSync(process.execPath, [
+    'src/queryTemplateKnowledge.js',
+    '--neural',
+    '--knowledge-base',
+    kbFile,
+    '--embedding-index',
+    indexFile,
+    '建一个湖边现代两层别墅，带大玻璃和精致内饰'
+  ], {
+    cwd: process.cwd(),
+    encoding: 'utf8'
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /mode: fusion/);
+  assert.match(result.stdout, /Modern Lake Villa/);
+});
+
 test('query:templates package script runs against a provided v2 file', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-query-script-kb-'));
   const kbFile = path.join(root, 'case_library.v2.json');

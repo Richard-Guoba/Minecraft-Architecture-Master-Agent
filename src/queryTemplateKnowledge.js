@@ -2,6 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ExplainableTemplateRetriever } from './construction/templates/templateExplainableRetriever.js';
+import { NeuralTemplateRetriever } from './construction/templates/templateNeuralRetriever.js';
+import { parseGeneratedLabelsJsonl } from './construction/templates/templateNeuralLabels.js';
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -14,9 +16,11 @@ export async function queryTemplateKnowledge({
   const args = parseArgs(argv);
   const prompt = args._.join(' ').trim();
   const kbFile = path.resolve(cwd, args['knowledge-base'] || path.join('mc_templates', 'analysis', 'case_library.v2.json'));
+  const neuralEnabled = args.neural === 'true' && args['no-neural'] !== 'true';
+  const embeddingIndexFile = path.resolve(cwd, args['embedding-index'] || path.join('mc_templates', 'analysis', 'embedding_index.json'));
 
   if (!prompt) {
-    stderr.write('Usage: node src/queryTemplateKnowledge.js [--knowledge-base path] "prompt"\n');
+    stderr.write('Usage: node src/queryTemplateKnowledge.js [--neural] [--knowledge-base path] [--embedding-index path] "prompt"\n');
     return 1;
   }
 
@@ -28,7 +32,27 @@ export async function queryTemplateKnowledge({
     return 1;
   }
 
-  const result = new ExplainableTemplateRetriever({ knowledgeBase }).run({
+  let embeddingIndex;
+  let neuralLabels = [];
+  if (neuralEnabled) {
+    try {
+      embeddingIndex = JSON.parse(await fs.readFile(embeddingIndexFile, 'utf8'));
+      const neuralLabelsFile = path.join(path.dirname(embeddingIndexFile), 'neural_labels.jsonl');
+      try {
+        const parsed = parseGeneratedLabelsJsonl(await fs.readFile(neuralLabelsFile, 'utf8'));
+        neuralLabels = parsed.records;
+      } catch {
+        neuralLabels = [];
+      }
+    } catch {
+      embeddingIndex = undefined;
+    }
+  }
+
+  const retriever = neuralEnabled
+    ? new NeuralTemplateRetriever({ knowledgeBase, embeddingIndex, neuralLabels })
+    : new ExplainableTemplateRetriever({ knowledgeBase });
+  const result = retriever.run({
     prompt,
     context: { style_family: args.style || '', typology: args.typology || '' },
     limit: args.limit ? Number(args.limit) : 8
@@ -60,6 +84,9 @@ function parseArgs(argv) {
 
 function renderResult(result) {
   const lines = ['# Template references', ''];
+  lines.push(`mode: ${result.mode || 'rule-only'}`);
+  if (result.fallback_used) lines.push('fallback: true');
+  lines.push('');
   for (const ref of result.references || []) {
     lines.push(`${ref.rank}. ${ref.title} (${ref.case_id}) score=${ref.match_score}`);
     lines.push(`   teaches: ${ref.teaches.map((item) => `${item.area}: ${item.claim}`).join(' | ')}`);
