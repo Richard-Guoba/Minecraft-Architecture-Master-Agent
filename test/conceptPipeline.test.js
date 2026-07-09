@@ -61,3 +61,30 @@ test('pipeline keeps concept studio inactive when concepts are omitted', async (
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test('candidate pipeline passes concept studio options into candidate runs', async () => {
+  const root = path.resolve('.tmp', `architect-concept-candidate-${Date.now()}`);
+  try {
+    const result = await runPipeline({
+      prompt: '建一个湖边现代别墅，带大玻璃、水边平台和前景花园',
+      mode: 'mock',
+      mcVersion: '1.21',
+      outRoot: path.join(root, 'out'),
+      cwd: process.cwd(),
+      seed: 8111,
+      concepts: 2,
+      conceptStrategy: 'fuse',
+      candidates: 2,
+      candidateTargetScore: 100,
+      candidateForceRounds: true
+    });
+
+    assert.equal(result.candidateSelection.active, true);
+    assert.equal(result.blueprint.conceptStudio.active, true);
+    assert.equal(result.blueprint.conceptStudio.strategy, 'fuse');
+    assert.ok(result.artifacts.conceptStudio);
+    assert.ok(result.candidateSelection.ranking.length >= 1);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

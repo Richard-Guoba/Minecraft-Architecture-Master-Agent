@@ -25,6 +25,8 @@ function parseArgs(argv) {
     candidateRounds: 1,
     candidateTargetScore: 95,
     candidateForceRounds: false,
+    concepts: 0,
+    conceptStrategy: 'select',
     minecraftDir: process.env.MINECRAFT_DIR,
     world: undefined,
     datapacksDir: process.env.ARCHITECT_DATAPACKS_DIR || resolveDatapacksTarget(process.env.ARCHITECT_DATAPACKS_TARGET),
@@ -66,6 +68,14 @@ function parseArgs(argv) {
       options.candidateTargetScore = Math.trunc(parsed);
     } else if (arg === '--candidate-force-rounds') {
       options.candidateForceRounds = true;
+    } else if (arg === '--concepts') {
+      const parsed = Number(argv[++i]);
+      if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`无效概念数量: ${parsed}`);
+      options.concepts = Math.trunc(parsed);
+    } else if (arg === '--concept-strategy') {
+      const value = argv[++i] || 'select';
+      if (!['select', 'fuse'].includes(value)) throw new Error(`无效概念策略: ${value}`);
+      options.conceptStrategy = value;
     } else if (arg === '--minecraft-dir') {
       options.minecraftDir = path.resolve(argv[++i] || '');
     } else if (arg === '--world') {
@@ -125,6 +135,8 @@ Options:
   --mc-version 1.21          Target Minecraft Java version. v1 exports 1.21 datapacks.
   --out <dir>                Output root directory. Defaults to ./out.
   --seed <number>            Deterministic design seed. Omit it to generate a random seed.
+  --concepts <n>             Enable Stage 3 Concept Studio with 2-5 concepts before construction.
+  --concept-strategy <mode>  select or fuse. Defaults to select.
   --candidates <n>           Generate n candidates and auto-select the strongest local result.
   --auto-select              Shortcut for --candidates 3.
   --candidate-rounds <n>     Run up to n reflection rounds. Defaults to 1.
@@ -201,6 +213,8 @@ async function main() {
     candidateRounds: options.candidateRounds,
     candidateTargetScore: options.candidateTargetScore,
     candidateForceRounds: options.candidateForceRounds,
+    concepts: options.concepts,
+    conceptStrategy: options.conceptStrategy,
     cwd: projectRoot,
     minecraftDir: options.minecraftDir,
     world: options.world,
@@ -221,6 +235,10 @@ async function main() {
     console.log(`候选择优: ${result.candidateSelection.selected_candidate_id} / seed ${result.candidateSelection.selected_seed} / ${result.candidateSelection.selected_template_score}分`);
     console.log(`候选报告: ${result.artifacts.candidateSelectionReport}`);
     console.log(`选中输出: ${result.selectedOutputDir}`);
+  }
+  if (result.conceptStudio) {
+    console.log(`Concept Studio: ${result.conceptStudio.selected_concept_id} / ${result.conceptStudio.concept_count} concepts / ${result.conceptStudio.strategy}`);
+    console.log(`概念报告: ${result.artifacts.conceptStudioReport}`);
   }
   console.log(`数据包: ${result.artifacts.datapackDir}`);
   if (result.artifacts.installedDatapackDir) {
