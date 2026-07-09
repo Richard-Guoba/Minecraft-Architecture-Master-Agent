@@ -45,7 +45,7 @@ test('neural retriever falls back to rule-only when embedding index is missing',
   assert.ok(result.warnings.some((item) => /embedding index missing/i.test(item)));
 });
 
-test('neural retriever does not promote arena interiors for residential interior prompts', () => {
+test('neural retriever falls back to rule-only when embedding labels are stale', () => {
   const knowledgeBase = knowledgeBaseFixture();
   const embeddingIndex = buildTemplateEmbeddingIndex({
     knowledgeBase,
@@ -54,14 +54,63 @@ test('neural retriever does not promote arena interiors for residential interior
     dimensions: 64
   });
 
-  const result = new NeuralTemplateRetriever({ knowledgeBase, embeddingIndex, neuralLabels: neuralLabelsFixture() }).run({
-    prompt: 'residential house interior with living room bedroom kitchen furniture',
+  const result = new NeuralTemplateRetriever({
+    knowledgeBase,
+    embeddingIndex,
+    neuralLabels: staleNeuralLabelsFixture()
+  }).run({
+    prompt: 'build a lakeside modern villa with large glass',
+    context: { style_family: 'modern', typology: 'house' },
+    limit: 8
+  });
+
+  assert.equal(result.source, 'template-explainable-retriever-v1');
+  assert.equal(result.mode, 'rule-only-fallback');
+  assert.equal(result.fallback_used, true);
+  assert.ok(result.warnings.some((item) => /stale|changed label_record_hash/i.test(item)));
+});
+
+test('neural retriever does not promote arena interiors for residential interior prompts', () => {
+  const knowledgeBase = safeEmbeddingOnlyFixture();
+  const embeddingIndex = buildTemplateEmbeddingIndex({
+    knowledgeBase,
+    neuralLabels: safeEmbeddingOnlyLabelsFixture(),
+    generatedAt: '2026-07-09T00:00:00.000Z',
+    dimensions: 64
+  });
+
+  const result = new NeuralTemplateRetriever({ knowledgeBase, embeddingIndex, neuralLabels: safeEmbeddingOnlyLabelsFixture() }).run({
+    prompt: 'residential house interior',
     context: { typology: 'house' },
     limit: 8
   });
 
-  const arena = result.references.find((item) => item.case_id === 'arenas-amphitheatre-arena');
-  if (arena) assert.equal(arena.teaches.some((item) => item.area === 'interior'), false);
+  const arena = result.references.find((item) => item.case_id === 'arena-safe-embedding-only');
+  assert.ok(arena);
+  assert.equal(arena.teaches.some((item) => item.area === 'interior'), false);
+  assert.equal(arena.matched_signals.some((item) => item === 'token:interior'), false);
+});
+
+test('neural retriever scores suggested learning areas from labels', () => {
+  const knowledgeBase = learningAreaFixture();
+  const neuralLabels = learningAreaLabelsFixture();
+  const embeddingIndex = buildTemplateEmbeddingIndex({
+    knowledgeBase,
+    neuralLabels,
+    generatedAt: '2026-07-09T00:00:00.000Z',
+    dimensions: 64
+  });
+
+  const result = new NeuralTemplateRetriever({ knowledgeBase, embeddingIndex, neuralLabels }).run({
+    prompt: 'site',
+    context: {},
+    limit: 8
+  });
+
+  const reference = result.references.find((item) => item.case_id === 'learning-area-site-study');
+  assert.ok(reference);
+  assert.ok(reference.tag_match_score > 0);
+  assert.ok(reference.matched_signals.includes('tag:learning-area:site'));
 });
 
 function knowledgeBaseFixture() {
@@ -125,4 +174,109 @@ function neuralLabelsFixture() {
       suggested_learning_areas: [{ area: 'site', confidence: 0.9, evidence: ['fixture'] }]
     }
   ];
+}
+
+function staleNeuralLabelsFixture() {
+  return [
+    {
+      case_id: 'house-modern-lake-villa',
+      suggested_tags: [
+        { group: 'facade', id: 'large-glass', confidence: 0.83, evidence: ['fixture'] },
+        { group: 'site', id: 'water-edge', confidence: 0.9, evidence: ['fixture'] }
+      ],
+      suggested_learning_areas: [{ area: 'site', confidence: 0.9, evidence: ['fixture'] }]
+    }
+  ];
+}
+
+function safeEmbeddingOnlyFixture() {
+  const unit = (id, area, claim, targets = ['TemplateKnowledgeAgent']) => ({
+    id,
+    area,
+    claim,
+    evidence: [`${area} evidence`],
+    confidence: 0.85,
+    use_as: [`${area} guidance`],
+    avoid_when: ['do not copy block-for-block'],
+    integration_targets: targets,
+    source_fields: ['fixture']
+  });
+  return {
+    source: 'template-knowledge-base-v2',
+    schema_version: 2,
+    cases: [
+      {
+        case_id: 'arena-safe-embedding-only',
+        case_version: 'sha256:arena-safe',
+        title: 'Arena Safe Embedding Only',
+        file: 'Arenas/Arena Safe Embedding Only.schematic',
+        identity: { style_family: 'classical', typology: 'arena', category: 'Arenas', scale_bucket: 'monumental' },
+        review: { status: 'limited', confidence: 0.75, approved_learning_areas: ['site', 'massing'], blocked_learning_areas: ['interior'] },
+        tags: { style: [{ id: 'classical' }], typology: [{ id: 'arena' }], site: [{ id: 'terrain-integrated' }] },
+        knowledge_units: [
+          unit('arena-site', 'site', 'Use terrain plinths and stepped arrival.', ['TemplateSiteSceneStrategy']),
+          unit('arena-interior', 'interior', 'Keep domestic room guidance out of this arena reference.', ['InteriorDetailAgent'])
+        ],
+        priority: { global_score: 55, area_scores: { site: 82 }, risk_penalty: 0 },
+        retrieval: { search_tokens: ['arena-safe'], prompt_affinities: ['public-approach'], diversity_slots: ['site'], explanation_seeds: ['terrain plinth'] },
+        risk_controls: ['use this case for exterior, site, public approach, or seating rhythm; do not mine domestic rooms']
+      }
+    ]
+  };
+}
+
+function safeEmbeddingOnlyLabelsFixture() {
+  return [
+    {
+      case_id: 'arena-safe-embedding-only',
+      suggested_tags: [{ group: 'site', id: 'terrain-integrated', confidence: 0.84, evidence: ['fixture'] }],
+      suggested_learning_areas: []
+    }
+  ];
+}
+
+function learningAreaFixture() {
+  return {
+    source: 'template-knowledge-base-v2',
+    schema_version: 2,
+    cases: [
+      {
+        case_id: 'learning-area-site-study',
+        case_version: 'sha256:learning-area',
+        title: 'Site Study Pavilion',
+        file: 'Studies/Site Study Pavilion.schematic',
+        identity: { style_family: 'modern', typology: 'pavilion', category: 'Studies', scale_bucket: 'small' },
+        review: { status: 'approved', confidence: 0.88 },
+        tags: { style: [{ id: 'modern' }] },
+        knowledge_units: [fixtureUnit('study-site', 'site', 'Use a compact site diagram.', ['TemplateSiteSceneStrategy'])],
+        priority: { global_score: 61, area_scores: { site: 71 }, risk_penalty: 0 },
+        retrieval: { search_tokens: ['study', 'pavilion'], prompt_affinities: ['diagram'], diversity_slots: ['site'], explanation_seeds: ['site study'] },
+        risk_controls: ['change exact dimensions and diagram placement']
+      }
+    ]
+  };
+}
+
+function learningAreaLabelsFixture() {
+  return [
+    {
+      case_id: 'learning-area-site-study',
+      suggested_tags: [],
+      suggested_learning_areas: [{ area: 'site', confidence: 0.93, evidence: ['fixture'] }]
+    }
+  ];
+}
+
+function fixtureUnit(id, area, claim, targets = ['TemplateKnowledgeAgent']) {
+  return {
+    id,
+    area,
+    claim,
+    evidence: [`${area} evidence`],
+    confidence: 0.85,
+    use_as: [`${area} guidance`],
+    avoid_when: ['do not copy block-for-block'],
+    integration_targets: targets,
+    source_fields: ['fixture']
+  };
 }

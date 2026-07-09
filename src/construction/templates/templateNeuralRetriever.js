@@ -41,7 +41,7 @@ export class NeuralTemplateRetriever {
           0,
           Math.round(ruleScore * 0.45 + embeddingScore * 0.3 + tagMatchScore * 0.15 + reviewBonus + diversityBonus - riskPenalty)
         );
-        const ref = ruleRef || explainFromCase(caseRecord, embedding);
+        const ref = ruleRef || explainFromCase(caseRecord, embedding, promptTokens, context);
 
         return {
           ...ref,
@@ -80,8 +80,11 @@ function fallback(rule, reason) {
   };
 }
 
-function explainFromCase(caseRecord = {}, embedding = {}) {
-  const units = (caseRecord.knowledge_units || []).slice(0, 4);
+function explainFromCase(caseRecord = {}, embedding = {}, promptTokens = new Set(), context = {}) {
+  const units = safeKnowledgeUnits(caseRecord, promptTokens, context).slice(0, 4);
+  const safeRiskControls = Array.isArray(caseRecord.risk_controls) && caseRecord.risk_controls.length
+    ? caseRecord.risk_controls
+    : ['change exact dimensions, room order, and detail placement so the result is not a block-for-block copy'];
   return {
     rank: 0,
     case_id: caseRecord.case_id,
@@ -89,13 +92,11 @@ function explainFromCase(caseRecord = {}, embedding = {}) {
     file: caseRecord.file,
     match_score: Number(embedding?.embedding_score || 0),
     diversity_slot: (caseRecord.retrieval?.diversity_slots || ['general'])[0],
-    matched_signals: ['embedding:semantic-similarity'],
+    matched_signals: ['embedding:semantic-similarity', ...safeRetrievalSignals(caseRecord)],
     teaches: units.length
       ? units.map((unit) => ({ area: unit.area, claim: unit.claim, confidence: unit.confidence || 0.7 }))
       : [{ area: 'risk', claim: 'Use as weak inspiration only because no knowledge units are available.', confidence: 0.3 }],
-    risk_controls: caseRecord.risk_controls?.length
-      ? caseRecord.risk_controls
-      : ['change exact dimensions, room order, and detail placement so the result is not a block-for-block copy'],
+    risk_controls: safeRiskControls,
     integration_targets: [...new Set(units.flatMap((unit) => unit.integration_targets || []))].slice(0, 8),
     explanation: `Embedding matched ${caseRecord.title || caseRecord.case_id}.`
   };
@@ -116,12 +117,24 @@ function matchedTagSignals(caseRecord = {}, labelRecord = {}, promptTokens = new
     .map((tag) => `tag:${tag.group}:${tag.id}`);
 }
 
+function safeRetrievalSignals(caseRecord = {}) {
+  return safeRetrievalTokens(caseRecord)
+    .flatMap((entry) => splitNormalized(entry))
+    .filter((token) => token && !BLOCKED_SIGNAL_TOKENS.has(token))
+    .map((token) => `token:${token}`);
+}
+
 function allTags(caseRecord = {}, labelRecord = {}) {
   const existing = Object.entries(caseRecord.tags || {}).flatMap(([group, values]) =>
     (Array.isArray(values) ? values : []).map((tag) => ({ group: tag.group || group, id: tag.id, confidence: tag.confidence || 0.7 }))
   );
   const suggested = (labelRecord.suggested_tags || []).map((tag) => ({ group: tag.group, id: tag.id, confidence: tag.confidence || 0.7 }));
-  return [...existing, ...suggested].filter((tag) => tag.group && tag.id);
+  const suggestedLearningAreas = (labelRecord.suggested_learning_areas || []).map((area) => ({
+    group: 'learning-area',
+    id: area.area,
+    confidence: area.confidence || 0.7
+  }));
+  return [...existing, ...suggested, ...suggestedLearningAreas].filter((tag) => tag.group && tag.id);
 }
 
 function tokenSet(prompt = '', context = {}) {
@@ -134,6 +147,113 @@ function tokenSet(prompt = '', context = {}) {
   if (/roof|露台|terrace/.test(text)) tokens.add('roof');
   return tokens;
 }
+
+function safeKnowledgeUnits(caseRecord = {}, promptTokens = new Set(), context = {}) {
+  const review = caseRecord.review || {};
+  const allowedAreas = allowedLearningAreas(review);
+  const blockedAreas = blockedLearningAreas(review);
+  const residentialInterior = wantsResidentialInterior(promptTokens, context);
+
+  return (caseRecord.knowledge_units || []).filter((unit) => {
+    const area = normalizeToken(unit?.area);
+    if (!area || !CANONICAL_AREAS.has(area)) return false;
+    if (blockedAreas.has(area)) return false;
+    if (allowedAreas && !allowedAreas.has(area)) return false;
+    if (residentialInterior && caseRecord.identity?.typology === 'arena' && area === 'interior') return false;
+    return true;
+  });
+}
+
+function safeRetrievalTokens(caseRecord = {}) {
+  const review = caseRecord.review || {};
+  const allowedAreas = allowedLearningAreas(review);
+  const blockedAreas = blockedLearningAreas(review);
+  return [
+    ...(caseRecord.retrieval?.search_tokens || []),
+    ...(caseRecord.retrieval?.prompt_affinities || []),
+    ...(caseRecord.retrieval?.explanation_seeds || [])
+  ].filter((entry) => {
+    const area = retrievalTokenArea(entry);
+    if (!area) return true;
+    if (blockedAreas.has(area)) return false;
+    if (allowedAreas && !allowedAreas.has(area)) return false;
+    return true;
+  });
+}
+
+function allowedLearningAreas(review = {}) {
+  if (review.status !== 'limited') return null;
+  return learningAreaSet(review.approved_learning_areas || []);
+}
+
+function blockedLearningAreas(review = {}) {
+  return learningAreaSet(review.blocked_learning_areas || []);
+}
+
+function learningAreaSet(areas = []) {
+  return new Set((Array.isArray(areas) ? areas : []).map((area) => normalizeToken(area)).filter(Boolean));
+}
+
+function wantsResidentialInterior(promptTokens, context = {}) {
+  const residential = promptTokens.has('house') || normalizeToken(context.typology || '') === 'house';
+  const interior = ['interior', 'furnished', 'living', 'kitchen', 'bedroom'].some((token) => promptTokens.has(token));
+  return residential && interior;
+}
+
+function retrievalTokenArea(value = '') {
+  const tokens = splitNormalized(value);
+  for (const token of tokens) {
+    const normalized = aliasToken(token);
+    if (CANONICAL_AREAS.has(normalized)) return normalized;
+    if (ROOM_TYPE_TOKENS.has(normalized)) return 'interior';
+  }
+  return '';
+}
+
+function splitNormalized(value = '') {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .replaceAll('_', '-');
+  return normalized
+    .split(/[^\p{Letter}\p{Number}-]+/gu)
+    .map((item) => normalizeToken(item))
+    .filter(Boolean);
+}
+
+function normalizeToken(value = '') {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replaceAll('_', '-')
+    .replace(/[^\p{Letter}\p{Number}-]+/gu, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function aliasToken(token = '') {
+  return TOKEN_ALIASES[token] || token;
+}
+
+const TOKEN_ALIASES = Object.freeze({
+  waterfront: 'water-edge',
+  lakefront: 'water-edge',
+  lakeside: 'water-edge',
+  villa: 'house',
+  home: 'house',
+  residential: 'house',
+  residence: 'house',
+  glass: 'large-glass',
+  furnished: 'interior',
+  inside: 'interior',
+  rooms: 'interior',
+  room: 'interior',
+  deck: 'terrace',
+  rooftop: 'roof'
+});
+
+const CANONICAL_AREAS = new Set(['site', 'massing', 'facade', 'roof', 'space-planning', 'interior', 'materials', 'risk']);
+const ROOM_TYPE_TOKENS = new Set(['living', 'kitchen', 'bedroom', 'bathroom', 'study', 'storage', 'workshop', 'corridor-or-gallery', 'entry-or-lobby', 'tower-room', 'chapel-or-ceremonial-hall']);
+const BLOCKED_SIGNAL_TOKENS = new Set(['interior']);
 
 function reviewBonusFor(status = '') {
   if (status === 'approved') return 10;

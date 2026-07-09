@@ -30,3 +30,10 @@
 
 ## Issues or concerns
 - None at present.
+
+## Fix review
+- Preserved safe explainable-retriever filtering in embedding-only references by routing neural-only explanations through safe knowledge-unit and retrieval-token filters.
+- Added stale embedding-label fallback coverage and a regression check for suggested learning areas participating in fusion scoring/signals.
+- Tests run after the fix:
+  - `node --test test/templateNeuralRetriever.test.js` - PASS
+  - `npm test` - PASS
