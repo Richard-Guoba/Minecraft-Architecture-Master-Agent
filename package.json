@@ -13,6 +13,7 @@
     "evaluate:comprehensive": "node src/evaluateComprehensiveSuite.js",
     "evaluate:template-assimilation": "node src/evaluateTemplateAssimilationSuite.js",
     "evaluate:variation": "node src/evaluateDesignVariation.js",
+    "benchmark:baseline": "node src/runBaselineBenchmark.js",
     "analyze:templates": "node src/analyzeTemplateCorpus.js"
   },
   "engines": {

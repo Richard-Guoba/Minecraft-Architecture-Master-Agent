@@ -66,6 +66,7 @@ run_report.md
 
 ```powershell
 npm test
+npm run benchmark:baseline -- --limit 3 --out out/baseline-smoke
 npm start -- --help
 npm start -- --list-prompts
 npm start -- --mode mock --prompt-id modern-waterfront-villa-reference
