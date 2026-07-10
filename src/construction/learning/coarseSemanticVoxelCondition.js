@@ -8,6 +8,36 @@ import {
 } from './coarseSemanticVoxelSchema.js';
 
 const REVIEWED_STATES = new Set(['approved', 'limited']);
+const ABSTRACT_SITE_MOODS = new Set([
+  'accessible-garden-path',
+  'coastal-resort',
+  'compact-urban-strip',
+  'courtyard-garden',
+  'dry-modern-court',
+  'dry-zen',
+  'forest-canopy',
+  'forest-canopy-path',
+  'formal',
+  'formal-garden-axis',
+  'hardscape-yard',
+  'lush-greenhouse',
+  'lush-side-garden',
+  'oasis-courtyard',
+  'open-family-yard',
+  'ordered-entry-court',
+  'reflecting-water-edge',
+  'resort',
+  'rocky-overlook',
+  'simple-path',
+  'snow-lodge',
+  'snow-lodge-path',
+  'sunken-courtyard',
+  'urban-neon',
+  'urban-neon-approach',
+  'water-and-deck-transition',
+  'water-courtyard',
+  'waterfront-garden'
+]);
 
 export function buildStage7Condition({
   prompt = '',
@@ -24,9 +54,7 @@ export function buildStage7Condition({
     creativeDesign.concept_studio?.selected_concept_id ||
     ''
   );
-  const selectedConcept = conceptStudio.selectedConcept ||
-    (conceptStudio.concepts || []).find((item) => item.id === selectedConceptId) ||
-    {};
+  const selectedConcept = resolveSelectedConcept(conceptStudio, selectedConceptId);
   const payload = {
     source: STAGE7_CONDITION_SOURCE,
     schema_version: STAGE7_SCHEMA_VERSION,
@@ -79,7 +107,7 @@ function reviewedReferences(explanation = {}) {
 function normalizeReference(reference = {}, neural = false, embeddingIndexHash) {
   const reviewState = String(reference.review_state || 'pending');
   if (!REVIEWED_STATES.has(reviewState)) return undefined;
-  const approved = stringArray(reference.approved_learning_areas);
+  const approved = canonicalStringSet(reference.approved_learning_areas);
   const blocked = new Set(stringArray(reference.blocked_learning_areas));
   const teaches = Array.isArray(reference.teaches) ? reference.teaches : [];
   const usedFor = [...new Set(teaches
@@ -132,8 +160,17 @@ function abstractSiteTags({ prompt = '', architecture = {}, creativeDesign = {},
   if (site.planting_beds || /花园|garden|forest|森林/i.test(prompt)) tags.push('vegetation');
   if (/坡|山地|山坡|slope|hillside/i.test(prompt)) tags.push('slope-intent');
   const mood = token(site.mood || site.landscape_mood);
-  if (mood && mood !== 'simple') tags.push(`mood:${mood}`);
+  if (ABSTRACT_SITE_MOODS.has(mood)) tags.push(`mood:${mood}`);
   return [...new Set(tags)].sort();
+}
+
+function resolveSelectedConcept(conceptStudio = {}, selectedConceptId = '') {
+  const concepts = Array.isArray(conceptStudio.concepts) ? conceptStudio.concepts : [];
+  const matchingConcept = concepts.find((item) => String(item?.id || '') === selectedConceptId);
+  if (matchingConcept) return matchingConcept;
+  const selectedConcept = conceptStudio.selectedConcept;
+  if (!selectedConcept || typeof selectedConcept !== 'object' || Array.isArray(selectedConcept)) return {};
+  return String(selectedConcept.id || '') === selectedConceptId ? selectedConcept : {};
 }
 
 function massingStrategy({ architecture = {}, creativeDesign = {}, selectedConcept = {} } = {}) {
@@ -193,6 +230,10 @@ function uniqueStrings(values) {
 
 function stringArray(value) {
   return Array.isArray(value) ? value.map((item) => String(item || '').trim()).filter(Boolean) : [];
+}
+
+function canonicalStringSet(value) {
+  return [...new Set(stringArray(value))].sort();
 }
 
 function token(value) {

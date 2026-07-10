@@ -11,8 +11,7 @@ test('Stage 7 condition captures final design semantics and only reviewed refere
   assert.deepEqual(condition.constraints.resolution, [64, 64, 64]);
   assert.equal(condition.design.selected_concept_id, 'concept-b-view-courtyard');
   assert.ok(condition.design.massing_strategy.includes('courtyard'));
-  assert.ok(condition.design.abstract_site_tags.includes('water-edge'));
-  assert.ok(condition.design.abstract_site_tags.includes('courtyard'));
+  assert.deepEqual(condition.design.abstract_site_tags, ['courtyard', 'mood:waterfront-garden', 'water-edge']);
   assert.equal(condition.design.massing_volumes.length, 2);
   assert.deepEqual(condition.design.topology_program.nodes.map((item) => item.id), ['entry', 'living']);
   assert.deepEqual(condition.references.map((item) => item.case_id), ['approved-house', 'limited-site-house']);
@@ -84,6 +83,90 @@ test('limited references without an approved matching learning area are excluded
 
   const condition = buildStage7Condition(input);
   assert.deepEqual(condition.references, []);
+});
+
+test('Stage 7 condition excludes nested site context and unapproved mood text', () => {
+  const input = conditionInput();
+  const hostileContext = {
+    biome: 'mangrove-swamp-private',
+    world_coordinates: { x: 9123, y: 88, z: -4567 },
+    terrain_height: 93,
+    settlement: 'review-village-alpha'
+  };
+  input.architecture.site_rules = {
+    ...input.architecture.site_rules,
+    landscape_mood: JSON.stringify(hostileContext),
+    context: hostileContext
+  };
+  input.creativeDesign.site = { ...input.creativeDesign.site, context: hostileContext };
+  delete input.creativeDesign.site.mood;
+  const selectedConcept = input.conceptStudio.concepts.find((item) => item.id === input.conceptStudio.selected_concept_id);
+  selectedConcept.site_strategy = { ...selectedConcept.site_strategy, context: hostileContext };
+  delete selectedConcept.site_strategy.mood;
+  input.conceptStudio.selectedConcept = selectedConcept;
+
+  const first = buildStage7Condition(input);
+  const repeated = buildStage7Condition(structuredClone(input));
+
+  assert.deepEqual(first.design.abstract_site_tags, ['courtyard', 'water-edge']);
+  assert.deepEqual(first.design.abstract_site_tags, repeated.design.abstract_site_tags);
+  const serialized = JSON.stringify(first);
+  for (const marker of ['mangrove-swamp-private', 'world-coordinates', '9123', 'review-village-alpha']) {
+    assert.equal(serialized.includes(marker), false);
+  }
+});
+
+test('selected concept id is authoritative over inconsistent selected concept metadata', () => {
+  const input = conditionInput();
+  const staleSelectedConcept = input.conceptStudio.selectedConcept;
+  const authoritativeConcept = {
+    id: 'concept-a-axis',
+    massing_plan: { variant_hint: 'formal-axis', key_moves: ['symmetry'] },
+    space_graph_strategy: { public_core: 'entry', split_strategy: 'axis-balanced' },
+    site_strategy: { mood: 'ordered-entry-court', patio: true },
+    quality_targets: ['formal-entry']
+  };
+  input.conceptStudio = {
+    ...input.conceptStudio,
+    selected_concept_id: authoritativeConcept.id,
+    selectedConcept: staleSelectedConcept,
+    concepts: [staleSelectedConcept, authoritativeConcept]
+  };
+
+  const condition = buildStage7Condition(input);
+
+  assert.equal(condition.design.selected_concept_id, authoritativeConcept.id);
+  assert.deepEqual(condition.design.quality_targets, ['formal-entry']);
+  assert.ok(condition.design.massing_strategy.includes('formal-axis'));
+  assert.equal(condition.design.massing_strategy.includes('view-axis'), false);
+  assert.ok(condition.design.abstract_site_tags.includes('mood:ordered-entry-court'));
+  assert.equal(condition.design.abstract_site_tags.includes('mood:waterfront-garden'), false);
+});
+
+test('missing concept metadata does not invent selected concept semantics', () => {
+  const input = conditionInput();
+  input.conceptStudio = {};
+
+  const condition = buildStage7Condition(input);
+
+  assert.equal(condition.design.selected_concept_id, '');
+  assert.deepEqual(condition.design.quality_targets, []);
+});
+
+test('approved learning areas are canonical sets for output and condition hashing', () => {
+  const firstInput = conditionInput();
+  firstInput.templateKnowledge.retrieval_explanation.references[0].approved_learning_areas = ['site', 'massing', 'site'];
+  const secondInput = structuredClone(firstInput);
+  secondInput.templateKnowledge.retrieval_explanation.references[0].approved_learning_areas = ['massing', 'site'];
+
+  const first = buildStage7Condition(firstInput);
+  const second = buildStage7Condition(secondInput);
+  const firstReference = first.references.find((item) => item.case_id === 'approved-house');
+  const secondReference = second.references.find((item) => item.case_id === 'approved-house');
+
+  assert.deepEqual(firstReference.approved_learning_areas, ['massing', 'site']);
+  assert.deepEqual(secondReference.approved_learning_areas, ['massing', 'site']);
+  assert.equal(first.condition_hash, second.condition_hash);
 });
 
 function conditionInput() {
