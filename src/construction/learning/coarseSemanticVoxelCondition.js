@@ -32,6 +32,7 @@ const ABSTRACT_SITE_MOODS = new Set([
   'snow-lodge',
   'snow-lodge-path',
   'sunken-courtyard',
+  'terrain-forecourt',
   'urban-neon',
   'urban-neon-approach',
   'water-and-deck-transition',

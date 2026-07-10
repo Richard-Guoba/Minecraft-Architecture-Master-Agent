@@ -116,6 +116,24 @@ test('Stage 7 condition excludes nested site context and unapproved mood text', 
   }
 });
 
+test('terrain forecourt survives as an abstract mood and changes the condition hash', () => {
+  const terrainInput = conditionInput();
+  const terrainConcept = terrainInput.conceptStudio.concepts.find((item) => item.id === terrainInput.conceptStudio.selected_concept_id);
+  terrainConcept.site_strategy = { ...terrainConcept.site_strategy, mood: 'terrain-forecourt' };
+  terrainInput.conceptStudio.selectedConcept = terrainConcept;
+  const simpleInput = structuredClone(terrainInput);
+  const simpleConcept = simpleInput.conceptStudio.concepts.find((item) => item.id === simpleInput.conceptStudio.selected_concept_id);
+  simpleConcept.site_strategy = { ...simpleConcept.site_strategy, mood: 'simple' };
+  simpleInput.conceptStudio.selectedConcept = simpleConcept;
+
+  const terrain = buildStage7Condition(terrainInput);
+  const simple = buildStage7Condition(simpleInput);
+
+  assert.ok(terrain.design.abstract_site_tags.includes('mood:terrain-forecourt'));
+  assert.equal(simple.design.abstract_site_tags.some((item) => item.startsWith('mood:')), false);
+  assert.notEqual(terrain.condition_hash, simple.condition_hash);
+});
+
 test('selected concept id is authoritative over inconsistent selected concept metadata', () => {
   const input = conditionInput();
   const staleSelectedConcept = input.conceptStudio.selectedConcept;
