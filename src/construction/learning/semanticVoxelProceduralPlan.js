@@ -1,6 +1,6 @@
 import { normalizeArchitecture } from '../agents/architectAgent.js';
 import { normalizeTopology } from '../agents/plannerAgent.js';
-import { decodeStage7Runs } from './coarseSemanticVoxelSchema.js';
+import { decodeStage7Runs, validateStage7Plan } from './coarseSemanticVoxelSchema.js';
 
 export const STAGE7_CONVERTER_SOURCE = 'stage7-coarse-semantic-voxel-procedural-plan-v1';
 
@@ -59,6 +59,8 @@ export function convertSemanticVoxelPlanToProceduralPlan({
   topology = {},
   prompt = ''
 } = {}) {
+  const validation = validateStage7Plan(plan, { condition, allowDerived: true });
+  if (!validation.ok || plan.accepted === false) throw new Error(`invalid Stage 7 plan: ${(validation.errors || []).join('; ') || 'unaccepted plan'}`);
   const blockers = (plan.conflicts || []).filter((item) => item.severity === 'blocker');
   if (blockers.length) throw new Error(`unresolved Stage 7 blockers: ${blockers.map((item) => item.id).join(', ')}`);
   const sketches = deriveStage7Sketches({ plan, condition });
@@ -89,10 +91,9 @@ export function convertSemanticVoxelPlanToProceduralPlan({
   const candidateCells = new Map(decodeStage7Runs(plan.runs).map((cell) => [keyOf(cell), cell]));
   const validatedEntranceKeys = Array.isArray(plan.summary?.validated_entrance_cells) ? plan.summary.validated_entrance_cells : [];
   if (!validatedEntranceKeys.length) throw new Error('Stage 7 conversion requires validated exterior entrance cells');
-  const stage7EntranceHints = validatedEntranceKeys
-    .map((key) => candidateCells.get(key))
-    .filter(Boolean)
-    .map((cell) => ({ side: condition.design?.front_side, grid: { x: cell.x, y: cell.y, z: cell.z } }));
+  const unresolvedEntrance = validatedEntranceKeys.find((key) => !candidateCells.has(key));
+  if (unresolvedEntrance) throw new Error(`unresolved validated entrance key: ${unresolvedEntrance}`);
+  const stage7EntranceHints = validatedEntranceKeys.map((key) => ({ side: condition.design?.front_side, role: 'exterior-entrance', anchor: 'validated-boundary' }));
   const candidateTopology = normalizeTopology({
     ...topology,
     nodes: candidateNodes,

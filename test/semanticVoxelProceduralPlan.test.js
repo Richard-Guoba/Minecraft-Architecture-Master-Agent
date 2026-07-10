@@ -117,6 +117,18 @@ test('Stage 7 converter is deterministic and rejects plans with unresolved block
   );
 });
 
+test('Stage 7 converter rejects unsafe inputs and unresolved entrance keys', () => {
+  const fixture = conversionFixture();
+  const repaired = repairedFixture(fixture.condition);
+  const input = { plan: repaired.plan, condition: fixture.condition, architecture: fixture.architecture, buildSpec: fixture.buildSpec, topology: fixture.topology, prompt: fixture.prompt };
+  const candidate = convertSemanticVoxelPlanToProceduralPlan(input);
+  assert.ok(candidate.topology.bsp_hints.stage7_entrance_hints.every((hint) => !Object.hasOwn(hint, 'grid') && !Object.hasOwn(hint, 'x')));
+  assert.throws(() => convertSemanticVoxelPlanToProceduralPlan({ ...input, condition: { ...fixture.condition, condition_hash: 'wrong' } }), /invalid Stage 7 plan/);
+  assert.throws(() => convertSemanticVoxelPlanToProceduralPlan({ ...input, plan: { ...repaired.plan, accepted: false } }), /invalid Stage 7 plan/);
+  assert.throws(() => convertSemanticVoxelPlanToProceduralPlan({ ...input, plan: { ...repaired.plan, runs: 'bad' } }), /invalid Stage 7 plan/);
+  assert.throws(() => convertSemanticVoxelPlanToProceduralPlan({ ...input, plan: { ...repaired.plan, summary: { ...repaired.plan.summary, validated_entrance_cells: ['999,999,999'] } } }), /unresolved validated entrance key/);
+});
+
 function repairedFixture(condition) {
   const result = repairCoarseSemanticVoxelPlan({
     plan: generateDeterministicCoarseSemanticVoxelPlan({ condition }),
