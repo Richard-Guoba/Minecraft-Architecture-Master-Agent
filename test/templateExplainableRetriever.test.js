@@ -60,6 +60,10 @@ test('explainable retriever honors limited review approved and blocked learning 
   assert.deepEqual(limited.teaches.map((unit) => unit.area), ['site']);
   assert.equal(limited.teaches.some((unit) => unit.area === 'interior'), false);
   assert.deepEqual(limited.integration_targets, ['TemplateSiteSceneStrategy']);
+  assert.equal(limited.review_state, 'limited');
+  assert.equal(limited.review_confidence, 0.6);
+  assert.deepEqual(limited.approved_learning_areas, ['site']);
+  assert.deepEqual(limited.blocked_learning_areas, ['interior']);
 });
 
 test('explainable retriever ignores blocked interior and room-type tokens while scoring limited cases', () => {

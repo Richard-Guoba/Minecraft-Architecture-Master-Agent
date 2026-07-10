@@ -1,5 +1,5 @@
 import { ExplainableTemplateRetriever } from './templateExplainableRetriever.js';
-import { queryEmbeddingIndex, validateEmbeddingIndex } from './templateEmbeddingIndex.js';
+import { hashEmbeddingIndex, queryEmbeddingIndex, validateEmbeddingIndex } from './templateEmbeddingIndex.js';
 
 export const NEURAL_RETRIEVER_SOURCE = 'stage5-neural-template-retriever-v1';
 
@@ -48,6 +48,7 @@ export class NeuralTemplateRetriever {
           match_score: matchScore,
           rule_score: ruleScore,
           embedding_score: embeddingScore,
+          embedding_record_hash: embedding?.embedding_record_hash,
           tag_match_score: tagMatchScore,
           fusion_explanation: `Neural fusion combined rule=${ruleScore}, embedding=${embeddingScore}, tag=${tagMatchScore}, review=${reviewBonus}, diversity=${diversityBonus}, risk=${riskPenalty}.`,
           matched_signals: [...new Set([...(ref.matched_signals || []), ...matchedTagSignals(caseRecord, labelRecord, promptTokens)])]
@@ -65,6 +66,7 @@ export class NeuralTemplateRetriever {
       mode: 'fusion',
       fallback_used: false,
       prompt,
+      embedding_index_hash: hashEmbeddingIndex(this.embeddingIndex),
       references: fused.map((item, index) => ({ ...item, rank: index + 1 })),
       warnings: rule.warnings || []
     };
@@ -90,6 +92,10 @@ function explainFromCase(caseRecord = {}, embedding = {}, promptTokens = new Set
     case_id: caseRecord.case_id,
     title: caseRecord.title || caseRecord.case_id,
     file: caseRecord.file,
+    review_state: String(caseRecord.review?.status || 'pending'),
+    review_confidence: Number(caseRecord.review?.confidence || 0),
+    approved_learning_areas: normalizeStringArray(caseRecord.review?.approved_learning_areas),
+    blocked_learning_areas: normalizeStringArray(caseRecord.review?.blocked_learning_areas),
     match_score: Number(embedding?.embedding_score || 0),
     diversity_slot: (caseRecord.retrieval?.diversity_slots || ['general'])[0],
     matched_signals: ['embedding:semantic-similarity', ...safeRetrievalSignals(caseRecord)],
@@ -275,4 +281,8 @@ function clampLimit(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 8;
   return Math.max(1, Math.min(8, Math.trunc(number)));
+}
+
+function normalizeStringArray(value) {
+  return Array.isArray(value) ? value.map((item) => String(item || '').trim()).filter(Boolean) : [];
 }

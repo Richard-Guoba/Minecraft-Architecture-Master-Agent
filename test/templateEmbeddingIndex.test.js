@@ -116,9 +116,12 @@ test('query tie-breaking is deterministic with equal scores', () => {
     prompt: 'unmatched-token',
     limit: 2
   });
+  const repeated = queryEmbeddingIndex({ index, prompt: 'unmatched-token', limit: 2 });
 
   assert.equal(matches[0].case_id, 'case-a');
   assert.equal(matches[1].case_id, 'case-b');
+  assert.match(matches[0].embedding_record_hash, /^sha256:[a-f0-9]{64}$/);
+  assert.equal(matches[0].embedding_record_hash, repeated[0].embedding_record_hash);
 });
 
 test('embedding index query ranks matching cases above unrelated cases', () => {

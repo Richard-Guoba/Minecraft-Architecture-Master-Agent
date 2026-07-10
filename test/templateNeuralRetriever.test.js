@@ -29,6 +29,12 @@ test('neural retriever returns fusion result with rule and embedding scores', ()
   assert.match(result.references[0].fusion_explanation, /fusion/i);
   assert.ok(result.references[0].teaches.length > 0);
   assert.ok(result.references[0].risk_controls.length > 0);
+  assert.equal(result.references[0].review_state, 'approved');
+  assert.equal(result.references[0].review_confidence, 0.9);
+  assert.deepEqual(result.references[0].approved_learning_areas, []);
+  assert.deepEqual(result.references[0].blocked_learning_areas, []);
+  assert.match(result.embedding_index_hash, /^sha256:[a-f0-9]{64}$/);
+  assert.match(result.references[0].embedding_record_hash, /^sha256:[a-f0-9]{64}$/);
 });
 
 test('neural retriever falls back to rule-only when embedding index is missing', () => {

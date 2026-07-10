@@ -141,6 +141,7 @@ export function queryEmbeddingIndex({ index = {}, prompt = '', limit = 8 } = {})
       case_id: item.case_id,
       title: item.title,
       embedding_score: Math.max(0, Math.round(cosine(queryVector, item.vector) * 100)),
+      embedding_record_hash: hashEmbeddingRecord(item),
       areas: item.areas || [],
       tokens: item.tokens || [],
       risk_penalty: Number(item.risk_penalty || 0)
@@ -153,6 +154,14 @@ export function queryEmbeddingIndex({ index = {}, prompt = '', limit = 8 } = {})
       return compareStableString(a.case_id, b.case_id);
     })
     .slice(0, clampLimit(limit));
+}
+
+export function hashEmbeddingIndex(index = {}) {
+  return `sha256:${hashJson(index)}`;
+}
+
+export function hashEmbeddingRecord(record = {}) {
+  return `sha256:${hashJson(record)}`;
 }
 
 export function validateEmbeddingIndex(index = {}, knowledgeBase = {}, neuralLabels) {
