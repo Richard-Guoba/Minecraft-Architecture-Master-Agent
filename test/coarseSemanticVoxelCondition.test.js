@@ -85,6 +85,17 @@ test('limited references without an approved matching learning area are excluded
   assert.deepEqual(condition.references, []);
 });
 
+test('buildStage7Condition clamps reviewed reference confidence to the safe range', () => {
+  const input = conditionInput();
+  input.templateKnowledge.retrieval_explanation.references[0].review_confidence = 3;
+  input.templateKnowledge.retrieval_explanation.references[1].review_confidence = -2;
+
+  const condition = buildStage7Condition(input);
+
+  assert.equal(condition.references[0].review_confidence, 1);
+  assert.equal(condition.references[1].review_confidence, 0);
+});
+
 test('Stage 7 condition excludes nested site context and unapproved mood text', () => {
   const input = conditionInput();
   const hostileContext = {

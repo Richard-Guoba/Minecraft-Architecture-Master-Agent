@@ -133,7 +133,7 @@ function normalizeReference(reference = {}, neural = false, embeddingIndexHash) 
     rank: integer(reference.rank, 999),
     match_score: integer(reference.match_score, 0),
     review_state: reviewState,
-    review_confidence: finite(reference.review_confidence, 0),
+    review_confidence: Math.max(0, Math.min(1, finite(reference.review_confidence, 0))),
     approved_learning_areas: approved,
     blocked_learning_areas: [...blocked].sort(),
     used_for: usedFor,

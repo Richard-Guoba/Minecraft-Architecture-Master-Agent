@@ -148,6 +148,7 @@ function validateStage7ConditionValue(condition = {}) {
     else if (referenceIds.has(caseId)) errors.push(`duplicate reference case id: ${caseId}`);
     else referenceIds.add(caseId);
     if (!['approved', 'limited'].includes(reference?.review_state)) errors.push('reference review state must be approved or limited');
+    if (typeof reference?.review_confidence !== 'number' || !Number.isFinite(reference.review_confidence) || reference.review_confidence < 0 || reference.review_confidence > 1) errors.push('reference review confidence must be within 0..1');
     if (!Array.isArray(reference?.used_for) || !reference.used_for.length || reference.used_for.some((item) => typeof item !== 'string' || !item)) errors.push(`reference used_for is required: ${caseId || 'unknown'}`);
     if (!Array.isArray(reference?.hints) || reference.hints.some((item) => !isPlainObject(item) || typeof item.area !== 'string' || typeof item.claim !== 'string' || !Number.isFinite(item.confidence) || item.confidence < 0 || item.confidence > 1)) errors.push(`reference hints are invalid: ${caseId || 'unknown'}`);
     if (reference?.embedding_index_source && (

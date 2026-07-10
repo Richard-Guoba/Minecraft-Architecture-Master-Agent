@@ -46,6 +46,26 @@ test('Stage 7 condition validation rejects stale hashes, invalid dimensions, and
   ]) assert.ok(result.errors.includes(message), `missing condition error: ${message}`);
 });
 
+test('Stage 7 condition validation rejects non-finite and out-of-range review confidence', () => {
+  for (const reviewConfidence of [Number.NaN, Number.POSITIVE_INFINITY, -0.1, 1.1]) {
+    const payload = conditionFixture();
+    payload.references = [{
+      case_id: 'confidence-fixture',
+      review_state: 'approved',
+      review_confidence: reviewConfidence,
+      used_for: ['massing'],
+      hints: []
+    }];
+    const unhashed = structuredClone(payload);
+    payload.condition_hash = hashCanonicalValue(unhashed);
+
+    const result = validateStage7Condition(payload);
+
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.includes('reference review confidence must be within 0..1'));
+  }
+});
+
 test('Stage 7 cell encoding merges adjacent X cells and round-trips canonically', () => {
   const cells = [
     cell(2, 1, 4, { envelope: 'wall' }),
