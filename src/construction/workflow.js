@@ -151,6 +151,7 @@ export async function runConstructionWorkflow({
     creativeDesign,
     conceptStudio,
     stage7Shadow,
+    coarseVoxelPlan,
     stylePreset,
     materialPalette,
     templateKnowledge,
@@ -317,6 +318,7 @@ export async function runConstructionWorkflow({
     blueprint,
     conceptStudio,
     stage7Shadow,
+    coarseVoxelPlan,
     criticCouncil,
     architectureScorecard,
     validation,
@@ -819,7 +821,7 @@ function clampConceptCount(value) {
   return Math.max(2, Math.min(5, Math.round(number)));
 }
 
-async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shadow, criticCouncil, architectureScorecard, validation, prompt, mcVersion, autoBuild, minecraftDir, world, datapacksDir }) {
+async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shadow, coarseVoxelPlan, criticCouncil, architectureScorecard, validation, prompt, mcVersion, autoBuild, minecraftDir, world, datapacksDir }) {
   const datapackDir = path.join(outputDir, 'architect_datapack');
   const functionDir = path.join(datapackDir, 'data', 'architect', 'function');
   await ensureDir(functionDir);
@@ -837,7 +839,8 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shad
   const conceptStudioReportPath = conceptStudio?.active ? path.join(outputDir, 'concept_studio_report.md') : undefined;
   const criticCouncilPath = criticCouncil?.active ? path.join(outputDir, 'critic_council.json') : undefined;
   const stage7ConditionPath = stage7Shadow?.condition ? path.join(outputDir, 'stage7_condition.json') : undefined;
-  const stage7RawPlanPath = stage7Shadow?.rawPlan ? path.join(outputDir, 'stage7_coarse_semantic_plan.raw.json') : undefined;
+  const stage7RawSource = stage7Shadow?.rawPlan ? undefined : (stage7Shadow?.rawArtifactSource || coarseVoxelPlan);
+  const stage7RawPlanPath = (stage7Shadow?.rawPlan || stage7RawSource) ? path.join(outputDir, 'stage7_coarse_semantic_plan.raw.json') : undefined;
   const stage7RepairedPlanPath = stage7Shadow?.repairedPlan ? path.join(outputDir, 'stage7_coarse_semantic_plan.repaired.json') : undefined;
   const stage7ReportPath = stage7Shadow?.active ? path.join(outputDir, 'stage7_coarse_semantic_report.md') : undefined;
   const stage7CandidatePath = stage7Shadow?.candidate ? path.join(outputDir, 'stage7_procedural_candidate.json') : undefined;
@@ -849,11 +852,23 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shad
   if (conceptStudioReportPath) await fs.writeFile(conceptStudioReportPath, renderConceptStudioReport(conceptStudio), 'utf8');
   if (criticCouncilPath) await writeJson(criticCouncilPath, serializeCriticCouncil(criticCouncil));
   if (stage7ConditionPath) await writeJson(stage7ConditionPath, stage7Shadow.condition);
-  if (stage7RawPlanPath) await writeJson(stage7RawPlanPath, stage7Shadow.rawPlan);
+  if (stage7RawPlanPath && stage7Shadow.rawPlan) await writeJson(stage7RawPlanPath, stage7Shadow.rawPlan);
+  else if (stage7RawPlanPath && stage7RawSource) await fs.copyFile(stage7RawSource, stage7RawPlanPath);
   if (stage7RepairedPlanPath) await writeJson(stage7RepairedPlanPath, stage7Shadow.repairedPlan);
   if (stage7ReportPath) await fs.writeFile(stage7ReportPath, `${stage7Shadow.report || ''}\n- Primary geometry changed: no\n`, 'utf8');
   if (stage7CandidatePath) await writeJson(stage7CandidatePath, stage7Shadow.candidate);
-  if (stage7FailureCasePath) await writeJson(stage7FailureCasePath, stage7Shadow.failureCase);
+  if (stage7FailureCasePath) await writeJson(stage7FailureCasePath, {
+    ...stage7Shadow.failureCase,
+    baseline_artifact_paths: { blueprint: path.relative(outputDir, blueprintPath), run_report: path.relative(outputDir, reportPath), datapack: path.relative(outputDir, datapackDir) },
+    diagnostic_artifact_paths: {
+      condition: stage7ConditionPath ? path.relative(outputDir, stage7ConditionPath) : undefined,
+      raw_plan: stage7RawPlanPath ? path.relative(outputDir, stage7RawPlanPath) : undefined,
+      repaired_plan: stage7RepairedPlanPath ? path.relative(outputDir, stage7RepairedPlanPath) : undefined,
+      stage7_report: stage7ReportPath ? path.relative(outputDir, stage7ReportPath) : undefined,
+      candidate: stage7CandidatePath ? path.relative(outputDir, stage7CandidatePath) : undefined,
+      failure_case: path.relative(outputDir, stage7FailureCasePath)
+    }
+  });
   await writeJson(path.join(datapackDir, 'pack.mcmeta'), {
     pack: {
       pack_format: packFormatFor(mcVersion),

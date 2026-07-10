@@ -47,6 +47,13 @@ test('invalid Stage 7 artifacts reject while normal build succeeds unchanged', a
     assert.equal(rejected.validation.ok, true); assert.equal(rejected.stage7.status, 'rejected');
     assert.equal(rejected.blueprint.stage7.fallback, 'primary-build-unchanged');
     assert.deepEqual(rejected.blueprint.operations, baseline.blueprint.operations); assert.ok(rejected.artifacts.stage7FailureCase);
+    assert.ok(rejected.artifacts.stage7RawPlan);
+    assert.equal(await fs.readFile(rejected.artifacts.stage7RawPlan, 'utf8'), await fs.readFile(artifactPath, 'utf8'));
+    const failure = JSON.parse(await fs.readFile(rejected.artifacts.stage7FailureCase, 'utf8'));
+    assert.equal(failure.baseline_artifact_paths.blueprint, 'blueprint.json');
+    assert.equal(failure.baseline_artifact_paths.run_report, 'run_report.md');
+    assert.equal(failure.diagnostic_artifact_paths.raw_plan, 'stage7_coarse_semantic_plan.raw.json');
+    assert.equal(failure.diagnostic_artifact_paths.candidate, undefined);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
