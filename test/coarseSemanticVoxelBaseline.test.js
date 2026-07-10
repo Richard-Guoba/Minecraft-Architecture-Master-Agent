@@ -88,6 +88,104 @@ test('baseline follows space-strategy signals and scopes reviewed evidence to ap
   assert.equal(baseCells.some((cell) => cell.site !== 'none' && cell.evidence_ids.includes(referenceId)), false);
 });
 
+test('site-only reference hints support site semantics without changing envelope massing', () => {
+  const fixture = fixtureCondition(7101, 2);
+  const base = canonicalCondition(fixture, (payload) => {
+    payload.design.footprint = 'rectangle';
+    payload.design.massing_strategy = [];
+    payload.design.abstract_site_tags = [];
+    payload.references = [];
+  });
+  const siteOnly = canonicalCondition(base, (payload) => {
+    const reference = structuredClone(fixture.references[0]);
+    reference.case_id = 'site-only-courtyard';
+    reference.title = 'Site-only Courtyard';
+    reference.used_for = ['site'];
+    reference.hints = [{ area: 'site', claim: 'courtyard stepped terrace', confidence: 0.9 }];
+    payload.references = [reference];
+  });
+  const baseCells = decodeStage7Runs(generateDeterministicCoarseSemanticVoxelPlan({ condition: base }).runs);
+  const siteCells = decodeStage7Runs(generateDeterministicCoarseSemanticVoxelPlan({ condition: siteOnly }).runs);
+  const envelopeSignature = (cells) => cells
+    .filter((cell) => cell.envelope !== 'none')
+    .map(({ x, y, z, envelope }) => ({ x, y, z, envelope }));
+
+  assert.ok(siteCells.some((cell) => cell.site === 'courtyard'));
+  assert.equal(hashCanonicalValue(envelopeSignature(siteCells)), hashCanonicalValue(envelopeSignature(baseCells)));
+});
+
+test('mixed semantic cells only retain references approved for every active layer', () => {
+  const condition = fixtureCondition(7101, 1);
+  const cells = decodeStage7Runs(generateDeterministicCoarseSemanticVoxelPlan({ condition }).runs);
+  const entranceCells = cells.filter((cell) => cell.envelope === 'opening' && cell.space === 'circulation');
+  const conditionId = `condition:${condition.condition_hash}`;
+
+  assert.ok(entranceCells.length > 0);
+  for (const cell of entranceCells) assert.deepEqual(cell.evidence_ids, [conditionId]);
+});
+
+test('five-floor stepped courtyard baseline keeps a connected vertical core on every floor plate', () => {
+  const condition = canonicalCondition(fixtureCondition(7101, 5), (payload) => {
+    payload.dimensions.width = 24;
+    payload.dimensions.depth = 24;
+    payload.dimensions.lot_width = 64;
+    payload.dimensions.lot_depth = 64;
+    payload.design.footprint = 'courtyard';
+    payload.design.massing_strategy = ['stepped-terrace'];
+  });
+  const plan = generateDeterministicCoarseSemanticVoxelPlan({ condition });
+  const cells = decodeStage7Runs(plan.runs);
+  const floorLevels = [...new Set(cells.filter((cell) => cell.envelope === 'floor').map((cell) => cell.y))].sort((left, right) => left - right);
+  const verticalCells = cells.filter((cell) => cell.space === 'vertical_circulation');
+  const verticalByColumn = new Map();
+  for (const cell of verticalCells) {
+    const key = `${cell.x},${cell.z}`;
+    verticalByColumn.set(key, [...(verticalByColumn.get(key) || []), cell]);
+  }
+  const connectedColumn = [...verticalByColumn.values()].some((column) => {
+    const levels = new Set(column.map((cell) => cell.y));
+    return [...levels].every((level) => levels.has(level + 1) || level === Math.max(...levels));
+  });
+  const intersectedFloorLevels = floorLevels.filter((level) => verticalCells.some((cell) => cell.y === level && cell.envelope === 'floor'));
+
+  assert.equal(validateStage7Plan(plan, { conditionHash: condition.condition_hash }).ok, true);
+  assert.equal(floorLevels.length, 5);
+  assert.equal(connectedColumn, true);
+  assert.deepEqual(intersectedFloorLevels, floorLevels);
+});
+
+test('one-floor zoning applies every supported directional public strategy', async (t) => {
+  const cases = [
+    { strategy: 'public-west', axis: 'x', direction: -1 },
+    { strategy: 'public-east', axis: 'x', direction: 1 },
+    { strategy: 'public-north', axis: 'z', direction: -1 }
+  ];
+
+  for (const item of cases) {
+    await t.test(item.strategy, () => {
+      const condition = canonicalCondition(fixtureCondition(7102, 1), (payload) => {
+        payload.design.space_strategy = [item.strategy];
+      });
+      const cells = decodeStage7Runs(generateDeterministicCoarseSemanticVoxelPlan({ condition }).runs);
+      const floorCells = cells.filter((cell) => cell.envelope === 'floor');
+      const publicCells = cells.filter((cell) => cell.space === 'public');
+      const coordinates = floorCells.map((cell) => cell[item.axis]);
+      const center = (Math.min(...coordinates) + Math.max(...coordinates)) / 2;
+      const average = publicCells.reduce((sum, cell) => sum + cell[item.axis], 0) / publicCells.length;
+
+      assert.ok(publicCells.length > 0, `missing public cells for ${item.strategy}`);
+      assert.ok(item.direction < 0 ? average < center : average > center, `${item.strategy} public centroid is on the wrong side`);
+    });
+  }
+});
+
+function canonicalCondition(condition, mutate) {
+  const payload = structuredClone(condition);
+  delete payload.condition_hash;
+  mutate(payload);
+  return { ...payload, condition_hash: hashCanonicalValue(payload) };
+}
+
 function fixtureCondition(seed = 7101, floors = 2) {
   return buildStage7Condition({
     prompt: '湖边带水景庭院的两层日式住宅，有花园和观景轴线',

@@ -2,6 +2,12 @@ import { createStage7Plan } from './coarseSemanticVoxelSchema.js';
 
 export const STAGE7_BASELINE_SOURCE = 'stage7-coarse-semantic-voxel-baseline-v1';
 
+const SEMANTIC_AREAS = Object.freeze({
+  envelope: Object.freeze(['massing', 'structure', 'facade', 'roof']),
+  space: Object.freeze(['space', 'planning', 'circulation', 'interior']),
+  site: Object.freeze(['site', 'landscape', 'courtyard', 'water'])
+});
+
 export const deterministicCoarseSemanticVoxelProvider = Object.freeze({
   id: 'baseline',
   async generate(input = {}) {
@@ -21,12 +27,15 @@ export function generateDeterministicCoarseSemanticVoxelPlan({ condition = {}, s
   const roofY = 58;
   const floorSpan = Math.max(6, Math.floor((roofY - baseY) / floors));
   const strategies = new Set((condition.design?.massing_strategy || []).map(normalizeToken));
-  const referenceHints = (condition.references || []).flatMap((item) => item.hints || []).map((item) => normalizeToken(item.claim));
-  const courtyard = condition.design?.footprint === 'courtyard' || strategies.has('courtyard') || referenceHints.some((item) => item.includes('courtyard'));
-  const stepped = [...strategies, ...referenceHints].some((item) => item.includes('step') || item.includes('terrace'));
+  const referenceHints = referenceHintsByLayer(condition);
+  const courtyard = condition.design?.footprint === 'courtyard' || strategies.has('courtyard') || referenceHints.envelope.some((item) => item.includes('courtyard'));
+  const stepped = [...strategies, ...referenceHints.envelope].some((item) => item.includes('step') || item.includes('terrace'));
   const courtyardBox = courtyard ? insetBox(bounds, Math.max(4, Math.floor((bounds.x1 - bounds.x0 + 1) * 0.35)), Math.max(4, Math.floor((bounds.z1 - bounds.z0 + 1) * 0.35))) : undefined;
+  const siteCourtyard = courtyard || (condition.design?.abstract_site_tags || []).includes('courtyard') || referenceHints.site.some((item) => item.includes('courtyard'));
+  const siteCourtyardBox = siteCourtyard ? insetBox(bounds, Math.max(4, Math.floor((bounds.x1 - bounds.x0 + 1) * 0.35)), Math.max(4, Math.floor((bounds.z1 - bounds.z0 + 1) * 0.35))) : undefined;
+  const floorBoundsByLevel = [];
 
-  addSiteLayer(cells, condition, bounds, courtyardBox, evidenceIds.site);
+  addSiteLayer(cells, condition, bounds, siteCourtyardBox, evidenceIds.site, referenceHints.site);
   for (let floor = 0; floor < floors; floor += 1) {
     const inset = floorInset(bounds, floor, stepped);
     const floorBounds = {
@@ -35,11 +44,12 @@ export function generateDeterministicCoarseSemanticVoxelPlan({ condition = {}, s
       z0: bounds.z0 + inset,
       z1: bounds.z1 - inset
     };
+    floorBoundsByLevel.push(floorBounds);
     const y0 = baseY + floor * floorSpan;
     const y1 = floor === floors - 1 ? roofY - 1 : baseY + (floor + 1) * floorSpan - 1;
     addFloor(cells, floorBounds, courtyardBox, y0, evidenceIds.envelope);
     addStructuralSupportColumns(cells, floorBounds, baseY, y0, evidenceIds.envelope);
-    addEnvelopeAndSpaces(cells, floorBounds, courtyardBox, y0, y1, floor, floors, condition, evidenceIds);
+    addEnvelopeAndSpaces(cells, floorBounds, courtyardBox, y0, y1, floor, floors, condition, evidenceIds, referenceHints.space);
   }
   const topInset = floorInset(bounds, floors - 1, stepped);
   addRoof(cells, stepped ? {
@@ -49,7 +59,7 @@ export function generateDeterministicCoarseSemanticVoxelPlan({ condition = {}, s
     z1: bounds.z1 - topInset
   } : bounds, courtyardBox, roofY, evidenceIds.envelope);
   addEntrance(cells, bounds, condition.design?.front_side || 'south', baseY, [...new Set([...evidenceIds.envelope, ...evidenceIds.space])]);
-  if (floors > 1) addVerticalCore(cells, bounds, courtyardBox, baseY, roofY, evidenceIds.space);
+  if (floors > 1) addVerticalCore(cells, floorBoundsByLevel.at(-1), courtyardBox, baseY, roofY, evidenceIds.space);
 
   return createStage7Plan({
     condition,
@@ -59,7 +69,10 @@ export function generateDeterministicCoarseSemanticVoxelPlan({ condition = {}, s
       model_version: null,
       dataset_version: null
     },
-    cells: [...cells.values()],
+    cells: [...cells.values()].map((cell) => ({
+      ...cell,
+      evidence_ids: evidenceIdsForCell(cell, evidenceIds)
+    })),
     evidence
   });
 }
@@ -85,11 +98,11 @@ function floorInset(bounds, floor, stepped) {
   return Math.min(floor * 2, maxInset);
 }
 
-function addSiteLayer(cells, condition, building, courtyard, evidenceIds) {
+function addSiteLayer(cells, condition, building, courtyard, evidenceIds, siteHints) {
   for (let z = 0; z < 64; z += 1) {
     for (let x = 0; x < 64; x += 1) put(cells, x, 0, z, { site: 'ground' }, evidenceIds);
   }
-  if ((condition.design?.abstract_site_tags || []).includes('water-edge')) {
+  if ((condition.design?.abstract_site_tags || []).includes('water-edge') || siteHints.some((item) => item.includes('water') || item.includes('lake'))) {
     for (let z = 0; z <= 4; z += 1) {
       for (let x = 0; x < 64; x += 1) put(cells, x, 0, z, { site: 'water' }, evidenceIds);
     }
@@ -129,7 +142,7 @@ function addStructuralSupportColumns(cells, bounds, baseY, floorY, evidenceIds) 
   }
 }
 
-function addEnvelopeAndSpaces(cells, bounds, courtyard, y0, y1, floor, floors, condition, evidenceIds) {
+function addEnvelopeAndSpaces(cells, bounds, courtyard, y0, y1, floor, floors, condition, evidenceIds, spaceHints) {
   for (let y = y0 + 1; y <= y1; y += 1) {
     for (let z = bounds.z0; z <= bounds.z1; z += 1) {
       for (let x = bounds.x0; x <= bounds.x1; x += 1) {
@@ -137,7 +150,7 @@ function addEnvelopeAndSpaces(cells, bounds, courtyard, y0, y1, floor, floors, c
         if (x === bounds.x0 || x === bounds.x1 || z === bounds.z0 || z === bounds.z1) {
           put(cells, x, y, z, { envelope: 'wall' }, evidenceIds.envelope);
         } else {
-          put(cells, x, y, z, { space: zoneFor(x, z, bounds, floor, floors, condition) }, evidenceIds.space);
+          put(cells, x, y, z, { space: zoneFor(x, z, bounds, floor, floors, condition, spaceHints) }, evidenceIds.space);
         }
       }
     }
@@ -161,23 +174,47 @@ function addEntrance(cells, bounds, frontSide, baseY, evidenceIds) {
 }
 
 function addVerticalCore(cells, bounds, courtyard, baseY, roofY, evidenceIds) {
-  const centerX = Math.floor((bounds.x0 + bounds.x1) / 2);
-  const centerZ = Math.floor((bounds.z0 + bounds.z1) / 2);
-  const candidates = [
-    { x: centerX, z: centerZ },
-    { x: centerX + 1, z: centerZ },
-    { x: centerX, z: centerZ + 1 },
-    { x: centerX + 1, z: centerZ + 1 }
-  ].map((point) => inside(point.x, point.z, courtyard) ? { x: courtyard.x0 - 2, z: point.z } : point);
-  for (let y = baseY + 1; y < roofY; y += 1) {
+  const candidates = verticalCoreCandidates(bounds, courtyard);
+  for (let y = baseY; y < roofY; y += 1) {
     for (const point of candidates) put(cells, point.x, y, point.z, { space: 'vertical_circulation' }, evidenceIds);
   }
 }
 
-function zoneFor(x, z, bounds, floor, floors, condition) {
+function verticalCoreCandidates(bounds, courtyard) {
+  const centerX = (bounds.x0 + bounds.x1) / 2;
+  const centerZ = (bounds.z0 + bounds.z1) / 2;
+  const anchors = [];
+  for (let z = bounds.z0 + 1; z <= bounds.z1 - 2; z += 1) {
+    for (let x = bounds.x0 + 1; x <= bounds.x1 - 2; x += 1) {
+      const points = [
+        { x, z },
+        { x: x + 1, z },
+        { x, z: z + 1 },
+        { x: x + 1, z: z + 1 }
+      ];
+      if (points.some((point) => inside(point.x, point.z, courtyard))) continue;
+      anchors.push({ x, z, points, distance: Math.abs(x + 0.5 - centerX) + Math.abs(z + 0.5 - centerZ) });
+    }
+  }
+  anchors.sort((left, right) => left.distance - right.distance || left.z - right.z || left.x - right.x);
+  if (anchors.length) return anchors[0].points;
+
+  const points = [];
+  for (let z = bounds.z0; z <= bounds.z1; z += 1) {
+    for (let x = bounds.x0; x <= bounds.x1; x += 1) {
+      if (inside(x, z, courtyard)) continue;
+      const boundary = x === bounds.x0 || x === bounds.x1 || z === bounds.z0 || z === bounds.z1;
+      points.push({ x, z, boundary, distance: Math.abs(x - centerX) + Math.abs(z - centerZ) });
+    }
+  }
+  points.sort((left, right) => Number(left.boundary) - Number(right.boundary) || left.distance - right.distance || left.z - right.z || left.x - right.x);
+  return points.slice(0, 1).map(({ x, z }) => ({ x, z }));
+}
+
+function zoneFor(x, z, bounds, floor, floors, condition, spaceHints) {
   const centerX = Math.floor((bounds.x0 + bounds.x1) / 2);
   const centerZ = Math.floor((bounds.z0 + bounds.z1) / 2);
-  const strategy = [...(condition.design?.space_strategy || []), ...(condition.design?.quality_targets || [])].map(normalizeToken).join(' ');
+  const strategy = [...(condition.design?.space_strategy || []), ...(condition.design?.quality_targets || []), ...spaceHints].map(normalizeToken).join(' ');
   const programNodes = condition.design?.topology_program?.nodes || [];
   const totalProgramWeight = programNodes.reduce((sum, item) => sum + Math.max(0, Number(item.weight || 0)), 0);
   const serviceProgramWeight = programNodes.filter((item) => item.zone === 'service' || item.privacy === 'service').reduce((sum, item) => sum + Math.max(0, Number(item.weight || 0)), 0);
@@ -187,10 +224,10 @@ function zoneFor(x, z, bounds, floor, floors, condition) {
   const serviceOnWest = Math.abs(Number(condition.seed || 0)) % 2 === 1;
   const serviceEdge = serviceOnWest ? x <= bounds.x0 + serviceWidth : x >= bounds.x1 - serviceWidth;
   if (serviceEdge) return 'service';
-  if (floor > 0 || floors === 1 && z < centerZ) return 'private';
   if (strategy.includes('public-west')) return x < centerX ? 'public' : 'private';
   if (strategy.includes('public-east')) return x > centerX ? 'public' : 'private';
   if (strategy.includes('public-north')) return z < centerZ ? 'public' : 'private';
+  if (floor > 0 || floors === 1 && z < centerZ) return 'private';
   return z >= centerZ ? 'public' : 'private';
 }
 
@@ -206,6 +243,21 @@ function evidenceFor(condition) {
   ];
 }
 
+function referenceHintsByLayer(condition) {
+  const references = condition.references || [];
+  const hintsFor = (areas) => references.flatMap((reference) => {
+    const usedFor = new Set(reference.used_for || []);
+    return (reference.hints || [])
+      .filter((hint) => usedFor.has(hint.area) && areas.includes(hint.area))
+      .map((hint) => normalizeToken(hint.claim));
+  });
+  return {
+    envelope: hintsFor(SEMANTIC_AREAS.envelope),
+    space: hintsFor(SEMANTIC_AREAS.space),
+    site: hintsFor(SEMANTIC_AREAS.site)
+  };
+}
+
 function evidenceIdsByLayer(condition) {
   const conditionId = `condition:${condition.condition_hash}`;
   const references = condition.references || [];
@@ -216,10 +268,19 @@ function evidenceIdsByLayer(condition) {
       .map((reference) => `reference:${reference.case_id}`)
   ].sort();
   return {
-    envelope: idsFor(['massing', 'structure', 'facade', 'roof']),
-    space: idsFor(['space', 'planning', 'circulation', 'interior']),
-    site: idsFor(['site', 'landscape', 'courtyard', 'water'])
+    envelope: idsFor(SEMANTIC_AREAS.envelope),
+    space: idsFor(SEMANTIC_AREAS.space),
+    site: idsFor(SEMANTIC_AREAS.site)
   };
+}
+
+function evidenceIdsForCell(cell, evidenceIds) {
+  const activeLayers = [];
+  if (cell.envelope !== 'none') activeLayers.push('envelope');
+  if (cell.space !== 'outside') activeLayers.push('space');
+  if (cell.site !== 'none') activeLayers.push('site');
+  if (!activeLayers.length) return [];
+  return evidenceIds[activeLayers[0]].filter((id) => activeLayers.every((layer) => evidenceIds[layer].includes(id)));
 }
 
 function put(cells, x, y, z, values, evidenceIds) {
