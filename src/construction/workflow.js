@@ -25,6 +25,7 @@ import { TemplateInteriorDensityRepairAgent } from './agents/templateInteriorDen
 import { InteriorClearanceRepairAgent } from './agents/interiorClearanceRepairAgent.js';
 import { ConstructionEvaluationAgent } from './agents/constructionEvaluationAgent.js';
 import { ConceptStudioAgent } from './agents/conceptStudioAgent.js';
+import { compactCoarseSemanticVoxelShadow, runCoarseSemanticVoxelShadow } from './learning/coarseSemanticVoxelShadow.js';
 import { ConceptSelectionAgent } from './agents/conceptSelectionAgent.js';
 import { ConceptFusionAgent } from './agents/conceptFusionAgent.js';
 import { CriticCouncilAgent } from './agents/criticCouncilAgent.js';
@@ -51,7 +52,8 @@ export async function runConstructionWorkflow({
   conceptCount = 0,
   conceptStrategy = 'select',
   critics = true,
-  neuralRetrieval = false
+  neuralRetrieval = false,
+  coarseVoxelMode = 'off', coarseVoxelProvider = 'baseline', coarseVoxelPlan
 }) {
   if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
 
@@ -102,6 +104,7 @@ export async function runConstructionWorkflow({
     { conceptStudio }
   );
   ({ architecture, buildSpec, topology, creativeDesign } = applyCreativeDesign({ architecture, buildSpec, topology, creativeDesign, prompt }));
+  const stage7Shadow = await runCoarseSemanticVoxelShadow({ mode: coarseVoxelMode, provider: coarseVoxelProvider, artifactPath: coarseVoxelPlan, prompt, seed, architecture, buildSpec, topology, creativeDesign, conceptStudio, templateKnowledge });
   const llmUsage = summarizeLlmUsage({ mode, llmProvider, architecture, topology, creativeDesign });
   const structure = new StructureAgent().run(architecture, buildSpec, topology);
   const facade = new FacadeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
@@ -147,6 +150,7 @@ export async function runConstructionWorkflow({
     topology,
     creativeDesign,
     conceptStudio,
+    stage7Shadow,
     stylePreset,
     materialPalette,
     templateKnowledge,
@@ -244,6 +248,7 @@ export async function runConstructionWorkflow({
     topology,
     creativeDesign,
     conceptStudio,
+    stage7Shadow,
     stylePreset,
     materialPalette,
     templateKnowledge,
@@ -311,6 +316,7 @@ export async function runConstructionWorkflow({
     outputDir,
     blueprint,
     conceptStudio,
+    stage7Shadow,
     criticCouncil,
     architectureScorecard,
     validation,
@@ -337,6 +343,7 @@ export async function runConstructionWorkflow({
     topology,
     creativeDesign,
     ...(conceptStudio?.active ? { conceptStudio } : {}),
+    ...(stage7Shadow?.active ? { stage7: stage7Shadow } : {}),
     stylePreset,
     materialPalette,
     templateKnowledge,
@@ -536,7 +543,7 @@ function createSeedVariation(seed, context = {}) {
   };
 }
 
-function buildBlueprint({ prompt, architecture, topology, creativeDesign, conceptStudio, stylePreset, materialPalette, templateKnowledge, structure, facade, roof, site, opening, interior, repair, templateLawAutoRepair, templateInteriorDensityRepair, interiorClearanceRepair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
+function buildBlueprint({ prompt, architecture, topology, creativeDesign, conceptStudio, stage7Shadow, stylePreset, materialPalette, templateKnowledge, structure, facade, roof, site, opening, interior, repair, templateLawAutoRepair, templateInteriorDensityRepair, interiorClearanceRepair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
   return {
     version: 4,
     workflow: 'construction_method_v1',
@@ -552,6 +559,7 @@ function buildBlueprint({ prompt, architecture, topology, creativeDesign, concep
     topology,
     creativeDesign,
     ...(conceptStudio?.active ? { conceptStudio: compactConceptStudio(conceptStudio) } : {}),
+    ...(stage7Shadow?.active ? { stage7: compactCoarseSemanticVoxelShadow(stage7Shadow) } : {}),
     stylePreset,
     materialPalette,
     templateKnowledge,
@@ -811,7 +819,7 @@ function clampConceptCount(value) {
   return Math.max(2, Math.min(5, Math.round(number)));
 }
 
-async function exportArtifacts({ outputDir, blueprint, conceptStudio, criticCouncil, architectureScorecard, validation, prompt, mcVersion, autoBuild, minecraftDir, world, datapacksDir }) {
+async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shadow, criticCouncil, architectureScorecard, validation, prompt, mcVersion, autoBuild, minecraftDir, world, datapacksDir }) {
   const datapackDir = path.join(outputDir, 'architect_datapack');
   const functionDir = path.join(datapackDir, 'data', 'architect', 'function');
   await ensureDir(functionDir);
@@ -828,12 +836,24 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, criticCoun
   const conceptStudioPath = conceptStudio?.active ? path.join(outputDir, 'concept_studio.json') : undefined;
   const conceptStudioReportPath = conceptStudio?.active ? path.join(outputDir, 'concept_studio_report.md') : undefined;
   const criticCouncilPath = criticCouncil?.active ? path.join(outputDir, 'critic_council.json') : undefined;
+  const stage7ConditionPath = stage7Shadow?.condition ? path.join(outputDir, 'stage7_condition.json') : undefined;
+  const stage7RawPlanPath = stage7Shadow?.rawPlan ? path.join(outputDir, 'stage7_coarse_semantic_plan.raw.json') : undefined;
+  const stage7RepairedPlanPath = stage7Shadow?.repairedPlan ? path.join(outputDir, 'stage7_coarse_semantic_plan.repaired.json') : undefined;
+  const stage7ReportPath = stage7Shadow?.active ? path.join(outputDir, 'stage7_coarse_semantic_report.md') : undefined;
+  const stage7CandidatePath = stage7Shadow?.candidate ? path.join(outputDir, 'stage7_procedural_candidate.json') : undefined;
+  const stage7FailureCasePath = stage7Shadow?.failureCase ? path.join(outputDir, 'stage7_failure_case.json') : undefined;
 
   await writeJson(blueprintPath, blueprint);
   await writeJson(architectureScorecardPath, architectureScorecard);
   if (conceptStudioPath) await writeJson(conceptStudioPath, serializeConceptStudio(conceptStudio));
   if (conceptStudioReportPath) await fs.writeFile(conceptStudioReportPath, renderConceptStudioReport(conceptStudio), 'utf8');
   if (criticCouncilPath) await writeJson(criticCouncilPath, serializeCriticCouncil(criticCouncil));
+  if (stage7ConditionPath) await writeJson(stage7ConditionPath, stage7Shadow.condition);
+  if (stage7RawPlanPath) await writeJson(stage7RawPlanPath, stage7Shadow.rawPlan);
+  if (stage7RepairedPlanPath) await writeJson(stage7RepairedPlanPath, stage7Shadow.repairedPlan);
+  if (stage7ReportPath) await fs.writeFile(stage7ReportPath, `${stage7Shadow.report || ''}\n- Primary geometry changed: no\n`, 'utf8');
+  if (stage7CandidatePath) await writeJson(stage7CandidatePath, stage7Shadow.candidate);
+  if (stage7FailureCasePath) await writeJson(stage7FailureCasePath, stage7Shadow.failureCase);
   await writeJson(path.join(datapackDir, 'pack.mcmeta'), {
     pack: {
       pack_format: packFormatFor(mcVersion),
@@ -868,6 +888,12 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, criticCoun
     report: reportPath,
     ...(conceptStudioPath ? { conceptStudio: conceptStudioPath, conceptStudioReport: conceptStudioReportPath } : {}),
     ...(criticCouncilPath ? { criticCouncil: criticCouncilPath } : {}),
+    ...(stage7ConditionPath ? { stage7Condition: stage7ConditionPath } : {}),
+    ...(stage7RawPlanPath ? { stage7RawPlan: stage7RawPlanPath } : {}),
+    ...(stage7RepairedPlanPath ? { stage7RepairedPlan: stage7RepairedPlanPath } : {}),
+    ...(stage7ReportPath ? { stage7Report: stage7ReportPath } : {}),
+    ...(stage7CandidatePath ? { stage7Candidate: stage7CandidatePath } : {}),
+    ...(stage7FailureCasePath ? { stage7FailureCase: stage7FailureCasePath } : {}),
     installedDatapackDir
   };
 }
@@ -987,6 +1013,7 @@ function renderReport({ prompt, blueprint, architectureScorecard, validation, mc
     '2. 站在目标位置运行 /function architect:run。它会自动 clear + build。'
   ].join('\n');
   const conceptStudioSection = renderConceptStudioSection(blueprint);
+  const stage7ShadowSection = blueprint.stage7?.active ? `## Stage 7 Milestone 1 Shadow\n\n- Mode: ${blueprint.stage7.mode}\n- Provider: ${blueprint.stage7.provider}\n- Status: ${blueprint.stage7.status}\n- Condition hash: ${blueprint.stage7.condition_hash}\n- Primary geometry changed: no\n\n` : '';
   const criticCouncilSection = renderCriticCouncilSection(blueprint);
 
   return `# Minecraft 建筑智能体运行报告
@@ -1057,7 +1084,7 @@ ${templateLawCoverageLine}
 ${templateLawRepairLine}
 ${templateAssimilationLine}
 
-${conceptStudioSection}${criticCouncilSection}
+${conceptStudioSection}${stage7ShadowSection}${criticCouncilSection}
 ## 结构框架 JSON
 
 - 来源：${blueprint.structure?.source || 'unknown'}
