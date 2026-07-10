@@ -659,6 +659,8 @@ RTX 4060 适合：
 
 ### Stage 7：粗语义体素生成
 
+当前 M1 状态：Stage 7 首版采用 shadow mode。它定义 `64^3` 三层语义体素契约、deterministic baseline、artifact provider、bounded repair 和 semantic voxel -> procedural candidate 转换器；默认 `off`，显式启用时只输出审查产物和失败案例，不改变主建造 operations。Python、raw schematic 整栋数据集、learned provider 和 apply mode 分别保留给后续里程碑。仓库里的 `stage7-template-*` 是更早的模板吸收编号，不代表本路线图 Stage 7 已完成。
+
 目标：让模型参与整体构图，但仍由规则系统保证可建造。
 
 交付：

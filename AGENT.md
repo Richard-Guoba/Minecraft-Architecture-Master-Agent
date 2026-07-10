@@ -79,7 +79,8 @@ architecture_scorecard.json
 
 - 已实现：Node.js ESM CLI、construction workflow、语义 agents、Template Knowledge Base v2、Minecraft Java 1.21.1 方块目录校验、CSG 空心外壳、BSP 室内切分、A* 门洞/楼梯、室内与装饰写入、QA/repair/evaluation、数据包导出、HTML 预览、运行报告和 scorecard。
 - 已验证：Stage 1 readiness baseline 已达到 10/10 prompts、平均 scorecard 100/100、red flags 0、repair priorities 0。
-- 下一阶段：Stage 3 Concept Studio，让同一 prompt 先生成多个可解释设计方案，再选择或融合后进入建造。
+- 当前阶段：Stage 7 Milestone 1 已建立 shadow-only 的整栋粗语义体素契约、deterministic baseline、repair 和 procedural candidate 转换边界；先审阅 M1 证据，再决定是否进入 Milestone 2。
+- Stage 7 M1 仅观察和导出候选，不训练模型、不调用 Python、不修改主建造 operations。
 - 暂不包含：Mineflayer 连服控制、生存模式资源采集、模拟玩家逐块放置、自动下载 Minecraft。启动 Minecraft 仅支持通过用户配置的 `MINECRAFT_LAUNCH_COMMAND` 调用启动器命令。
 
 ## 文档入口
