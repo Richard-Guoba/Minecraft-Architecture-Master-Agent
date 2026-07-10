@@ -145,7 +145,7 @@ export class CreativeDesignAgent {
 
   async run(prompt = '', architecture = {}, buildSpec = {}, topology = {}, context = {}) {
     const fallback = normalizeCreativeDesign(
-      buildSeededCreativeDesign(prompt, architecture, buildSpec, topology),
+      buildSeededCreativeDesign(prompt, architecture, buildSpec, topology, context),
       'seeded-local',
       context.llmError
     );
@@ -172,6 +172,7 @@ export class CreativeDesignAgent {
             topology_summary: compactTopology(topology),
             build_spec: compactBuildSpec(buildSpec),
             reference_reproduction: architecture.generation_hints?.reference_reproduction || buildSpec.design?.reference_reproduction || {},
+            concept_studio: context.conceptStudio || {},
             fallback_variation_example: fallback
           })
         });
@@ -179,7 +180,7 @@ export class CreativeDesignAgent {
       } catch (error) {
         if (this.mode === 'llm') throw error;
         return normalizeCreativeDesign(
-          buildSeededCreativeDesign(prompt, architecture, buildSpec, topology),
+          buildSeededCreativeDesign(prompt, architecture, buildSpec, topology, context),
           'fallback-after-llm-error',
           error.message
         );
@@ -190,7 +191,7 @@ export class CreativeDesignAgent {
   }
 }
 
-export function buildSeededCreativeDesign(prompt = '', architecture = {}, buildSpec = {}, topology = {}) {
+export function buildSeededCreativeDesign(prompt = '', architecture = {}, buildSpec = {}, topology = {}, context = {}) {
   const rng = seededRng(`${prompt}|${buildSpec.seed ?? 'none'}|creative-design-v2`);
   const seedIndex = seedIndexFor(prompt, buildSpec.seed);
   const templateComposition = templateCompositionStrategyFor(architecture, buildSpec);
@@ -218,7 +219,7 @@ export function buildSeededCreativeDesign(prompt = '', architecture = {}, buildS
   const roofStyle = explicitFlatRoof || explicitPitchedRoof ? architecture.roof_rules?.style || buildSpec.roof_style || roof.style : roof.style;
   const volumeDirectives = specializeVolumes(massing.volumes, architecture, buildSpec, rng);
 
-  return {
+  const design = {
     authority: {
       target_llm_decision_share: 0.7,
       estimated_llm_decision_share: 0.74,
@@ -282,6 +283,8 @@ export function buildSeededCreativeDesign(prompt = '', architecture = {}, buildS
       soft_boundary_bias: ['open-plan-weighted', 'view-side-cluster'].includes(massing.split) ? 'high' : 'medium'
     }
   };
+
+  return applyConceptPatchToCreativeDesign(design, context.conceptStudio?.selectedConcept, context.conceptStudio);
 }
 
 export function applyCreativeDesign({ architecture = {}, buildSpec = {}, topology = {}, creativeDesign = {}, prompt = '' } = {}) {
@@ -372,6 +375,67 @@ export function applyCreativeDesign({ architecture = {}, buildSpec = {}, topolog
   return { architecture: nextArchitecture, buildSpec: nextBuildSpec, topology: nextTopology, creativeDesign: design };
 }
 
+function applyConceptPatchToCreativeDesign(design = {}, selectedConcept = {}, conceptStudio = {}) {
+  if (!conceptStudio?.active || !selectedConcept?.creative_design_patch) return design;
+  const patch = selectedConcept.creative_design_patch || {};
+  const next = {
+    ...design,
+    signature: `${selectedConcept.id || 'concept'}/${design.signature}`,
+    concept_studio: {
+      active: true,
+      selected_concept_id: selectedConcept.id,
+      selected_title: selectedConcept.title,
+      selected_archetype: selectedConcept.archetype,
+      strategy: conceptStudio.strategy || 'select'
+    },
+    design_axes: {
+      ...(design.design_axes || {}),
+      massing_variant: patch.massing_variant || design.design_axes?.massing_variant,
+      massing_label: selectedConcept.title || design.design_axes?.massing_label,
+      public_core: patch.topology?.public_core || design.design_axes?.public_core,
+      split_strategy: patch.topology?.split_strategy || design.design_axes?.split_strategy,
+      composition_bias: patch.topology?.public_core_position || design.design_axes?.composition_bias,
+      detail_density: patch.facade?.relief_density || design.design_axes?.detail_density
+    },
+    facade: {
+      ...(design.facade || {}),
+      ...(patch.facade || {})
+    },
+    roof: {
+      ...(design.roof || {}),
+      ...(patch.roof || {})
+    },
+    site: {
+      ...(design.site || {}),
+      ...(patch.site || {})
+    },
+    interior: {
+      ...(design.interior || {}),
+      ...(patch.interior || {})
+    },
+    topology: {
+      ...(design.topology || {}),
+      ...(patch.topology || {})
+    }
+  };
+  next.authority = {
+    ...(design.authority || {}),
+    variable_axes: [...new Set([...(design.authority?.variable_axes || []), 'concept-studio'])]
+  };
+  return next;
+}
+
+function normalizeConceptStudioMetadata(value = {}) {
+  const raw = value && typeof value === 'object' ? value : {};
+  return {
+    active: Boolean(raw.active),
+    selected_concept_id: raw.selected_concept_id ? String(raw.selected_concept_id) : undefined,
+    selected_title: raw.selected_title ? String(raw.selected_title) : undefined,
+    selected_archetype: raw.selected_archetype ? String(raw.selected_archetype) : undefined,
+    strategy: raw.strategy ? String(raw.strategy) : undefined
+  };
+}
+
 export function normalizeCreativeDesign(value = {}, decisionSource = 'seeded-local', llmError) {
   const raw = value && typeof value === 'object' ? value : {};
   const authority = raw.authority && typeof raw.authority === 'object' ? raw.authority : {};
@@ -381,10 +445,12 @@ export function normalizeCreativeDesign(value = {}, decisionSource = 'seeded-loc
   const site = raw.site && typeof raw.site === 'object' ? raw.site : {};
   const interior = raw.interior && typeof raw.interior === 'object' ? raw.interior : {};
   const topology = raw.topology && typeof raw.topology === 'object' ? raw.topology : {};
+  const conceptStudio = normalizeConceptStudioMetadata(raw.concept_studio || raw.conceptStudio);
 
   return {
     source: 'local-creative-design-agent',
     decision_source: decisionSource,
+    ...(conceptStudio.active ? { concept_studio: conceptStudio } : {}),
     ...(llmError ? { llm_error: String(llmError) } : {}),
     authority: {
       target_llm_decision_share: ratio(authority.target_llm_decision_share, 0.7),

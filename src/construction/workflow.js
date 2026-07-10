@@ -24,6 +24,11 @@ import { TemplateAssimilationAuditAgent } from './agents/templateAssimilationAud
 import { TemplateInteriorDensityRepairAgent } from './agents/templateInteriorDensityRepairAgent.js';
 import { InteriorClearanceRepairAgent } from './agents/interiorClearanceRepairAgent.js';
 import { ConstructionEvaluationAgent } from './agents/constructionEvaluationAgent.js';
+import { ConceptStudioAgent } from './agents/conceptStudioAgent.js';
+import { compactCoarseSemanticVoxelShadow, runCoarseSemanticVoxelShadow } from './learning/coarseSemanticVoxelShadow.js';
+import { ConceptSelectionAgent } from './agents/conceptSelectionAgent.js';
+import { ConceptFusionAgent } from './agents/conceptFusionAgent.js';
+import { CriticCouncilAgent } from './agents/criticCouncilAgent.js';
 import { CSGBuilder, computeBounds } from './engine/csgBuilder.js';
 import { BSPPartitioner } from './engine/bspPartitioner.js';
 import { AStarPathfinder } from './engine/pathfinder.js';
@@ -43,7 +48,12 @@ export async function runConstructionWorkflow({
   minecraftDir,
   world,
   datapacksDir,
-  autoBuild = false
+  autoBuild = false,
+  conceptCount = 0,
+  conceptStrategy = 'select',
+  critics = true,
+  neuralRetrieval = false,
+  coarseVoxelMode = 'off', coarseVoxelProvider = 'baseline', coarseVoxelPlan
 }) {
   if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
 
@@ -64,7 +74,7 @@ export async function runConstructionWorkflow({
     }
   };
   let buildSpec = deriveBuildSpec(prompt, architecture, seed);
-  const templateKnowledge = new TemplateKnowledgeAgent({ cwd }).run(prompt, architecture, buildSpec);
+  const templateKnowledge = new TemplateKnowledgeAgent({ cwd, neuralRetrieval }).run(prompt, architecture, buildSpec);
   architecture = applyTemplateKnowledgeToArchitecture(architecture, templateKnowledge);
   if (architecture.generation_hints?.template_material_patch) {
     materialPalette.materials = architecture.materials;
@@ -74,8 +84,27 @@ export async function runConstructionWorkflow({
   }
   buildSpec = applyTemplateKnowledgeToBuildSpec(buildSpec, templateKnowledge);
   let topology = await new ConstructionPlannerAgent({ llmClient, mode }).run(prompt, architecture, buildSpec);
-  let creativeDesign = await new CreativeDesignAgent({ llmClient, mode }).run(prompt, architecture, buildSpec, topology);
+  const conceptStudio = await runConceptStudio({
+    prompt,
+    mode,
+    llmClient,
+    architecture,
+    buildSpec,
+    topology,
+    templateKnowledge,
+    conceptCount,
+    conceptStrategy,
+    seed
+  });
+  let creativeDesign = await new CreativeDesignAgent({ llmClient, mode }).run(
+    prompt,
+    architecture,
+    buildSpec,
+    topology,
+    { conceptStudio }
+  );
   ({ architecture, buildSpec, topology, creativeDesign } = applyCreativeDesign({ architecture, buildSpec, topology, creativeDesign, prompt }));
+  const stage7Shadow = await runCoarseSemanticVoxelShadow({ mode: coarseVoxelMode, provider: coarseVoxelProvider, artifactPath: coarseVoxelPlan, prompt, seed, architecture, buildSpec, topology, creativeDesign, conceptStudio, templateKnowledge });
   const llmUsage = summarizeLlmUsage({ mode, llmProvider, architecture, topology, creativeDesign });
   const structure = new StructureAgent().run(architecture, buildSpec, topology);
   const facade = new FacadeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
@@ -120,6 +149,9 @@ export async function runConstructionWorkflow({
     architecture,
     topology,
     creativeDesign,
+    conceptStudio,
+    stage7Shadow,
+    coarseVoxelPlan,
     stylePreset,
     materialPalette,
     templateKnowledge,
@@ -216,6 +248,8 @@ export async function runConstructionWorkflow({
     architecture,
     topology,
     creativeDesign,
+    conceptStudio,
+    stage7Shadow,
     stylePreset,
     materialPalette,
     templateKnowledge,
@@ -272,10 +306,20 @@ export async function runConstructionWorkflow({
     }
   });
   blueprint.architectureScorecard = compactArchitectureScorecard(architectureScorecard);
+  const criticCouncil = critics
+    ? new CriticCouncilAgent().run({ blueprint, validation, architectureScorecard })
+    : undefined;
+  if (criticCouncil?.active) {
+    blueprint.criticCouncil = compactCriticCouncil(criticCouncil);
+  }
 
   const artifacts = await exportArtifacts({
     outputDir,
     blueprint,
+    conceptStudio,
+    stage7Shadow,
+    coarseVoxelPlan,
+    criticCouncil,
     architectureScorecard,
     validation,
     prompt,
@@ -300,6 +344,8 @@ export async function runConstructionWorkflow({
     architecture,
     topology,
     creativeDesign,
+    ...(conceptStudio?.active ? { conceptStudio } : {}),
+    ...(stage7Shadow?.active ? { stage7: stage7Shadow } : {}),
     stylePreset,
     materialPalette,
     templateKnowledge,
@@ -318,6 +364,7 @@ export async function runConstructionWorkflow({
     templateInteriorDensityRepair: blueprint.templateInteriorDensityRepair,
     interiorClearanceRepair: blueprint.interiorClearanceRepair,
     architectureScorecard,
+    ...(criticCouncil?.active ? { criticCouncil } : {}),
     geometry: blueprint.geometry,
     blueprint,
     validation,
@@ -498,7 +545,7 @@ function createSeedVariation(seed, context = {}) {
   };
 }
 
-function buildBlueprint({ prompt, architecture, topology, creativeDesign, stylePreset, materialPalette, templateKnowledge, structure, facade, roof, site, opening, interior, repair, templateLawAutoRepair, templateInteriorDensityRepair, interiorClearanceRepair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
+function buildBlueprint({ prompt, architecture, topology, creativeDesign, conceptStudio, stage7Shadow, stylePreset, materialPalette, templateKnowledge, structure, facade, roof, site, opening, interior, repair, templateLawAutoRepair, templateInteriorDensityRepair, interiorClearanceRepair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
   return {
     version: 4,
     workflow: 'construction_method_v1',
@@ -513,6 +560,8 @@ function buildBlueprint({ prompt, architecture, topology, creativeDesign, styleP
     architecture,
     topology,
     creativeDesign,
+    ...(conceptStudio?.active ? { conceptStudio: compactConceptStudio(conceptStudio) } : {}),
+    ...(stage7Shadow?.active ? { stage7: compactCoarseSemanticVoxelShadow(stage7Shadow) } : {}),
     stylePreset,
     materialPalette,
     templateKnowledge,
@@ -731,7 +780,48 @@ function validateBlueprint(blueprint) {
   return new BlueprintQAAgent().run(blueprint);
 }
 
-async function exportArtifacts({ outputDir, blueprint, architectureScorecard, validation, prompt, mcVersion, autoBuild, minecraftDir, world, datapacksDir }) {
+async function runConceptStudio({ prompt, mode, llmClient, architecture, buildSpec, topology, templateKnowledge, conceptCount = 0, conceptStrategy = 'select', seed }) {
+  const count = clampConceptCount(conceptCount);
+  if (count < 2) return undefined;
+  const base = await new ConceptStudioAgent({ llmClient, mode }).run(
+    prompt,
+    architecture,
+    buildSpec,
+    topology,
+    templateKnowledge,
+    { count, strategy: conceptStrategy, seed }
+  );
+  if (!base.active || base.concepts.length < 2) return base;
+  const selection = new ConceptSelectionAgent().run(base.concepts, {
+    prompt,
+    architecture,
+    buildSpec,
+    templateKnowledge
+  });
+  let selectedConcept = base.concepts.find((item) => item.id === selection.selected_concept_id);
+  let fusion;
+  if (String(base.strategy) === 'fuse') {
+    fusion = new ConceptFusionAgent().run(base.concepts, selection, { prompt, architecture, buildSpec });
+    if (fusion.active && fusion.concept) selectedConcept = fusion.concept;
+  }
+  return {
+    ...base,
+    selected_concept_id: selectedConcept?.id || selection.selected_concept_id,
+    fused_concept_id: fusion?.active ? fusion.concept?.id : undefined,
+    selection,
+    fusion,
+    selectedConcept,
+    warnings: [...(base.warnings || []), ...(selection.warnings || []), ...(fusion?.warnings || [])]
+  };
+}
+
+function clampConceptCount(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 2) return 0;
+  return Math.max(2, Math.min(5, Math.round(number)));
+}
+
+async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shadow, coarseVoxelPlan, criticCouncil, architectureScorecard, validation, prompt, mcVersion, autoBuild, minecraftDir, world, datapacksDir }) {
   const datapackDir = path.join(outputDir, 'architect_datapack');
   const functionDir = path.join(datapackDir, 'data', 'architect', 'function');
   await ensureDir(functionDir);
@@ -745,9 +835,40 @@ async function exportArtifacts({ outputDir, blueprint, architectureScorecard, va
   const previewPath = path.join(outputDir, 'preview.html');
   const reportPath = path.join(outputDir, 'run_report.md');
   const architectureScorecardPath = path.join(outputDir, 'architecture_scorecard.json');
+  const conceptStudioPath = conceptStudio?.active ? path.join(outputDir, 'concept_studio.json') : undefined;
+  const conceptStudioReportPath = conceptStudio?.active ? path.join(outputDir, 'concept_studio_report.md') : undefined;
+  const criticCouncilPath = criticCouncil?.active ? path.join(outputDir, 'critic_council.json') : undefined;
+  const stage7ConditionPath = stage7Shadow?.condition ? path.join(outputDir, 'stage7_condition.json') : undefined;
+  const stage7RawSource = stage7Shadow?.rawPlan ? undefined : (stage7Shadow?.rawArtifactSource || coarseVoxelPlan);
+  const stage7RawPlanPath = (stage7Shadow?.rawPlan || stage7RawSource) ? path.join(outputDir, 'stage7_coarse_semantic_plan.raw.json') : undefined;
+  const stage7RepairedPlanPath = stage7Shadow?.repairedPlan ? path.join(outputDir, 'stage7_coarse_semantic_plan.repaired.json') : undefined;
+  const stage7ReportPath = stage7Shadow?.active ? path.join(outputDir, 'stage7_coarse_semantic_report.md') : undefined;
+  const stage7CandidatePath = stage7Shadow?.candidate ? path.join(outputDir, 'stage7_procedural_candidate.json') : undefined;
+  const stage7FailureCasePath = stage7Shadow?.failureCase ? path.join(outputDir, 'stage7_failure_case.json') : undefined;
 
   await writeJson(blueprintPath, blueprint);
   await writeJson(architectureScorecardPath, architectureScorecard);
+  if (conceptStudioPath) await writeJson(conceptStudioPath, serializeConceptStudio(conceptStudio));
+  if (conceptStudioReportPath) await fs.writeFile(conceptStudioReportPath, renderConceptStudioReport(conceptStudio), 'utf8');
+  if (criticCouncilPath) await writeJson(criticCouncilPath, serializeCriticCouncil(criticCouncil));
+  if (stage7ConditionPath) await writeJson(stage7ConditionPath, stage7Shadow.condition);
+  if (stage7RawPlanPath && stage7Shadow.rawPlan) await writeJson(stage7RawPlanPath, stage7Shadow.rawPlan);
+  else if (stage7RawPlanPath && stage7RawSource) await fs.copyFile(stage7RawSource, stage7RawPlanPath);
+  if (stage7RepairedPlanPath) await writeJson(stage7RepairedPlanPath, stage7Shadow.repairedPlan);
+  if (stage7ReportPath) await fs.writeFile(stage7ReportPath, `${stage7Shadow.report || ''}\n- Primary geometry changed: no\n`, 'utf8');
+  if (stage7CandidatePath) await writeJson(stage7CandidatePath, stage7Shadow.candidate);
+  if (stage7FailureCasePath) await writeJson(stage7FailureCasePath, {
+    ...stage7Shadow.failureCase,
+    baseline_artifact_paths: { blueprint: path.relative(outputDir, blueprintPath), run_report: path.relative(outputDir, reportPath), datapack: path.relative(outputDir, datapackDir) },
+    diagnostic_artifact_paths: {
+      condition: stage7ConditionPath ? path.relative(outputDir, stage7ConditionPath) : undefined,
+      raw_plan: stage7RawPlanPath ? path.relative(outputDir, stage7RawPlanPath) : undefined,
+      repaired_plan: stage7RepairedPlanPath ? path.relative(outputDir, stage7RepairedPlanPath) : undefined,
+      stage7_report: stage7ReportPath ? path.relative(outputDir, stage7ReportPath) : undefined,
+      candidate: stage7CandidatePath ? path.relative(outputDir, stage7CandidatePath) : undefined,
+      failure_case: path.relative(outputDir, stage7FailureCasePath)
+    }
+  });
   await writeJson(path.join(datapackDir, 'pack.mcmeta'), {
     pack: {
       pack_format: packFormatFor(mcVersion),
@@ -780,6 +901,14 @@ async function exportArtifacts({ outputDir, blueprint, architectureScorecard, va
     rawBuild: rawPath,
     previewHtml: previewPath,
     report: reportPath,
+    ...(conceptStudioPath ? { conceptStudio: conceptStudioPath, conceptStudioReport: conceptStudioReportPath } : {}),
+    ...(criticCouncilPath ? { criticCouncil: criticCouncilPath } : {}),
+    ...(stage7ConditionPath ? { stage7Condition: stage7ConditionPath } : {}),
+    ...(stage7RawPlanPath ? { stage7RawPlan: stage7RawPlanPath } : {}),
+    ...(stage7RepairedPlanPath ? { stage7RepairedPlan: stage7RepairedPlanPath } : {}),
+    ...(stage7ReportPath ? { stage7Report: stage7ReportPath } : {}),
+    ...(stage7CandidatePath ? { stage7Candidate: stage7CandidatePath } : {}),
+    ...(stage7FailureCasePath ? { stage7FailureCase: stage7FailureCasePath } : {}),
     installedDatapackDir
   };
 }
@@ -898,6 +1027,9 @@ function renderReport({ prompt, blueprint, architectureScorecard, validation, mc
     '1. 如果刚复制或更新了数据包，先运行 /reload。这个命令只刷新数据包，不会建造。',
     '2. 站在目标位置运行 /function architect:run。它会自动 clear + build。'
   ].join('\n');
+  const conceptStudioSection = renderConceptStudioSection(blueprint);
+  const stage7ShadowSection = blueprint.stage7?.active ? `## Stage 7 Milestone 1 Shadow\n\n- Mode: ${blueprint.stage7.mode}\n- Provider: ${blueprint.stage7.provider}\n- Status: ${blueprint.stage7.status}\n- Condition hash: ${blueprint.stage7.condition_hash}\n- Primary geometry changed: no\n\n` : '';
+  const criticCouncilSection = renderCriticCouncilSection(blueprint);
 
   return `# Minecraft 建筑智能体运行报告
 
@@ -967,6 +1099,7 @@ ${templateLawCoverageLine}
 ${templateLawRepairLine}
 ${templateAssimilationLine}
 
+${conceptStudioSection}${stage7ShadowSection}${criticCouncilSection}
 ## 结构框架 JSON
 
 - 来源：${blueprint.structure?.source || 'unknown'}
@@ -1041,15 +1174,203 @@ ${usage}
 function renderTemplateMemorySection(blueprint = {}) {
   const explanation = blueprint.templateKnowledge?.retrieval_explanation || {};
   const refs = explanation.references || [];
+  const mode = explanation.mode || (explanation.source === 'stage5-neural-template-retriever-v1' ? 'fusion' : 'rule-only');
+  const fallback = explanation.fallback_used ? ' fallback' : '';
+  const modeLine = `Retrieval mode: ${mode}${fallback}.`;
   if (!refs.length) {
-    const reason = (explanation.warnings || []).join('; ') || '模板知识库 v2 未启用，当前使用 v1 模板知识。';
-    return `## 模板参考记忆\n\n- ${reason}\n`;
+    const reason = (explanation.warnings || []).join('; ') || blueprint.templateKnowledge?.reason || '模板知识库 v2 未启用，当前使用 v1 模板知识。';
+    return `## 模板参考记忆\n\n- ${modeLine}\n- ${reason}\n`;
   }
-  return `## 模板参考记忆\n\n${refs.slice(0, 8).map((item) => {
+  return `## 模板参考记忆\n\n- ${modeLine}\n${refs.slice(0, 8).map((item) => {
     const teaches = (item.teaches || []).slice(0, 2).map((unit) => `${unit.area}: ${unit.claim}`).join('；');
     const risks = (item.risk_controls || []).slice(0, 1).join('；');
     return `- ${item.title}: 匹配 ${(item.matched_signals || []).slice(0, 4).join(' / ') || item.diversity_slot}。学习 ${teaches || '通用构图参考'}；控制 ${risks || '不复制原模板细节'}。`;
   }).join('\n')}\n`;
+}
+
+function serializeCriticCouncil(criticCouncil = {}) {
+  return {
+    source: criticCouncil.source,
+    version: criticCouncil.version,
+    active: Boolean(criticCouncil.active),
+    summary: criticCouncil.summary,
+    readiness: criticCouncil.readiness,
+    overall_score: criticCouncil.overall_score,
+    critic_count: criticCouncil.critic_count,
+    critical_count: criticCouncil.critical_count,
+    warning_count: criticCouncil.warning_count,
+    satisfied_count: criticCouncil.satisfied_count,
+    critics: criticCouncil.critics || [],
+    top_findings: criticCouncil.top_findings || [],
+    repair_directives: criticCouncil.repair_directives || [],
+    next_iteration_directives: criticCouncil.next_iteration_directives || [],
+    warnings: criticCouncil.warnings || []
+  };
+}
+
+function renderCriticCouncilSection(blueprint = {}) {
+  const council = blueprint.criticCouncil;
+  if (!council?.active) return '';
+  const topFindings = (council.top_findings || [])
+    .slice(0, 3)
+    .map((item) => `${item.id}(${item.severity})`)
+    .join('、') || 'none';
+  const repairDirectives = (council.repair_directives || [])
+    .slice(0, 3)
+    .map((item) => item.id)
+    .join('、') || 'preserve-current-quality';
+  const criticStatuses = (council.critics || [])
+    .map((critic) => `${critic.id}:${critic.status}`)
+    .join('、') || 'none';
+  return `## Stage 4 Critic Council
+
+- Readiness: ${council.readiness || 'unknown'}
+- Overall score: ${council.overall_score || 0}/100
+- Critics: ${council.critic_count || 0}
+- Critical findings: ${council.critical_count || 0}
+- Warnings: ${council.warning_count || 0}
+- Critic statuses: ${criticStatuses}
+- Top findings: ${topFindings}
+- Repair directives: ${repairDirectives}
+- Summary: ${council.summary || 'none'}
+`;
+}
+
+function compactCriticCouncil(criticCouncil = {}) {
+  return {
+    source: criticCouncil.source,
+    version: criticCouncil.version,
+    active: Boolean(criticCouncil.active),
+    readiness: criticCouncil.readiness,
+    overall_score: criticCouncil.overall_score,
+    critic_count: criticCouncil.critic_count,
+    critical_count: criticCouncil.critical_count,
+    warning_count: criticCouncil.warning_count,
+    summary: criticCouncil.summary,
+    critics: (criticCouncil.critics || []).map((critic) => ({
+      id: critic.id,
+      label: critic.label,
+      status: critic.status,
+      score: critic.score,
+      finding_count: (critic.findings || []).length,
+      satisfied_count: (critic.satisfied || []).length
+    })),
+    top_findings: (criticCouncil.top_findings || []).slice(0, 8),
+    repair_directives: (criticCouncil.repair_directives || []).slice(0, 8),
+    next_iteration_directives: (criticCouncil.next_iteration_directives || []).slice(0, 8),
+    warnings: criticCouncil.warnings || []
+  };
+}
+
+function serializeConceptStudio(conceptStudio = {}) {
+  return {
+    source: conceptStudio.source,
+    version: conceptStudio.version,
+    active: Boolean(conceptStudio.active),
+    prompt: conceptStudio.prompt,
+    strategy: conceptStudio.strategy,
+    concept_count: conceptStudio.concept_count,
+    selected_concept_id: conceptStudio.selected_concept_id,
+    fused_concept_id: conceptStudio.fused_concept_id,
+    selection: conceptStudio.selection,
+    fusion: conceptStudio.fusion ? {
+      source: conceptStudio.fusion.source,
+      version: conceptStudio.fusion.version,
+      active: conceptStudio.fusion.active,
+      strategy: conceptStudio.fusion.strategy,
+      base_concept_id: conceptStudio.fusion.base_concept_id,
+      donor_concept_id: conceptStudio.fusion.donor_concept_id,
+      adopted_elements: conceptStudio.fusion.adopted_elements,
+      rejected_conflicts: conceptStudio.fusion.rejected_conflicts
+    } : undefined,
+    concepts: conceptStudio.concepts || [],
+    selectedConcept: conceptStudio.selectedConcept,
+    warnings: conceptStudio.warnings || []
+  };
+}
+
+function renderConceptStudioReport(conceptStudio = {}) {
+  const ranking = (conceptStudio.selection?.ranking || []).map((item) =>
+    `| ${item.rank} | ${item.concept_id} | ${item.archetype} | ${item.selection_score} | ${item.prompt_match_score} | ${item.reference_evidence_score} | ${item.risk_penalty} |`
+  ).join('\n') || '| - | - | - | - | - | - | - |';
+  const cards = (conceptStudio.concepts || []).map((concept) => {
+    const refs = (concept.reference_strategy || []).map((ref) => `  - ${ref.title}: ${(ref.used_for || []).join(', ') || 'general'}; ${(ref.teaches || []).slice(0, 2).join(' / ') || 'reference'}`).join('\n') || '  - none';
+    const risks = (concept.risks || []).map((risk) => `  - ${risk.id} (${risk.severity}): ${risk.text} -> ${risk.mitigation}`).join('\n') || '  - none';
+    return `## ${concept.title}
+
+- ID: ${concept.id}
+- Archetype: ${concept.archetype}
+- Summary: ${concept.summary}
+- Quality targets: ${(concept.quality_targets || []).join(', ') || 'none'}
+- Patch: massing=${concept.creative_design_patch?.massing_variant || 'auto'}, facade=${concept.creative_design_patch?.facade?.window_rhythm || 'auto'}, roof=${concept.creative_design_patch?.roof?.profile || 'auto'}, site=${concept.creative_design_patch?.site?.mood || 'auto'}
+
+### References
+
+${refs}
+
+### Risks
+
+${risks}`;
+  }).join('\n\n');
+  return `# Stage 3 Concept Studio
+
+- Strategy: ${conceptStudio.strategy || 'select'}
+- Concepts: ${conceptStudio.concept_count || 0}
+- Selected: ${conceptStudio.selectedConcept?.title || conceptStudio.selected_concept_id || 'none'}
+- Selected ID: ${conceptStudio.selected_concept_id || 'none'}
+- Reason: ${conceptStudio.selection?.reason || 'none'}
+- Warnings: ${(conceptStudio.warnings || []).join('; ') || 'none'}
+
+## Ranking
+
+| Rank | Concept | Archetype | Score | Prompt | References | Risk Penalty |
+| ---: | --- | --- | ---: | ---: | ---: | ---: |
+${ranking}
+
+${cards}
+`;
+}
+
+function renderConceptStudioSection(blueprint = {}) {
+  const concept = blueprint.conceptStudio;
+  if (!concept?.active) return '';
+  const alternatives = (concept.selection_summary?.ranking || [])
+    .filter((item) => item.concept_id !== concept.selected_concept_id)
+    .slice(0, 3)
+    .map((item) => `${item.concept_id}(${item.selection_score})`)
+    .join('、') || '无';
+  return `## Stage 3 Concept Studio
+
+- Strategy: ${concept.strategy || 'select'}
+- Concepts: ${concept.concept_count || 0}
+- Selected: ${concept.selected_title || concept.selected_concept_id || 'none'}
+- Selected ID: ${concept.selected_concept_id || 'none'}
+- Reason: ${concept.selection_summary?.reason || 'none'}
+- Compared alternatives: ${alternatives}
+`;
+}
+
+function compactConceptStudio(conceptStudio = {}) {
+  return {
+    source: conceptStudio.source,
+    version: conceptStudio.version,
+    active: Boolean(conceptStudio.active),
+    strategy: conceptStudio.strategy,
+    concept_count: conceptStudio.concept_count,
+    selected_concept_id: conceptStudio.selected_concept_id,
+    fused_concept_id: conceptStudio.fused_concept_id,
+    selected_title: conceptStudio.selectedConcept?.title,
+    selected_archetype: conceptStudio.selectedConcept?.archetype,
+    selection_summary: conceptStudio.selection ? {
+      source: conceptStudio.selection.source,
+      strategy: conceptStudio.selection.strategy,
+      selected_concept_id: conceptStudio.selection.selected_concept_id,
+      selected_selection_score: conceptStudio.selection.selected_selection_score,
+      reason: conceptStudio.selection.reason,
+      ranking: (conceptStudio.selection.ranking || []).slice(0, 5)
+    } : undefined,
+    warnings: conceptStudio.warnings || []
+  };
 }
 
 function compactArchitectureScorecard(evaluation = {}) {

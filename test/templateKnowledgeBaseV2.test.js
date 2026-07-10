@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -299,6 +300,77 @@ test('knowledge base v2 artifact writer result shape is analyzer-friendly', asyn
   assert.equal(result.retrievalIndex.case_count, 2);
 });
 
+test('analyzeTemplateCorpus writes Stage 5 neural artifacts and Stage 6 semantic patch artifacts after KB v2', async () => {
+  const { root, templatesRoot } = await createSingleTemplateCorpus('template-stage6-analysis');
+
+  try {
+    const { analyzeTemplateCorpus } = await import('../src/construction/templates/schematicAnalyzer.js');
+    const result = await analyzeTemplateCorpus({
+      rootDir: templatesRoot,
+      outputDir: path.join(templatesRoot, 'analysis'),
+      fetchPages: false,
+      continueOnError: false,
+      cwd: process.cwd()
+    });
+
+    assert.ok(result.stage5.artifacts.neuralLabels.endsWith('neural_labels.jsonl'));
+    assert.ok(result.stage5.artifacts.embeddingIndex.endsWith('embedding_index.json'));
+    const labels = await fs.readFile(result.stage5.artifacts.neuralLabels, 'utf8');
+    const index = JSON.parse(await fs.readFile(result.stage5.artifacts.embeddingIndex, 'utf8'));
+    assert.match(labels, /stage5-neural-labels-v1/);
+    assert.equal(index.source, 'stage5-template-embedding-index-v1');
+    assert.equal(index.case_count, 1);
+
+    assert.ok(result.stage6.artifacts.semanticPatchDataset.endsWith('semantic_patch_dataset.json'));
+    assert.ok(result.stage6.artifacts.semanticPatchJsonl.endsWith('semantic_patch_dataset.jsonl'));
+    assert.ok(result.stage6.artifacts.semanticPatchReport.endsWith('semantic_patch_report.md'));
+    assert.equal(result.stage6.summary.patch_count, result.stage6.summary.category_counts.facade + result.stage6.summary.category_counts.interior + result.stage6.summary.category_counts.roof + result.stage6.summary.category_counts.courtyard);
+    assert.ok(result.stage6.summary.training_candidate_count > 0);
+    assert.equal(typeof result.stage6.summary.training_band_counts.high, 'number');
+    assert.ok(result.stage6.summary.top_training_candidates.length > 0);
+    assert.equal(typeof result.stage6.summary.top_training_candidates[0].score, 'number');
+    const patchDataset = JSON.parse(await fs.readFile(result.stage6.artifacts.semanticPatchDataset, 'utf8'));
+    const patchRows = (await fs.readFile(result.stage6.artifacts.semanticPatchJsonl, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
+    const patchReport = await fs.readFile(result.stage6.artifacts.semanticPatchReport, 'utf8');
+    assert.equal(patchDataset.source, 'stage6-semantic-voxel-patch-dataset-v1');
+    assert.equal(patchDataset.patch_count, patchRows.length);
+    assert.ok(patchDataset.patch_count > 0);
+    assert.match(patchReport, /Stage 6 Semantic Patch Report/);
+    assert.match(patchReport, /Training Candidates/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('analyzeTemplateCorpus CLI prints Stage 6 semantic patch artifact summary', async () => {
+  const { root, templatesRoot } = await createSingleTemplateCorpus('template-stage6-cli');
+
+  try {
+    const result = spawnSync(process.execPath, [
+      'src/analyzeTemplateCorpus.js',
+      '--root',
+      templatesRoot,
+      '--out',
+      path.join(templatesRoot, 'analysis'),
+      '--offline'
+    ], {
+      cwd: process.cwd(),
+      encoding: 'utf8'
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Stage 6 semantic patches:/);
+    assert.match(result.stdout, /Stage 6 patch dataset:/);
+    assert.match(result.stdout, /Stage 6 patch report:/);
+    assert.match(result.stdout, /Stage 6 training candidates:/);
+    assert.match(result.stdout, /Stage 6 training bands:/);
+    assert.match(result.stdout, /semantic_patch_dataset\.json/);
+    assert.match(result.stdout, /semantic_patch_report\.md/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('knowledge base v2 artifact generation is byte-stable for unchanged inputs', async () => {
   const firstRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-kb-v2-stable-a-'));
   const secondRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-kb-v2-stable-b-'));
@@ -337,6 +409,19 @@ test('schematic analyzer normalizes v2 artifact input paths to forward slashes',
     tag_taxonomy: 'mc_templates/curation/tag_taxonomy.json'
   });
 });
+
+async function createSingleTemplateCorpus(prefix) {
+  const root = path.resolve('.tmp', `${prefix}-${Date.now()}-${Math.round(Math.random() * 100000)}`);
+  const templatesRoot = path.join(root, 'mc_templates');
+  const houseDir = path.join(templatesRoot, 'House');
+  await fs.mkdir(houseDir, { recursive: true });
+  await fs.writeFile(path.join(houseDir, 'data.txt'), 'A Small Modern House https://mcbuild.org/schematics/example\n', 'utf8');
+
+  const source = path.join(process.cwd(), 'mc_templates', 'House', 'A Small Modern House - (mcbuild_org).schematic');
+  const target = path.join(houseDir, 'A Small Modern House - (mcbuild_org).schematic');
+  await fs.copyFile(source, target);
+  return { root, templatesRoot };
+}
 
 function caseLibraryFixture() {
   return {

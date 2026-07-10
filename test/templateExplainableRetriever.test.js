@@ -5,6 +5,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { ExplainableTemplateRetriever } from '../src/construction/templates/templateExplainableRetriever.js';
+import { buildTemplateEmbeddingIndex } from '../src/construction/templates/templateEmbeddingIndex.js';
+import { neuralLabelsJsonl } from '../src/construction/templates/templateNeuralLabels.js';
+import { queryTemplateKnowledge } from '../src/queryTemplateKnowledge.js';
 
 test('explainable retriever returns ranked references with explanations', () => {
   const retriever = new ExplainableTemplateRetriever({ knowledgeBase: knowledgeBaseFixture() });
@@ -57,6 +60,10 @@ test('explainable retriever honors limited review approved and blocked learning 
   assert.deepEqual(limited.teaches.map((unit) => unit.area), ['site']);
   assert.equal(limited.teaches.some((unit) => unit.area === 'interior'), false);
   assert.deepEqual(limited.integration_targets, ['TemplateSiteSceneStrategy']);
+  assert.equal(limited.review_state, 'limited');
+  assert.equal(limited.review_confidence, 0.6);
+  assert.deepEqual(limited.approved_learning_areas, ['site']);
+  assert.deepEqual(limited.blocked_learning_areas, ['interior']);
 });
 
 test('explainable retriever ignores blocked interior and room-type tokens while scoring limited cases', () => {
@@ -136,6 +143,73 @@ test('queryTemplateKnowledge CLI prints explained references from a provided v2 
   assert.match(result.stdout, /Template references/);
   assert.match(result.stdout, /Modern Lake Villa/);
   assert.match(result.stdout, /teaches/);
+});
+
+test('queryTemplateKnowledge CLI can print neural fusion references', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-query-neural-kb-'));
+  const kbFile = path.join(root, 'case_library.v2.json');
+  const indexFile = path.join(root, 'embedding_index.json');
+  const knowledgeBase = knowledgeBaseFixture();
+  const { buildTemplateEmbeddingIndex } = await import('../src/construction/templates/templateEmbeddingIndex.js');
+  await fs.writeFile(kbFile, `${JSON.stringify(knowledgeBase, null, 2)}\n`, 'utf8');
+  await fs.writeFile(indexFile, `${JSON.stringify(buildTemplateEmbeddingIndex({ knowledgeBase }), null, 2)}\n`, 'utf8');
+
+  const result = spawnSync(process.execPath, [
+    'src/queryTemplateKnowledge.js',
+    '--neural',
+    '--knowledge-base',
+    kbFile,
+    '--embedding-index',
+    indexFile,
+    '建一个湖边现代两层别墅，带大玻璃和精致内饰'
+  ], {
+    cwd: process.cwd(),
+    encoding: 'utf8'
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /mode: fusion/);
+  assert.match(result.stdout, /Modern Lake Villa/);
+});
+
+test('queryTemplateKnowledge accepts --neural immediately followed by prompt text', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-query-neural-positional-'));
+  const analysisDir = path.join(root, 'mc_templates', 'analysis');
+  const knowledgeBase = knowledgeBaseFixture();
+  const neuralLabels = [validNeuralLabelFixture()];
+  const output = [];
+  const errors = [];
+
+  await fs.mkdir(analysisDir, { recursive: true });
+  await fs.writeFile(path.join(analysisDir, 'case_library.v2.json'), `${JSON.stringify(knowledgeBase, null, 2)}\n`, 'utf8');
+  await fs.writeFile(
+    path.join(analysisDir, 'embedding_index.json'),
+    `${JSON.stringify(buildTemplateEmbeddingIndex({ knowledgeBase, neuralLabels }), null, 2)}\n`,
+    'utf8'
+  );
+  await fs.writeFile(path.join(analysisDir, 'neural_labels.jsonl'), neuralLabelsJsonl(neuralLabels), 'utf8');
+
+  const status = await queryTemplateKnowledge({
+    argv: ['--neural', '建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰'],
+    cwd: root,
+    stdout: { write(chunk) { output.push(String(chunk)); } },
+    stderr: { write(chunk) { errors.push(String(chunk)); } }
+  });
+
+  assert.equal(status, 0);
+  assert.equal(errors.join(''), '');
+  assert.match(output.join(''), /mode: fusion/);
+  assert.match(output.join(''), /Modern Lake Villa/);
+});
+
+test('queryTemplateKnowledge CLI usage mentions --no-neural', () => {
+  const result = spawnSync(process.execPath, ['src/queryTemplateKnowledge.js'], {
+    cwd: process.cwd(),
+    encoding: 'utf8'
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /--no-neural/);
 });
 
 test('query:templates package script runs against a provided v2 file', async () => {
@@ -265,5 +339,33 @@ function knowledgeBaseFixture() {
         risk_controls: ['excluded by manual review']
       }
     ]
+  };
+}
+
+function validNeuralLabelFixture() {
+  return {
+    source: 'stage5-neural-labels-v1',
+    schema_version: 1,
+    case_id: 'house-modern-lake-villa',
+    file: 'House/Modern Lake Villa.schematic',
+    title: 'Modern Lake Villa',
+    suggested_tags: [
+      { group: 'facade', id: 'large-glass', label: 'large glass', confidence: 0.9, source: 'deterministic-labeler', evidence: ['fixture'] },
+      { group: 'site', id: 'water-edge', label: 'water edge', confidence: 0.88, source: 'deterministic-labeler', evidence: ['fixture'] }
+    ],
+    suggested_learning_areas: [
+      { area: 'facade', confidence: 0.9, evidence: ['fixture'] },
+      { area: 'site', confidence: 0.88, evidence: ['fixture'] }
+    ],
+    unknown_suggestions: [],
+    review_guidance: {
+      suggested_status: 'limited',
+      approved_learning_areas: ['facade', 'site'],
+      blocked_learning_areas: [],
+      needs_human_review: true,
+      review_priority: 'high',
+      reason: 'fixture'
+    },
+    risk_notes: ['fixture']
   };
 }

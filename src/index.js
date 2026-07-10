@@ -25,6 +25,13 @@ function parseArgs(argv) {
     candidateRounds: 1,
     candidateTargetScore: 95,
     candidateForceRounds: false,
+    concepts: 0,
+    conceptStrategy: 'select',
+    critics: true,
+    neuralRetrieval: false,
+    coarseVoxelMode: 'off',
+    coarseVoxelProvider: 'baseline',
+    coarseVoxelPlan: undefined,
     minecraftDir: process.env.MINECRAFT_DIR,
     world: undefined,
     datapacksDir: process.env.ARCHITECT_DATAPACKS_DIR || resolveDatapacksTarget(process.env.ARCHITECT_DATAPACKS_TARGET),
@@ -66,6 +73,34 @@ function parseArgs(argv) {
       options.candidateTargetScore = Math.trunc(parsed);
     } else if (arg === '--candidate-force-rounds') {
       options.candidateForceRounds = true;
+    } else if (arg === '--concepts') {
+      const parsed = Number(argv[++i]);
+      if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`无效概念数量: ${parsed}`);
+      options.concepts = Math.trunc(parsed);
+    } else if (arg === '--concept-strategy') {
+      const value = argv[++i] || 'select';
+      if (!['select', 'fuse'].includes(value)) throw new Error(`无效概念策略: ${value}`);
+      options.conceptStrategy = value;
+    } else if (arg === '--no-critics') {
+      options.critics = false;
+    } else if (arg === '--neural-retrieval') {
+      options.neuralRetrieval = true;
+    } else if (arg === '--no-neural-retrieval') {
+      options.neuralRetrieval = false;
+    } else if (arg === '--coarse-voxel-mode') {
+      const value = argv[++i];
+      if (value === 'apply') throw new Error('Stage 7 apply mode is reserved for Stage 7 Milestone 4.');
+      if (!['off', 'shadow'].includes(value)) throw new Error(`无效 Stage 7 coarse voxel mode: ${value}`);
+      options.coarseVoxelMode = value;
+    } else if (arg === '--coarse-voxel-provider') {
+      const value = argv[++i];
+      if (value === 'python') throw new Error('Stage 7 python provider is reserved for Stage 7 Milestone 3.');
+      if (!['baseline', 'artifact'].includes(value)) throw new Error(`无效 Stage 7 coarse voxel provider: ${value}`);
+      options.coarseVoxelProvider = value;
+    } else if (arg === '--coarse-voxel-plan') {
+      const value = argv[++i];
+      if (!value) throw new Error('--coarse-voxel-plan requires a path.');
+      options.coarseVoxelPlan = path.resolve(value);
     } else if (arg === '--minecraft-dir') {
       options.minecraftDir = path.resolve(argv[++i] || '');
     } else if (arg === '--world') {
@@ -93,10 +128,18 @@ function parseArgs(argv) {
     }
   }
 
+  validateCoarseVoxelOptions(options);
   return {
     prompt: promptParts.join(' ').trim(),
     options
   };
+}
+
+function validateCoarseVoxelOptions(options) {
+  if (options.coarseVoxelMode === 'off' && (options.coarseVoxelProvider !== 'baseline' || options.coarseVoxelPlan)) throw new Error('Stage 7 provider options require shadow mode.');
+  if (options.coarseVoxelMode === 'shadow' && options.coarseVoxelProvider === 'artifact' && !options.coarseVoxelPlan) throw new Error('Stage 7 artifact provider requires --coarse-voxel-plan.');
+  if (options.coarseVoxelProvider === 'baseline' && options.coarseVoxelPlan) throw new Error('--coarse-voxel-plan is only valid with the artifact provider.');
+  if (options.coarseVoxelMode === 'shadow' && options.coarseVoxelProvider === 'artifact' && (options.candidates > 1 || options.candidateRounds > 1)) throw new Error('Stage 7 M1 artifact provider supports exactly one candidate and one round because each plan is bound to one condition hash.');
 }
 
 function resolveDatapacksTarget(name) {
@@ -125,6 +168,14 @@ Options:
   --mc-version 1.21          Target Minecraft Java version. v1 exports 1.21 datapacks.
   --out <dir>                Output root directory. Defaults to ./out.
   --seed <number>            Deterministic design seed. Omit it to generate a random seed.
+  --concepts <n>             Enable Stage 3 Concept Studio with 2-5 concepts before construction.
+  --concept-strategy <mode>  select or fuse. Defaults to select.
+  --no-critics               Disable Stage 4 Critic Council report and critic_council.json.
+  --neural-retrieval        Opt into Stage 5 neural fusion retrieval when embedding artifacts are valid.
+  --no-neural-retrieval     Keep Stage 5 retrieval disabled. This is the default MVP behavior.
+  --coarse-voxel-mode off|shadow       Stage 7 M1 mode. Defaults to off; shadow does not change primary geometry.
+  --coarse-voxel-provider baseline|artifact  Select deterministic baseline or a canonical external plan.
+  --coarse-voxel-plan <path>           Canonical Stage 7 plan path required by the artifact provider.
   --candidates <n>           Generate n candidates and auto-select the strongest local result.
   --auto-select              Shortcut for --candidates 3.
   --candidate-rounds <n>     Run up to n reflection rounds. Defaults to 1.
@@ -144,6 +195,7 @@ Options:
   Workflow:
   ArchitectAgent -> PlannerAgent -> CSGBuilder -> BSPPartitioner -> AStarPathfinder.
   construction_method_v1 is the only active generation pipeline.
+  Stage 7 M1: optional coarse semantic voxel shadow runs after CreativeDesign and before geometry.
   Runtime: Node.js only. Python is not required.
   API: configure your own provider in .env and use --mode llm.
   Mock: use --mode mock when no API key is available.
@@ -201,6 +253,13 @@ async function main() {
     candidateRounds: options.candidateRounds,
     candidateTargetScore: options.candidateTargetScore,
     candidateForceRounds: options.candidateForceRounds,
+    concepts: options.concepts,
+    conceptStrategy: options.conceptStrategy,
+    critics: options.critics,
+    neuralRetrieval: options.neuralRetrieval,
+    coarseVoxelMode: options.coarseVoxelMode,
+    coarseVoxelProvider: options.coarseVoxelProvider,
+    coarseVoxelPlan: options.coarseVoxelPlan,
     cwd: projectRoot,
     minecraftDir: options.minecraftDir,
     world: options.world,
@@ -221,6 +280,19 @@ async function main() {
     console.log(`候选择优: ${result.candidateSelection.selected_candidate_id} / seed ${result.candidateSelection.selected_seed} / ${result.candidateSelection.selected_template_score}分`);
     console.log(`候选报告: ${result.artifacts.candidateSelectionReport}`);
     console.log(`选中输出: ${result.selectedOutputDir}`);
+  }
+  if (result.conceptStudio) {
+    console.log(`Concept Studio: ${result.conceptStudio.selected_concept_id} / ${result.conceptStudio.concept_count} concepts / ${result.conceptStudio.strategy}`);
+    console.log(`概念报告: ${result.artifacts.conceptStudioReport}`);
+  }
+  if (result.stage7) {
+    console.log(`Stage 7 Shadow: ${result.stage7.status} / ${result.stage7.provider} / geometry unchanged`);
+    console.log(`Stage 7 报告: ${result.artifacts.stage7Report}`);
+    if (result.artifacts.stage7FailureCase) console.log(`Stage 7 失败案例: ${result.artifacts.stage7FailureCase}`);
+  }
+  if (result.criticCouncil) {
+    console.log(`Critic Council: ${result.criticCouncil.readiness} / ${result.criticCouncil.overall_score}/100 / ${result.criticCouncil.warning_count} warnings`);
+    console.log(`批评产物: ${result.artifacts.criticCouncil}`);
   }
   console.log(`数据包: ${result.artifacts.datapackDir}`);
   if (result.artifacts.installedDatapackDir) {

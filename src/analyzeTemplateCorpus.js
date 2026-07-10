@@ -55,6 +55,22 @@ if (result.knowledgeBaseV2?.summary) {
     console.log(`Stage 2 KB v2 overlay error line ${error.line}: ${error.message}`);
   }
 }
+if (result.stage5?.summary) {
+  console.log(`Stage 5 neural labels: ${result.stage5.summary.neural_label_count}.`);
+  console.log(`Stage 5 embedding cases: ${result.stage5.summary.embedding_case_count}.`);
+  console.log(`Stage 5 embedding model: ${result.stage5.summary.embedding_model.provider}/${result.stage5.summary.embedding_model.model}.`);
+  console.log(`Stage 5 neural labels file: ${result.stage5.artifacts.neuralLabels}.`);
+  console.log(`Stage 5 embedding index: ${result.stage5.artifacts.embeddingIndex}.`);
+}
+if (result.stage6?.summary) {
+  console.log(`Stage 6 semantic patches: ${result.stage6.summary.patch_count}.`);
+  console.log(`Stage 6 patch categories: ${JSON.stringify(result.stage6.summary.category_counts || {})}.`);
+  console.log(`Stage 6 training candidates: ${result.stage6.summary.training_candidate_count}.`);
+  console.log(`Stage 6 training bands: ${JSON.stringify(result.stage6.summary.training_band_counts || {})}.`);
+  console.log(`Stage 6 patch dataset: ${result.stage6.artifacts.semanticPatchDataset}.`);
+  console.log(`Stage 6 patch jsonl: ${result.stage6.artifacts.semanticPatchJsonl}.`);
+  console.log(`Stage 6 patch report: ${result.stage6.artifacts.semanticPatchReport}.`);
+}
 
 function parseArgs(argv) {
   const result = {};

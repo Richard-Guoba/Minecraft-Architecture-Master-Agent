@@ -616,9 +616,13 @@ RTX 4060 适合：
 - 生成失败率下降。
 - 人工点评中的重复问题明显减少。
 
+当前 MVP 状态：Stage 4 首版以默认开启的 Critic Council 落地。它汇总 buildability、connectivity、habitation、style、composition 和 site 六类 critic，输出 `critic_council.json`、run report 小节、compact blueprint metadata、repair directives 和 next-iteration directives。首版不做无限重建循环，后续可以把高优先级 repair directives 接入候选选择或多轮自动修复。
+
 ### Stage 5：神经检索和自动标注
 
 目标：把神经网络用于最稳的地方，先提高学习效率。
+
+当前 MVP 状态：Stage 5 首版采用 artifacts-first 策略。离线分析生成 `neural_labels.jsonl` 和 `embedding_index.json`，查询和评估命令可以比较 rule-only 与 fusion retrieval；主生成流程默认仍使用规则检索，只有显式 `--neural-retrieval` 时才读取 Stage 5 fusion，并在 artifact 缺失或失效时回退。
 
 交付：
 
@@ -637,20 +641,25 @@ RTX 4060 适合：
 
 目标：让建筑细节从规则堆叠变成可学习模式。
 
+当前 MVP 状态：Stage 6 首版已经完成 artifacts-first 语义 patch 边界。离线分析会生成 `semantic_patch_dataset.json`、`semantic_patch_dataset.jsonl` 和 `semantic_patch_report.md`，覆盖 roof、facade、interior、courtyard 四类 semantic voxel patch；运行时提供 deterministic retrieval-completion 和冲突修复边界，但默认不改变 datapack 生成。训练候选会被质量评分和分档，并可通过 `npm run query:patches` 按 category、band、risk 文本和分数查询。真正的 raw schematic patch extraction、神经 patch 模型训练、以及默认生成流程中的自动 patch 注入仍保留为后续工作。
+
 交付：
 
 - semantic voxel patch dataset。
-- 局部补全模型。
-- 屋顶、立面、室内、庭院四类 patch 生成。
+- deterministic 局部补全 baseline，后续可替换为神经补全模型。
+- 屋顶、立面、室内、庭院四类 patch 生成候选。
 - 规则后处理和冲突修复。
+- inspection report、training candidate ranking 和 `query:patches` 查询入口。
 
 成功标准：
 
-- 建筑细节更自然。
-- 立面和屋顶不再明显模板化。
-- 局部模型不会破坏通行和导出。
+- patch 数据集可审查、可复现、可 JSONL 导出。
+- 训练候选能按质量、类别和风险快速筛选。
+- 局部补全边界不会破坏通行、导出或默认规则生成。
 
 ### Stage 7：粗语义体素生成
+
+当前 M1 状态：Stage 7 首版采用 shadow mode。它定义 `64^3` 三层语义体素契约、deterministic baseline、artifact provider、bounded repair 和 semantic voxel -> procedural candidate 转换器；默认 `off`，显式启用时只输出审查产物和失败案例，不改变主建造 operations。Python、raw schematic 整栋数据集、learned provider 和 apply mode 分别保留给后续里程碑。仓库里的 `stage7-template-*` 是更早的模板吸收编号，不代表本路线图 Stage 7 已完成。
 
 目标：让模型参与整体构图，但仍由规则系统保证可建造。
 

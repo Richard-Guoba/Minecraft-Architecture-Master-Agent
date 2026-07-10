@@ -4,13 +4,15 @@ import { isKnownMinecraft121Block, normalizeBlockId } from './minecraftBlockCata
 import { buildStylePatternStrategy, selectStyleAwareRoomPatternGuidance } from './templatePatternStylePolicy.js';
 import { selectTemplateDesignLaws } from '../templates/templateDesignLawDistiller.js';
 import { ExplainableTemplateRetriever } from '../templates/templateExplainableRetriever.js';
+import { NeuralTemplateRetriever } from '../templates/templateNeuralRetriever.js';
 
 const DEFAULT_ANALYSIS_FILE = path.join('mc_templates', 'analysis', 'template_index.json');
 
 export class TemplateKnowledgeAgent {
-  constructor({ cwd = process.cwd(), analysisFile = DEFAULT_ANALYSIS_FILE } = {}) {
+  constructor({ cwd = process.cwd(), analysisFile = DEFAULT_ANALYSIS_FILE, neuralRetrieval = false } = {}) {
     this.cwd = cwd;
     this.analysisFile = path.resolve(cwd, analysisFile);
+    this.neuralRetrieval = Boolean(neuralRetrieval);
   }
 
   run(prompt = '', architecture = {}, buildSpec = {}) {
@@ -37,19 +39,17 @@ export class TemplateKnowledgeAgent {
       featurePriorities: recommendations.case_feature_priorities || [],
       retrievedCaseIds: retrieved.map((item) => item.case_card?.case_id || item.case_profile?.case_id).filter(Boolean)
     });
+    const retrievalContext = {
+      style_family: recommendations.style_family,
+      typology: recommendations.typology
+    };
     const retrievalExplanation = corpus.case_library_v2
-      ? new ExplainableTemplateRetriever({ knowledgeBase: corpus.case_library_v2 }).run({
-          prompt,
-          context: {
-            style_family: recommendations.style_family,
-            typology: recommendations.typology
-          },
-          limit: 8
-        })
+      ? this.buildRetrievalExplanation(corpus, prompt, retrievalContext)
       : {
           source: 'template-explainable-retriever-v1',
           active: false,
           prompt,
+          mode: 'rule-only',
           references: [],
           warnings: [corpus.case_library_v2_error || 'case library v2 not found; using v1 template knowledge']
         };
@@ -72,6 +72,29 @@ export class TemplateKnowledgeAgent {
     };
   }
 
+  buildRetrievalExplanation(corpus, prompt, context) {
+    const rule = new ExplainableTemplateRetriever({ knowledgeBase: corpus.case_library_v2 }).run({ prompt, context, limit: 8 });
+    if (this.neuralRetrieval) {
+      if (corpus.neural_labels_error) {
+        return {
+          ...rule,
+          mode: 'rule-only-fallback',
+          fallback_used: true,
+          warnings: [...(rule.warnings || []), corpus.neural_labels_error].filter(Boolean)
+        };
+      }
+      return appendRetrievalWarnings(new NeuralTemplateRetriever({
+        knowledgeBase: corpus.case_library_v2,
+        embeddingIndex: corpus.embedding_index,
+        neuralLabels: corpus.neural_labels || []
+      }).run({ prompt, context, limit: 8 }), [corpus.embedding_index_error]);
+    }
+    return {
+      ...rule,
+      mode: 'rule-only'
+    };
+  }
+
   loadCorpus() {
     if (!fs.existsSync(this.analysisFile)) return undefined;
     try {
@@ -86,6 +109,27 @@ export class TemplateKnowledgeAgent {
           corpus.case_library_v2 = JSON.parse(fs.readFileSync(caseLibraryV2File, 'utf8'));
         } catch {
           corpus.case_library_v2_error = 'case library v2 not usable; using v1 template knowledge';
+        }
+      }
+      const embeddingIndexFile = path.join(path.dirname(this.analysisFile), 'embedding_index.json');
+      if (fs.existsSync(embeddingIndexFile)) {
+        try {
+          corpus.embedding_index = JSON.parse(fs.readFileSync(embeddingIndexFile, 'utf8'));
+        } catch {
+          corpus.embedding_index_error = 'embedding index not usable; using rule-only template retrieval';
+        }
+      }
+      const neuralLabelsFile = path.join(path.dirname(this.analysisFile), 'neural_labels.jsonl');
+      if (fs.existsSync(neuralLabelsFile)) {
+        try {
+          corpus.neural_labels = fs.readFileSync(neuralLabelsFile, 'utf8')
+            .split(/\r?\n/u)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => JSON.parse(line));
+        } catch {
+          corpus.neural_labels = [];
+          corpus.neural_labels_error = 'neural labels not usable; using rule-only template retrieval';
         }
       }
       const designLawFile = path.join(path.dirname(this.analysisFile), 'design_laws.json');
@@ -111,6 +155,7 @@ function inactiveKnowledge(reason, corpus = {}) {
           source: 'template-explainable-retriever-v1',
           active: false,
           prompt: '',
+          mode: 'rule-only',
           references: [],
           warnings: [reason]
         }
@@ -118,6 +163,7 @@ function inactiveKnowledge(reason, corpus = {}) {
           source: 'template-explainable-retriever-v1',
           active: false,
           prompt: '',
+          mode: 'rule-only',
           references: [],
           warnings: ['case library v2 not found; using v1 template knowledge']
         },
@@ -1336,4 +1382,13 @@ function clampNumber(value, min, max, fallback = min) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, parsed));
+}
+
+function appendRetrievalWarnings(explanation = {}, warnings = []) {
+  const extras = warnings.filter(Boolean);
+  if (!extras.length) return explanation;
+  return {
+    ...explanation,
+    warnings: [...(explanation.warnings || []), ...extras]
+  };
 }

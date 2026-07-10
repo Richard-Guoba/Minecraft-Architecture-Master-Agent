@@ -7,7 +7,10 @@ import { buildTemplateDesignLawBook, designLawsJsonl, interiorLawsJsonl, renderT
 import { analyzeTemplateComposition } from './templateCompositionMiner.js';
 import { analyzeSpatialLayout } from './templateSpatialAnalyzer.js';
 import { parseTemplateReviewOverlay, mergeReviewRecords } from './templateReviewOverlay.js';
+import { writeNeuralLabelArtifacts } from './templateNeuralLabels.js';
+import { writeTemplateEmbeddingIndexArtifact } from './templateEmbeddingIndex.js';
 import { writeTemplateKnowledgeBaseV2Artifacts } from './templateKnowledgeBaseV2.js';
+import { summarizeSemanticPatchTrainingCandidates, writeSemanticVoxelPatchDatasetArtifact } from './templateSemanticPatchDataset.js';
 import { loadTagTaxonomy } from './templateTagTaxonomy.js';
 
 const DEFAULT_TEMPLATE_KB_V2_GENERATED_AT = '2026-07-09T00:00:00.000Z';
@@ -232,6 +235,24 @@ export async function analyzeTemplateCorpus({
     overlayErrors: parsedReviewOverlay.errors,
     inputs: normalizeTemplateKnowledgeBaseV2Inputs({ rootDir, outputDir })
   });
+  const neuralLabelResult = await writeNeuralLabelArtifacts({
+    outputDir: absoluteOutput,
+    knowledgeBase: knowledgeBaseV2Result.knowledgeBase,
+    generatedLabels: labels,
+    taxonomy
+  });
+  const embeddingIndexResult = await writeTemplateEmbeddingIndexArtifact({
+    outputDir: absoluteOutput,
+    knowledgeBase: knowledgeBaseV2Result.knowledgeBase,
+    neuralLabels: neuralLabelResult.records,
+    generatedAt: stableTemplateKnowledgeBaseV2GeneratedAt()
+  });
+  const semanticPatchResult = await writeSemanticVoxelPatchDatasetArtifact({
+    outputDir: absoluteOutput,
+    knowledgeBase: knowledgeBaseV2Result.knowledgeBase,
+    neuralLabels: neuralLabelResult.records,
+    generatedAt: stableTemplateKnowledgeBaseV2GeneratedAt()
+  });
 
   return {
     outputDir: absoluteOutput,
@@ -248,6 +269,25 @@ export async function analyzeTemplateCorpus({
         reviewQueue: knowledgeBaseV2Result.reviewQueueFile
       },
       overlayErrors: parsedReviewOverlay.errors
+    },
+    stage5: {
+      summary: {
+        neural_label_count: neuralLabelResult.records.length,
+        embedding_case_count: embeddingIndexResult.index.case_count,
+        embedding_model: embeddingIndexResult.index.embedding_model
+      },
+      artifacts: {
+        neuralLabels: neuralLabelResult.file,
+        embeddingIndex: embeddingIndexResult.file
+      }
+    },
+    stage6: {
+      summary: summarizeSemanticPatchDataset(semanticPatchResult.dataset),
+      artifacts: {
+        semanticPatchDataset: semanticPatchResult.datasetFile,
+        semanticPatchJsonl: semanticPatchResult.jsonlFile,
+        semanticPatchReport: semanticPatchResult.reportFile
+      }
     },
     templates,
     importErrors,
@@ -275,6 +315,19 @@ export function normalizeTemplateKnowledgeBaseV2Inputs({
     design_laws: path.join(outputDir, 'design_laws.json').replaceAll('\\', '/'),
     review_overlay: path.join(rootDir, 'curation', 'template_reviews.jsonl').replaceAll('\\', '/'),
     tag_taxonomy: path.join(rootDir, 'curation', 'tag_taxonomy.json').replaceAll('\\', '/')
+  };
+}
+
+function summarizeSemanticPatchDataset(dataset = {}) {
+  const categoryCounts = {};
+  for (const category of dataset.categories || []) categoryCounts[category] = 0;
+  for (const patch of dataset.patches || []) {
+    categoryCounts[patch.category] = (categoryCounts[patch.category] || 0) + 1;
+  }
+  return {
+    patch_count: Number(dataset.patch_count || 0),
+    category_counts: categoryCounts,
+    ...summarizeSemanticPatchTrainingCandidates(dataset)
   };
 }
 

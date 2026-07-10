@@ -107,6 +107,10 @@ function explainReference(item, rank, promptTokens, context) {
     case_id: item.case_id,
     title: item.title,
     file: item.file,
+    review_state: String(item.review?.status || 'pending'),
+    review_confidence: Number(item.review?.confidence || 0),
+    approved_learning_areas: normalizeStringArray(item.review?.approved_learning_areas),
+    blocked_learning_areas: normalizeStringArray(item.review?.blocked_learning_areas),
     match_score: item.match_score,
     diversity_slot: diversitySlot(item),
     matched_signals: item.matched_signals,
@@ -182,6 +186,10 @@ function normalizeToken(value = '') {
     .replace(/[^\p{Letter}\p{Number}-]+/gu, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
+}
+
+function normalizeStringArray(value) {
+  return Array.isArray(value) ? value.map((item) => String(item || '').trim()).filter(Boolean) : [];
 }
 
 function aliasToken(token = '') {

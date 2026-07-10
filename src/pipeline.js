@@ -19,6 +19,11 @@ export async function runPipeline({
   candidateRounds = 1,
   candidateTargetScore = DEFAULT_CANDIDATE_TARGET_SCORE,
   candidateForceRounds = false,
+  concepts = 0,
+  conceptStrategy = 'select',
+  critics = true,
+  neuralRetrieval = false,
+  coarseVoxelMode = 'off', coarseVoxelProvider = 'baseline', coarseVoxelPlan,
   cwd = process.cwd(),
   minecraftDir,
   world,
@@ -31,6 +36,9 @@ export async function runPipeline({
 
   const candidateCount = clampInt(candidates, 1, 8, 1);
   const roundCount = clampInt(candidateRounds, 1, 5, 1);
+  assertStage7CandidateCompatibility({ coarseVoxelMode, coarseVoxelProvider, candidateCount, roundCount });
+  const conceptCount = clampInt(concepts, 0, 5, 0);
+  const normalizedConceptStrategy = normalizeConceptStrategy(conceptStrategy);
   if (candidateCount > 1 || roundCount > 1) {
     return runCandidatePipeline({
       prompt,
@@ -46,7 +54,12 @@ export async function runPipeline({
       minecraftDir,
       world,
       datapacksDir,
-      autoBuild
+      autoBuild,
+      concepts: conceptCount,
+      conceptStrategy: normalizedConceptStrategy,
+      critics,
+      neuralRetrieval
+      , coarseVoxelMode, coarseVoxelProvider, coarseVoxelPlan
     });
   }
 
@@ -65,7 +78,12 @@ export async function runPipeline({
     minecraftDir,
     world,
     datapacksDir,
-    autoBuild
+    autoBuild,
+    conceptCount,
+    conceptStrategy: normalizedConceptStrategy,
+    critics,
+    neuralRetrieval
+    , coarseVoxelMode, coarseVoxelProvider, coarseVoxelPlan
   });
 
   return {
@@ -85,6 +103,11 @@ export async function runCandidatePipeline({
   candidateRounds = 1,
   candidateTargetScore = DEFAULT_CANDIDATE_TARGET_SCORE,
   candidateForceRounds = false,
+  concepts = 0,
+  conceptStrategy = 'select',
+  critics = true,
+  neuralRetrieval = false,
+  coarseVoxelMode = 'off', coarseVoxelProvider = 'baseline', coarseVoxelPlan,
   cwd = process.cwd(),
   minecraftDir,
   world,
@@ -96,7 +119,10 @@ export async function runCandidatePipeline({
   const seedPlan = resolveSeed(seed);
   const candidateCount = clampInt(candidates, 1, 8, 3);
   const roundCount = clampInt(candidateRounds, 1, 5, 1);
+  assertStage7CandidateCompatibility({ coarseVoxelMode, coarseVoxelProvider, candidateCount, roundCount });
   const targetScore = clampInt(candidateTargetScore, 0, 100, DEFAULT_CANDIDATE_TARGET_SCORE);
+  const conceptCount = clampInt(concepts, 0, 5, 0);
+  const normalizedConceptStrategy = normalizeConceptStrategy(conceptStrategy);
   const outputDir = path.join(path.resolve(outRoot || path.join(cwd, 'out')), createTimestamp());
   await ensureDir(outputDir);
 
@@ -126,7 +152,12 @@ export async function runCandidatePipeline({
           minecraftDir,
           world: undefined,
           datapacksDir: undefined,
-          autoBuild
+          autoBuild,
+          conceptCount,
+          conceptStrategy: normalizedConceptStrategy,
+          critics,
+          neuralRetrieval
+          , coarseVoxelMode, coarseVoxelProvider, coarseVoxelPlan
         });
         const record = {
           id,
@@ -213,6 +244,8 @@ export async function runCandidatePipeline({
     round_count: roundSummaries.length,
     requested_round_count: roundCount,
     force_rounds: Boolean(candidateForceRounds),
+    concept_count: conceptCount,
+    concept_strategy: normalizedConceptStrategy,
     stop_reason: stopReason,
     output_root: outputDir,
     selected_output_dir: selectedResult.outputDir,
@@ -315,6 +348,8 @@ function compactCandidateSelection(selection = {}) {
     selected_grade: selection.selected_grade,
     met_target: selection.met_target,
     reason: selection.reason,
+    concept_count: selection.concept_count,
+    concept_strategy: selection.concept_strategy,
     stop_reason: selection.stop_reason,
     output_root: selection.output_root,
     selected_output_dir: selection.selected_output_dir,
@@ -404,6 +439,16 @@ function clampInt(value, min, max, fallback = min) {
   return Math.max(min, Math.min(max, Math.round(number)));
 }
 
+function normalizeConceptStrategy(value) {
+  return String(value || 'select') === 'fuse' ? 'fuse' : 'select';
+}
+
 function pad(value) {
   return String(value).padStart(2, '0');
+}
+
+function assertStage7CandidateCompatibility({ coarseVoxelMode, coarseVoxelProvider, candidateCount, roundCount }) {
+  if (coarseVoxelMode === 'shadow' && coarseVoxelProvider === 'artifact' && (candidateCount > 1 || roundCount > 1)) {
+    throw new Error('Stage 7 M1 artifact provider supports exactly one candidate and one round because each plan is bound to one condition hash.');
+  }
 }
