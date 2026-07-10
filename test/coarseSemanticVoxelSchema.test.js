@@ -166,6 +166,51 @@ test('Stage 7 plan validation rejects noncanonical order and invalid cell fields
   assert.ok(result.errors.includes('run confidence must be within 0..1'));
 });
 
+test('Stage 7 condition validation safely rejects non-coercible nested values', () => {
+  const condition = conditionFixture();
+  condition.references = [{
+    case_id: 'hostile-reference',
+    review_state: 'approved',
+    used_for: ['massing'],
+    hints: [],
+    embedding_index_source: 'fixture-index',
+    embedding_record_id: 'fixture-record',
+    embedding_index_hash: JSON.parse('{"toString":null}'),
+    embedding_record_hash: `sha256:${'0'.repeat(64)}`
+  }];
+  let result;
+
+  assert.doesNotThrow(() => {
+    result = validateStage7Condition(condition);
+  });
+  assert.equal(result.ok, false);
+  assert.ok(Array.isArray(result.errors));
+  assert.ok(result.errors.length > 0);
+});
+
+test('Stage 7 plan validation safely rejects non-coercible nested values', () => {
+  const plan = planFixture();
+  plan.runs[0].x0 = JSON.parse('{"toString":null}');
+  let result;
+
+  assert.doesNotThrow(() => {
+    result = validateStage7Plan(plan);
+  });
+  assert.equal(result.ok, false);
+  assert.ok(Array.isArray(result.errors));
+  assert.ok(Array.isArray(result.warnings));
+  assert.equal(typeof result.stats, 'object');
+});
+
+test('Stage 7 plan validation requires a numeric schema version', () => {
+  const plan = planFixture();
+  plan.schema_version = String(plan.schema_version);
+
+  const result = validateStage7Plan(plan);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.includes('unsupported Stage 7 schema version'));
+});
+
 function conditionFixture() {
   const payload = {
     source: 'stage7-coarse-semantic-voxel-condition-v1',
@@ -182,6 +227,15 @@ function conditionFixture() {
 
 function evidenceFixture() {
   return [{ id: 'condition:fixture', kind: 'condition', source_id: 'fixture' }];
+}
+
+function planFixture() {
+  return createStage7Plan({
+    condition: conditionFixture(),
+    provider: { kind: 'artifact', name: 'fixture-artifact' },
+    evidence: evidenceFixture(),
+    cells: [cell(1, 1, 1, { envelope: 'wall' })]
+  });
 }
 
 function cell(x, y, z, values = {}) {

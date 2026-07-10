@@ -112,6 +112,14 @@ export function createStage7Plan({ condition = {}, provider = {}, cells = [], ev
 }
 
 export function validateStage7Condition(condition = {}) {
+  try {
+    return validateStage7ConditionValue(condition);
+  } catch {
+    return { ok: false, errors: ['condition input could not be safely validated'] };
+  }
+}
+
+function validateStage7ConditionValue(condition = {}) {
   condition = condition && typeof condition === 'object' && !Array.isArray(condition) ? condition : {};
   const errors = [];
   const dimensions = condition.dimensions && typeof condition.dimensions === 'object' ? condition.dimensions : {};
@@ -162,7 +170,20 @@ export function validateStage7Condition(condition = {}) {
   return { ok: errors.length === 0, errors: [...new Set(errors)] };
 }
 
-export function validateStage7Plan(plan = {}, { condition, conditionHash = condition?.condition_hash, maxRuns = MAX_STAGE7_RUNS, allowDerived = false } = {}) {
+export function validateStage7Plan(plan = {}, options = {}) {
+  try {
+    return validateStage7PlanValue(plan, options);
+  } catch {
+    return {
+      ok: false,
+      errors: ['plan input could not be safely validated'],
+      warnings: [],
+      stats: { run_count: 0, cell_count: 0, evidence_count: 0 }
+    };
+  }
+}
+
+function validateStage7PlanValue(plan = {}, { condition, conditionHash = condition?.condition_hash, maxRuns = MAX_STAGE7_RUNS, allowDerived = false } = {}) {
   plan = plan && typeof plan === 'object' && !Array.isArray(plan) ? plan : {};
   const errors = [];
   const warnings = [];
@@ -176,7 +197,7 @@ export function validateStage7Plan(plan = {}, { condition, conditionHash = condi
   for (const field of unknownFields(plan, PLAN_FIELDS)) errors.push(`unknown Stage 7 plan field: ${field}`);
 
   if (plan.source !== STAGE7_PLAN_SOURCE) errors.push('unsupported Stage 7 plan source');
-  if (Number(plan.schema_version) !== STAGE7_SCHEMA_VERSION) errors.push('unsupported Stage 7 schema version');
+  if (plan.schema_version !== STAGE7_SCHEMA_VERSION) errors.push('unsupported Stage 7 schema version');
   if (!sameArray(plan.resolution, STAGE7_RESOLUTION)) errors.push('resolution must be 64 x 64 x 64');
   if (plan.encoding !== STAGE7_ENCODING) errors.push('unsupported Stage 7 grid encoding');
   if (typeof plan.provider?.kind !== 'string' || !plan.provider.kind || typeof plan.provider?.name !== 'string' || !plan.provider.name) errors.push('provider kind and name are required');
