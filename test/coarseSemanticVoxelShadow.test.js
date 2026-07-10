@@ -1,0 +1,8 @@
+import test from 'node:test'; import assert from 'node:assert/strict';
+import {runCoarseSemanticVoxelShadow,selectCoarseSemanticVoxelProvider,compactCoarseSemanticVoxelShadow,renderCoarseSemanticVoxelShadowReport,MAX_STAGE7_ARTIFACT_BYTES} from '../src/construction/learning/coarseSemanticVoxelShadow.js';
+const input=()=>({prompt:'x',seed:1,architecture:{},buildSpec:{width:10,depth:10,floors:1},topology:{},creativeDesign:{},conceptStudio:{},templateKnowledge:{}});
+test('off mode inactive',async()=>assert.deepEqual(await runCoarseSemanticVoxelShadow({...input(),mode:'off'}),{source:'stage7-coarse-semantic-voxel-shadow-v1',active:false,mode:'off',provider:'baseline',status:'disabled',reason:'Stage 7 coarse voxel mode is off'}));
+test('baseline provider selected and report rendered',async()=>{assert.equal(typeof selectCoarseSemanticVoxelProvider('baseline').generate,'function');const r=await runCoarseSemanticVoxelShadow({...input(),mode:'shadow'});assert.equal(r.active,true);assert.match(renderCoarseSemanticVoxelShadowReport(r),/# Stage 7/);assert.ok(compactCoarseSemanticVoxelShadow(r));});
+test('unsupported provider rejects structurally',async()=>{const r=await runCoarseSemanticVoxelShadow({...input(),mode:'shadow',provider:'x'});assert.equal(r.status,'rejected');assert.equal(r.failureCase.failure_stage,'provider');});
+test('missing artifact rejects',async()=>{const r=await runCoarseSemanticVoxelShadow({...input(),mode:'shadow',provider:'artifact',artifactPath:'missing.json'});assert.equal(r.status,'rejected');assert.match(r.failureCase.provider_error,/Could not read/);});
+test('exports artifact byte limit',()=>assert.equal(MAX_STAGE7_ARTIFACT_BYTES,33554432));
