@@ -7,10 +7,13 @@ export const STAGE7_PILOT_CASE_IDS=Object.freeze([
 
 const ROOT_FIELDS=new Set([
   'record_id','case_id','source_sha256','reviewed_by','reviewed_at','status','canonical_front_side',
+  'source_author','source_uploader','author_evidence',
   'license_status','allowed_uses','license_evidence','approved_learning_areas','blocked_learning_areas',
   'semantic_corrections','notes'
 ]);
 const STATUSES=new Set(['pending','approved','limited','rejected','research-only']);
+const EXPLICIT_STATUSES=new Set(['approved','limited','rejected','research-only']);
+const POSITIVE_STATUSES=new Set(['approved','limited']);
 const LICENSE_STATUSES=new Set(['unknown','verified','restricted','prohibited']);
 const ALLOWED_USES=new Set(['local-analysis','local-training','derived-metadata','public-release']);
 const TARGET_LAYERS=new Set(['envelope','site','space']);
@@ -49,6 +52,8 @@ export function validateStage7DatasetReviewRecord(record={}, {knownCases}={}) {
     if (expected&&expected!==record.source_sha256) errors.push(`source hash mismatch for ${record.case_id}`);
   }
   if (!STATUSES.has(record.status)) errors.push(`invalid status ${record.status||'missing'}`);
+  if (EXPLICIT_STATUSES.has(record.status)&&!record.author_evidence) errors.push('author_evidence is required for explicit review outcomes');
+  if (POSITIVE_STATUSES.has(record.status)&&!record.source_author&&!record.source_uploader) errors.push('approved or limited reviews require source_author or source_uploader');
   if (!LICENSE_STATUSES.has(record.license_status)) errors.push(`invalid license_status ${record.license_status||'missing'}`);
   if (record.canonical_front_side!==null&&!FRONT_SIDES.has(record.canonical_front_side)) errors.push(`invalid canonical_front_side ${record.canonical_front_side}`);
   for (const use of record.allowed_uses||[]) if (!ALLOWED_USES.has(use)) errors.push(`invalid allowed_uses value ${use}`);
@@ -93,6 +98,8 @@ function normalizeRecord(raw) {
     record_id:String(raw.record_id||'').trim(),case_id:String(raw.case_id||'').trim(),
     source_sha256:String(raw.source_sha256||'').trim().toLowerCase(),reviewed_by:String(raw.reviewed_by||'').trim(),
     reviewed_at:String(raw.reviewed_at||'').trim(),status:String(raw.status||'pending').trim(),
+    source_author:String(raw.source_author||'').trim(),source_uploader:String(raw.source_uploader||'').trim(),
+    author_evidence:String(raw.author_evidence||'').trim(),
     canonical_front_side:raw.canonical_front_side?String(raw.canonical_front_side).trim():null,
     license_status:String(raw.license_status||'unknown').trim(),allowed_uses:sortedUnique(raw.allowed_uses),
     license_evidence:String(raw.license_evidence||'').trim(),approved_learning_areas:sortedUnique(raw.approved_learning_areas),

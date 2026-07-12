@@ -22,8 +22,12 @@ test('review pack is source-bound and contains no positive review claims', async
   assert.match(review.source_sha256,/^[a-f0-9]{64}$/);
   assert.equal(review.current_review.status,'pending');
   assert.equal(review.correction_template.reviewed_by,'');
+  assert.equal(review.correction_template.source_author,'');
+  assert.equal(review.correction_template.source_uploader,'');
+  assert.equal(review.correction_template.author_evidence,'');
   assert.equal(review.correction_template.license_status,'unknown');
   assert.deepEqual(review.correction_template.semantic_corrections,[]);
+  assert.match(await fs.readFile(result.cases[0].reportPath,'utf8'),/Original creator, schematic preparer, and uploader evidence captured/);
   assert.deepEqual((await fs.readdir(result.cases[0].caseDir)).sort(),['correction.example.json','plan.raw.json','report.md','review.json']);
 });
 

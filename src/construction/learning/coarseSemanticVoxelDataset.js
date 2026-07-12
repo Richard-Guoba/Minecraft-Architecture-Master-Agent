@@ -205,7 +205,11 @@ function datasetConfig(version) {
 function mergeDatasetReview(caseRecord,review) {
   return {
     ...caseRecord,
-    source:{...caseRecord.source,license_status:review.license_status,allowed_uses:[...review.allowed_uses],license_evidence:review.license_evidence,public_release_allowed:review.allowed_uses.includes('public-release')},
+    source:{
+      ...caseRecord.source,author:review.source_author,uploader:review.source_uploader,author_evidence:review.author_evidence,
+      license_status:review.license_status,allowed_uses:[...review.allowed_uses],license_evidence:review.license_evidence,
+      public_release_allowed:review.allowed_uses.includes('public-release')
+    },
     review:{...caseRecord.review,status:review.status,reviewed_by:review.reviewed_by,reviewed_at:review.reviewed_at,approved_learning_areas:[...review.approved_learning_areas],blocked_learning_areas:[...review.blocked_learning_areas],canonical_front_side:review.canonical_front_side,review_record_ids:[...(review.review_record_ids||[review.record_id])]}
   };
 }

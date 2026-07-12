@@ -16,9 +16,23 @@ test('dataset case emits canonical artifacts while pending review stays training
 });
 
 test('Dataset v1 records remain frozen without v2 correction metadata', () => {
-  const result=buildStage7DatasetCase({ volume:hollowHouseVolumeFixture(), caseRecord:pendingCaseFixture(), datasetVersion:'v1', localArtifactRoot:'.tmp/stage7-dataset/v1' });
+  const fixture=pendingCaseFixture();
+  const caseRecord={...fixture,source:{...fixture.source,author:'Rizzial',uploader:'Alterio',author_evidence:'Reviewed source attribution.'}};
+  const result=buildStage7DatasetCase({ volume:hollowHouseVolumeFixture(), caseRecord, datasetVersion:'v1', localArtifactRoot:'.tmp/stage7-dataset/v1' });
   assert.equal(Object.hasOwn(result.record.extraction,'correction_count'),false);
   assert.equal(Object.hasOwn(result.record.extraction,'correction_sha256'),false);
+  assert.equal(result.record.source.author,'Rizzial');
+  assert.equal(Object.hasOwn(result.record.source,'uploader'),false);
+  assert.equal(Object.hasOwn(result.record.source,'author_evidence'),false);
+});
+
+test('Dataset v2 records preserve reviewed creator and uploader provenance', () => {
+  const fixture=pendingCaseFixture();
+  const caseRecord={...fixture,source:{...fixture.source,author:'Rizzial',uploader:'Alterio',author_evidence:'Reviewed source attribution.'}};
+  const result=buildStage7DatasetCase({volume:hollowHouseVolumeFixture(),caseRecord,datasetVersion:'v2'});
+  assert.equal(result.record.source.author,'Rizzial');
+  assert.equal(result.record.source.uploader,'Alterio');
+  assert.equal(result.record.source.author_evidence,'Reviewed source attribution.');
 });
 
 test('dataset case hashes are deterministic and provider provenance is complete', () => {

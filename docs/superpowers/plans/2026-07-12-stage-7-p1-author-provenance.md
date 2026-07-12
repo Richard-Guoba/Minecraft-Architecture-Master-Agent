@@ -23,6 +23,7 @@
 
 - Modify: `src/construction/learning/stage7DatasetReviewOverlay.js`
 - Modify: `src/construction/learning/coarseSemanticVoxelDataset.js`
+- Modify: `src/construction/learning/coarseSemanticVoxelDatasetCase.js`
 - Modify: `src/construction/learning/stage7DatasetReviewPack.js`
 - Test: `test/stage7DatasetReviewOverlay.test.js`
 - Test: `test/stage7DatasetCli.test.js`
@@ -99,6 +100,7 @@ Expected: all overlay tests pass.
 - Modify: `test/stage7DatasetCli.test.js`
 - Modify: `test/coarseSemanticVoxelDatasetCase.test.js`
 - Modify: `src/construction/learning/coarseSemanticVoxelDataset.js`
+- Modify: `src/construction/learning/coarseSemanticVoxelDatasetCase.js`
 
 - [ ] **Step 1: Add failing Dataset v2 and v1-isolation tests**
 
@@ -218,7 +220,7 @@ Expected: every test passes with zero failures.
 
 ```powershell
 $env:SOURCE_DATE_EPOCH = '1783814400'
-npm run dataset:stage7 -- --version v1
+npm run dataset:stage7 -- --dataset-version v1
 ```
 
 Expected: successful deterministic rebuild.
@@ -227,10 +229,10 @@ Expected: successful deterministic rebuild.
 
 ```powershell
 $expected = @{
-  'manifest.json' = 'fb521903e41f734e59af3878c2b7947a15d574c5ddb3acdbd3996395d92601e5'
-  'cases.jsonl' = 'c316fa9bbea9cf5452011a780a78340d55202a83e43162a9b7702848b3d4d30e'
-  'splits.json' = 'edab36283de4f9e7c0929d670a582df3a88fa07d3bf8c5bc5c21bd531c8015ee'
-  'summary.json' = '4dd69b0b8b91c0b58f168983db49d800c80fc66889cbdc00ee942a5a0a6e2020'
+  'manifest.json' = 'fb52190f58102540f19bab741ec5ce1a121134d86b88a699b78c2af5bb788749'
+  'cases.jsonl' = 'c316a5673428830c72291ff0e67a686cd671fdc7ef75e277637c959870a21337'
+  'splits.json' = 'edab78808431fa29014f011de29dba5451680e763519713c2bd312be0a192db5'
+  'reports/summary.md' = '4dd84270cd6e93e1f854dca95326b6300e4677f2e8e97936ed23a64af2197104'
 }
 foreach ($name in $expected.Keys) {
   $actual = (Get-FileHash "mc_templates/datasets/coarse_semantic_voxels/v1/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -254,9 +256,8 @@ Expected: no whitespace errors and no canonical Dataset v1 diff.
 - [ ] **Step 5: Commit the implementation**
 
 ```powershell
-git add src/construction/learning/stage7DatasetReviewOverlay.js src/construction/learning/coarseSemanticVoxelDataset.js src/construction/learning/stage7DatasetReviewPack.js test/stage7DatasetReviewOverlay.test.js test/stage7DatasetCli.test.js test/stage7DatasetReviewPack.test.js test/coarseSemanticVoxelDatasetCase.test.js
+git add src/construction/learning/stage7DatasetReviewOverlay.js src/construction/learning/coarseSemanticVoxelDataset.js src/construction/learning/coarseSemanticVoxelDatasetCase.js src/construction/learning/stage7DatasetReviewPack.js test/stage7DatasetReviewOverlay.test.js test/stage7DatasetCli.test.js test/stage7DatasetReviewPack.test.js test/coarseSemanticVoxelDatasetCase.test.js
 git commit -m "feat(stage7): record reviewed author provenance"
 ```
 
 Expected: one focused implementation commit, ready for the first real `research-only` case review record.
-

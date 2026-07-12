@@ -45,6 +45,10 @@ export function buildStage7DatasetCase({volume,caseRecord={},reviewRecord=null,d
     source:{
       file:caseRecord.file||caseRecord.source?.file||'',sha256:volume.source_sha256,
       url:caseRecord.source?.url||'',author:caseRecord.source?.author||'',
+      ...(datasetVersion==='v2'?{
+        uploader:caseRecord.source?.uploader||'',
+        author_evidence:caseRecord.source?.author_evidence||''
+      }:{}),
       license_status:caseRecord.source?.license_status||'unknown',
       allowed_uses:[...new Set(caseRecord.source?.allowed_uses||[])].sort(),
       public_release_allowed:Boolean(caseRecord.source?.public_release_allowed),

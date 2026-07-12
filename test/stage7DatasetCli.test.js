@@ -64,6 +64,8 @@ test('Stage 7 Dataset v2 consumes a source-bound review and rejects a stale one'
   const review={
     record_id:'review-pilot-1',case_id:'house-a-small-modern-house',source_sha256:sourceSha256,
     reviewed_by:'human-curator',reviewed_at:'2026-07-12T00:00:00.000Z',status:'limited',
+    source_author:'Rizzial',source_uploader:'Alterio',
+    author_evidence:'The source page says Designed by Rizzial and Schematic by Alterio.',
     canonical_front_side:'south',license_status:'restricted',allowed_uses:['local-analysis','local-training'],
     license_evidence:'Human-captured source terms.',approved_learning_areas:['envelope','site','space'],
     blocked_learning_areas:[],semantic_corrections:[],notes:'Pilot review.'
@@ -76,6 +78,9 @@ test('Stage 7 Dataset v2 consumes a source-bound review and rejects a stale one'
   assert.equal(result.records[0].review.reviewed_by,'human-curator');
   assert.deepEqual(result.records[0].review.review_record_ids,['review-pilot-1']);
   assert.equal(result.records[0].source.license_evidence,'Human-captured source terms.');
+  assert.equal(result.records[0].source.author,'Rizzial');
+  assert.equal(result.records[0].source.uploader,'Alterio');
+  assert.equal(result.records[0].source.author_evidence,'The source page says Designed by Rizzial and Schematic by Alterio.');
   assert.ok((await fs.stat(path.join(fixture.outputDir,'reports','readiness.md'))).isFile());
   await assert.rejects(writeStage7DatasetArtifacts({...fixture,datasetVersion:'v2',reviewOverlayPath,requireSemanticAccepted:1}),/requires 1 semantic-accepted cases, found 0/);
   await fs.writeFile(reviewOverlayPath,`${JSON.stringify({...review,source_sha256:'f'.repeat(64)})}\n`,'utf8');

@@ -12,6 +12,8 @@ function completeReview(overrides={}) {
   return {
     record_id:'review-pilot-1',case_id:'house-tavern',source_sha256:HASH,
     reviewed_by:'human-curator',reviewed_at:'2026-07-12T00:00:00.000Z',status:'limited',
+    source_author:'Rizzial',source_uploader:'Alterio',
+    author_evidence:'The source page says Designed by Rizzial and Schematic by Alterio.',
     canonical_front_side:'south',license_status:'restricted',
     allowed_uses:['local-analysis','local-training'],license_evidence:'Terms captured by the human curator.',
     approved_learning_areas:['envelope','space','site'],blocked_learning_areas:[],
@@ -27,6 +29,43 @@ test('Stage 7 review overlay accepts a source-bound complete positive review', (
   assert.equal(parsed.records[0].source_sha256,HASH);
   assert.deepEqual(parsed.records[0].semantic_corrections,[]);
   assert.deepEqual(parsed.records[0].approved_learning_areas,['envelope','site','space']);
+});
+
+test('Stage 7 review overlay normalizes reviewed author provenance', () => {
+  const parsed=parseStage7DatasetReviewOverlay(JSON.stringify(completeReview({
+    source_author:'  Rizzial  ',source_uploader:'  Alterio  ',
+    author_evidence:'  The source page identifies both roles.  '
+  })));
+  assert.deepEqual(parsed.errors,[]);
+  assert.equal(parsed.records[0].source_author,'Rizzial');
+  assert.equal(parsed.records[0].source_uploader,'Alterio');
+  assert.equal(parsed.records[0].author_evidence,'The source page identifies both roles.');
+});
+
+test('explicit Stage 7 outcomes require author evidence', () => {
+  for (const status of ['approved','limited','rejected','research-only']) {
+    const parsed=parseStage7DatasetReviewOverlay(JSON.stringify(completeReview({status,author_evidence:''})));
+    assert.match(parsed.errors[0].message,/author_evidence/,status);
+  }
+});
+
+test('positive Stage 7 outcomes require a reviewed author or uploader identity', () => {
+  for (const status of ['approved','limited']) {
+    const parsed=parseStage7DatasetReviewOverlay(JSON.stringify(completeReview({
+      status,source_author:'',source_uploader:''
+    })));
+    assert.match(parsed.errors[0].message,/source_author or source_uploader/,status);
+  }
+});
+
+test('research-only outcome may document that attribution remains unknown', () => {
+  const parsed=parseStage7DatasetReviewOverlay(JSON.stringify(completeReview({
+    status:'research-only',source_author:'',source_uploader:'',
+    author_evidence:'The source was checked, but original attribution remains unknown.',
+    allowed_uses:['local-analysis'],approved_learning_areas:[],
+    blocked_learning_areas:['envelope','site','space']
+  })));
+  assert.deepEqual(parsed.errors,[]);
 });
 
 test('Stage 7 review overlay rejects stale hashes and incomplete positive reviews', () => {
