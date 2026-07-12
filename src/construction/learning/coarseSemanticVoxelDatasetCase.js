@@ -39,7 +39,8 @@ export function buildStage7DatasetCase({volume,caseRecord={},datasetVersion='v1'
       url:caseRecord.source?.url||'',author:caseRecord.source?.author||'',
       license_status:caseRecord.source?.license_status||'unknown',
       allowed_uses:[...new Set(caseRecord.source?.allowed_uses||[])].sort(),
-      public_release_allowed:Boolean(caseRecord.source?.public_release_allowed)
+      public_release_allowed:Boolean(caseRecord.source?.public_release_allowed),
+      license_evidence:caseRecord.source?.license_evidence||caseRecord.review?.license_evidence||''
     },
     review:{
       status:caseRecord.review?.status||'pending',reviewed_by:caseRecord.review?.reviewed_by||'',reviewed_at:caseRecord.review?.reviewed_at||'',

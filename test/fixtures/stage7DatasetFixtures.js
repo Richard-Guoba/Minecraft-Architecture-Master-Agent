@@ -36,7 +36,7 @@ export function pendingCaseFixture() {
 export function reviewedCaseFixture() {
   const value = pendingCaseFixture();
   return { ...value,
-    source:{ ...value.source, license_status:'restricted', allowed_uses:['local-analysis','local-training'] },
+    source:{ ...value.source, license_status:'restricted', allowed_uses:['local-analysis','local-training'], license_evidence:'fixture license record' },
     review:{ ...value.review, status:'limited', reviewed_by:'fixture-curator', reviewed_at:'2026-07-12T00:00:00.000Z', approved_learning_areas:['envelope','site','space'], canonical_front_side:'south', review_record_ids:['fixture-review'] }
   };
 }

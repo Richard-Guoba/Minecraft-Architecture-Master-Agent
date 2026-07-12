@@ -67,7 +67,7 @@ export function validateStage7Dataset({manifest={},records=[],splits={}}={}) {
     if (!['train','validation','test'].includes(record?.split)) errors.push(`unsupported split: ${id||'unknown'}`);
     if (record?.origin==='synthetic'&&record.split!=='train') errors.push(`synthetic case cannot enter held-out split: ${id}`);
     if (!record?.review||!Object.hasOwn(record.review,'status')||!Array.isArray(record.review.approved_learning_areas)) errors.push(`missing review provenance: ${id}`);
-    if (!record?.source||!Object.hasOwn(record.source,'license_status')||!Array.isArray(record.source.allowed_uses)) errors.push(`missing license provenance: ${id}`);
+    if (!record?.source||!Object.hasOwn(record.source,'license_status')||!Array.isArray(record.source.allowed_uses)||!Object.hasOwn(record.source,'license_evidence')) errors.push(`missing license provenance: ${id}`);
     if (!Array.isArray(record?.normalized_transform?.resolution)||record.normalized_transform.resolution.join(',')!=='64,64,64') errors.push(`missing normalized transform: ${id}`);
     if (!/^[a-f0-9]{64}$/.test(record?.artifacts?.condition_sha256||'')) errors.push(`missing condition hash: ${id}`);
     if (!/^[a-f0-9]{64}$/.test(record?.artifacts?.plan_sha256||'')) errors.push(`missing plan hash: ${id}`);

@@ -21,6 +21,7 @@ test('dataset case hashes are deterministic and provider provenance is complete'
   assert.equal(first.record.artifacts.condition_sha256,second.record.artifacts.condition_sha256);
   assert.equal(first.record.artifacts.plan_sha256,second.record.artifacts.plan_sha256);
   assert.deepEqual(first.rawPlan.provider,{ kind:'dataset-extraction', name:'stage7-coarse-semantic-voxel-schematic-extractor-v1', model_version:null, dataset_version:'v1' });
+  assert.equal(first.record.source.license_evidence,'fixture license record');
   const assigned={...first.record,split:'validation'};
   assert.match(renderStage7DatasetCaseReport(assigned),/Split: validation/);
 });

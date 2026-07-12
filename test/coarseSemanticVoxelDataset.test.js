@@ -5,7 +5,7 @@ import { assignStage7DatasetSplit, buildStage7DatasetIndex, validateStage7Datase
 function datasetRecordFixture() {
   return {
     case_id:'house-source',case_version:`sha256:${'b'.repeat(64)}`,dataset_version:'v1',origin:'real',parent_case_id:null,split:null,
-    source:{file:'House/Source.schematic',sha256:'a'.repeat(64),url:'',author:'',license_status:'restricted',allowed_uses:['local-training'],public_release_allowed:false},
+    source:{file:'House/Source.schematic',sha256:'a'.repeat(64),url:'',author:'',license_status:'restricted',allowed_uses:['local-training'],public_release_allowed:false,license_evidence:'fixture license record'},
     review:{status:'approved',reviewed_by:'fixture',reviewed_at:'2026-07-12T00:00:00.000Z',approved_learning_areas:['envelope','site','space'],blocked_learning_areas:[],canonical_front_side:'south',review_record_ids:['fixture-review']},
     training:{eligible:true,permitted_layers:['envelope','site','space'],blockers:[]},
     original_bounds:{min_x:0,min_y:0,min_z:0,max_x:8,max_y:6,max_z:8},
