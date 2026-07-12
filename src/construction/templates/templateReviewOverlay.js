@@ -1,7 +1,10 @@
 import { DEFAULT_TAG_TAXONOMY, validateTagRecord } from './templateTagTaxonomy.js';
 
 const VALID_STATUSES = new Set(['pending', 'approved', 'limited', 'rejected', 'research-only']);
-const VALID_AREAS = new Set(['site', 'massing', 'facade', 'roof', 'space-planning', 'interior', 'materials', 'risk']);
+const VALID_AREAS = new Set(['site', 'massing', 'facade', 'roof', 'space-planning', 'interior', 'materials', 'risk', 'envelope', 'space']);
+const VALID_FRONT_SIDES = new Set(['north', 'south', 'east', 'west']);
+const VALID_LICENSE_STATUSES = new Set(['unknown', 'verified', 'restricted', 'prohibited']);
+const VALID_ALLOWED_USES = new Set(['local-analysis', 'local-training', 'derived-metadata', 'public-release']);
 
 export function parseTemplateReviewOverlay(text = '', options = {}) {
   const strict = Boolean(options.strict);
@@ -62,6 +65,10 @@ export function defaultReviewForCase(caseId) {
     blocked_learning_areas: [],
     manual_tags: [],
     risk_overrides: [],
+    canonical_front_side: null,
+    license_status: 'unknown',
+    allowed_uses: [],
+    license_evidence: '',
     review_record_ids: []
   };
 }
@@ -84,6 +91,10 @@ function normalizeReviewRecord(raw = {}, taxonomy) {
     blocked_learning_areas: normalizeAreas(raw.blocked_learning_areas),
     manual_tags: normalizeTags(raw.manual_tags, taxonomy),
     risk_overrides: Array.isArray(raw.risk_overrides) ? raw.risk_overrides.map(String).filter(Boolean) : [],
+    canonical_front_side: normalizeOptionalEnum(raw.canonical_front_side, VALID_FRONT_SIDES, 'canonical_front_side'),
+    license_status: normalizeOptionalEnum(raw.license_status, VALID_LICENSE_STATUSES, 'license_status') || 'unknown',
+    allowed_uses: normalizeAllowedUses(raw.allowed_uses),
+    license_evidence: String(raw.license_evidence || '').trim(),
     notes: String(raw.notes || '')
   };
 }
@@ -100,6 +111,21 @@ function normalizeTags(value, taxonomy) {
     result.push(validation.normalized);
   }
   return result;
+}
+
+function normalizeOptionalEnum(value, allowed, field) {
+  if (value === undefined || value === null || value === '') return null;
+  const normalized = String(value).trim();
+  if (!allowed.has(normalized)) throw new Error(`invalid ${field} ${normalized}`);
+  return normalized;
+}
+
+function normalizeAllowedUses(value) {
+  const uses = [...new Set((Array.isArray(value) ? value : []).map((item) => String(item).trim()))].sort();
+  for (const use of uses) {
+    if (!VALID_ALLOWED_USES.has(use)) throw new Error(`invalid allowed_uses value ${use}`);
+  }
+  return uses;
 }
 
 function clamp01(value) {

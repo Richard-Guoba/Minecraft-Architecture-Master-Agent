@@ -3,6 +3,8 @@ out/
 .tmp/
 .worktrees/
 .superpowers/
+.tmp/stage7-dataset/
+mc_templates/datasets/coarse_semantic_voxels/*/local/
 .env
 *.log
 *.pdf

@@ -19,8 +19,8 @@ The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled f
 - Concept layer: Stage 3 Concept Studio can generate, select, or fuse multiple explainable design concepts before construction
 - Critique layer: Stage 4 Critic Council summarizes buildability, connectivity, habitation, style, composition, and site findings
 - Benchmark readiness: 10/10 baseline prompts generated, average scorecard 100/100, red flags 0, repair priority queue empty
-- Coarse semantic voxel layer: Stage 7 Milestone 1 defines a provider-neutral `64^3` contract, deterministic baseline, bounded repair, procedural candidate converter, and artifact provider
-- Active stage: Stage 7 Milestone 1 is shadow-only; it exports review artifacts and failure records but does not change primary geometry
+- Coarse semantic voxel layer: Stage 7 Milestone 1 defines the provider-neutral `64^3` shadow contract; Milestone 2 adds deterministic raw-schematic extraction; Milestone 2.5 adds source-bound review packs, sparse correction provenance, Dataset v2, and readiness gates
+- Active stage: Stage 7 Milestone 2.5 has generated a six-case trusted-data review pack and deterministic Dataset v2; it has 0 reviewed pilot outcomes and 0 training-eligible cases, so M3 real-data training remains blocked and the M1 shadow path still does not change primary geometry
 
 ## Quick Start
 
@@ -28,6 +28,8 @@ The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled f
 npm install
 npm test
 npm run analyze:templates -- --offline
+npm run dataset:stage7 -- --require-eligible 0
+npm run review-pack:stage7 -- --out .tmp/stage7-m2-5-review-pack
 npm run evaluate:retrieval
 npm run query:templates -- --neural "建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰"
 npm run query:patches -- --dataset mc_templates/analysis/semantic_patch_dataset.json --category facade --band high
@@ -81,7 +83,7 @@ Prompt
 -> PlannerAgent: room graph, circulation, privacy, functional topology
 -> ConceptStudioAgent: multi-concept design options, selection, or conservative fusion
 -> CreativeDesignAgent: design variation and template-guided composition
--> Stage 7 M1 Shadow: condition -> untrusted coarse voxels -> validation/repair -> procedural candidate; primary geometry unchanged
+-> Stage 7 M1 Shadow + M2/M2.5 Dataset: runtime candidates remain shadow-only; offline schematics become governed v1/v2 records and source-bound human review packs
 -> Structure/Facade/Roof/Site agents: specialist semantic plans
 -> CSGBuilder: shell, volumes, roofs, facade, site, structure modules
 -> BSPPartitioner: room rectangles and floor organization
@@ -134,7 +136,7 @@ npm start -- --list-prompts
 - It does not download Minecraft or simulate survival-mode resource gathering.
 - Generated `out/` artifacts, local credentials, and temporary files are intentionally not committed.
 - Python is reserved for optional future learning/training workflows, not for normal generation.
-- Stage 7 Milestone 1 does not train a model, invoke Python, or apply candidate geometry.
+- Stage 7 Milestone 2.5 does not train a model, invoke Python, or apply candidate geometry; pending, rejected, unlicensed, layer-disallowed, or semantically rejected cases cannot enter training.
 - Legacy `stage7-template-*` source identifiers refer to the older template-assimilation sequence, not Architecture Master Roadmap Stage 7.
 
 ## Development Direction
@@ -147,4 +149,4 @@ The project has moved past early showcase packaging. Current work should optimiz
 4. Use Stage 4 Critic Council findings to guide repair priorities.
 5. Keep Stage 5 neural retrieval optional and artifact-gated so rule-only generation remains reliable.
 6. Use Stage 6 semantic patch artifacts as the reviewable bridge toward future learned roof, facade, interior, and courtyard detail completion.
-7. Use Stage 7 M1 shadow artifacts to validate the whole-building semantic contract before raw dataset extraction or model training.
+7. Use Stage 7 M2.5 review packs, source-bound overlays, Dataset v2 readiness reports, and case-disjoint splits to obtain at least three truly eligible pilot cases before specifying M3 real-data training.

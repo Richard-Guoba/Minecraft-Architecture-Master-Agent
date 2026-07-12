@@ -170,9 +170,11 @@ function buildCaseV2(card = {}, review = {}, taxonomy = DEFAULT_TAG_TAXONOMY) {
     source: {
       url: card.source_url || '',
       note: card.source_note || '',
-      license_status: review.status === 'research-only' ? 'research-only' : 'unknown',
+      license_status: review.license_status || 'unknown',
       author: '',
-      public_release_allowed: false
+      allowed_uses: [...new Set(review.allowed_uses || [])].sort(),
+      public_release_allowed: (review.allowed_uses || []).includes('public-release'),
+      license_evidence: review.license_evidence || ''
     },
     review: {
       status: review.status || 'pending',
@@ -184,6 +186,10 @@ function buildCaseV2(card = {}, review = {}, taxonomy = DEFAULT_TAG_TAXONOMY) {
       blocked_learning_areas: review.blocked_learning_areas || [],
       manual_tags: review.manual_tags || [],
       risk_overrides: review.risk_overrides || [],
+      canonical_front_side: review.canonical_front_side || null,
+      license_status: review.license_status || 'unknown',
+      allowed_uses: [...new Set(review.allowed_uses || [])].sort(),
+      license_evidence: review.license_evidence || '',
       review_record_ids: review.review_record_ids || []
     },
     tags: tagState.tags,
