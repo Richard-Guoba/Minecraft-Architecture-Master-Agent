@@ -17,7 +17,8 @@
     "evaluate:template-assimilation": "node src/evaluateTemplateAssimilationSuite.js",
     "evaluate:variation": "node src/evaluateDesignVariation.js",
     "benchmark:baseline": "node src/runBaselineBenchmark.js",
-    "analyze:templates": "node src/analyzeTemplateCorpus.js"
+    "analyze:templates": "node src/analyzeTemplateCorpus.js",
+    "dataset:stage7": "node src/buildCoarseSemanticVoxelDataset.js"
   },
   "engines": {
     "node": ">=20"
