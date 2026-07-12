@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { applyStage7DatasetCorrections } from './coarseSemanticVoxelDatasetCorrections.js';
 import { evaluateStage7DatasetEligibility } from './coarseSemanticVoxelDatasetGovernance.js';
 import { rasterizeSchematicToStage7 } from './coarseSemanticVoxelDatasetRasterizer.js';
 import { repairCoarseSemanticVoxelPlan } from './coarseSemanticVoxelRepair.js';
@@ -9,18 +10,25 @@ import {
 
 export const STAGE7_DATASET_EXTRACTOR='stage7-coarse-semantic-voxel-schematic-extractor-v1';
 
-export function buildStage7DatasetCase({volume,caseRecord={},datasetVersion='v1',localArtifactRoot='.tmp/stage7-dataset/v1'}={}) {
+export function buildStage7DatasetCase({volume,caseRecord={},reviewRecord=null,datasetVersion='v1',localArtifactRoot='.tmp/stage7-dataset/v1'}={}) {
   if (!/^[a-f0-9]{64}$/.test(volume?.source_sha256||'')) throw new Error('Stage 7 dataset source SHA-256 must be 64 lowercase hex characters');
   if (!caseRecord.case_id) throw new Error('Stage 7 dataset case requires case_id');
   const raster=rasterizeSchematicToStage7({volume,caseRecord});
+  const corrections=reviewRecord?.semantic_corrections||[];
+  if (corrections.length&&!reviewRecord?.record_id) throw new Error('Stage 7 semantic corrections require review record provenance');
+  const correctionEvidenceId=corrections.length?`review:${reviewRecord.record_id}`:null;
+  const corrected=applyStage7DatasetCorrections({cells:raster.cells,corrections,evidenceId:correctionEvidenceId});
   const condition=buildDatasetCondition({caseRecord,raster,volume});
   const conditionValidation=validateStage7Condition(condition);
   if (!conditionValidation.ok) throw new Error(`invalid extracted Stage 7 condition: ${conditionValidation.errors.join('; ')}`);
   const rawPlan=createStage7Plan({
     condition,
     provider:{kind:'dataset-extraction',name:STAGE7_DATASET_EXTRACTOR,model_version:null,dataset_version:datasetVersion},
-    cells:raster.cells,
-    evidence:[{id:`source:${caseRecord.case_id}`,kind:'raw-schematic',source_id:volume.source_sha256,detail:caseRecord.file||caseRecord.source?.file||''}]
+    cells:corrected.cells,
+    evidence:[
+      {id:`source:${caseRecord.case_id}`,kind:'raw-schematic',source_id:volume.source_sha256,detail:caseRecord.file||caseRecord.source?.file||''},
+      ...(corrections.length?[{id:correctionEvidenceId,kind:'human-semantic-correction',source_id:reviewRecord.record_id,detail:`${corrections.length} reviewed sparse correction(s)`}]:[])
+    ]
   });
   const schema=validateStage7Plan(rawPlan,{condition});
   if (!schema.ok) throw new Error(`invalid extracted Stage 7 plan: ${schema.errors.join('; ')}`);
@@ -60,6 +68,7 @@ export function buildStage7DatasetCase({volume,caseRecord={},datasetVersion='v1'
     },
     extraction:{
       schema_valid:schema.ok,semantic_status:repair.accepted?'accepted':'rejected',run_count:rawPlan.runs.length,
+      correction_count:corrected.applied.length,correction_sha256:corrected.applied.length?hashCanonicalValue(corrected.applied):null,
       repair_count:repair.repairs?.length||0,blockers:(repair.blockers||[]).map((item)=>item.id||String(item)).sort(),
       warnings:[...new Set([...(raster.warnings||[]),...(repair.warnings||[])])].sort(),stats:raster.stats
     }
