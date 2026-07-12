@@ -122,3 +122,41 @@ test('default review marks unreviewed cases pending', () => {
   assert.deepEqual(review.blocked_learning_areas, []);
   assert.deepEqual(review.review_record_ids, []);
 });
+
+test('review overlay normalizes Stage 7 dataset governance fields', () => {
+  const parsed = parseTemplateReviewOverlay(JSON.stringify({
+    record_id: 'review-stage7-house',
+    case_id: 'house-a-small-modern-house',
+    reviewed_by: 'curator',
+    reviewed_at: '2026-07-12T00:00:00.000Z',
+    status: 'limited',
+    confidence: 0.95,
+    approved_learning_areas: ['envelope', 'space'],
+    blocked_learning_areas: ['site'],
+    canonical_front_side: 'south',
+    license_status: 'restricted',
+    allowed_uses: ['local-training', 'local-analysis'],
+    license_evidence: 'Source terms reviewed on 2026-07-12.'
+  }));
+
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.records[0].canonical_front_side, 'south');
+  assert.equal(parsed.records[0].license_status, 'restricted');
+  assert.deepEqual(parsed.records[0].allowed_uses, ['local-analysis', 'local-training']);
+  assert.deepEqual(parsed.records[0].approved_learning_areas, ['envelope', 'space']);
+});
+
+test('review overlay rejects invalid Stage 7 governance values', () => {
+  const parsed = parseTemplateReviewOverlay(JSON.stringify({
+    record_id: 'review-stage7-invalid',
+    case_id: 'house-invalid',
+    status: 'approved',
+    canonical_front_side: 'up',
+    license_status: 'probably-free',
+    allowed_uses: ['upload-anywhere']
+  }));
+
+  assert.equal(parsed.records.length, 0);
+  assert.equal(parsed.errors.length, 1);
+  assert.match(parsed.errors[0].message, /canonical_front_side|license_status|allowed_uses/);
+});
