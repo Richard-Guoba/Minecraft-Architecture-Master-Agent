@@ -119,7 +119,7 @@ export function buildStage7DatasetReadiness({records=[]}={}, {pilotCaseIds=STAGE
   const byId=new Map(records.map((record)=>[record.case_id,record]));
   const pilot=ids.map((id)=>byId.get(id)).filter(Boolean);
   const explicitStatuses=new Set(['approved','limited','rejected','research-only']);
-  const reviewed=pilot.filter((record)=>explicitStatuses.has(record.review?.status));
+  const reviewed=pilot.filter((record)=>explicitStatuses.has(record.review?.status)&&Boolean(record.review?.reviewed_by)&&Number.isFinite(Date.parse(record.review?.reviewed_at)));
   const accepted=pilot.filter((record)=>record.extraction?.semantic_status==='accepted');
   const eligible=pilot.filter((record)=>record.training?.eligible);
   const intersection=pilot.filter((record)=>record.training?.eligible&&record.extraction?.semantic_status==='accepted');

@@ -74,4 +74,7 @@ test('readiness requires six explicit outcomes and three eligible semantic accep
   records[0].review.status='pending';
   const blocked=buildStage7DatasetReadiness(buildStage7DatasetIndex({records,datasetVersion:'v2'}),{pilotCaseIds:ids});
   assert.equal(blocked.ready_for_m3_real_data,false);
+  records[0].review={...records[0].review,status:'rejected',reviewed_by:'',reviewed_at:''};
+  const unsigned=buildStage7DatasetReadiness(buildStage7DatasetIndex({records,datasetVersion:'v2'}),{pilotCaseIds:ids});
+  assert.equal(unsigned.reviewed_count,5);
 });

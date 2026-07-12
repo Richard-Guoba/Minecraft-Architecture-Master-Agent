@@ -64,6 +64,10 @@ export function validateStage7DatasetReviewRecord(record={}, {knownCases}={}) {
     if (!FRONT_SIDES.has(record.canonical_front_side)) errors.push('positive review requires canonical_front_side');
     for (const layer of TARGET_LAYERS) if (!approved.has(layer)&&!blocked.has(layer)) errors.push(`positive review requires an explicit ${layer} decision`);
   }
+  if ((record.semantic_corrections||[]).length) {
+    if (!record.reviewed_by) errors.push('semantic corrections require reviewed_by');
+    if (!Number.isFinite(Date.parse(record.reviewed_at))) errors.push('semantic corrections require reviewed_at');
+  }
   for (const correction of record.semantic_corrections||[]) {
     try { validateCorrection(correction); } catch (error) { errors.push(error.message); }
   }

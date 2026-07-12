@@ -50,6 +50,14 @@ test('Stage 7 review overlay validates sparse correction shapes', () => {
   assert.match(invalid.errors[0].message,/coordinate/);
 });
 
+test('semantic corrections require human reviewer provenance even while pending', () => {
+  const parsed=parseStage7DatasetReviewOverlay(JSON.stringify(completeReview({
+    status:'pending',reviewed_by:'',reviewed_at:'',approved_learning_areas:[],
+    semantic_corrections:[{operation:'clear',coordinate:[1,1,1],layer:'space',reason:'Reviewed exterior void.'}]
+  })));
+  assert.match(parsed.errors[0].message,/semantic corrections require reviewed_by/);
+});
+
 test('Stage 7 review overlay rejects duplicate record ids and unknown fields', () => {
   const duplicate=parseStage7DatasetReviewOverlay([JSON.stringify(completeReview()),JSON.stringify(completeReview())].join('\n'));
   assert.match(duplicate.errors[0].message,/duplicate record_id/);
