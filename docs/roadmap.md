@@ -659,7 +659,7 @@ RTX 4060 适合：
 
 ### Stage 7：粗语义体素生成
 
-当前 M1 状态：Stage 7 首版采用 shadow mode。它定义 `64^3` 三层语义体素契约、deterministic baseline、artifact provider、bounded repair 和 semantic voxel -> procedural candidate 转换器；默认 `off`，显式启用时只输出审查产物和失败案例，不改变主建造 operations。Python、raw schematic 整栋数据集、learned provider 和 apply mode 分别保留给后续里程碑。仓库里的 `stage7-template-*` 是更早的模板吸收编号，不代表本路线图 Stage 7 已完成。
+当前 M2 状态：Stage 7 Milestone 1 的 `off|shadow` shadow mode、baseline/artifact provider、bounded repair 和 procedural candidate 边界保持不变。Milestone 2 已把 64 个 raw schematic 抽取为 schema-valid 的 `64^3` 三层语义体素记录，并生成 versioned manifest、JSONL metadata、case-disjoint splits 和审计报告；当前 64 个案例全部处于 pending review、unknown license，因此训练资格为 0。审核、许可和 approved learning areas 仍是权威 gate，Python learned provider 留给 M3，apply mode 留给 M4。仓库里的 `stage7-template-*` 是更早的模板吸收编号，不代表本路线图 Stage 7 已完成。
 
 目标：让模型参与整体构图，但仍由规则系统保证可建造。
 

@@ -19,8 +19,8 @@ The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled f
 - Concept layer: Stage 3 Concept Studio can generate, select, or fuse multiple explainable design concepts before construction
 - Critique layer: Stage 4 Critic Council summarizes buildability, connectivity, habitation, style, composition, and site findings
 - Benchmark readiness: 10/10 baseline prompts generated, average scorecard 100/100, red flags 0, repair priority queue empty
-- Coarse semantic voxel layer: Stage 7 Milestone 1 defines a provider-neutral `64^3` contract, deterministic baseline, bounded repair, procedural candidate converter, and artifact provider
-- Active stage: Stage 7 Milestone 1 is shadow-only; it exports review artifacts and failure records but does not change primary geometry
+- Coarse semantic voxel layer: Stage 7 Milestone 1 defines the provider-neutral `64^3` shadow contract; Milestone 2 adds deterministic raw-schematic extraction, manifests, case-disjoint splits, and dataset reports
+- Active stage: Stage 7 Milestone 2 has indexed 64 real cases, all schema-valid and currently 0 training-eligible because review and license governance remains authoritative; the M1 shadow path does not change primary geometry
 
 ## Quick Start
 
@@ -28,6 +28,7 @@ The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled f
 npm install
 npm test
 npm run analyze:templates -- --offline
+npm run dataset:stage7 -- --require-eligible 0
 npm run evaluate:retrieval
 npm run query:templates -- --neural "建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰"
 npm run query:patches -- --dataset mc_templates/analysis/semantic_patch_dataset.json --category facade --band high
@@ -81,7 +82,7 @@ Prompt
 -> PlannerAgent: room graph, circulation, privacy, functional topology
 -> ConceptStudioAgent: multi-concept design options, selection, or conservative fusion
 -> CreativeDesignAgent: design variation and template-guided composition
--> Stage 7 M1 Shadow: condition -> untrusted coarse voxels -> validation/repair -> procedural candidate; primary geometry unchanged
+-> Stage 7 M1 Shadow + M2 Dataset: runtime candidates remain shadow-only; offline schematics become governed canonical dataset records
 -> Structure/Facade/Roof/Site agents: specialist semantic plans
 -> CSGBuilder: shell, volumes, roofs, facade, site, structure modules
 -> BSPPartitioner: room rectangles and floor organization
@@ -134,7 +135,7 @@ npm start -- --list-prompts
 - It does not download Minecraft or simulate survival-mode resource gathering.
 - Generated `out/` artifacts, local credentials, and temporary files are intentionally not committed.
 - Python is reserved for optional future learning/training workflows, not for normal generation.
-- Stage 7 Milestone 1 does not train a model, invoke Python, or apply candidate geometry.
+- Stage 7 Milestone 2 does not train a model, invoke Python, or apply candidate geometry; pending, rejected, unlicensed, or layer-disallowed cases cannot enter training.
 - Legacy `stage7-template-*` source identifiers refer to the older template-assimilation sequence, not Architecture Master Roadmap Stage 7.
 
 ## Development Direction
@@ -147,4 +148,4 @@ The project has moved past early showcase packaging. Current work should optimiz
 4. Use Stage 4 Critic Council findings to guide repair priorities.
 5. Keep Stage 5 neural retrieval optional and artifact-gated so rule-only generation remains reliable.
 6. Use Stage 6 semantic patch artifacts as the reviewable bridge toward future learned roof, facade, interior, and courtyard detail completion.
-7. Use Stage 7 M1 shadow artifacts to validate the whole-building semantic contract before raw dataset extraction or model training.
+7. Use Stage 7 M2 manifests, case-disjoint splits, extraction reports, human review, and license evidence to prepare trusted inputs for a later learned provider.
