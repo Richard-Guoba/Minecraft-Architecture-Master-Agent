@@ -68,7 +68,10 @@ export function buildStage7DatasetCase({volume,caseRecord={},reviewRecord=null,d
     },
     extraction:{
       schema_valid:schema.ok,semantic_status:repair.accepted?'accepted':'rejected',run_count:rawPlan.runs.length,
-      correction_count:corrected.applied.length,correction_sha256:corrected.applied.length?hashCanonicalValue(corrected.applied):null,
+      ...(datasetVersion==='v2'?{
+        correction_count:corrected.applied.length,
+        correction_sha256:corrected.applied.length?hashCanonicalValue(corrected.applied):null
+      }:{}),
       repair_count:repair.repairs?.length||0,blockers:(repair.blockers||[]).map((item)=>item.id||String(item)).sort(),
       warnings:[...new Set([...(raster.warnings||[]),...(repair.warnings||[])])].sort(),stats:raster.stats
     }

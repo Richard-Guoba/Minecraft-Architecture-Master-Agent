@@ -15,6 +15,12 @@ test('dataset case emits canonical artifacts while pending review stays training
   assert.match(result.report,/Split: unassigned/);
 });
 
+test('Dataset v1 records remain frozen without v2 correction metadata', () => {
+  const result=buildStage7DatasetCase({ volume:hollowHouseVolumeFixture(), caseRecord:pendingCaseFixture(), datasetVersion:'v1', localArtifactRoot:'.tmp/stage7-dataset/v1' });
+  assert.equal(Object.hasOwn(result.record.extraction,'correction_count'),false);
+  assert.equal(Object.hasOwn(result.record.extraction,'correction_sha256'),false);
+});
+
 test('dataset case hashes are deterministic and provider provenance is complete', () => {
   const input={ volume:hollowHouseVolumeFixture(), caseRecord:reviewedCaseFixture(), datasetVersion:'v1', localArtifactRoot:'.tmp/stage7-dataset/v1' };
   const first=buildStage7DatasetCase(input); const second=buildStage7DatasetCase(input);
