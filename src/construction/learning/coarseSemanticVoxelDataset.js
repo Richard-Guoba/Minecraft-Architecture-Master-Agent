@@ -116,24 +116,24 @@ export async function writeStage7DatasetArtifacts({templateRoot='mc_templates',k
   const byId=new Map(knowledgeBase.cases.map((record)=>[record.case_id,record]));
   for (const id of requested) if (!byId.has(id)) throw new Error(`unknown Stage 7 dataset case id: ${id}`);
   const selected=(requested.length?requested.map((id)=>byId.get(id)):knowledgeBase.cases).sort((a,b)=>String(a.case_id).localeCompare(String(b.case_id)));
-  const built=[];
+  const records=[];
   for (const caseRecord of selected) {
     const sourcePath=path.resolve(root,caseRecord.file||'');
     if (!isWithin(root,sourcePath)) throw new Error(`Stage 7 source path escapes template root: ${caseRecord.file}`);
     const volume=await readSchematicBlockVolume(sourcePath);
-    built.push(buildStage7DatasetCase({volume,caseRecord,datasetVersion:STAGE7_DATASET_VERSION,localArtifactRoot:localRoot}));
-  }
-  const indexed=buildStage7DatasetIndex({records:built.map((item)=>item.record)});
-  const validation=validateStage7Dataset(indexed);
-  if (!validation.ok) throw new Error(`invalid Stage 7 dataset: ${validation.errors.join('; ')}`);
-  const assignedById=new Map(indexed.records.map((record)=>[record.case_id,record]));
-  for (const item of built) {
-    const record=assignedById.get(item.record.case_id);
-    const caseDir=path.join(localRoot,'cases',record.case_id);
+    const item=buildStage7DatasetCase({volume,caseRecord,datasetVersion:STAGE7_DATASET_VERSION,localArtifactRoot:localRoot});
+    const caseDir=path.join(localRoot,'cases',item.record.case_id);
     await fs.mkdir(caseDir,{recursive:true});
     await writeJson(path.join(caseDir,'condition.json'),item.condition);
     await writeJson(path.join(caseDir,'plan.raw.json'),item.rawPlan);
     if (item.repairedPlan) await writeJson(path.join(caseDir,'plan.repaired.json'),item.repairedPlan);
+    records.push(item.record);
+  }
+  const indexed=buildStage7DatasetIndex({records});
+  const validation=validateStage7Dataset(indexed);
+  if (!validation.ok) throw new Error(`invalid Stage 7 dataset: ${validation.errors.join('; ')}`);
+  for (const record of indexed.records) {
+    const caseDir=path.join(localRoot,'cases',record.case_id);
     await fs.writeFile(path.join(caseDir,'report.md'),renderStage7DatasetCaseReport(record),'utf8');
   }
   await writeCanonicalDirectory(target,indexed);
