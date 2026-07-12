@@ -47,7 +47,33 @@ test('Stage 7 dataset CLI documents options and rejects duplicate cases', () => 
   assert.equal(help.status,0,help.stderr);
   assert.match(help.stdout,/--require-eligible/);
   assert.match(help.stdout,/--local-artifacts/);
+  assert.match(help.stdout,/--dataset-version/);
+  assert.match(help.stdout,/--review-overlay/);
   const invalid=runCli(['--case','a','--case','a']);
   assert.notEqual(invalid.status,0);
   assert.match(invalid.stderr,/duplicate case id/i);
+});
+
+test('Stage 7 Dataset v2 consumes a source-bound review and rejects a stale one', async (t) => {
+  const fixture=await createFixture(t);
+  const sourceFile=path.join(fixture.templateRoot,'House','A Small Modern House - (mcbuild_org).schematic');
+  const {createHash}=await import('node:crypto');
+  const sourceSha256=createHash('sha256').update(await fs.readFile(sourceFile)).digest('hex');
+  const review={
+    record_id:'review-pilot-1',case_id:'house-a-small-modern-house',source_sha256:sourceSha256,
+    reviewed_by:'human-curator',reviewed_at:'2026-07-12T00:00:00.000Z',status:'limited',
+    canonical_front_side:'south',license_status:'restricted',allowed_uses:['local-analysis','local-training'],
+    license_evidence:'Human-captured source terms.',approved_learning_areas:['envelope','site','space'],
+    blocked_learning_areas:[],semantic_corrections:[],notes:'Pilot review.'
+  };
+  const reviewOverlayPath=path.join(fixture.root,'stage7-reviews.jsonl');
+  await fs.writeFile(reviewOverlayPath,`${JSON.stringify(review)}\n`,'utf8');
+  const result=await writeStage7DatasetArtifacts({...fixture,datasetVersion:'v2',reviewOverlayPath});
+  assert.equal(result.manifest.dataset_version,'v2');
+  assert.equal(result.manifest.parent_dataset_version,'v1');
+  assert.equal(result.records[0].review.reviewed_by,'human-curator');
+  assert.deepEqual(result.records[0].review.review_record_ids,['review-pilot-1']);
+  assert.equal(result.records[0].source.license_evidence,'Human-captured source terms.');
+  await fs.writeFile(reviewOverlayPath,`${JSON.stringify({...review,source_sha256:'f'.repeat(64)})}\n`,'utf8');
+  await assert.rejects(writeStage7DatasetArtifacts({...fixture,datasetVersion:'v2',reviewOverlayPath}),/source hash mismatch/);
 });

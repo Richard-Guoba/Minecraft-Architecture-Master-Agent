@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { readSchematicBlockVolume } from '../templates/schematicBlockVolume.js';
 import { STAGE7_DATASET_EXTRACTOR, buildStage7DatasetCase, renderStage7DatasetCaseReport } from './coarseSemanticVoxelDatasetCase.js';
+import { mergeStage7DatasetReviews, parseStage7DatasetReviewOverlay } from './stage7DatasetReviewOverlay.js';
 
 export const STAGE7_DATASET_SOURCE='stage7-coarse-semantic-voxel-dataset-v1';
 export const STAGE7_DATASET_SCHEMA_VERSION=1;
@@ -22,7 +23,8 @@ export function assignStage7DatasetSplit({caseId,origin='real',parentSplit}={}) 
   return bucket<80?'train':bucket<90?'validation':'test';
 }
 
-export function buildStage7DatasetIndex({records=[],generatedAt=stableGeneratedAt()}={}) {
+export function buildStage7DatasetIndex({records=[],generatedAt=stableGeneratedAt(),datasetVersion=STAGE7_DATASET_VERSION}={}) {
+  const config=datasetConfig(datasetVersion);
   const sorted=[...records].map((record)=>structuredClone(record)).sort((a,b)=>String(a.case_id).localeCompare(String(b.case_id)));
   const ids=new Set();
   for (const record of sorted) {
@@ -41,7 +43,8 @@ export function buildStage7DatasetIndex({records=[],generatedAt=stableGeneratedA
   const splits={source:'stage7-coarse-semantic-voxel-splits-v1',schema_version:1,algorithm:STAGE7_DATASET_SPLIT_ALGORITHM,ratios:{...STAGE7_SPLIT_RATIOS},assignments};
   const trainingCaseIds=sorted.filter((record)=>record.training?.eligible).map((record)=>record.case_id).sort();
   const manifest={
-    source:STAGE7_DATASET_SOURCE,schema_version:STAGE7_DATASET_SCHEMA_VERSION,dataset_version:STAGE7_DATASET_VERSION,
+    source:config.source,schema_version:config.schemaVersion,dataset_version:datasetVersion,
+    ...(datasetVersion==='v2'?{parent_dataset_version:'v1'}:{}),
     generated_at:generatedAt,extractor:STAGE7_DATASET_EXTRACTOR,split_algorithm:STAGE7_DATASET_SPLIT_ALGORITHM,
     case_count:sorted.length,training_eligible_count:trainingCaseIds.length,training_case_ids:trainingCaseIds,
     origin_counts:countBy(sorted,'origin'),split_counts:countBy(sorted,'split'),
@@ -85,8 +88,11 @@ export function validateStage7Dataset({manifest={},records=[],splits={}}={}) {
   if (Number(manifest.case_count)!==(Array.isArray(records)?records.length:0)) errors.push('manifest case count mismatch');
   const eligible=(Array.isArray(records)?records:[]).filter((record)=>record?.training?.eligible).length;
   if (Number(manifest.training_eligible_count)!==eligible) errors.push('manifest training eligible count mismatch');
-  if (manifest.source!==STAGE7_DATASET_SOURCE) errors.push('unsupported dataset source');
-  if (manifest.schema_version!==STAGE7_DATASET_SCHEMA_VERSION) errors.push('unsupported dataset schema version');
+  let config;
+  try { config=datasetConfig(manifest.dataset_version); } catch { config=null; }
+  if (!config||manifest.source!==config.source) errors.push('unsupported dataset source');
+  if (!config||manifest.schema_version!==config.schemaVersion) errors.push('unsupported dataset schema version');
+  if (config) for (const record of records) if (record.dataset_version!==manifest.dataset_version) errors.push(`dataset version mismatch: ${record.case_id}`);
   return {ok:errors.length===0,errors:[...new Set(errors)].sort()};
 }
 
@@ -102,10 +108,11 @@ export function renderStage7DatasetReport({manifest={},records=[]}={}) {
   return `# Stage 7 M2 Dataset ${manifest.dataset_version||'v1'}\n\n- Cases: ${manifest.case_count||0}\n- Training eligible: ${manifest.training_eligible_count||0}\n- Origins: ${JSON.stringify(manifest.origin_counts||{})}\n- Splits: ${JSON.stringify(manifest.split_counts||{})}\n- Review states: ${JSON.stringify(countNested(records,'review','status'))}\n- License states: ${JSON.stringify(countNested(records,'source','license_status'))}\n- Semantic status: ${JSON.stringify(countNested(records,'extraction','semantic_status'))}\n\n## Training Blockers\n\n| Blocker | Count |\n| --- | ---: |\n${blockerRows}\n`;
 }
 
-export async function writeStage7DatasetArtifacts({templateRoot='mc_templates',knowledgeBasePath,outputDir,localArtifactRoot='.tmp/stage7-dataset/v1',caseIds=[],requireEligible=0}={}) {
+export async function writeStage7DatasetArtifacts({templateRoot='mc_templates',knowledgeBasePath,outputDir,localArtifactRoot='.tmp/stage7-dataset/v1',caseIds=[],requireEligible=0,datasetVersion=STAGE7_DATASET_VERSION,reviewOverlayPath}={}) {
+  const config=datasetConfig(datasetVersion);
   const root=path.resolve(templateRoot);
   const kbPath=path.resolve(knowledgeBasePath||path.join(root,'analysis','case_library.v2.json'));
-  const target=path.resolve(outputDir||path.join(root,'datasets','coarse_semantic_voxels','v1'));
+  const target=path.resolve(outputDir||path.join(root,'datasets','coarse_semantic_voxels',datasetVersion));
   const localRoot=path.resolve(localArtifactRoot);
   const required=Number(requireEligible);
   if (!Number.isInteger(required)||required<0) throw new Error('requireEligible must be a non-negative integer');
@@ -116,12 +123,20 @@ export async function writeStage7DatasetArtifacts({templateRoot='mc_templates',k
   const byId=new Map(knowledgeBase.cases.map((record)=>[record.case_id,record]));
   for (const id of requested) if (!byId.has(id)) throw new Error(`unknown Stage 7 dataset case id: ${id}`);
   const selected=(requested.length?requested.map((id)=>byId.get(id)):knowledgeBase.cases).sort((a,b)=>String(a.case_id).localeCompare(String(b.case_id)));
+  let reviews=new Map();
+  if (reviewOverlayPath) {
+    const parsed=parseStage7DatasetReviewOverlay(await fs.readFile(path.resolve(reviewOverlayPath),'utf8'),{strict:true});
+    reviews=mergeStage7DatasetReviews(parsed.records);
+  }
   const records=[];
   for (const caseRecord of selected) {
     const sourcePath=path.resolve(root,caseRecord.file||'');
     if (!isWithin(root,sourcePath)) throw new Error(`Stage 7 source path escapes template root: ${caseRecord.file}`);
     const volume=await readSchematicBlockVolume(sourcePath);
-    const item=buildStage7DatasetCase({volume,caseRecord,datasetVersion:STAGE7_DATASET_VERSION,localArtifactRoot:localRoot});
+    const reviewRecord=reviews.get(caseRecord.case_id)||null;
+    if (reviewRecord&&reviewRecord.source_sha256!==volume.source_sha256) throw new Error(`source hash mismatch for ${caseRecord.case_id}`);
+    const reviewedCase=reviewRecord?mergeDatasetReview(caseRecord,reviewRecord):caseRecord;
+    const item=buildStage7DatasetCase({volume,caseRecord:reviewedCase,reviewRecord,datasetVersion,localArtifactRoot:localRoot});
     const caseDir=path.join(localRoot,'cases',item.record.case_id);
     await fs.mkdir(caseDir,{recursive:true});
     await writeJson(path.join(caseDir,'condition.json'),item.condition);
@@ -129,7 +144,7 @@ export async function writeStage7DatasetArtifacts({templateRoot='mc_templates',k
     if (item.repairedPlan) await writeJson(path.join(caseDir,'plan.repaired.json'),item.repairedPlan);
     records.push(item.record);
   }
-  const indexed=buildStage7DatasetIndex({records});
+  const indexed=buildStage7DatasetIndex({records,datasetVersion});
   const validation=validateStage7Dataset(indexed);
   if (!validation.ok) throw new Error(`invalid Stage 7 dataset: ${validation.errors.join('; ')}`);
   for (const record of indexed.records) {
@@ -141,6 +156,20 @@ export async function writeStage7DatasetArtifacts({templateRoot='mc_templates',k
   return {
     ...indexed,outputDir:target,localArtifactRoot:localRoot,
     artifacts:{manifest:path.join(target,'manifest.json'),cases:path.join(target,'cases.jsonl'),splits:path.join(target,'splits.json'),report:path.join(target,'reports','summary.md')}
+  };
+}
+
+function datasetConfig(version) {
+  if (version==='v1') return {source:STAGE7_DATASET_SOURCE,schemaVersion:STAGE7_DATASET_SCHEMA_VERSION};
+  if (version==='v2') return {source:'stage7-coarse-semantic-voxel-dataset-v2',schemaVersion:2};
+  throw new Error(`unsupported Stage 7 dataset version: ${version}`);
+}
+
+function mergeDatasetReview(caseRecord,review) {
+  return {
+    ...caseRecord,
+    source:{...caseRecord.source,license_status:review.license_status,allowed_uses:[...review.allowed_uses],license_evidence:review.license_evidence,public_release_allowed:review.allowed_uses.includes('public-release')},
+    review:{...caseRecord.review,status:review.status,reviewed_by:review.reviewed_by,reviewed_at:review.reviewed_at,approved_learning_areas:[...review.approved_learning_areas],blocked_learning_areas:[...review.blocked_learning_areas],canonical_front_side:review.canonical_front_side,review_record_ids:[...(review.review_record_ids||[review.record_id])]}
   };
 }
 
