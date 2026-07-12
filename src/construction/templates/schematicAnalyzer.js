@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { parseNbt } from './nbt.js';
+import { readSchematicBlockVolume } from './schematicBlockVolume.js';
 import { buildTemplateCaseProfile, renderCaseIndexReport, summarizeCaseIndex } from './templateCaseProfile.js';
 import { buildTemplateCaseLibrary, caseClausesJsonl, renderTemplateCaseLibraryReport } from './templateCaseLibrary.js';
 import { buildTemplateDesignLawBook, designLawsJsonl, interiorLawsJsonl, renderTemplateDesignLawReport } from './templateDesignLawDistiller.js';
@@ -332,12 +332,10 @@ function summarizeSemanticPatchDataset(dataset = {}) {
 }
 
 export async function analyzeSchematicFile(filePath, { rootDir = process.cwd(), source = {}, page = {} } = {}) {
-  const buffer = await fs.readFile(filePath);
-  const parsed = parseNbt(buffer);
-  const schematic = normalizeSchematicRoot(parsed.value);
+  const schematic = await readSchematicBlockVolume(filePath);
   const voxels = analyzeVoxels(schematic);
   voxels.spatial_layout = analyzeSpatialLayout(schematic, {
-    blockAt: (index) => blockAt(schematic, index),
+    blockAt: (index) => schematic.blockAtIndex(index),
     interiorSignalCategories
   });
   const relativePath = path.relative(rootDir, filePath).replaceAll('\\', '/');
@@ -348,7 +346,7 @@ export async function analyzeSchematicFile(filePath, { rootDir = process.cwd(), 
   const typology = inferTypology(text, category);
   const featureTags = [...new Set([...inferFeatureTags(text, voxels, category, typology), ...normalizeStringArray(source.tags)])].sort();
   voxels.composition_grammar = analyzeTemplateComposition(schematic, {
-    blockAt: (index) => blockAt(schematic, index),
+    blockAt: (index) => schematic.blockAtIndex(index),
     analysis: voxels,
     text,
     styleFamily: style,
@@ -368,12 +366,12 @@ export async function analyzeSchematicFile(filePath, { rootDir = process.cwd(), 
     tags: featureTags,
     schematic: {
       format: schematic.format,
-      root_name: parsed.name,
+      root_name: schematic.root_name,
       width: schematic.width,
       height: schematic.height,
       length: schematic.length,
       materials: schematic.materials,
-      block_array_length: schematic.blockCount || schematic.blocks.length
+      block_array_length: schematic.block_count
     },
     analysis: voxels,
     recommendations: recommendationsForTemplate({ text, voxels, style, typology, category, tags: featureTags })
@@ -750,7 +748,7 @@ function analyzeVoxels(schematic) {
     for (let z = 0; z < schematic.length; z += 1) {
       for (let x = 0; x < schematic.width; x += 1) {
         const index = y * schematic.length * schematic.width + z * schematic.width + x;
-        const block = blockAt(schematic, index);
+        const block = schematic.blockAtIndex(index);
         if (block.air) continue;
         nonAir += 1;
         counts[block.key] = (counts[block.key] || 0) + 1;
@@ -827,9 +825,9 @@ function analyzeVoxels(schematic) {
 
 function layerProfile(schematic) {
   const layerCounts = Array.from({ length: schematic.height }, () => 0);
-  const length = schematic.blockCount || schematic.blocks.length;
+  const length = schematic.block_count;
   for (let index = 0; index < length; index += 1) {
-    const block = blockAt(schematic, index);
+    const block = schematic.blockAtIndex(index);
     if (block.air) continue;
     const y = Math.floor(index / (schematic.length * schematic.width));
     layerCounts[y] += 1;
