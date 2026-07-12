@@ -311,7 +311,7 @@ Add:
 
 Run: `node --test test/stage7DatasetReviewOverlay.test.js test/coarseSemanticVoxelDatasetCorrections.test.js test/coarseSemanticVoxelDatasetCase.test.js test/coarseSemanticVoxelDataset.test.js test/stage7DatasetCli.test.js`
 
-Run: `git diff --exit-code 0e7b7fd -- mc_templates/datasets/coarse_semantic_voxels/v1`
+Run: `git diff --exit-code 54ca929 -- mc_templates/datasets/coarse_semantic_voxels/v1`
 
 Expected: tests pass and Dataset v1 has no diff from its M2 data commit.
 
