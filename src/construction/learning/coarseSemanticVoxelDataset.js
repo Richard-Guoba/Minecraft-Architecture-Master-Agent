@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { readSchematicBlockVolume } from '../templates/schematicBlockVolume.js';
 import { STAGE7_DATASET_EXTRACTOR, buildStage7DatasetCase, renderStage7DatasetCaseReport } from './coarseSemanticVoxelDatasetCase.js';
-import { mergeStage7DatasetReviews, parseStage7DatasetReviewOverlay } from './stage7DatasetReviewOverlay.js';
+import { STAGE7_PILOT_CASE_IDS, mergeStage7DatasetReviews, parseStage7DatasetReviewOverlay } from './stage7DatasetReviewOverlay.js';
 
 export const STAGE7_DATASET_SOURCE='stage7-coarse-semantic-voxel-dataset-v1';
 export const STAGE7_DATASET_SCHEMA_VERSION=1;
@@ -48,9 +48,15 @@ export function buildStage7DatasetIndex({records=[],generatedAt=stableGeneratedA
     generated_at:generatedAt,extractor:STAGE7_DATASET_EXTRACTOR,split_algorithm:STAGE7_DATASET_SPLIT_ALGORITHM,
     case_count:sorted.length,training_eligible_count:trainingCaseIds.length,training_case_ids:trainingCaseIds,
     origin_counts:countBy(sorted,'origin'),split_counts:countBy(sorted,'split'),
-    artifacts:{cases:'cases.jsonl',splits:'splits.json',reports:'reports/'}
+    artifacts:{cases:'cases.jsonl',splits:'splits.json',reports:'reports/',...(datasetVersion==='v2'?{readiness:'reports/readiness.md'}:{})}
   };
   const result={manifest,records:sorted,splits};
+  if (datasetVersion==='v2') {
+    result.readiness=buildStage7DatasetReadiness(result);
+    manifest.reviewed_count=result.readiness.reviewed_count;
+    manifest.semantic_accepted_count=result.readiness.semantic_accepted_count;
+    manifest.ready_for_m3_real_data=result.readiness.ready_for_m3_real_data;
+  }
   const validation=validateStage7Dataset(result);
   if (!validation.ok) throw new Error(`invalid Stage 7 dataset index: ${validation.errors.join('; ')}`);
   return result;
@@ -108,7 +114,32 @@ export function renderStage7DatasetReport({manifest={},records=[]}={}) {
   return `# Stage 7 M2 Dataset ${manifest.dataset_version||'v1'}\n\n- Cases: ${manifest.case_count||0}\n- Training eligible: ${manifest.training_eligible_count||0}\n- Origins: ${JSON.stringify(manifest.origin_counts||{})}\n- Splits: ${JSON.stringify(manifest.split_counts||{})}\n- Review states: ${JSON.stringify(countNested(records,'review','status'))}\n- License states: ${JSON.stringify(countNested(records,'source','license_status'))}\n- Semantic status: ${JSON.stringify(countNested(records,'extraction','semantic_status'))}\n\n## Training Blockers\n\n| Blocker | Count |\n| --- | ---: |\n${blockerRows}\n`;
 }
 
-export async function writeStage7DatasetArtifacts({templateRoot='mc_templates',knowledgeBasePath,outputDir,localArtifactRoot='.tmp/stage7-dataset/v1',caseIds=[],requireEligible=0,datasetVersion=STAGE7_DATASET_VERSION,reviewOverlayPath}={}) {
+export function buildStage7DatasetReadiness({records=[]}={}, {pilotCaseIds=STAGE7_PILOT_CASE_IDS}={}) {
+  const ids=[...new Set(pilotCaseIds.map(String))];
+  const byId=new Map(records.map((record)=>[record.case_id,record]));
+  const pilot=ids.map((id)=>byId.get(id)).filter(Boolean);
+  const explicitStatuses=new Set(['approved','limited','rejected','research-only']);
+  const reviewed=pilot.filter((record)=>explicitStatuses.has(record.review?.status));
+  const accepted=pilot.filter((record)=>record.extraction?.semantic_status==='accepted');
+  const eligible=pilot.filter((record)=>record.training?.eligible);
+  const intersection=pilot.filter((record)=>record.training?.eligible&&record.extraction?.semantic_status==='accepted');
+  const blockers={};
+  for (const record of pilot) for (const blocker of record.training?.blockers||[]) blockers[blocker]=(blockers[blocker]||0)+1;
+  return {
+    source:'stage7-dataset-readiness-v1',schema_version:1,pilot_case_ids:ids,pilot_count:ids.length,present_count:pilot.length,
+    reviewed_count:reviewed.length,semantic_accepted_count:accepted.length,training_eligible_count:eligible.length,
+    eligible_semantic_accepted_count:intersection.length,eligible_semantic_accepted_case_ids:intersection.map((record)=>record.case_id).sort(),
+    remaining_blockers:Object.fromEntries(Object.entries(blockers).sort(([a],[b])=>a.localeCompare(b))),
+    ready_for_m3_real_data:pilot.length===ids.length&&reviewed.length===ids.length&&intersection.length>=3
+  };
+}
+
+export function renderStage7DatasetReadiness(readiness={}) {
+  const blockers=Object.entries(readiness.remaining_blockers||{}).map(([key,count])=>`| ${key} | ${count} |`).join('\n')||'| none | 0 |';
+  return `# Stage 7 M2.5 Data Readiness\n\n- Pilot cases: ${readiness.pilot_count||0}\n- Present: ${readiness.present_count||0}\n- Explicit review outcomes: ${readiness.reviewed_count||0}\n- Semantic accepted: ${readiness.semantic_accepted_count||0}\n- Training eligible: ${readiness.training_eligible_count||0}\n- Eligible and semantic accepted: ${readiness.eligible_semantic_accepted_count||0}\n- Ready for M3 real data: ${readiness.ready_for_m3_real_data?'yes':'no'}\n\n## Remaining Blockers\n\n| Blocker | Count |\n| --- | ---: |\n${blockers}\n`;
+}
+
+export async function writeStage7DatasetArtifacts({templateRoot='mc_templates',knowledgeBasePath,outputDir,localArtifactRoot='.tmp/stage7-dataset/v1',caseIds=[],requireEligible=0,requireReviewed=0,requireSemanticAccepted=0,datasetVersion=STAGE7_DATASET_VERSION,reviewOverlayPath}={}) {
   const config=datasetConfig(datasetVersion);
   const root=path.resolve(templateRoot);
   const kbPath=path.resolve(knowledgeBasePath||path.join(root,'analysis','case_library.v2.json'));
@@ -116,6 +147,8 @@ export async function writeStage7DatasetArtifacts({templateRoot='mc_templates',k
   const localRoot=path.resolve(localArtifactRoot);
   const required=Number(requireEligible);
   if (!Number.isInteger(required)||required<0) throw new Error('requireEligible must be a non-negative integer');
+  const requiredReviewed=nonNegativeInteger(requireReviewed,'requireReviewed');
+  const requiredSemanticAccepted=nonNegativeInteger(requireSemanticAccepted,'requireSemanticAccepted');
   const requested=[...caseIds].map(String);
   if (new Set(requested).size!==requested.length) throw new Error('duplicate case id in Stage 7 dataset filter');
   const knowledgeBase=JSON.parse(await fs.readFile(kbPath,'utf8'));
@@ -152,6 +185,10 @@ export async function writeStage7DatasetArtifacts({templateRoot='mc_templates',k
     await fs.writeFile(path.join(caseDir,'report.md'),renderStage7DatasetCaseReport(record),'utf8');
   }
   await writeCanonicalDirectory(target,indexed);
+  const reviewedCount=indexed.readiness?.reviewed_count||0;
+  const semanticAcceptedCount=indexed.readiness?.semantic_accepted_count||0;
+  if (reviewedCount<requiredReviewed) throw new Error(`Stage 7 dataset requires ${requiredReviewed} reviewed cases, found ${reviewedCount}`);
+  if (semanticAcceptedCount<requiredSemanticAccepted) throw new Error(`Stage 7 dataset requires ${requiredSemanticAccepted} semantic-accepted cases, found ${semanticAcceptedCount}`);
   if (indexed.manifest.training_eligible_count<required) throw new Error(`Stage 7 dataset requires ${required} eligible cases, found ${indexed.manifest.training_eligible_count}`);
   return {
     ...indexed,outputDir:target,localArtifactRoot:localRoot,
@@ -186,6 +223,7 @@ async function writeCanonicalDirectory(target,indexed) {
   await fs.writeFile(path.join(temporary,'cases.jsonl'),stage7DatasetCasesJsonl(indexed.records),'utf8');
   await writeJson(path.join(temporary,'splits.json'),indexed.splits);
   await fs.writeFile(path.join(temporary,'reports','summary.md'),renderStage7DatasetReport(indexed),'utf8');
+  if (indexed.readiness) await fs.writeFile(path.join(temporary,'reports','readiness.md'),renderStage7DatasetReadiness(indexed.readiness),'utf8');
   let backedUp=false;
   try {
     if (await exists(target)) { await fs.rename(target,backup); backedUp=true; }
@@ -209,3 +247,4 @@ function stableGeneratedAt() {
 }
 function countBy(records,field) { const result={}; for (const record of records) { const key=record[field]||'unknown'; result[key]=(result[key]||0)+1; } return result; }
 function countNested(records,owner,field) { const result={}; for (const record of records) { const key=record?.[owner]?.[field]||'unknown'; result[key]=(result[key]||0)+1; } return result; }
+function nonNegativeInteger(value,name) { const parsed=Number(value); if (!Number.isInteger(parsed)||parsed<0) throw new Error(`${name} must be a non-negative integer`); return parsed; }

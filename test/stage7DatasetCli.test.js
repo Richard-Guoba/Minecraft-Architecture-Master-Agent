@@ -49,6 +49,8 @@ test('Stage 7 dataset CLI documents options and rejects duplicate cases', () => 
   assert.match(help.stdout,/--local-artifacts/);
   assert.match(help.stdout,/--dataset-version/);
   assert.match(help.stdout,/--review-overlay/);
+  assert.match(help.stdout,/--require-reviewed/);
+  assert.match(help.stdout,/--require-semantic-accepted/);
   const invalid=runCli(['--case','a','--case','a']);
   assert.notEqual(invalid.status,0);
   assert.match(invalid.stderr,/duplicate case id/i);
@@ -74,6 +76,8 @@ test('Stage 7 Dataset v2 consumes a source-bound review and rejects a stale one'
   assert.equal(result.records[0].review.reviewed_by,'human-curator');
   assert.deepEqual(result.records[0].review.review_record_ids,['review-pilot-1']);
   assert.equal(result.records[0].source.license_evidence,'Human-captured source terms.');
+  assert.ok((await fs.stat(path.join(fixture.outputDir,'reports','readiness.md'))).isFile());
+  await assert.rejects(writeStage7DatasetArtifacts({...fixture,datasetVersion:'v2',reviewOverlayPath,requireSemanticAccepted:1}),/requires 1 semantic-accepted cases, found 0/);
   await fs.writeFile(reviewOverlayPath,`${JSON.stringify({...review,source_sha256:'f'.repeat(64)})}\n`,'utf8');
   await assert.rejects(writeStage7DatasetArtifacts({...fixture,datasetVersion:'v2',reviewOverlayPath}),/source hash mismatch/);
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assignStage7DatasetSplit, buildStage7DatasetIndex, validateStage7Dataset, stage7DatasetCasesJsonl, renderStage7DatasetReport } from '../src/construction/learning/coarseSemanticVoxelDataset.js';
+import { assignStage7DatasetSplit, buildStage7DatasetIndex, buildStage7DatasetReadiness, validateStage7Dataset, stage7DatasetCasesJsonl, renderStage7DatasetReport } from '../src/construction/learning/coarseSemanticVoxelDataset.js';
 
 function datasetRecordFixture() {
   return {
@@ -52,4 +52,26 @@ test('dataset validation rejects synthetic held-out cases and malformed provenan
   assert.equal(result.ok,false);
   assert.ok(result.errors.some((item)=>/synthetic case.*held-out/i.test(item)));
   assert.ok(result.errors.some((item)=>/source SHA-256/i.test(item)));
+});
+
+test('readiness requires six explicit outcomes and three eligible semantic accepts', () => {
+  const ids=['pilot-1','pilot-2','pilot-3','pilot-4','pilot-5','pilot-6'];
+  const records=ids.map((caseId,index)=>{
+    const positive=index<3;
+    return {...datasetRecordFixture(),case_id:caseId,dataset_version:'v2',
+      review:{...datasetRecordFixture().review,status:positive?'limited':'rejected'},
+      training:{...datasetRecordFixture().training,eligible:positive,blockers:positive?[]:['review-status-rejected']},
+      extraction:{...datasetRecordFixture().extraction,semantic_status:positive?'accepted':'rejected'}
+    };
+  });
+  const indexed=buildStage7DatasetIndex({records,datasetVersion:'v2'});
+  const readiness=buildStage7DatasetReadiness(indexed,{pilotCaseIds:ids});
+  assert.equal(readiness.pilot_count,6);
+  assert.equal(readiness.reviewed_count,6);
+  assert.equal(readiness.training_eligible_count,3);
+  assert.equal(readiness.semantic_accepted_count,3);
+  assert.equal(readiness.ready_for_m3_real_data,true);
+  records[0].review.status='pending';
+  const blocked=buildStage7DatasetReadiness(buildStage7DatasetIndex({records,datasetVersion:'v2'}),{pilotCaseIds:ids});
+  assert.equal(blocked.ready_for_m3_real_data,false);
 });
