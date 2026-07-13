@@ -5,6 +5,7 @@ import copy
 import json
 import math
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
@@ -151,8 +152,10 @@ def _validated_condition_bytes(condition: Any) -> bytes:
         value = design.get(field)
         if value is not None and not isinstance(value, list):
             raise Stage7ContractError(f"condition design {field} must be a list")
-    _validate_massing_volumes(design.get("massing_volumes"))
-    _validate_topology_program(design.get("topology_program"))
+    if "massing_volumes" in design:
+        _validate_massing_volumes(design["massing_volumes"])
+    if "topology_program" in design:
+        _validate_topology_program(design["topology_program"])
     _validate_references(condition.get("references"))
 
     supplied_hash = condition.get("condition_hash")
@@ -197,8 +200,6 @@ def _validate_json_value(value: Any, active: set[int] | None = None) -> None:
 
 
 def _validate_massing_volumes(value: Any) -> None:
-    if value is None:
-        return
     if not isinstance(value, list) or len(value) > 16:
         raise Stage7ContractError("condition massing volumes are invalid")
     for item in value:
@@ -218,8 +219,6 @@ def _validate_massing_volumes(value: Any) -> None:
 
 
 def _validate_topology_program(value: Any) -> None:
-    if value is None:
-        return
     if (
         not isinstance(value, dict)
         or not isinstance(value.get("nodes"), list)
@@ -340,13 +339,41 @@ def _write_output(
         sys.stdout.buffer.write(data)
         return
     output_path = Path(output)
-    protected = {
-        checkpoint_path.resolve(strict=False),
-        manifest_path.resolve(strict=False),
+    protected_paths = (checkpoint_path, manifest_path)
+    protected_resolved = {
+        path.resolve(strict=False) for path in protected_paths
     }
-    if output_path.resolve(strict=False) in protected:
+    if output_path.resolve(strict=False) in protected_resolved or any(
+        _same_existing_file(output_path, path) for path in protected_paths
+    ):
         raise Stage7ContractError("output must not replace checkpoint artifacts")
-    output_path.write_bytes(data)
+    _write_file_atomically(output_path, data)
+
+
+def _same_existing_file(left: Path, right: Path) -> bool:
+    try:
+        return left.samefile(right)
+    except FileNotFoundError:
+        return False
+
+
+def _write_file_atomically(path: Path, data: bytes) -> None:
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(data)
+        temporary_path.replace(path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

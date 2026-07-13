@@ -187,6 +187,56 @@ def test_inference_loads_strictly_on_cpu_in_eval_inference_mode(
     }
 
 
+@pytest.mark.parametrize(
+    ("field", "message"),
+    [
+        ("massing_volumes", "massing volumes"),
+        ("topology_program", "topology program"),
+    ],
+)
+def test_inference_rejects_explicit_null_optional_design_fields_before_checkpoint_load(
+    fixture_condition,
+    monkeypatch,
+    tmp_path,
+    field,
+    message,
+):
+    condition = copy.deepcopy(fixture_condition)
+    condition["design"][field] = None
+    condition = _rehash(condition)
+
+    def reject_checkpoint_load(*_args, **_kwargs):
+        raise AssertionError("checkpoint loaded for an invalid condition")
+
+    monkeypatch.setattr(infer_module, "load_checkpoint", reject_checkpoint_load)
+
+    with pytest.raises(Stage7ContractError, match=message):
+        infer_condition(
+            tmp_path / "missing-checkpoint.pt",
+            tmp_path / "missing-manifest.json",
+            condition,
+        )
+
+
+@pytest.mark.parametrize("field", ["massing_volumes", "topology_program"])
+def test_inference_allows_absent_optional_design_fields(
+    trained_checkpoint,
+    fixture_condition,
+    field,
+):
+    condition = copy.deepcopy(fixture_condition)
+    del condition["design"][field]
+    condition = _rehash(condition)
+
+    result = infer_condition(
+        trained_checkpoint.checkpoint_path,
+        trained_checkpoint.manifest_path,
+        condition,
+    )
+
+    assert result.plan["condition_hash"] == condition["condition_hash"]
+
+
 def test_inference_rejects_malformed_or_non_finite_canonical_conditions_before_prediction(
     trained_checkpoint,
     fixture_condition,
@@ -505,6 +555,44 @@ def test_inference_cli_refuses_to_overwrite_checkpoint_or_manifest(
         assert result.stderr
     assert trained_checkpoint.checkpoint_path.read_bytes() == checkpoint_bytes
     assert trained_checkpoint.manifest_path.read_bytes() == manifest_bytes
+
+
+@pytest.mark.parametrize("artifact_field", ["checkpoint_path", "manifest_path"])
+def test_inference_cli_refuses_hardlink_aliases_to_checkpoint_artifacts(
+    tmp_path,
+    trained_checkpoint,
+    fixture_condition,
+    artifact_field,
+):
+    protected_path = getattr(trained_checkpoint, artifact_field)
+    alias_path = tmp_path / f"{artifact_field}-alias.json"
+    alias_path.hardlink_to(protected_path)
+    checkpoint_bytes = trained_checkpoint.checkpoint_path.read_bytes()
+    manifest_bytes = trained_checkpoint.manifest_path.read_bytes()
+    checkpoint_sha256 = sha256_bytes(checkpoint_bytes)
+    manifest_sha256 = sha256_bytes(manifest_bytes)
+
+    result = subprocess.run(
+        _cli_arguments(
+            trained_checkpoint,
+            "--stdin",
+            output=alias_path,
+        ),
+        input=json.dumps(fixture_condition),
+        text=True,
+        capture_output=True,
+        check=False,
+        cwd=trained_checkpoint.stage7_root,
+    )
+
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert "output" in result.stderr.lower()
+    assert "checkpoint" in result.stderr.lower()
+    assert trained_checkpoint.checkpoint_path.read_bytes() == checkpoint_bytes
+    assert trained_checkpoint.manifest_path.read_bytes() == manifest_bytes
+    assert sha256_bytes(trained_checkpoint.checkpoint_path.read_bytes()) == checkpoint_sha256
+    assert sha256_bytes(trained_checkpoint.manifest_path.read_bytes()) == manifest_sha256
 
 
 def test_authoritative_node_validator_accepts_a_canonical_fixture_plan():
