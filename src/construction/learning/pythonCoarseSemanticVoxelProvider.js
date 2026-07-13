@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
 import fs from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TextDecoder } from 'node:util';
@@ -58,10 +58,11 @@ export function createPythonCoarseSemanticVoxelProvider({
     id: 'python',
     async generate({ condition } = {}) {
       let provenance = {};
+      let snapshotRoot;
       try {
         const checkpoint = resolveRequiredPath(checkpointPath, 'checkpoint');
         const manifestFile = resolveRequiredPath(manifestPath, 'manifest');
-        const invocation = resolvePythonInvocation({
+        const sourceInvocation = resolvePythonInvocation({
           checkpointPath: checkpoint,
           manifestPath: manifestFile,
           pythonExecutable
@@ -69,14 +70,15 @@ export function createPythonCoarseSemanticVoxelProvider({
         provenance = {
           checkpoint_path: checkpoint,
           manifest_path: manifestFile,
-          executable_kind: invocation.executable_kind
+          executable_kind: sourceInvocation.executable_kind
         };
         await requireRegularFile(checkpoint, 'checkpoint');
         await requireRegularFile(manifestFile, 'manifest');
-        const [checkpointSha256, manifestBytes] = await Promise.all([
-          sha256File(checkpoint),
+        const [checkpointBytes, manifestBytes] = await Promise.all([
+          fs.readFile(checkpoint),
           fs.readFile(manifestFile)
         ]);
+        const checkpointSha256 = sha256(checkpointBytes);
         const manifestSha256 = sha256(manifestBytes);
         provenance = { ...provenance, checkpoint_sha256: checkpointSha256, manifest_sha256: manifestSha256 };
         const manifest = parseManifest(manifestBytes);
@@ -88,6 +90,18 @@ export function createPythonCoarseSemanticVoxelProvider({
           training_scope: manifest.training_scope
         };
         validateManifest(manifest, { checkpointPath: checkpoint, checkpointSha256 });
+        const snapshot = await createInputSnapshot({
+          checkpointPath: checkpoint,
+          manifestPath: manifestFile,
+          checkpointBytes,
+          manifestBytes
+        });
+        snapshotRoot = snapshot.root;
+        const invocation = resolvePythonInvocation({
+          checkpointPath: snapshot.checkpointPath,
+          manifestPath: snapshot.manifestPath,
+          pythonExecutable
+        });
 
         const stdin = canonicalStringify(condition);
         provenance = { ...provenance, stdin_bytes: Buffer.byteLength(stdin) };
@@ -108,8 +122,8 @@ export function createPythonCoarseSemanticVoxelProvider({
         enforceOutputLimit(response, 'stdout');
         enforceOutputLimit(response, 'stderr');
         await verifyInputHashes({
-          checkpointPath: checkpoint,
-          manifestPath: manifestFile,
+          checkpointPath: snapshot.checkpointPath,
+          manifestPath: snapshot.manifestPath,
           checkpointSha256,
           manifestSha256
         });
@@ -135,6 +149,8 @@ export function createPythonCoarseSemanticVoxelProvider({
           configurable: true
         });
         throw error;
+      } finally {
+        if (snapshotRoot) await fs.rm(snapshotRoot, { recursive: true, force: true });
       }
     }
   });
@@ -243,6 +259,32 @@ function decodeUtf8(value, label) {
   }
 }
 
+async function createInputSnapshot({ checkpointPath, manifestPath, checkpointBytes, manifestBytes }) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'stage7-python-inputs-'));
+  try {
+    const checkpointDir = path.join(root, 'checkpoint');
+    const manifestDir = path.join(root, 'manifest');
+    await Promise.all([
+      fs.mkdir(checkpointDir, { mode: 0o700 }),
+      fs.mkdir(manifestDir, { mode: 0o700 })
+    ]);
+    const snapshotCheckpointPath = path.join(checkpointDir, path.basename(checkpointPath));
+    const snapshotManifestPath = path.join(manifestDir, path.basename(manifestPath));
+    await Promise.all([
+      fs.writeFile(snapshotCheckpointPath, checkpointBytes, { flag: 'wx', mode: 0o600 }),
+      fs.writeFile(snapshotManifestPath, manifestBytes, { flag: 'wx', mode: 0o600 })
+    ]);
+    return {
+      root,
+      checkpointPath: snapshotCheckpointPath,
+      manifestPath: snapshotManifestPath
+    };
+  } catch (error) {
+    await fs.rm(root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 async function verifyInputHashes({ checkpointPath, manifestPath, checkpointSha256, manifestSha256 }) {
   let currentCheckpointSha256;
   let currentManifestSha256;
@@ -284,14 +326,7 @@ function validatePlanProvider(plan, { manifest, checkpointSha256 }) {
 }
 
 async function sha256File(file) {
-  const hash = createHash('sha256');
-  await new Promise((resolve, reject) => {
-    const stream = createReadStream(file);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('error', reject);
-    stream.on('end', resolve);
-  });
-  return hash.digest('hex');
+  return sha256(await fs.readFile(file));
 }
 
 function sha256(value) {

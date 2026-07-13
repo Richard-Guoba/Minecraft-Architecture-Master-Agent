@@ -53,6 +53,18 @@ function processResult(stdout, { stderr = '', durationMs = 17 } = {}) {
   };
 }
 
+function invocationPath(invocation, flag) {
+  const index = invocation.args.indexOf(flag);
+  assert.notEqual(index, -1, `invocation must include ${flag}`);
+  return invocation.args[index + 1];
+}
+
+async function redirectSymlink(linkPath, targetPath) {
+  const replacement = `${linkPath}.replacement`;
+  await fs.symlink(targetPath, replacement);
+  await fs.rename(replacement, linkPath);
+}
+
 function replaceMarkerWithInvalidUtf8(value, marker = 'invalid-utf8-marker') {
   const bytes = Buffer.from(value, 'utf8');
   const markerBytes = Buffer.from(marker, 'utf8');
@@ -333,42 +345,133 @@ test('python provider rejects invalid UTF-8 Buffer stdout instead of accepting r
   }
 });
 
+test('python provider consumes the exact validated manifest bytes despite a source symlink redirect and restore', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'stage7-python-symlink-snapshot-'));
+  try {
+    const { checkpointPath, manifestPath, manifest } = await writeCheckpoint(root);
+    const sourceA = path.join(root, 'source-a');
+    const sourceB = path.join(root, 'source-b');
+    await fs.mkdir(sourceA);
+    await fs.mkdir(sourceB);
+    const manifestAPath = path.join(sourceA, path.basename(manifestPath));
+    const manifestBPath = path.join(sourceB, path.basename(manifestPath));
+    await fs.rename(manifestPath, manifestAPath);
+    const manifestABytes = await fs.readFile(manifestAPath);
+    const manifestBBytes = Buffer.from(`${JSON.stringify({ ...manifest, note: 'byte-distinct-source-b' })}\n`);
+    await fs.writeFile(manifestBPath, manifestBBytes);
+    await fs.symlink(manifestAPath, manifestPath);
+
+    let consumedManifestBytes;
+    const provider = createPythonCoarseSemanticVoxelProvider({
+      checkpointPath,
+      manifestPath,
+      invoke: async ({ condition, invocation }) => {
+        await redirectSymlink(manifestPath, manifestBPath);
+        try {
+          consumedManifestBytes = await fs.readFile(invocationPath(invocation, '--manifest'));
+        } finally {
+          await redirectSymlink(manifestPath, manifestAPath);
+        }
+        return processResult(JSON.stringify(validPlanFor(condition)));
+      }
+    });
+
+    const plan = await provider.generate({ condition: validCondition() });
+    assert.equal(plan.provider.kind, 'learned-python-shadow');
+    assert.equal(sha256(consumedManifestBytes), sha256(manifestABytes));
+    assert.notEqual(sha256(consumedManifestBytes), sha256(manifestBBytes));
+    assert.equal(plan.__stage7PythonProvenance.manifest_sha256, sha256(manifestABytes));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 for (const target of ['checkpoint', 'manifest']) {
-  test(`python provider rejects ${target} content changed during inference`, async () => {
+  test(`python provider isolates inference from ${target} source changes after snapshot`, async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), `stage7-python-mutated-${target}-`));
     try {
       const { checkpointPath, manifestPath, manifest } = await writeCheckpoint(root);
       const originalCheckpointSha256 = sha256(fixtureCheckpoint);
       const originalManifestSha256 = sha256(await fs.readFile(manifestPath));
       const changedCheckpoint = 'changed-fixture-checkpoint';
+      let consumedBytes;
       const provider = createPythonCoarseSemanticVoxelProvider({
         checkpointPath,
         manifestPath,
-        invoke: async ({ condition }) => {
+        invoke: async ({ condition, invocation }) => {
           if (target === 'checkpoint') {
             await fs.writeFile(checkpointPath, changedCheckpoint, 'utf8');
+            consumedBytes = await fs.readFile(invocationPath(invocation, '--checkpoint'));
           } else {
             await fs.writeFile(manifestPath, `${JSON.stringify({ ...manifest, note: 'changed-during-inference' })}\n`, 'utf8');
+            consumedBytes = await fs.readFile(invocationPath(invocation, '--manifest'));
           }
           const plan = validPlanFor(condition);
-          if (target === 'checkpoint') plan.provider.checkpoint_version = `sha256:${sha256(changedCheckpoint)}`;
           return processResult(JSON.stringify(plan), { durationMs: 29 });
         }
       });
-      await assert.rejects(provider.generate({ condition: validCondition() }), (error) => {
-        assert.match(error.message, new RegExp(`${target} changed during inference`));
-        assert.equal(error.stage7PythonProvenance.checkpoint_sha256, originalCheckpointSha256);
-        assert.equal(error.stage7PythonProvenance.manifest_sha256, originalManifestSha256);
-        assert.equal(error.stage7PythonProvenance.duration_ms, 29);
-        assert.equal(error.stage7PythonProvenance.stdin_bytes, Buffer.byteLength(canonicalStringify(validCondition())));
-        assert.ok(error.stage7PythonProvenance.stdout_bytes > 0);
-        return true;
-      });
+      const plan = await provider.generate({ condition: validCondition() });
+      const expectedBytes = target === 'checkpoint'
+        ? Buffer.from(fixtureCheckpoint)
+        : Buffer.from(`${JSON.stringify(manifest)}\n`);
+      assert.deepEqual(consumedBytes, expectedBytes);
+      assert.equal(plan.__stage7PythonProvenance.checkpoint_sha256, originalCheckpointSha256);
+      assert.equal(plan.__stage7PythonProvenance.manifest_sha256, originalManifestSha256);
+      assert.equal(plan.__stage7PythonProvenance.duration_ms, 29);
+      assert.equal(plan.__stage7PythonProvenance.stdin_bytes, Buffer.byteLength(canonicalStringify(validCondition())));
+      assert.ok(plan.__stage7PythonProvenance.stdout_bytes > 0);
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
 }
+
+test('python provider removes private invocation inputs after success and runtime errors', async () => {
+  const cases = [
+    ['success', ({ condition }) => processResult(JSON.stringify(validPlanFor(condition)))],
+    ['launch', () => { throw new Error('process could not launch'); }],
+    ['timeout', () => {
+      const error = new Error('python provider timed out after 60000ms');
+      error.stage7ProcessResult = { duration_ms: 60000, stdout_bytes: 0, stderr_bytes: 0 };
+      throw error;
+    }],
+    ['parse', () => processResult('{')],
+    ['lineage', ({ condition }) => {
+      const plan = validPlanFor(condition);
+      plan.provider.dataset_version = 'other-dataset';
+      return processResult(JSON.stringify(plan));
+    }]
+  ];
+  for (const [name, behavior] of cases) {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), `stage7-python-cleanup-${name}-`));
+    try {
+      const { checkpointPath, manifestPath } = await writeCheckpoint(root);
+      let invokedPaths;
+      const provider = createPythonCoarseSemanticVoxelProvider({
+        checkpointPath,
+        manifestPath,
+        invoke: async (request) => {
+          invokedPaths = [
+            invocationPath(request.invocation, '--checkpoint'),
+            invocationPath(request.invocation, '--manifest')
+          ];
+          return behavior(request);
+        }
+      });
+      if (name === 'success') {
+        await provider.generate({ condition: validCondition() });
+      } else {
+        await assert.rejects(provider.generate({ condition: validCondition() }));
+      }
+      assert.equal(invokedPaths.length, 2);
+      for (const invokedPath of invokedPaths) {
+        await assert.rejects(fs.access(invokedPath), (error) => error.code === 'ENOENT');
+      }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  }
+});
 
 for (const [field, value] of [
   ['kind', 'synthetic-fixture'],
