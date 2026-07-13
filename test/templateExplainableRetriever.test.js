@@ -216,7 +216,12 @@ test('query:templates package script runs against a provided v2 file', async () 
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-query-script-kb-'));
   const kbFile = path.join(root, 'case_library.v2.json');
   await fs.writeFile(kbFile, `${JSON.stringify(knowledgeBaseFixture(), null, 2)}\n`, 'utf8');
-  const npmCli = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  const npmCli = process.env.npm_execpath || path.join(
+    path.dirname(process.execPath),
+    ...(process.platform === 'win32'
+      ? ['node_modules', 'npm', 'bin', 'npm-cli.js']
+      : ['..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'])
+  );
 
   const result = spawnSync(process.execPath, [
     npmCli,

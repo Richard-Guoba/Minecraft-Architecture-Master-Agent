@@ -47,6 +47,8 @@ The independent output produced the same five hashes.
 
 Frozen inventories were captured before the v3 writer change and compared before, during, and after canonical v3 publication. All nine tracked v1/v2 files remained byte-identical:
 
+The hashes below are the original Windows working-tree hashes and include CRLF line endings. Git stores the published files with canonical LF line endings; the WSL migration check therefore compares the working tree directly with `HEAD` and records the published LF manifest hashes as `fb52190f58102540f19bab741ec5ce1a121134d86b88a699b78c2af5bb788749` for v1 and `af3c8b5b9d9a628a78caf2de95f42c1d6aedcdf301b24d2909d21418bdfec654` for v2. Converting the published LF files to CRLF reproduces every historical value in this table, so the difference is line-ending representation rather than dataset drift.
+
 | Version | Artifact | SHA-256 |
 | --- | --- | --- |
 | v1 | `cases.jsonl` | `622d39be6545423f7e59b422b99c373679c98165e75432eab852f1a8a03daf77` |

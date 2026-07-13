@@ -4,7 +4,7 @@ Minecraft Architecture Master Agent is a Node.js research and engineering projec
 
 The long-term goal is not a one-shot prompt-to-block toy. The project is being shaped into a hybrid architecture agent that can retrieve references, propose concepts, build, critique, repair, benchmark, and learn from its own runs.
 
-[Static Homepage Source](docs/index.html) | [Architecture](docs/architecture.md) | [Roadmap](docs/roadmap.md) | [Stage 1 Baseline](docs/benchmarks/stage1-readiness-baseline.md)
+[Static Homepage Source](docs/index.html) | [Architecture](docs/architecture.md) | [Roadmap](docs/roadmap.md) | [WSL Stage 7 Environment](docs/wsl-stage7-environment.md) | [Stage 1 Baseline](docs/benchmarks/stage1-readiness-baseline.md)
 
 The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled from the `docs/` folder without adding a frontend build step.
 
@@ -23,6 +23,14 @@ The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled f
 - Active stage: Stage 7 Milestone 2.5 has generated a six-case trusted-data review pack and deterministic Dataset v2; it has 0 reviewed pilot outcomes and 0 training-eligible cases, so M3 real-data training remains blocked and the M1 shadow path still does not change primary geometry
 
 ## Quick Start
+
+The canonical Stage 7 development environment is WSL2 Ubuntu on the Linux filesystem. Use the repository `.nvmrc` for Node.js and the Conda environment named `mcagent-stage7` for Python/PyTorch work; do not create a repository-local `.venv`. Follow the [WSL Stage 7 environment guide](docs/wsl-stage7-environment.md) before beginning M3 work. Normal generation and the existing Node test suite still do not require Python.
+
+```bash
+conda env create --file training/stage7/environment.yml
+conda run -n mcagent-stage7 python -m pip install -r training/stage7/requirements-wsl-cu130.lock
+conda run -n mcagent-stage7 python training/stage7/verify_environment.py --require-cuda
+```
 
 ```powershell
 npm install
