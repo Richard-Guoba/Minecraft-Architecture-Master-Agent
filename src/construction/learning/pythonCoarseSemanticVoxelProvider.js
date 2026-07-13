@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TextDecoder } from 'node:util';
 import { canonicalStringify } from './coarseSemanticVoxelSchema.js';
 
 export const MAX_STAGE7_PYTHON_OUTPUT_BYTES = 32 * 1024 * 1024;
@@ -89,6 +90,7 @@ export function createPythonCoarseSemanticVoxelProvider({
         validateManifest(manifest, { checkpointPath: checkpoint, checkpointSha256 });
 
         const stdin = canonicalStringify(condition);
+        provenance = { ...provenance, stdin_bytes: Buffer.byteLength(stdin) };
         const response = normalizeProcessResult(await invoke({
           condition,
           invocation,
@@ -100,13 +102,19 @@ export function createPythonCoarseSemanticVoxelProvider({
         provenance = {
           ...provenance,
           duration_ms: response.duration_ms,
-          stdin_bytes: Buffer.byteLength(stdin),
           stdout_bytes: response.stdout_bytes,
           stderr_bytes: response.stderr_bytes
         };
         enforceOutputLimit(response, 'stdout');
         enforceOutputLimit(response, 'stderr');
+        await verifyInputHashes({
+          checkpointPath: checkpoint,
+          manifestPath: manifestFile,
+          checkpointSha256,
+          manifestSha256
+        });
         const plan = parsePlan(response.stdout);
+        validatePlanProvider(plan, { manifest, checkpointSha256 });
         Object.defineProperty(plan, '__stage7PythonProvenance', {
           value: Object.freeze(provenance),
           enumerable: false
@@ -148,9 +156,10 @@ async function requireRegularFile(file, label) {
 }
 
 function parseManifest(bytes) {
+  const text = decodeUtf8(bytes, 'manifest');
   let manifest;
   try {
-    manifest = JSON.parse(bytes.toString('utf8'));
+    manifest = JSON.parse(text);
   } catch (error) {
     throw new Error(`Stage 7 python manifest could not parse: ${error.message}`);
   }
@@ -178,21 +187,24 @@ function normalizeProcessResult(value) {
   if (!result || typeof result !== 'object' || Array.isArray(result)) {
     throw new Error('Stage 7 python process runner must return stdout and stderr');
   }
-  const stdout = asUtf8(result.stdout, 'stdout');
-  const stderr = result.stderr === undefined ? '' : asUtf8(result.stderr, 'stderr');
+  const stdout = asProcessText(result.stdout, 'stdout');
+  const stderr = result.stderr === undefined ? '' : asProcessText(result.stderr, 'stderr');
   return {
     stdout,
     stderr,
     duration_ms: Number.isFinite(result.duration_ms) && result.duration_ms >= 0 ? result.duration_ms : 0,
-    stdout_bytes: Buffer.byteLength(stdout),
-    stderr_bytes: Buffer.byteLength(stderr)
+    stdout_bytes: processTextBytes(stdout),
+    stderr_bytes: processTextBytes(stderr)
   };
 }
 
-function asUtf8(value, label) {
-  if (typeof value === 'string') return value;
-  if (Buffer.isBuffer(value)) return value.toString('utf8');
+function asProcessText(value, label) {
+  if (typeof value === 'string' || Buffer.isBuffer(value)) return value;
   throw new Error(`Stage 7 python process ${label} must be text`);
+}
+
+function processTextBytes(value) {
+  return Buffer.isBuffer(value) ? value.length : Buffer.byteLength(value);
 }
 
 function enforceOutputLimit(response, stream) {
@@ -209,9 +221,10 @@ function enforceOutputLimit(response, stream) {
 }
 
 function parsePlan(stdout) {
+  const text = decodeUtf8(stdout, 'output');
   let plan;
   try {
-    plan = JSON.parse(stdout);
+    plan = JSON.parse(text);
   } catch (error) {
     throw new Error(`Stage 7 python output could not parse exactly one JSON object: ${error.message}`);
   }
@@ -219,6 +232,55 @@ function parsePlan(stdout) {
     throw new Error('Stage 7 python output must contain exactly one JSON object');
   }
   return plan;
+}
+
+function decodeUtf8(value, label) {
+  if (typeof value === 'string') return value;
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(value);
+  } catch (error) {
+    throw new Error(`Stage 7 python ${label} is not valid UTF-8`, { cause: error });
+  }
+}
+
+async function verifyInputHashes({ checkpointPath, manifestPath, checkpointSha256, manifestSha256 }) {
+  let currentCheckpointSha256;
+  let currentManifestSha256;
+  try {
+    [currentCheckpointSha256, currentManifestSha256] = await Promise.all([
+      sha256File(checkpointPath),
+      sha256File(manifestPath)
+    ]);
+  } catch (error) {
+    throw new Error(`Stage 7 python checkpoint or manifest changed during inference: ${error.message}`);
+  }
+  if (currentCheckpointSha256 !== checkpointSha256) {
+    throw new Error('Stage 7 python checkpoint changed during inference');
+  }
+  if (currentManifestSha256 !== manifestSha256) {
+    throw new Error('Stage 7 python manifest changed during inference');
+  }
+}
+
+function validatePlanProvider(plan, { manifest, checkpointSha256 }) {
+  const expected = {
+    kind: 'learned-python-shadow',
+    name: manifest.model_name,
+    model_version: manifest.model_version,
+    dataset_version: manifest.dataset_version,
+    checkpoint_version: `sha256:${checkpointSha256}`
+  };
+  const provider = plan.provider && typeof plan.provider === 'object' && !Array.isArray(plan.provider)
+    ? plan.provider
+    : {};
+  for (const [field, value] of Object.entries(expected)) {
+    if (provider[field] !== value) {
+      throw new Error(`Stage 7 python plan provider ${field} does not match the validated checkpoint manifest`);
+    }
+  }
+  if (Object.keys(provider).length !== Object.keys(expected).length) {
+    throw new Error('Stage 7 python plan provider fields do not match the validated checkpoint manifest');
+  }
 }
 
 async function sha256File(file) {
@@ -268,8 +330,8 @@ function invokePythonProcess({ invocation, stdin, timeoutMs, stdoutLimitBytes, s
       closed = true;
       clearTimeout(timer);
       const result = {
-        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
-        stderr: Buffer.concat(stderrChunks).toString('utf8'),
+        stdout: Buffer.concat(stdoutChunks),
+        stderr: Buffer.concat(stderrChunks),
         duration_ms: Math.max(0, Math.round(performance.now() - started)),
         stdout_bytes: stdoutBytes,
         stderr_bytes: stderrBytes
@@ -278,7 +340,7 @@ function invokePythonProcess({ invocation, stdin, timeoutMs, stdoutLimitBytes, s
         terminalError.stage7ProcessResult = result;
         reject(terminalError);
       } else if (code !== 0) {
-        const detail = result.stderr.slice(0, 4096).trim();
+        const detail = result.stderr.subarray(0, 4096).toString('utf8').trim();
         const error = new Error(`Stage 7 python process exited ${code ?? `by signal ${signal}`}${detail ? `: ${detail}` : ''}`);
         error.stage7ProcessResult = result;
         reject(error);

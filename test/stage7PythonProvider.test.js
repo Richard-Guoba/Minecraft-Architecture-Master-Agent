@@ -53,6 +53,18 @@ function processResult(stdout, { stderr = '', durationMs = 17 } = {}) {
   };
 }
 
+function replaceMarkerWithInvalidUtf8(value, marker = 'invalid-utf8-marker') {
+  const bytes = Buffer.from(value, 'utf8');
+  const markerBytes = Buffer.from(marker, 'utf8');
+  const index = bytes.indexOf(markerBytes);
+  assert.notEqual(index, -1, 'invalid UTF-8 marker must exist');
+  return Buffer.concat([
+    bytes.subarray(0, index),
+    Buffer.from([0xc3, 0x28]),
+    bytes.subarray(index + markerBytes.length)
+  ]);
+}
+
 async function writeCheckpoint(root, overrides = {}) {
   const checkpointPath = path.join(root, 'checkpoint.pt');
   const manifestPath = path.join(root, 'checkpoint_manifest.json');
@@ -186,6 +198,31 @@ test('python provider validates regular files and every fixture-only manifest bi
   }
 });
 
+test('python provider rejects invalid UTF-8 manifest bytes before invocation', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'stage7-python-manifest-utf8-'));
+  try {
+    const { checkpointPath, manifestPath, manifest } = await writeCheckpoint(root);
+    const manifestBytes = replaceMarkerWithInvalidUtf8(JSON.stringify({
+      ...manifest,
+      note: 'invalid-utf8-marker'
+    }));
+    await fs.writeFile(manifestPath, manifestBytes);
+    const provider = createPythonCoarseSemanticVoxelProvider({
+      checkpointPath,
+      manifestPath,
+      invoke: async () => processResult(JSON.stringify(validPlanFor()))
+    });
+    await assert.rejects(provider.generate({ condition: validCondition() }), (error) => {
+      assert.match(error.message, /manifest.*UTF-8/);
+      assert.equal(error.stage7PythonProvenance.manifest_sha256, sha256(manifestBytes));
+      assert.equal(error.stage7PythonProvenance.stdout_bytes, undefined);
+      return true;
+    });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('python provider independently bounds stdout and stderr and retains provenance on invocation failure', async () => {
   for (const stream of ['stdout', 'stderr']) {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), `stage7-python-${stream}-`));
@@ -228,6 +265,7 @@ test('python provider independently bounds stdout and stderr and retains provena
     await assert.rejects(provider.generate({ condition: validCondition() }), (error) => {
       assert.match(error.message, /timed out/);
       assert.equal(error.stage7PythonProvenance.duration_ms, 60000);
+      assert.equal(error.stage7PythonProvenance.stdin_bytes, Buffer.byteLength(canonicalStringify(validCondition())));
       assert.equal(error.stage7PythonProvenance.stdout_bytes, 11);
       assert.equal(error.stage7PythonProvenance.stderr_bytes, 13);
       return true;
@@ -271,3 +309,96 @@ test('python provider parses exactly one JSON object and rejects arrays, trailin
     }
   }
 });
+
+test('python provider rejects invalid UTF-8 Buffer stdout instead of accepting replacement characters', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'stage7-python-output-utf8-'));
+  try {
+    const { checkpointPath, manifestPath } = await writeCheckpoint(root);
+    const plan = validPlanFor();
+    plan.evidence[0].detail = 'invalid-utf8-marker';
+    const stdout = replaceMarkerWithInvalidUtf8(JSON.stringify(plan));
+    const provider = createPythonCoarseSemanticVoxelProvider({
+      checkpointPath,
+      manifestPath,
+      invoke: async () => processResult(stdout)
+    });
+    await assert.rejects(provider.generate({ condition: validCondition() }), (error) => {
+      assert.match(error.message, /output.*UTF-8/);
+      assert.equal(error.stage7PythonProvenance.stdin_bytes, Buffer.byteLength(canonicalStringify(validCondition())));
+      assert.equal(error.stage7PythonProvenance.stdout_bytes, stdout.length);
+      return true;
+    });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+for (const target of ['checkpoint', 'manifest']) {
+  test(`python provider rejects ${target} content changed during inference`, async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), `stage7-python-mutated-${target}-`));
+    try {
+      const { checkpointPath, manifestPath, manifest } = await writeCheckpoint(root);
+      const originalCheckpointSha256 = sha256(fixtureCheckpoint);
+      const originalManifestSha256 = sha256(await fs.readFile(manifestPath));
+      const changedCheckpoint = 'changed-fixture-checkpoint';
+      const provider = createPythonCoarseSemanticVoxelProvider({
+        checkpointPath,
+        manifestPath,
+        invoke: async ({ condition }) => {
+          if (target === 'checkpoint') {
+            await fs.writeFile(checkpointPath, changedCheckpoint, 'utf8');
+          } else {
+            await fs.writeFile(manifestPath, `${JSON.stringify({ ...manifest, note: 'changed-during-inference' })}\n`, 'utf8');
+          }
+          const plan = validPlanFor(condition);
+          if (target === 'checkpoint') plan.provider.checkpoint_version = `sha256:${sha256(changedCheckpoint)}`;
+          return processResult(JSON.stringify(plan), { durationMs: 29 });
+        }
+      });
+      await assert.rejects(provider.generate({ condition: validCondition() }), (error) => {
+        assert.match(error.message, new RegExp(`${target} changed during inference`));
+        assert.equal(error.stage7PythonProvenance.checkpoint_sha256, originalCheckpointSha256);
+        assert.equal(error.stage7PythonProvenance.manifest_sha256, originalManifestSha256);
+        assert.equal(error.stage7PythonProvenance.duration_ms, 29);
+        assert.equal(error.stage7PythonProvenance.stdin_bytes, Buffer.byteLength(canonicalStringify(validCondition())));
+        assert.ok(error.stage7PythonProvenance.stdout_bytes > 0);
+        return true;
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const [field, value] of [
+  ['kind', 'synthetic-fixture'],
+  ['name', 'other-model'],
+  ['model_version', 'other-version'],
+  ['dataset_version', 'other-dataset'],
+  ['checkpoint_version', `sha256:${'0'.repeat(64)}`]
+]) {
+  test(`python provider rejects returned plan provider ${field} lineage mismatch`, async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), `stage7-python-lineage-${field}-`));
+    try {
+      const { checkpointPath, manifestPath } = await writeCheckpoint(root);
+      const plan = validPlanFor();
+      plan.provider[field] = value;
+      const response = processResult(JSON.stringify(plan), { durationMs: 31 });
+      const provider = createPythonCoarseSemanticVoxelProvider({
+        checkpointPath,
+        manifestPath,
+        invoke: async () => response
+      });
+      await assert.rejects(provider.generate({ condition: validCondition() }), (error) => {
+        assert.match(error.message, new RegExp(`plan provider ${field}.*validated checkpoint manifest`));
+        assert.equal(error.stage7PythonProvenance.checkpoint_sha256, sha256(fixtureCheckpoint));
+        assert.equal(error.stage7PythonProvenance.stdin_bytes, Buffer.byteLength(canonicalStringify(validCondition())));
+        assert.equal(error.stage7PythonProvenance.duration_ms, 31);
+        assert.equal(error.stage7PythonProvenance.stdout_bytes, response.stdout_bytes);
+        return true;
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+}
