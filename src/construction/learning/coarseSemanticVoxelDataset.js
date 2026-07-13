@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { readSchematicBlockVolume } from '../templates/schematicBlockVolume.js';
-import { STAGE7_DATASET_EXTRACTOR, buildStage7DatasetCase, renderStage7DatasetCaseReport } from './coarseSemanticVoxelDatasetCase.js';
+import { STAGE7_DATASET_EXTRACTOR, STAGE7_DATASET_EXTRACTOR_V3, buildStage7DatasetCase, renderStage7DatasetCaseReport } from './coarseSemanticVoxelDatasetCase.js';
 import { STAGE7_PILOT_CASE_IDS, mergeStage7DatasetReviews, parseStage7DatasetReviewOverlay } from './stage7DatasetReviewOverlay.js';
 
 export const STAGE7_DATASET_SOURCE='stage7-coarse-semantic-voxel-dataset-v1';
@@ -44,14 +44,14 @@ export function buildStage7DatasetIndex({records=[],generatedAt=stableGeneratedA
   const trainingCaseIds=sorted.filter((record)=>record.training?.eligible).map((record)=>record.case_id).sort();
   const manifest={
     source:config.source,schema_version:config.schemaVersion,dataset_version:datasetVersion,
-    ...(datasetVersion==='v2'?{parent_dataset_version:'v1'}:{}),
-    generated_at:generatedAt,extractor:STAGE7_DATASET_EXTRACTOR,split_algorithm:STAGE7_DATASET_SPLIT_ALGORITHM,
+    ...(config.parent?{parent_dataset_version:config.parent}:{}),
+    generated_at:generatedAt,extractor:config.extractor,split_algorithm:STAGE7_DATASET_SPLIT_ALGORITHM,
     case_count:sorted.length,training_eligible_count:trainingCaseIds.length,training_case_ids:trainingCaseIds,
     origin_counts:countBy(sorted,'origin'),split_counts:countBy(sorted,'split'),
-    artifacts:{cases:'cases.jsonl',splits:'splits.json',reports:'reports/',...(datasetVersion==='v2'?{readiness:'reports/readiness.md'}:{})}
+    artifacts:{cases:'cases.jsonl',splits:'splits.json',reports:'reports/',...(config.readiness?{readiness:'reports/readiness.md'}:{})}
   };
   const result={manifest,records:sorted,splits};
-  if (datasetVersion==='v2') {
+  if (config.readiness) {
     result.readiness=buildStage7DatasetReadiness(result);
     manifest.reviewed_count=result.readiness.reviewed_count;
     manifest.semantic_accepted_count=result.readiness.semantic_accepted_count;
@@ -81,6 +81,15 @@ export function validateStage7Dataset({manifest={},records=[],splits={}}={}) {
     if (!/^[a-f0-9]{64}$/.test(record?.artifacts?.condition_sha256||'')) errors.push(`missing condition hash: ${id}`);
     if (!/^[a-f0-9]{64}$/.test(record?.artifacts?.plan_sha256||'')) errors.push(`missing plan hash: ${id}`);
     if (splits?.assignments?.[id]!==record?.split) errors.push(`split assignment mismatch: ${id}`);
+    if (manifest.dataset_version==='v3') {
+      if (!/^[a-f0-9]{64}$/.test(record?.artifacts?.review_plan_sha256||'')) errors.push(`missing v3 review plan hash: ${id}`);
+      if (record?.extraction?.extractor_version!==STAGE7_DATASET_EXTRACTOR_V3) errors.push(`missing v3 extractor version: ${id}`);
+      if (!['accepted','rejected','pending-review'].includes(record?.extraction?.semantic_status)) errors.push(`invalid v3 semantic status: ${id}`);
+      if (!['accepted','rejected'].includes(record?.extraction?.automated_semantic_status)) errors.push(`invalid v3 automated semantic status: ${id}`);
+      if (!Array.isArray(record?.extraction?.repair_classes)||!Array.isArray(record?.extraction?.repair_audit)) errors.push(`missing v3 repair diagnostics: ${id}`);
+      if (!record?.extraction?.topology||typeof record.extraction.topology!=='object') errors.push(`missing v3 topology diagnostics: ${id}`);
+      if (record?.training?.eligible&&record.extraction.semantic_status!=='accepted') errors.push(`v3 eligible case lacks plan-bound semantic acceptance: ${id}`);
+    }
   }
   for (const record of Array.isArray(records)?records:[]) {
     if (record?.origin!=='augmented') continue;
@@ -197,8 +206,9 @@ export async function writeStage7DatasetArtifacts({templateRoot='mc_templates',k
 }
 
 function datasetConfig(version) {
-  if (version==='v1') return {source:STAGE7_DATASET_SOURCE,schemaVersion:STAGE7_DATASET_SCHEMA_VERSION};
-  if (version==='v2') return {source:'stage7-coarse-semantic-voxel-dataset-v2',schemaVersion:2};
+  if (version==='v1') return {source:STAGE7_DATASET_SOURCE,schemaVersion:STAGE7_DATASET_SCHEMA_VERSION,extractor:STAGE7_DATASET_EXTRACTOR,parent:null,readiness:false};
+  if (version==='v2') return {source:'stage7-coarse-semantic-voxel-dataset-v2',schemaVersion:2,extractor:STAGE7_DATASET_EXTRACTOR,parent:'v1',readiness:true};
+  if (version==='v3') return {source:'stage7-coarse-semantic-voxel-dataset-v3',schemaVersion:3,extractor:STAGE7_DATASET_EXTRACTOR_V3,parent:'v2',readiness:true};
   throw new Error(`unsupported Stage 7 dataset version: ${version}`);
 }
 

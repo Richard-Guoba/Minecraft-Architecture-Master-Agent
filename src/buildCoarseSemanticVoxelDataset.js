@@ -12,7 +12,7 @@ export function parseStage7DatasetArgs(argv=[]) {
     if (flag==='--knowledge-base') { options.knowledgeBase=requireValue(argv,++index,flag); continue; }
     if (flag==='--out') { options.out=requireValue(argv,++index,flag); continue; }
     if (flag==='--local-artifacts') { options.localArtifacts=requireValue(argv,++index,flag); continue; }
-    if (flag==='--dataset-version') { const value=requireValue(argv,++index,flag); if (!['v1','v2'].includes(value)) throw new Error('--dataset-version must be v1 or v2'); options.datasetVersion=value; continue; }
+    if (flag==='--dataset-version') { const value=requireValue(argv,++index,flag); if (!['v1','v2','v3'].includes(value)) throw new Error('--dataset-version must be v1, v2, or v3'); options.datasetVersion=value; continue; }
     if (flag==='--review-overlay') { options.reviewOverlay=requireValue(argv,++index,flag); continue; }
     if (flag==='--require-reviewed') { options.requireReviewed=requireCount(argv,++index,flag); continue; }
     if (flag==='--require-semantic-accepted') { options.requireSemanticAccepted=requireCount(argv,++index,flag); continue; }
@@ -48,7 +48,8 @@ export async function main(argv=process.argv.slice(2)) {
 
 function requireValue(argv,index,flag) { const value=argv[index]; if (!value||value.startsWith('--')) throw new Error(`${flag} requires a value`); return value; }
 function requireCount(argv,index,flag) { const value=requireValue(argv,index,flag); const parsed=Number(value); if (!Number.isInteger(parsed)||parsed<0) throw new Error(`${flag} must be a non-negative integer`); return parsed; }
-function helpText() { return `Usage: npm run dataset:stage7 -- [options]\n\n  --root <path>\n  --knowledge-base <path>\n  --out <path>\n  --local-artifacts <path>\n  --dataset-version v1|v2\n  --review-overlay <path>\n  --case <case-id>\n  --require-reviewed <integer>\n  --require-semantic-accepted <integer>\n  --require-eligible <integer>\n  --help`; }
+function helpText() { return `Usage: npm run dataset:stage7 -- [options]\n\n  --root <path>\n  --knowledge-base <path>\n  --out <path>\n  --local-artifacts <path>\n  --dataset-version v1|v2|v3\n  --review-overlay <path>\n  --case <case-id>\n  --require-reviewed <integer>\n  --require-semantic-accepted <integer>\n  --require-eligible <integer>\n  --help`; }
+export const helpTextForTest=helpText;
 
 const isMain=process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url);
 if (isMain) main().catch((error)=>{ console.error(error.message); process.exitCode=1; });

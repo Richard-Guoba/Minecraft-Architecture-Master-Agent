@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { helpTextForTest, parseStage7DatasetArgs } from '../src/buildCoarseSemanticVoxelDataset.js';
 import { writeStage7DatasetArtifacts } from '../src/construction/learning/coarseSemanticVoxelDataset.js';
 import { pendingCaseFixture } from './fixtures/stage7DatasetFixtures.js';
 
@@ -54,6 +55,11 @@ test('Stage 7 dataset CLI documents options and rejects duplicate cases', () => 
   const invalid=runCli(['--case','a','--case','a']);
   assert.notEqual(invalid.status,0);
   assert.match(invalid.stderr,/duplicate case id/i);
+});
+
+test('dataset help advertises v1, v2, and v3 without changing the default', () => {
+  assert.equal(parseStage7DatasetArgs([]).datasetVersion,'v1');
+  assert.match(helpTextForTest(),/--dataset-version v1\|v2\|v3/);
 });
 
 test('Stage 7 Dataset v2 consumes a source-bound review and rejects a stale one', async (t) => {

@@ -78,3 +78,26 @@ test('readiness requires six explicit outcomes and three eligible semantic accep
   const unsigned=buildStage7DatasetReadiness(buildStage7DatasetIndex({records,datasetVersion:'v2'}),{pilotCaseIds:ids});
   assert.equal(unsigned.reviewed_count,5);
 });
+
+test('Dataset v3 manifest keeps v2 as parent and requires plan-bound semantic acceptance', () => {
+  const record=datasetRecordFixture();
+  record.dataset_version='v3';
+  record.training.eligible=false;
+  record.training.blockers=['v3-semantic-review-unbound'];
+  record.artifacts.review_plan_sha256='e'.repeat(64);
+  record.extraction={
+    ...record.extraction,
+    extractor_version:'stage7-coarse-semantic-voxel-schematic-extractor-v3',
+    automated_semantic_status:'accepted',
+    semantic_status:'pending-review',
+    repair_classes:[],
+    repair_audit:[],
+    topology:{}
+  };
+  const result=buildStage7DatasetIndex({records:[record],datasetVersion:'v3',generatedAt:'2026-07-12T00:00:00.000Z'});
+  assert.equal(result.manifest.parent_dataset_version,'v2');
+  assert.equal(result.manifest.extractor,'stage7-coarse-semantic-voxel-schematic-extractor-v3');
+  assert.equal(result.manifest.training_eligible_count,0);
+  assert.equal(result.manifest.semantic_accepted_count,0);
+  assert.equal(result.splits.assignments[record.case_id],assignStage7DatasetSplit({caseId:record.case_id,origin:'real'}));
+});
