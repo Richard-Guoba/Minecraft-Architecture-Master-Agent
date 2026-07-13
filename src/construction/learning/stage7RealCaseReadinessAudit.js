@@ -7,9 +7,11 @@ import {
   parseStage7DatasetReviewOverlay
 } from './stage7DatasetReviewOverlay.js';
 import { evaluateStage7V3ReviewScope } from './stage7DatasetReviewScopeV3.js';
+import { hashCanonicalValue } from './coarseSemanticVoxelSchema.js';
 
 const DEFAULT_DATASET_ROOT = 'mc_templates/datasets/coarse_semantic_voxels/v3';
 const DEFAULT_REVIEW_OVERLAY = 'mc_templates/curation/stage7_dataset_reviews.jsonl';
+const DEFAULT_ARTIFACT_ROOT = '.tmp/stage7-dataset/v3';
 const TARGET_LAYERS = Object.freeze(['envelope', 'space', 'site']);
 const SCOPE_CODE_MAP = Object.freeze({
   'v3-semantic-review-unbound': 'V3_REVIEW_UNBOUND',
@@ -22,7 +24,8 @@ const SCOPE_CODE_MAP = Object.freeze({
 export async function auditStage7RealCaseReadiness({
   repositoryRoot = process.cwd(),
   datasetRoot = DEFAULT_DATASET_ROOT,
-  reviewOverlayPath = DEFAULT_REVIEW_OVERLAY
+  reviewOverlayPath = DEFAULT_REVIEW_OVERLAY,
+  artifactRoot = DEFAULT_ARTIFACT_ROOT
 } = {}) {
   const root = path.resolve(repositoryRoot);
   const inputs = [];
@@ -33,6 +36,7 @@ export async function auditStage7RealCaseReadiness({
   const manifest = manifestInput ? parseJson(manifestInput, globalBlockers) : null;
   const records = casesInput ? parseJsonl(casesInput, globalBlockers) : null;
   const reviews = reviewInput ? parseReviews(reviewInput, globalBlockers) : null;
+  const artifacts = await inspectArtifactRoot(root, artifactRoot);
 
   if (!manifest || !records || !reviews) return buildAudit({ inputs, globalBlockers, manifest, cases: [] });
   for (const caseId of ambiguousLatestReviewCaseIds(reviews)) {
@@ -64,13 +68,14 @@ export async function auditStage7RealCaseReadiness({
       ));
       continue;
     }
-    cases.push(auditCase({
+    cases.push(await auditCase({
       record: matches[0],
       review: byReviewCase.get(caseId) || null,
       casesSource: casesInput.source,
       reviewSource: reviewInput.source,
       manifest,
-      manifestSource: manifestInput.source
+      manifestSource: manifestInput.source,
+      artifacts
     }));
   }
   return buildAudit({ inputs, globalBlockers, manifest, cases });
@@ -124,7 +129,7 @@ function buildAudit({ inputs = [], globalBlockers = [], manifest = null, cases =
   };
 }
 
-function auditCase({ record, review, casesSource, reviewSource, manifest, manifestSource }) {
+async function auditCase({ record, review, casesSource, reviewSource, manifest, manifestSource, artifacts }) {
   const pointer = `/case_id=${record.case_id}`;
   const blockers = [];
   const addCase = (code, suffix, expected, actual) => blockers.push(blocker(code, casesSource, `${pointer}${suffix}`, expected, actual));
@@ -154,6 +159,7 @@ function auditCase({ record, review, casesSource, reviewSource, manifest, manife
   const trainingEligible = record.training?.eligible === true;
   const semanticAccepted = record.extraction?.semantic_status === 'accepted';
   if (!(trainingEligible && semanticAccepted)) blockers.push(blocker('GATE_THRESHOLD_UNMET', manifestSource, '/training_eligible_count', 'at least three eligible and semantic-accepted pilot cases', 0));
+  blockers.push(...await artifactBlockers(record, artifacts));
   return {
     case_id: record.case_id,
     training_eligible: trainingEligible,
@@ -161,6 +167,44 @@ function auditCase({ record, review, casesSource, reviewSource, manifest, manife
     gate_contribution: false,
     blockers: blockers.sort(compareBlockers)
   };
+}
+
+async function inspectArtifactRoot(root, requestedPath) {
+  const absolute = path.resolve(root, requestedPath);
+  const source = sourceFor(root, absolute);
+  if (!inside(root, absolute)) return { state: 'escape', absolute, source };
+  let stat;
+  try { stat = await fs.lstat(absolute); }
+  catch { return { state: 'missing', absolute, source }; }
+  if (stat.isSymbolicLink() || !stat.isDirectory()) return { state: 'missing', absolute, source };
+  return { state: 'ready', absolute, source, root };
+}
+
+async function artifactBlockers(record, artifacts) {
+  const pointer = `/case_id=${record.case_id}/artifacts/local_plan_path`;
+  if (artifacts.state === 'missing') return [blocker('LOCAL_ARTIFACT_ROOT_MISSING', artifacts.source, pointer, 'existing regular artifact root', 'missing')];
+  if (artifacts.state === 'escape') return [blocker('LOCAL_ARTIFACT_PATH_ESCAPE', artifacts.source, pointer, 'artifact root inside repository root', artifacts.source.path)];
+  const relative = String(record.artifacts?.local_plan_path || '');
+  const absolute = path.resolve(artifacts.absolute, relative);
+  if (!relative || !inside(artifacts.absolute, absolute)) {
+    return [blocker('LOCAL_ARTIFACT_PATH_ESCAPE', artifacts.source, pointer, 'relative path inside artifact root', relative)];
+  }
+  const source = sourceFor(artifacts.root, absolute);
+  let stat;
+  try { stat = await fs.lstat(absolute); }
+  catch { return [blocker('LOCAL_ARTIFACT_MISSING', source, pointer, 'existing regular local plan artifact', relative)]; }
+  if (stat.isSymbolicLink() || !stat.isFile()) {
+    return [blocker('LOCAL_ARTIFACT_PATH_ESCAPE', source, pointer, 'non-symbolic regular local plan artifact', relative)];
+  }
+  const bytes = await fs.readFile(absolute);
+  let plan;
+  try { plan = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+  catch { return [blocker('LOCAL_ARTIFACT_INVALID_JSON', sourceFor(artifacts.root, absolute, bytes), pointer, 'valid UTF-8 JSON local plan artifact', relative)]; }
+  const actualHash = hashCanonicalValue(plan);
+  if (actualHash !== record.artifacts?.plan_sha256) {
+    return [blocker('LOCAL_ARTIFACT_CANONICAL_HASH_MISMATCH', sourceFor(artifacts.root, absolute, bytes), pointer, record.artifacts?.plan_sha256 || 'recorded plan SHA-256', actualHash)];
+  }
+  return [];
 }
 
 async function readInput({ root, requestedPath, inputs, globalBlockers }) {

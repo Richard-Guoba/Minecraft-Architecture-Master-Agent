@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { tmpdir } from 'node:os';
@@ -8,6 +8,7 @@ import {
   canonicalizeStage7RealCaseReadinessAudit,
   renderStage7RealCaseReadinessMarkdown
 } from '../src/construction/learning/stage7RealCaseReadinessAudit.js';
+import { main as runReadinessAuditCli } from '../src/auditStage7RealCaseReadiness.js';
 
 test('canonical readiness audit serialization and Markdown are deterministic', () => {
   const audit = {
@@ -80,4 +81,56 @@ test('ambiguous latest review evidence fails closed', async (t) => {
   assert.ok(audit.global_blockers.some((blocker) => blocker.code === 'INPUT_AMBIGUOUS_REVIEW'));
   assert.equal(audit.authorizes_training, false);
   assert.ok(audit.cases.every((item) => item.gate_contribution === false));
+});
+
+test('missing local artifact root blocks every pilot without changing eligibility', async () => {
+  const audit = await auditStage7RealCaseReadiness({
+    repositoryRoot: process.cwd(),
+    datasetRoot: 'mc_templates/datasets/coarse_semantic_voxels/v3',
+    reviewOverlayPath: 'mc_templates/curation/stage7_dataset_reviews.jsonl',
+    artifactRoot: '.tmp/stage7-real-case-readiness-missing-artifacts'
+  });
+
+  assert.equal(audit.summary.training_eligible_count, 0);
+  assert.ok(audit.cases.every((item) => item.gate_contribution === false));
+  assert.ok(audit.cases.every((item) => item.blockers.some((blocker) => blocker.code === 'LOCAL_ARTIFACT_ROOT_MISSING')));
+});
+
+test('CLI writes the canonical advisory report pair outside Dataset roots', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'stage7-readiness-output-'));
+  const output = join(root, 'reports');
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const audit = await runReadinessAuditCli([
+    '--out', output,
+    '--artifact-root', '.tmp/stage7-real-case-readiness-missing-artifacts'
+  ]);
+
+  const json = JSON.parse(await readFile(join(output, 'stage7-real-case-readiness-audit.json'), 'utf8'));
+  const markdown = await readFile(join(output, 'stage7-real-case-readiness-audit.md'), 'utf8');
+  assert.equal(json.authorizes_training, false);
+  assert.deepEqual(json, audit);
+  assert.match(markdown, /Advisory only: yes/);
+});
+
+test('local plan canonical hash mismatch fails closed', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'stage7-readiness-artifact-'));
+  const artifactPlan = join(root, 'artifacts', 'cases', 'house-a-small-modern-house', 'plan.raw.json');
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await copyFile('mc_templates/datasets/coarse_semantic_voxels/v3/manifest.json', join(root, 'manifest.json'));
+  await copyFile('mc_templates/datasets/coarse_semantic_voxels/v3/cases.jsonl', join(root, 'cases.jsonl'));
+  await copyFile('mc_templates/curation/stage7_dataset_reviews.jsonl', join(root, 'reviews.jsonl'));
+  await mkdir(join(root, 'artifacts', 'cases', 'house-a-small-modern-house'), { recursive: true });
+  await writeFile(artifactPlan, '{"not":"the committed canonical plan"}\n', 'utf8');
+
+  const audit = await auditStage7RealCaseReadiness({
+    repositoryRoot: root,
+    datasetRoot: '.',
+    reviewOverlayPath: 'reviews.jsonl',
+    artifactRoot: 'artifacts'
+  });
+
+  const first = audit.cases.find((item) => item.case_id === 'house-a-small-modern-house');
+  assert.ok(first.blockers.some((blocker) => blocker.code === 'LOCAL_ARTIFACT_CANONICAL_HASH_MISMATCH'));
+  assert.equal(first.gate_contribution, false);
 });
