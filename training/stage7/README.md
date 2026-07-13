@@ -55,14 +55,17 @@ Fixture loss is a plumbing signal only. It is not quality evidence and must not 
 
 Fixture loading and real Dataset v3 loading are separate constructors with separate origins and roots. Normal real-data admission requires all of the following before tensor data is read:
 
+- `load_case` requests each canonical target layer (`envelope`, `space`, and `site`) exactly once; empty, partial, unknown, or duplicate real-mode requests fail closed because the current loader returns a complete three-layer plan and the model trains all three heads;
 - `training.eligible` is true;
 - review status is approved or limited for every requested learning area;
 - source permissions include `local-training`;
 - extraction semantic status is accepted;
-- both training and reviewed layer lists permit `envelope`, `space`, and `site` as requested;
+- both training and reviewed layer lists cover all of `envelope`, `space`, and `site`;
 - the review plan SHA-256 equals the exact Dataset v3 plan SHA-256;
 - the artifact path stays inside the configured real artifact root;
 - the local artifact SHA-256 matches the committed record.
+
+Fixture mode retains its existing per-layer request behavior for isolated synthetic smoke tests.
 
 The immutable Dataset v3 manifest currently has `ready_for_m3_real_data=false` and `training_eligible_count=0`. Real training is prohibited. The acceptance command reads that committed manifest before creating output and aborts unless those values are exactly `false` and `0`; it can never silently turn into a real-data training command. Dataset v1, v2, and v3 remain immutable.
 

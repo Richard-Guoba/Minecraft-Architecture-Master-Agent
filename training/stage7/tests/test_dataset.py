@@ -59,7 +59,7 @@ def test_real_mode_rejects_the_current_ineligible_v3_case_before_artifact_access
     first = json.loads((V3 / "cases.jsonl").read_text("utf8").splitlines()[0])
     dataset = Stage7Dataset.from_real(V3, tmp_path)
     with pytest.raises(DatasetGateError, match="not-training-eligible") as error:
-        dataset.load_case(first["case_id"], ("envelope",))
+        dataset.load_case(first["case_id"], ("envelope", "space", "site"))
     assert error.value.code == "not-training-eligible"
 
 
@@ -136,6 +136,35 @@ def test_real_mode_loads_a_limited_case_when_every_requested_layer_is_approved(e
     dataset, case_id = eligible_real_dataset({"review.status": "limited"})
 
     assert dataset.load_case(case_id, ("envelope", "space", "site")).origin == "real"
+
+
+@pytest.mark.parametrize(
+    "requested_layers",
+    [
+        (),
+        ("envelope",),
+        ("envelope", "space"),
+        ("envelope", "space", "site", "site"),
+    ],
+)
+def test_real_mode_rejects_incomplete_or_duplicate_target_layer_requests(
+    eligible_real_dataset,
+    requested_layers,
+):
+    dataset, case_id = eligible_real_dataset({})
+
+    with pytest.raises(DatasetGateError) as error:
+        dataset.load_case(case_id, requested_layers)
+
+    assert error.value.code == "layer-not-permitted"
+
+
+def test_real_mode_accepts_each_target_layer_once_in_any_order(eligible_real_dataset):
+    dataset, case_id = eligible_real_dataset({})
+
+    case = dataset.load_case(case_id, ("site", "envelope", "space"))
+
+    assert case.requested_layers == ("site", "envelope", "space")
 
 
 def test_real_mode_rejects_unknown_requested_layers(eligible_real_dataset):

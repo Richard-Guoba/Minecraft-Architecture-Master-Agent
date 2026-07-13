@@ -109,7 +109,10 @@ class Stage7Dataset:
 
     def load_case(self, case_id: str, requested_layers: tuple[str, ...]) -> Stage7Case:
         layers = tuple(requested_layers)
-        if any(layer not in LAYERS for layer in layers):
+        if any(layer not in LAYERS for layer in layers) or (
+            self.mode == "real"
+            and (len(layers) != len(LAYERS) or set(layers) != set(LAYERS))
+        ):
             raise DatasetGateError("layer-not-permitted", case_id)
 
         try:
