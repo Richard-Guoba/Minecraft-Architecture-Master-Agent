@@ -43,3 +43,43 @@ The visible primary facade aligns with the normalized min-Z projection, recorded
 - Ready for M3 real-data training: no
 
 For the remaining pilot cases, start a review timer before evidence collection and record source/license, semantic inspection, and correction time separately.
+
+## Review 2: Lakehouse
+
+| Field | Value |
+| --- | --- |
+| Case ID | `house-lakehouse` |
+| Source group | `mcbuild.org` |
+| Source SHA-256 | `626444079b0a9b4ad668b807c8d8b6e46fb8423ad04d02dabb704f857e91d971` |
+| Split | `train` (unchanged fixed split) |
+| Reviewed by | `stage7-curator-01` |
+| Reviewed at | `2026-07-13T08:00:24.041Z` |
+| Source attribution | Original designer unknown; page publication account `admin` |
+| Governance outcome | `research-only`; license `restricted`; `local-analysis` only |
+| Learning areas | Approved: none; blocked: `envelope`, `site`, `space` |
+| Canonical front | `north` |
+| Semantic outcome | `rejected` |
+| Sparse corrections | 0 |
+| Evidence reuse | Reused the checked McBuild terms baseline; independently checked this artifact's attribution, previews, and source-bound identity |
+| Source/license investigation minutes | 2 |
+| Semantic review minutes | 5 |
+| Correction minutes | 0 |
+| Total review minutes | 7; excludes review-pack generation and dataset rebuild time |
+
+### Evidence
+
+- Source page: <https://mcbuild.org/schematics/11323:lakehouse>
+- Site terms, updated 2026-06-28: <https://mcbuild.org/posts/terms>
+- The source page publishes the item `By admin` but provides no original designer or schematic-creator attribution.
+- The site terms baseline remains unchanged: without prior written permission, it prohibits automated collection, corpus construction, and using service content or data to develop, train, fine-tune, evaluate, or improve AI/ML models, systems, or datasets.
+
+### Semantic decision
+
+The visible facade with the tree on the left, chimney on the right, and lower entrance matches the normalized min-Z projection, recorded as canonical `north`. The extracted plan retains hard blockers for circulation, entrance, floor continuity, and roof. It labels 1,787 cells as vertical circulation across most of the normalized height, including 601 cells that overlap roof labels. Correcting this would require broad relabeling, so no sparse correction was approved and all three learning areas remain blocked.
+
+### Readiness impact
+
+- Explicit pilot outcomes: 2/6
+- Training-eligible pilot cases: 0
+- Semantic-accepted pilot cases: 0
+- Ready for M3 real-data training: no

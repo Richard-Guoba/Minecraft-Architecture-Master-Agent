@@ -2,7 +2,7 @@
 
 - Pilot cases: 6
 - Present: 6
-- Explicit review outcomes: 1
+- Explicit review outcomes: 2
 - Semantic accepted: 0
 - Training eligible: 0
 - Eligible and semantic accepted: 0
@@ -12,14 +12,14 @@
 
 | Blocker | Count |
 | --- | ---: |
-| canonical-front-side-unreviewed | 5 |
-| learning-area-envelope-blocked | 1 |
-| learning-area-envelope-not-approved | 5 |
-| learning-area-site-blocked | 1 |
-| learning-area-site-not-approved | 5 |
-| learning-area-space-blocked | 1 |
-| learning-area-space-not-approved | 5 |
+| canonical-front-side-unreviewed | 4 |
+| learning-area-envelope-blocked | 2 |
+| learning-area-envelope-not-approved | 4 |
+| learning-area-site-blocked | 2 |
+| learning-area-site-not-approved | 4 |
+| learning-area-space-blocked | 2 |
+| learning-area-space-not-approved | 4 |
 | license-not-training-approved | 6 |
-| review-status-pending | 5 |
-| review-status-research-only | 1 |
+| review-status-pending | 4 |
+| review-status-research-only | 2 |
 | semantic-validation-rejected | 6 |

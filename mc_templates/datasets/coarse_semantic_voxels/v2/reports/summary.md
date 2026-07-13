@@ -4,22 +4,22 @@
 - Training eligible: 0
 - Origins: {"real":64}
 - Splits: {"train":56,"test":5,"validation":3}
-- Review states: {"pending":63,"research-only":1}
-- License states: {"unknown":63,"restricted":1}
+- Review states: {"pending":62,"research-only":2}
+- License states: {"unknown":62,"restricted":2}
 - Semantic status: {"rejected":64}
 
 ## Training Blockers
 
 | Blocker | Count |
 | --- | ---: |
-| canonical-front-side-unreviewed | 63 |
-| learning-area-envelope-blocked | 1 |
-| learning-area-envelope-not-approved | 63 |
-| learning-area-site-blocked | 1 |
-| learning-area-site-not-approved | 63 |
-| learning-area-space-blocked | 1 |
-| learning-area-space-not-approved | 63 |
+| canonical-front-side-unreviewed | 62 |
+| learning-area-envelope-blocked | 2 |
+| learning-area-envelope-not-approved | 62 |
+| learning-area-site-blocked | 2 |
+| learning-area-site-not-approved | 62 |
+| learning-area-space-blocked | 2 |
+| learning-area-space-not-approved | 62 |
 | license-not-training-approved | 64 |
-| review-status-pending | 63 |
-| review-status-research-only | 1 |
+| review-status-pending | 62 |
+| review-status-research-only | 2 |
 | semantic-validation-rejected | 64 |
