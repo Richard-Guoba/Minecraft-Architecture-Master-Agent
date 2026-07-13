@@ -123,3 +123,43 @@ The dedicated source front view shows centered double doors, symmetric timber po
 - Training-eligible pilot cases: 0
 - Semantic-accepted pilot cases: 0
 - Ready for M3 real-data training: no
+
+## Review 4: Watermill
+
+| Field | Value |
+| --- | --- |
+| Case ID | `house-watermill` |
+| Source group | `mcbuild.org` |
+| Source SHA-256 | `7c11b9e15f8639be23dc895ce8eef1ff454045fc38e1e8dd37c757b133e70411` |
+| Split | `train` (unchanged fixed split) |
+| Reviewed by | `stage7-curator-01` |
+| Reviewed at | `2026-07-13T08:48:51.299Z` |
+| Source attribution | Original designer unknown; page publication account `fiavando` |
+| Governance outcome | `research-only`; license `restricted`; `local-analysis` only |
+| Learning areas | Approved: none; blocked: `envelope`, `site`, `space` |
+| Canonical front | `west` |
+| Semantic outcome | `rejected` |
+| Sparse corrections | 0 |
+| Evidence reuse | Reused the checked McBuild terms baseline; independently checked this artifact's attribution, three screenshots, raw directional projections, and source-bound identity |
+| Source/license investigation minutes | Approximately 2 |
+| Semantic review minutes | Approximately 5 |
+| Correction minutes | 0 |
+| Total review minutes | Approximately 7; excludes review-pack generation, tests, and dataset rebuild time |
+
+### Evidence
+
+- Source page: <https://mcbuild.org/schematics/18506:watermill>
+- Site terms, updated 2026-06-28: <https://mcbuild.org/posts/terms>
+- The source page publishes the item `By fiavando` but does not separately identify the original designer or schematic creator.
+- The site terms baseline remains unchanged: without prior written permission, it prohibits automated collection, corpus construction, and using service content or data to develop, train, fine-tune, evaluate, or improve AI/ML models, systems, or datasets.
+
+### Semantic decision
+
+The source front with two upper windows, a ground-level entrance, the cart and water feature on the left, and an attached canopy on the right matches the raw -X projection, recorded as canonical `west`; the prior `south` value was only the unreviewed diagnostic default. The 23×14×15 source is sparsely sampled into the 64³ target, leaving all 80 vertical-circulation cells as disconnected singletons; 11 overlap roof labels and no cell is labeled circulation. The extraction still fails circulation, entrance, floor-continuity, roof, usable-space, and vertical-circulation checks after 1,008 repair actions. Correcting this would require broad relabeling or extractor changes, so no sparse correction was approved and all three learning areas remain blocked.
+
+### Readiness impact
+
+- Explicit pilot outcomes: 4/6
+- Training-eligible pilot cases: 0
+- Semantic-accepted pilot cases: 0
+- Ready for M3 real-data training: no
