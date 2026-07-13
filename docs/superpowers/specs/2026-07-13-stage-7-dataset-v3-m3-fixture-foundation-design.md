@@ -2,7 +2,7 @@
 
 Date: 2026-07-13
 
-Status: Approved design, written specification pending final user review
+Status: Approved by the user on 2026-07-13
 
 ## Purpose
 
@@ -93,7 +93,7 @@ start = floor(j * N / 64)
 end   = floor((j + 1) * N / 64) - 1
 ```
 
-This also partitions the source axis without omission. Three-dimensional mappings are Cartesian products of the axis intervals. Mapping is integer-only, stable across platforms, and records source size, occupied size, ground alignment, vertical axis, reviewed canonical front, and transform version.
+This also partitions the source axis without omission. Three-dimensional mappings are Cartesian products of the axis intervals. Mapping is integer-only, stable across platforms, and records source size, occupied size, ground alignment, vertical axis, canonical-front state, and transform version. A reviewed front is authoritative. An unreviewed case may use `south` only as an explicit diagnostic default with a warning and training blocker so the full 64-case v3 index remains buildable without inventing a human orientation decision.
 
 ### `SemanticEvidenceV3`
 
@@ -113,7 +113,7 @@ The classifier emits independent raw layers:
 
 - `envelope`: `none`, `wall`, `opening`, `support`, `floor`, or `roof`;
 - `site`: `none`, `ground`, `path`, `water`, or `vegetation`;
-- `space`: `outside`, `public`, `private`, `service`, `circulation`, `vertical_circulation`, or `entrance`.
+- `space`: the existing canonical values `outside`, `public`, `private`, `service`, `circulation`, `vertical_circulation`, or `void`. Entrance is an internal topology role recorded in `entrance_keys`; its canonical cell representation remains `envelope: opening` plus `space: circulation`, so v3 does not widen the provider-neutral Stage 7 schema or invalidate v1/v2 artifacts.
 
 Roof classification uses exterior exposure, height, support below, and massing coverage. A stair-shaped roof block remains roof evidence. A stair or ladder becomes vertical circulation only when it participates in a connected traversable sequence between accepted floor regions.
 
@@ -174,7 +174,7 @@ Source-bound governance evidence remains reusable across dataset versions:
 
 Semantic approval is extraction-specific. Dataset v3 therefore treats every real case as not semantically approved until an append-only v3 review record binds the human conclusion to both the source SHA-256 and the v3 plan SHA-256. A v1/v2 semantic conclusion does not automatically transfer to v3.
 
-The review schema will support a versioned review scope containing `dataset_version`, `extractor_version`, and `plan_sha256`. Existing review records remain valid historical governance evidence. Until a v3-specific record exists, the case stays training-ineligible even if its source license would otherwise permit training.
+The review schema will support a versioned review scope containing `dataset_version`, `extractor_version`, and `plan_sha256`. Exact scope matching proves only that the human reviewed this extraction; it is not itself approval. The existing `approved_learning_areas` and `blocked_learning_areas` fields carry the human semantic decision, and a whole-case v3 semantic acceptance requires explicit approval of `envelope`, `site`, and `space`. Existing review records remain valid historical governance evidence. Until a v3-specific record exists, the case stays training-ineligible even if its source license would otherwise permit training.
 
 The six pilot cases retain `research-only`, `local-analysis`-only governance in v3. Improved diagnostic metrics cannot grant `local-training`, approve a learning area, or change semantic status without a new human decision.
 
