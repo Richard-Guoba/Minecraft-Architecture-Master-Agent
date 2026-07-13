@@ -83,3 +83,43 @@ The visible facade with the tree on the left, chimney on the right, and lower en
 - Training-eligible pilot cases: 0
 - Semantic-accepted pilot cases: 0
 - Ready for M3 real-data training: no
+
+## Review 3: Tavern
+
+| Field | Value |
+| --- | --- |
+| Case ID | `house-tavern` |
+| Source group | `mcbuild.org` |
+| Source SHA-256 | `09a29e7794aa2f8de33487b81b99a789ad470c0519a937098e12a5bd34c7d96b` |
+| Split | `train` (unchanged fixed split) |
+| Reviewed by | `stage7-curator-01` |
+| Reviewed at | `2026-07-13T08:28:01.788Z` |
+| Source attribution | Original designer unknown; page publication account `fiavando` |
+| Governance outcome | `research-only`; license `restricted`; `local-analysis` only |
+| Learning areas | Approved: none; blocked: `envelope`, `site`, `space` |
+| Canonical front | `east` |
+| Semantic outcome | `rejected` |
+| Sparse corrections | 0 |
+| Evidence reuse | Reused the checked McBuild terms baseline; independently checked this artifact's attribution, four screenshots, raw directional projections, and source-bound identity |
+| Source/license investigation minutes | 3 |
+| Semantic review minutes | 8 |
+| Correction minutes | 0 |
+| Total review minutes | 11; excludes review-pack generation, baseline tests, and dataset rebuild time |
+
+### Evidence
+
+- Source page: <https://mcbuild.org/schematics/18505:tavern>
+- Site terms, updated 2026-06-28: <https://mcbuild.org/posts/terms>
+- The source page publishes the item `By fiavando` but does not separately identify the original designer or schematic creator.
+- The site terms baseline remains unchanged: without prior written permission, it prohibits automated collection, corpus construction, and using service content or data to develop, train, fine-tune, evaluate, or improve AI/ML models, systems, or datasets.
+
+### Semantic decision
+
+The dedicated source front view shows centered double doors, symmetric timber posts, and a dominant gable. These features match the raw +X projection, recorded as canonical `east`; the prior `south` value was only the unreviewed diagnostic default. The 17×17×20 source is sparsely sampled into the 64³ target, leaving all 515 vertical-circulation cells as disconnected singletons across the normalized volume; 224 overlap roof labels and no cell is labeled circulation. The extraction still fails entrance, circulation, usable-space, roof, floor-continuity, and vertical-circulation checks after 1,862 repair actions. Correcting this would require broad relabeling or extractor changes, so no sparse correction was approved and all three learning areas remain blocked.
+
+### Readiness impact
+
+- Explicit pilot outcomes: 3/6
+- Training-eligible pilot cases: 0
+- Semantic-accepted pilot cases: 0
+- Ready for M3 real-data training: no
