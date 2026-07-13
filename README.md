@@ -4,7 +4,7 @@ Minecraft Architecture Master Agent is a Node.js research and engineering projec
 
 The long-term goal is not a one-shot prompt-to-block toy. The project is being shaped into a hybrid architecture agent that can retrieve references, propose concepts, build, critique, repair, benchmark, and learn from its own runs.
 
-[Static Homepage Source](docs/index.html) | [Architecture](docs/architecture.md) | [Roadmap](docs/roadmap.md) | [WSL Stage 7 Environment](docs/wsl-stage7-environment.md) | [Stage 1 Baseline](docs/benchmarks/stage1-readiness-baseline.md)
+[Static Homepage Source](docs/index.html) | [Architecture](docs/architecture.md) | [Roadmap](docs/roadmap.md) | [WSL Stage 7 Environment](docs/wsl-stage7-environment.md) | [Stage 7 M3 Fixture Guide](training/stage7/README.md) | [Stage 7 M3 Benchmark](docs/benchmarks/stage7-m3-fixture-foundation.md) | [Stage 1 Baseline](docs/benchmarks/stage1-readiness-baseline.md)
 
 The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled from the `docs/` folder without adding a frontend build step.
 
@@ -19,17 +19,20 @@ The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled f
 - Concept layer: Stage 3 Concept Studio can generate, select, or fuse multiple explainable design concepts before construction
 - Critique layer: Stage 4 Critic Council summarizes buildability, connectivity, habitation, style, composition, and site findings
 - Benchmark readiness: 10/10 baseline prompts generated, average scorecard 100/100, red flags 0, repair priority queue empty
-- Coarse semantic voxel layer: Stage 7 Milestone 1 defines the provider-neutral `64^3` shadow contract; Milestone 2 adds deterministic raw-schematic extraction; Milestone 2.5 adds source-bound review packs, sparse correction provenance, Dataset v2, and readiness gates
-- Active stage: Stage 7 Milestone 2.5 has generated a six-case trusted-data review pack and deterministic Dataset v2; it has 0 reviewed pilot outcomes and 0 training-eligible cases, so M3 real-data training remains blocked and the M1 shadow path still does not change primary geometry
+- Coarse semantic voxel layer: Stage 7 Milestone 1 defines the provider-neutral `64^3` shadow contract; M2/M2.5 establish governed extraction and review; immutable Dataset v3 fixes the coarse extraction foundation; and M3 adds a fixture-only CPU training/inference smoke path behind the existing Node shadow boundary.
+- Active stage: **Stage 7 M3 fixture-only foundation**. The committed two-case synthetic fixture path reproduces checkpoints and canonical inference, Node revalidates the untrusted plan, and Python shadow preserves ordered primary geometry. Dataset v3 remains `ready_for_m3_real_data=false` with `training_eligible_count=0`, so real training is prohibited and M4 Apply Mode is unavailable. See the [benchmark evidence](docs/benchmarks/stage7-m3-fixture-foundation.md).
+- Previous milestone record: the earlier line “Active stage: Stage 7 Milestone 2.5” described the trusted-data review-pack phase. Its real-case result remains 0 reviewed training approvals because all six explicit outcomes are research-only, not training-approved.
 
 ## Quick Start
 
-The canonical Stage 7 development environment is WSL2 Ubuntu on the Linux filesystem. Use the repository `.nvmrc` for Node.js and the Conda environment named `mcagent-stage7` for Python/PyTorch work; do not create a repository-local `.venv`. Follow the [WSL Stage 7 environment guide](docs/wsl-stage7-environment.md) before beginning M3 work. Normal generation and the existing Node test suite still do not require Python.
+The canonical Stage 7 development environment is WSL2 Ubuntu on the Linux filesystem. Use the repository `.nvmrc` for Node.js and the Conda environment named `mcagent-stage7` for Python/PyTorch work; do not create a repository-local `.venv`. Follow the [WSL Stage 7 environment guide](docs/wsl-stage7-environment.md) and [fixture workflow](training/stage7/README.md). Normal Node generation and `npm test` remain Python-independent.
 
 ```bash
 conda env create --file training/stage7/environment.yml
 conda run -n mcagent-stage7 python -m pip install -r training/stage7/requirements-wsl-cu130.lock
-conda run -n mcagent-stage7 python training/stage7/verify_environment.py --require-cuda
+conda run -n mcagent-stage7 python training/stage7/verify_environment.py
+npm run test:stage7:m3
+npm run accept:stage7:m3 -- --fixture-root fixtures/m3 --output runs/m3-acceptance --seed 7101 --steps 2
 ```
 
 ```powershell
@@ -91,7 +94,7 @@ Prompt
 -> PlannerAgent: room graph, circulation, privacy, functional topology
 -> ConceptStudioAgent: multi-concept design options, selection, or conservative fusion
 -> CreativeDesignAgent: design variation and template-guided composition
--> Stage 7 M1 Shadow + M2/M2.5 Dataset: runtime candidates remain shadow-only; offline schematics become governed v1/v2 records and source-bound human review packs
+-> Stage 7 M1-M3 Shadow + immutable Datasets v1/v2/v3: governed real cases stay gate-closed while the fixture-only Python provider remains untrusted and cannot change primary operations
 -> Structure/Facade/Roof/Site agents: specialist semantic plans
 -> CSGBuilder: shell, volumes, roofs, facade, site, structure modules
 -> BSPPartitioner: room rectangles and floor organization
@@ -120,6 +123,7 @@ docs/
   roadmap.md                 Long-term Architecture Master roadmap
   benchmarks/                Versioned benchmark summaries
   parameter-tree/            Parameter tree viewer and example
+training/stage7/             Optional fixture-only Python/PyTorch M3 subsystem
 ```
 
 See [docs/project-map.md](docs/project-map.md) for a more detailed guide.
@@ -128,6 +132,8 @@ See [docs/project-map.md](docs/project-map.md) for a more detailed guide.
 
 ```powershell
 npm test
+npm run test:stage7:m3
+npm run accept:stage7:m3 -- --fixture-root fixtures/m3 --output runs/m3-acceptance --seed 7101 --steps 2
 npm run benchmark:baseline -- --out out/stage1-readiness-baseline
 npm run query:templates -- "建一个湖边现代两层别墅，带大玻璃、水边平台、屋顶露台和精致内饰"
 npm run analyze:templates -- --offline
@@ -143,8 +149,11 @@ npm start -- --list-prompts
 - This repository produces Minecraft datapacks; it is not a Mineflayer real-time player bot.
 - It does not download Minecraft or simulate survival-mode resource gathering.
 - Generated `out/` artifacts, local credentials, and temporary files are intentionally not committed.
-- Python is reserved for optional future learning/training workflows, not for normal generation.
-- Stage 7 Milestone 2.5 does not train a model, invoke Python, or apply candidate geometry; pending, rejected, unlicensed, layer-disallowed, or semantically rejected cases cannot enter training.
+- Python is optional for the explicitly selected Stage 7 M3 fixture-only training/inference and shadow workflow; normal Node generation does not require it.
+- Fixture loss is a plumbing signal only, not evidence of model quality, accuracy, preference, or generalization.
+- Dataset v3 remains `ready_for_m3_real_data=false` and `training_eligible_count=0`. Pending, research-only, unlicensed, stale-plan, layer-disallowed, or semantically rejected real cases cannot enter training.
+- Python emits provider-neutral semantic layers only—never Minecraft blocks, commands, or blueprint operations. Node keeps immutable checkpoint/manifest snapshots, strict UTF-8 parsing, schema/repair/conversion/rejection, and exact rule-only fallback. M4 Apply Mode remains unavailable.
+- Stage 7 Python shadow does not change primary geometry, whether its learned semantic candidate converts or rejects.
 - Legacy `stage7-template-*` source identifiers refer to the older template-assimilation sequence, not Architecture Master Roadmap Stage 7.
 
 ## Development Direction
@@ -157,4 +166,4 @@ The project has moved past early showcase packaging. Current work should optimiz
 4. Use Stage 4 Critic Council findings to guide repair priorities.
 5. Keep Stage 5 neural retrieval optional and artifact-gated so rule-only generation remains reliable.
 6. Use Stage 6 semantic patch artifacts as the reviewable bridge toward future learned roof, facade, interior, and courtyard detail completion.
-7. Use Stage 7 M2.5 review packs, source-bound overlays, Dataset v2 readiness reports, and case-disjoint splits to obtain at least three truly eligible pilot cases before specifying M3 real-data training.
+7. Preserve the Stage 7 M3 fixture-only foundation and immutable v1/v2/v3 datasets while obtaining at least three truly eligible, exact-v3-plan-bound real cases before any separate real-data training proposal; keep Apply Mode reserved for M4.

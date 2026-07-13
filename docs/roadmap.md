@@ -659,7 +659,11 @@ RTX 4060 适合：
 
 ### Stage 7：粗语义体素生成
 
-当前 M2.5 状态：Stage 7 M1 的 `off|shadow` shadow mode 安全边界与 M2 的 64 案例确定性抽取保持不变。M2.5 已增加严格 source-bound review overlay、稀疏语义修正 provenance、六案例 review pack、Dataset v2 和 readiness gates；两次 v2 构建的五个核心产物哈希一致。当前六个试点仍有 0 条人工审核结果、0 个 semantic-accepted 且 training-eligible 案例，因此 `ready_for_m3_real_data=false`。审核人、许可证据、canonical front side 和 approved learning areas 不会由自动化推断；Python learned provider 留给 M3，apply mode 留给 M4。仓库里的 `stage7-template-*` 是更早的模板吸收编号，不代表本路线图 Stage 7 已完成。
+当前状态：**Stage 7 M3 fixture-only foundation**。M1 的 `off|shadow` shadow mode 安全边界、M2/M2.5 治理边界和 immutable Dataset v1/v2/v3 保持不变；独立 `training/stage7/` 子系统现在可以在 CPU 上用两个 committed synthetic fixtures 完成 deterministic training、checkpoint、canonical inference、Node schema validation 和 Python shadow operation parity。Python 仍是普通 Node generation 的可选组件，只输出 provider-neutral semantic layers；它不输出 Minecraft blocks、commands 或 primary `blueprint.operations`。fixture loss 只证明 plumbing，不是 model quality、accuracy、preference 或 generalization 证据。完整结果见 [Stage 7 M3 fixture foundation benchmark](benchmarks/stage7-m3-fixture-foundation.md)。
+
+真实数据门继续关闭：Dataset v3 明确记录 `ready_for_m3_real_data=false`、`training_eligible_count=0`，六个试点有 0 个 reviewed training approvals。fixture acceptance 会在输出或训练前核对这两个值；任何 real case 仍必须通过 reviewer、license、canonical front、approved layers、semantic acceptance、精确 v3 plan binding 和 local artifact hash gates。Stage 7 M4 Apply Mode 仍不可用，fixture checkpoint 只能走 shadow validation/rejection/fallback。仓库里的 `stage7-template-*` 是更早的模板吸收编号，不代表本路线图 Stage 7 已完成。
+
+历史 M2.5 记录（不再是当前状态）：当前 M2.5 状态：Stage 7 建立了 strict source-bound review overlay、sparse semantic correction provenance、六案例 review pack、Dataset v2 与 readiness gates。
 
 目标：让模型参与整体构图，但仍由规则系统保证可建造。
 

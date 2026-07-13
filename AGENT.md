@@ -92,8 +92,11 @@ architecture_scorecard.json
 
 - 已实现：Node.js ESM CLI、construction workflow、语义 agents、Template Knowledge Base v2、Minecraft Java 1.21.1 方块目录校验、CSG 空心外壳、BSP 室内切分、A* 门洞/楼梯、室内与装饰写入、QA/repair/evaluation、数据包导出、HTML 预览、运行报告和 scorecard。
 - 已验证：Stage 1 readiness baseline 已达到 10/10 prompts、平均 scorecard 100/100、red flags 0、repair priorities 0。
-- 当前阶段：Stage 7 Milestone 2.5 已建立六案例 source-bound review pack、严格 review overlay、稀疏修正 provenance、Dataset v2 和 readiness gates；当前有 0 条人工审核结果、0 training-eligible，M3 real-data gate 仍关闭。
-- Stage 7 M1 runtime 仍仅观察和导出候选；M2.5 仅离线审查和治理，不训练模型、不调用 Python、不修改主建造 operations。任何正资格案例都必须有真实 reviewer、许可证据、canonical front side、approved learning areas，并通过 semantic validation。
+- 当前阶段：**Stage 7 M3 fixture-only foundation**。两个 committed synthetic fixtures 已建立 CPU 训练、checkpoint、canonical inference、Node schema validation 与 Python shadow operation-parity 验收；fixture loss 只证明 plumbing，不代表质量、准确率、偏好或泛化。
+- Dataset v3 当前仍为 `ready_for_m3_real_data=false`、`training_eligible_count=0`，因此禁止 real-data training。六个真实试点有 0 个 reviewed training approvals；任何正资格案例都必须有真实 reviewer、许可证据、canonical front side、approved learning areas、精确 v3 plan binding，并通过 semantic validation。
+- Python 对普通 Node generation 和 `npm test` 仍是可选的；Python 只输出 provider-neutral semantic layers，不输出 Minecraft blocks、commands 或 blueprint operations。Node 继续负责 immutable checkpoint/manifest snapshots、strict UTF-8、schema validation、repair、conversion、rejection 和 rule-only fallback。
+- Stage 7 M4 Apply Mode 仍不可用；fixture checkpoint 只能进入显式 shadow 验收，不得伪装成 real-data prototype。证据见 [Stage 7 M3 fixture foundation benchmark](docs/benchmarks/stage7-m3-fixture-foundation.md)。
+- 历史状态语句（不再代表当前阶段）：当前阶段：Stage 7 Milestone 2.5。该阶段建立了 source-bound review pack、strict overlay、sparse correction provenance、Dataset v2 与 readiness gates。
 - 暂不包含：Mineflayer 连服控制、生存模式资源采集、模拟玩家逐块放置、自动下载 Minecraft。启动 Minecraft 仅支持通过用户配置的 `MINECRAFT_LAUNCH_COMMAND` 调用启动器命令。
 
 ## 文档入口
