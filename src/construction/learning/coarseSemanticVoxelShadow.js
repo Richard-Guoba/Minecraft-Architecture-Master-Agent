@@ -3,15 +3,264 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { buildStage7Condition } from './coarseSemanticVoxelCondition.js';
 import { deterministicCoarseSemanticVoxelProvider } from './coarseSemanticVoxelBaseline.js';
+import { createPythonCoarseSemanticVoxelProvider } from './pythonCoarseSemanticVoxelProvider.js';
 import { repairCoarseSemanticVoxelPlan } from './coarseSemanticVoxelRepair.js';
 import { convertSemanticVoxelPlanToProceduralPlan } from './semanticVoxelProceduralPlan.js';
-export const STAGE7_SHADOW_SOURCE='stage7-coarse-semantic-voxel-shadow-v1';
-export const STAGE7_FAILURE_SOURCE='stage7-coarse-semantic-voxel-failure-v1';
-export const MAX_STAGE7_ARTIFACT_BYTES=32*1024*1024;
-export function createArtifactCoarseSemanticVoxelProvider({artifactPath}={}){return Object.freeze({id:'artifact',async generate({options={}}={}){return readArtifact(options.artifactPath||artifactPath);}})}
-export function selectCoarseSemanticVoxelProvider(name,options={}){if(name==='baseline')return deterministicCoarseSemanticVoxelProvider;if(name==='artifact')return createArtifactCoarseSemanticVoxelProvider(options);throw new Error(`unsupported Milestone 1 coarse voxel provider: ${name}`)}
-export async function runCoarseSemanticVoxelShadow({mode='off',provider='baseline',artifactPath,...rest}={}){if(mode==='off')return {source:STAGE7_SHADOW_SOURCE,active:false,mode:'off',provider:'baseline',status:'disabled',reason:'Stage 7 coarse voxel mode is off'};let condition,rawPlan,repair;let stage='condition';try{const input=rest;condition=buildStage7Condition(input);if(mode!=='shadow')throw Error(`unsupported Milestone 1 coarse voxel mode: ${mode}`);stage='provider';rawPlan=await selectCoarseSemanticVoxelProvider(provider,{artifactPath}).generate({condition,options:{artifactPath}});stage='semantic-validation';repair=repairCoarseSemanticVoxelPlan({plan:rawPlan,condition});if(!repair.accepted)return reject({mode,provider,condition,rawPlan,repair,stage});stage='conversion';const candidate=convertSemanticVoxelPlanToProceduralPlan({plan:repair.plan,condition,...rest});const result={source:STAGE7_SHADOW_SOURCE,active:true,mode,provider,status:'converted',condition,rawPlan,repairedPlan:{...structuredClone(repair.plan),derived_sketches:candidate.sketches},repair,candidate,providerProvenance:rawPlan.__stage7ArtifactProvenance||rawPlan.provider};return {...result,report:renderCoarseSemanticVoxelShadowReport(result)};}catch(error){return reject({mode,provider,condition,rawPlan,repair,stage,error,artifactPath})}}
-export function compactCoarseSemanticVoxelShadow(r={}){if(!r.active)return undefined;const c=r.condition||{}, cand=r.candidate?.sketches||{};return {source:r.source,active:true,mode:r.mode,provider:r.provider,status:r.status,condition_hash:c.condition_hash,artifact_sha256:r.providerProvenance?.sha256||r.failureCase?.artifact?.sha256,selected_concept_id:c.design?.selected_concept_id,reference_ids:(c.references||[]).map(x=>x.case_id),raw_run_count:r.rawPlan?.runs?.length||0,repaired_run_count:r.repairedPlan?.runs?.length||0,repair_count:r.repair?.repairs?.length||0,blocker_count:r.repair?.blockers?.length||r.failureCase?.blockers?.length||0,massing_count:cand.massing?.length||0,space_zone_count:cand.spaces?.length||0,site_zone_count:cand.site?.length||0,warnings:r.warnings||[],fallback:r.status==='rejected'?'primary-build-unchanged':'not-needed'}}
-export function renderCoarseSemanticVoxelShadowReport(r={}){const c=r.condition||{}, p=r.repairedPlan?.summary||{}, sk=r.candidate?.sketches||{massing:[],spaces:[],site:[]}, f=r.failureCase||{};const lines=(a=[])=>a.length?a.map(x=>`- ${x.id||x.case_id||'item'}: ${x.message||x.reason||''}`).join('\n'):'- none';return `# Stage 7 Milestone 1 Coarse Semantic Voxel Shadow\n\n- Mode: ${r.mode||'off'}\n- Provider: ${r.provider||'baseline'}\n- Status: ${r.status||'unknown'}\n- Condition hash: ${c.condition_hash||'not-created'}\n- Artifact sha256: ${r.providerProvenance?.sha256||f.artifact?.sha256||'not-applicable'}\n- Selected concept: ${c.design?.selected_concept_id||'none'}\n- Raw runs: ${r.rawPlan?.runs?.length||0}\n- Repaired runs: ${r.repairedPlan?.runs?.length||0}\n\n## Semantic Layers\n\n- Envelope: ${JSON.stringify(p.envelope_counts||{})}\n- Space: ${sk.spaces?.length||0}\n- Site: ${sk.site?.length||0}\n- Massing: ${sk.massing?.length||0}\n\n## Reference Evidence\n\n${lines(c.references)}\n\n## Conflicts\n\n${lines(r.repair?.conflicts)}\n\n## Repairs\n\n${lines(r.repair?.repairs)}\n\n## Blockers\n\n${lines(r.repair?.blockers||f.blockers)}\n\n## Warnings\n\n${(r.warnings||[]).map(x=>`- ${x}`).join('\n')||'- none'}\n\n## Conversion Decision\n\n- Result: ${r.status==='converted'?'candidate semantic inputs exported for shadow review':`rejected during ${f.failure_stage||'unknown stage'}`}\n- Candidate applied to primary geometry: no\n`}
-async function readArtifact(p){if(!p)throw Error('Stage 7 artifact provider requires an artifact path');const f=path.resolve(p);let s;try{s=await fs.stat(f)}catch(e){const x=Error(`Could not read Stage 7 artifact: ${e.message}`);x.artifact={path:f};throw x}if(s.size>MAX_STAGE7_ARTIFACT_BYTES){const x=Error(`Stage 7 artifact exceeds ${MAX_STAGE7_ARTIFACT_BYTES} bytes`);x.artifact={path:f,byte_size:s.size};throw x}let t;try{t=await fs.readFile(f,'utf8')}catch(e){const x=Error(`Could not read Stage 7 artifact: ${e.message}`);x.artifact={path:f,byte_size:s.size};throw x}const a={path:f,byte_size:s.size,sha256:createHash('sha256').update(t).digest('hex')};let v;try{v=JSON.parse(t)}catch(e){const x=Error(`Could not parse Stage 7 artifact: ${e.message}`);x.artifact={...a,malformed_excerpt:t.slice(0,4096)};throw x}if(!v||typeof v!=='object'||Array.isArray(v)){const x=Error('Stage 7 artifact root must be an object');x.artifact={...a,malformed_excerpt:t.slice(0,4096)};throw x}Object.defineProperty(v,'__stage7ArtifactProvenance',{value:a});return v}
-function reject({mode,provider,condition,rawPlan,repair,stage,error,artifactPath}){const art=error?.artifact||rawPlan?.__stage7ArtifactProvenance||(artifactPath?{path:path.resolve(artifactPath)}:undefined);const failureCase={source:STAGE7_FAILURE_SOURCE,prompt:condition?.prompt,seed:condition?.seed,condition_hash:condition?.condition_hash,dimensions:condition?.dimensions,selected_concept_id:condition?.design?.selected_concept_id,reference_ids:(condition?.references||[]).map(x=>x.case_id),provider,failure_stage:stage,provider_name:rawPlan?.provider?.name,provider_metadata:rawPlan?.provider,artifact:art,schema_source:rawPlan?.source,schema_version:rawPlan?.schema_version,provider_error:error?.message,raw_plan_hash:art?.sha256,conflicts:repair?.conflicts||[],repairs:repair?.repairs||[],conversion_result:stage==='conversion'?{status:'failed',message:error?.message}:{status:'not-run'},blockers:repair?.blockers||[{id:'provider-or-converter-error',message:error?.message||'rejected'}],fallback:'primary-build-unchanged'};const r={source:STAGE7_SHADOW_SOURCE,active:true,mode,provider,status:'rejected',condition,rawPlan:provider==='baseline'?rawPlan:undefined,repair,failureCase,warnings:error?[error.message]:[]};return {...r,report:renderCoarseSemanticVoxelShadowReport(r)}}
+
+export const STAGE7_SHADOW_SOURCE = 'stage7-coarse-semantic-voxel-shadow-v1';
+export const STAGE7_FAILURE_SOURCE = 'stage7-coarse-semantic-voxel-failure-v1';
+export const MAX_STAGE7_ARTIFACT_BYTES = 32 * 1024 * 1024;
+
+export function createArtifactCoarseSemanticVoxelProvider({ artifactPath } = {}) {
+  return Object.freeze({
+    id: 'artifact',
+    async generate({ options = {} } = {}) {
+      return readArtifact(options.artifactPath || artifactPath);
+    }
+  });
+}
+
+export function selectCoarseSemanticVoxelProvider(name, options = {}) {
+  if (name === 'baseline') return deterministicCoarseSemanticVoxelProvider;
+  if (name === 'artifact') return createArtifactCoarseSemanticVoxelProvider(options);
+  if (name === 'python') return createPythonCoarseSemanticVoxelProvider(options);
+  throw new Error(`unsupported Stage 7 coarse voxel provider: ${name}`);
+}
+
+export async function runCoarseSemanticVoxelShadow({
+  mode = 'off',
+  provider = 'baseline',
+  artifactPath,
+  checkpointPath,
+  manifestPath,
+  pythonExecutable,
+  pythonInvoke,
+  ...rest
+} = {}) {
+  if (mode === 'off') {
+    return {
+      source: STAGE7_SHADOW_SOURCE,
+      active: false,
+      mode: 'off',
+      provider: 'baseline',
+      status: 'disabled',
+      reason: 'Stage 7 coarse voxel mode is off'
+    };
+  }
+
+  let condition;
+  let rawPlan;
+  let repair;
+  let stage = 'condition';
+  try {
+    condition = buildStage7Condition(rest);
+    if (mode !== 'shadow') throw new Error(`unsupported Stage 7 coarse voxel mode: ${mode}`);
+    stage = 'provider';
+    rawPlan = await selectCoarseSemanticVoxelProvider(provider, {
+      artifactPath,
+      checkpointPath,
+      manifestPath,
+      pythonExecutable,
+      invoke: pythonInvoke
+    }).generate({ condition, options: { artifactPath } });
+    stage = 'semantic-validation';
+    repair = repairCoarseSemanticVoxelPlan({ plan: rawPlan, condition });
+    if (!repair.accepted) {
+      return reject({ mode, provider, condition, rawPlan, repair, stage, artifactPath });
+    }
+    stage = 'conversion';
+    const candidate = convertSemanticVoxelPlanToProceduralPlan({ plan: repair.plan, condition, ...rest });
+    const result = {
+      source: STAGE7_SHADOW_SOURCE,
+      active: true,
+      mode,
+      provider,
+      status: 'converted',
+      condition,
+      rawPlan,
+      repairedPlan: { ...structuredClone(repair.plan), derived_sketches: candidate.sketches },
+      repair,
+      candidate,
+      providerProvenance: providerProvenance(rawPlan)
+    };
+    return { ...result, report: renderCoarseSemanticVoxelShadowReport(result) };
+  } catch (error) {
+    return reject({ mode, provider, condition, rawPlan, repair, stage, error, artifactPath });
+  }
+}
+
+export function compactCoarseSemanticVoxelShadow(result = {}) {
+  if (!result.active) return undefined;
+  const condition = result.condition || {};
+  const candidate = result.candidate?.sketches || {};
+  const provenance = result.providerProvenance || result.failureCase?.provider_metadata || {};
+  return {
+    source: result.source,
+    active: true,
+    mode: result.mode,
+    provider: result.provider,
+    status: result.status,
+    condition_hash: condition.condition_hash,
+    artifact_sha256: provenance.sha256 || result.failureCase?.artifact?.sha256,
+    checkpoint_sha256: provenance.checkpoint_sha256,
+    manifest_sha256: provenance.manifest_sha256,
+    training_scope: provenance.training_scope,
+    selected_concept_id: condition.design?.selected_concept_id,
+    reference_ids: (condition.references || []).map((item) => item.case_id),
+    raw_run_count: result.rawPlan?.runs?.length || 0,
+    repaired_run_count: result.repairedPlan?.runs?.length || 0,
+    repair_count: result.repair?.repairs?.length || 0,
+    blocker_count: result.repair?.blockers?.length || result.failureCase?.blockers?.length || 0,
+    massing_count: candidate.massing?.length || 0,
+    space_zone_count: candidate.spaces?.length || 0,
+    site_zone_count: candidate.site?.length || 0,
+    warnings: result.warnings || [],
+    fallback: result.status === 'rejected' ? 'primary-build-unchanged' : 'not-needed'
+  };
+}
+
+export function renderCoarseSemanticVoxelShadowReport(result = {}) {
+  const condition = result.condition || {};
+  const summary = result.repairedPlan?.summary || {};
+  const sketches = result.candidate?.sketches || { massing: [], spaces: [], site: [] };
+  const failure = result.failureCase || {};
+  const provenance = result.providerProvenance || failure.provider_metadata || {};
+  const lines = (items = []) => items.length
+    ? items.map((item) => `- ${item.id || item.case_id || 'item'}: ${item.message || item.reason || ''}`).join('\n')
+    : '- none';
+  return `# Stage 7 Coarse Semantic Voxel Shadow
+
+- Mode: ${result.mode || 'off'}
+- Provider: ${result.provider || 'baseline'}
+- Status: ${result.status || 'unknown'}
+- Condition hash: ${condition.condition_hash || 'not-created'}
+- Artifact sha256: ${provenance.sha256 || failure.artifact?.sha256 || 'not-applicable'}
+- Checkpoint sha256: ${provenance.checkpoint_sha256 || 'not-applicable'}
+- Manifest sha256: ${provenance.manifest_sha256 || 'not-applicable'}
+- Training scope: ${provenance.training_scope || 'not-applicable'}
+- Selected concept: ${condition.design?.selected_concept_id || 'none'}
+- Raw runs: ${result.rawPlan?.runs?.length || 0}
+- Repaired runs: ${result.repairedPlan?.runs?.length || 0}
+
+## Semantic Layers
+
+- Envelope: ${JSON.stringify(summary.envelope_counts || {})}
+- Space: ${sketches.spaces?.length || 0}
+- Site: ${sketches.site?.length || 0}
+- Massing: ${sketches.massing?.length || 0}
+
+## Reference Evidence
+
+${lines(condition.references)}
+
+## Conflicts
+
+${lines(result.repair?.conflicts)}
+
+## Repairs
+
+${lines(result.repair?.repairs)}
+
+## Blockers
+
+${lines(result.repair?.blockers || failure.blockers)}
+
+## Warnings
+
+${(result.warnings || []).map((item) => `- ${item}`).join('\n') || '- none'}
+
+## Conversion Decision
+
+- Result: ${result.status === 'converted' ? 'candidate semantic inputs exported for shadow review' : `rejected during ${failure.failure_stage || 'unknown stage'}`}
+- Candidate applied to primary geometry: no
+`;
+}
+
+async function readArtifact(inputPath) {
+  if (!inputPath) throw new Error('Stage 7 artifact provider requires an artifact path');
+  const file = path.resolve(inputPath);
+  let stat;
+  try {
+    stat = await fs.stat(file);
+  } catch (error) {
+    const failure = new Error(`Could not read Stage 7 artifact: ${error.message}`);
+    failure.artifact = { path: file };
+    throw failure;
+  }
+  if (stat.size > MAX_STAGE7_ARTIFACT_BYTES) {
+    const failure = new Error(`Stage 7 artifact exceeds ${MAX_STAGE7_ARTIFACT_BYTES} bytes`);
+    failure.artifact = { path: file, byte_size: stat.size };
+    throw failure;
+  }
+  let text;
+  try {
+    text = await fs.readFile(file, 'utf8');
+  } catch (error) {
+    const failure = new Error(`Could not read Stage 7 artifact: ${error.message}`);
+    failure.artifact = { path: file, byte_size: stat.size };
+    throw failure;
+  }
+  const artifact = { path: file, byte_size: stat.size, sha256: createHash('sha256').update(text).digest('hex') };
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch (error) {
+    const failure = new Error(`Could not parse Stage 7 artifact: ${error.message}`);
+    failure.artifact = { ...artifact, malformed_excerpt: text.slice(0, 4096) };
+    throw failure;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    const failure = new Error('Stage 7 artifact root must be an object');
+    failure.artifact = { ...artifact, malformed_excerpt: text.slice(0, 4096) };
+    throw failure;
+  }
+  Object.defineProperty(value, '__stage7ArtifactProvenance', { value: artifact });
+  return value;
+}
+
+function providerProvenance(rawPlan) {
+  return rawPlan?.__stage7PythonProvenance || rawPlan?.__stage7ArtifactProvenance || rawPlan?.provider;
+}
+
+function reject({ mode, provider, condition, rawPlan, repair, stage, error, artifactPath }) {
+  const artifact = error?.artifact || rawPlan?.__stage7ArtifactProvenance || (artifactPath ? { path: path.resolve(artifactPath) } : undefined);
+  const pythonMetadata = error?.stage7PythonProvenance || rawPlan?.__stage7PythonProvenance;
+  const metadata = pythonMetadata || rawPlan?.provider;
+  const failureCase = {
+    source: STAGE7_FAILURE_SOURCE,
+    prompt: condition?.prompt,
+    seed: condition?.seed,
+    condition_hash: condition?.condition_hash,
+    dimensions: condition?.dimensions,
+    selected_concept_id: condition?.design?.selected_concept_id,
+    reference_ids: (condition?.references || []).map((item) => item.case_id),
+    provider,
+    failure_stage: stage,
+    provider_name: rawPlan?.provider?.name || metadata?.model_name,
+    provider_metadata: metadata,
+    artifact,
+    schema_source: rawPlan?.source,
+    schema_version: rawPlan?.schema_version,
+    provider_error: error?.message,
+    raw_plan_hash: artifact?.sha256,
+    conflicts: repair?.conflicts || [],
+    repairs: repair?.repairs || [],
+    conversion_result: stage === 'conversion' ? { status: 'failed', message: error?.message } : { status: 'not-run' },
+    blockers: repair?.blockers || [{ id: 'provider-or-converter-error', message: error?.message || 'rejected' }],
+    fallback: 'primary-build-unchanged'
+  };
+  const result = {
+    source: STAGE7_SHADOW_SOURCE,
+    active: true,
+    mode,
+    provider,
+    status: 'rejected',
+    condition,
+    rawPlan: provider === 'artifact' ? undefined : rawPlan,
+    repair,
+    providerProvenance: pythonMetadata,
+    failureCase,
+    warnings: error ? [error.message] : []
+  };
+  return { ...result, report: renderCoarseSemanticVoxelShadowReport(result) };
+}

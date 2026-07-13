@@ -24,6 +24,8 @@ export async function runPipeline({
   critics = true,
   neuralRetrieval = false,
   coarseVoxelMode = 'off', coarseVoxelProvider = 'baseline', coarseVoxelPlan,
+  coarseVoxelCheckpoint, coarseVoxelCheckpointManifest, coarseVoxelPythonExecutable,
+  coarseVoxelPythonInvoke,
   cwd = process.cwd(),
   minecraftDir,
   world,
@@ -60,6 +62,7 @@ export async function runPipeline({
       critics,
       neuralRetrieval
       , coarseVoxelMode, coarseVoxelProvider, coarseVoxelPlan
+      , coarseVoxelCheckpoint, coarseVoxelCheckpointManifest, coarseVoxelPythonExecutable, coarseVoxelPythonInvoke
     });
   }
 
@@ -84,6 +87,7 @@ export async function runPipeline({
     critics,
     neuralRetrieval
     , coarseVoxelMode, coarseVoxelProvider, coarseVoxelPlan
+    , coarseVoxelCheckpoint, coarseVoxelCheckpointManifest, coarseVoxelPythonExecutable, coarseVoxelPythonInvoke
   });
 
   return {
@@ -108,6 +112,8 @@ export async function runCandidatePipeline({
   critics = true,
   neuralRetrieval = false,
   coarseVoxelMode = 'off', coarseVoxelProvider = 'baseline', coarseVoxelPlan,
+  coarseVoxelCheckpoint, coarseVoxelCheckpointManifest, coarseVoxelPythonExecutable,
+  coarseVoxelPythonInvoke,
   cwd = process.cwd(),
   minecraftDir,
   world,
@@ -158,6 +164,7 @@ export async function runCandidatePipeline({
           critics,
           neuralRetrieval
           , coarseVoxelMode, coarseVoxelProvider, coarseVoxelPlan
+          , coarseVoxelCheckpoint, coarseVoxelCheckpointManifest, coarseVoxelPythonExecutable, coarseVoxelPythonInvoke
         });
         const record = {
           id,

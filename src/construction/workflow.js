@@ -53,7 +53,9 @@ export async function runConstructionWorkflow({
   conceptStrategy = 'select',
   critics = true,
   neuralRetrieval = false,
-  coarseVoxelMode = 'off', coarseVoxelProvider = 'baseline', coarseVoxelPlan
+  coarseVoxelMode = 'off', coarseVoxelProvider = 'baseline', coarseVoxelPlan,
+  coarseVoxelCheckpoint, coarseVoxelCheckpointManifest, coarseVoxelPythonExecutable,
+  coarseVoxelPythonInvoke
 }) {
   if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
 
@@ -104,7 +106,23 @@ export async function runConstructionWorkflow({
     { conceptStudio }
   );
   ({ architecture, buildSpec, topology, creativeDesign } = applyCreativeDesign({ architecture, buildSpec, topology, creativeDesign, prompt }));
-  const stage7Shadow = await runCoarseSemanticVoxelShadow({ mode: coarseVoxelMode, provider: coarseVoxelProvider, artifactPath: coarseVoxelPlan, prompt, seed, architecture, buildSpec, topology, creativeDesign, conceptStudio, templateKnowledge });
+  const stage7Shadow = await runCoarseSemanticVoxelShadow({
+    mode: coarseVoxelMode,
+    provider: coarseVoxelProvider,
+    artifactPath: coarseVoxelPlan,
+    checkpointPath: coarseVoxelCheckpoint,
+    manifestPath: coarseVoxelCheckpointManifest,
+    pythonExecutable: coarseVoxelPythonExecutable,
+    pythonInvoke: coarseVoxelPythonInvoke,
+    prompt,
+    seed,
+    architecture,
+    buildSpec,
+    topology,
+    creativeDesign,
+    conceptStudio,
+    templateKnowledge
+  });
   const llmUsage = summarizeLlmUsage({ mode, llmProvider, architecture, topology, creativeDesign });
   const structure = new StructureAgent().run(architecture, buildSpec, topology);
   const facade = new FacadeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);

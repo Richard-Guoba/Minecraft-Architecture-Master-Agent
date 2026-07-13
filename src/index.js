@@ -32,6 +32,9 @@ function parseArgs(argv) {
     coarseVoxelMode: 'off',
     coarseVoxelProvider: 'baseline',
     coarseVoxelPlan: undefined,
+    coarseVoxelCheckpoint: undefined,
+    coarseVoxelCheckpointManifest: undefined,
+    coarseVoxelPythonExecutable: process.env.STAGE7_PYTHON_EXECUTABLE,
     minecraftDir: process.env.MINECRAFT_DIR,
     world: undefined,
     datapacksDir: process.env.ARCHITECT_DATAPACKS_DIR || resolveDatapacksTarget(process.env.ARCHITECT_DATAPACKS_TARGET),
@@ -94,13 +97,17 @@ function parseArgs(argv) {
       options.coarseVoxelMode = value;
     } else if (arg === '--coarse-voxel-provider') {
       const value = argv[++i];
-      if (value === 'python') throw new Error('Stage 7 python provider is reserved for Stage 7 Milestone 3.');
-      if (!['baseline', 'artifact'].includes(value)) throw new Error(`无效 Stage 7 coarse voxel provider: ${value}`);
+      if (!['baseline', 'artifact', 'python'].includes(value)) throw new Error(`无效 Stage 7 coarse voxel provider: ${value}`);
       options.coarseVoxelProvider = value;
     } else if (arg === '--coarse-voxel-plan') {
       const value = argv[++i];
       if (!value) throw new Error('--coarse-voxel-plan requires a path.');
       options.coarseVoxelPlan = path.resolve(value);
+    } else if (arg === '--coarse-voxel-checkpoint') {
+      const value = argv[++i];
+      if (!value) throw new Error('--coarse-voxel-checkpoint requires a path.');
+      options.coarseVoxelCheckpoint = path.resolve(value);
+      options.coarseVoxelCheckpointManifest = path.join(path.dirname(options.coarseVoxelCheckpoint), 'checkpoint_manifest.json');
     } else if (arg === '--minecraft-dir') {
       options.minecraftDir = path.resolve(argv[++i] || '');
     } else if (arg === '--world') {
@@ -136,9 +143,13 @@ function parseArgs(argv) {
 }
 
 function validateCoarseVoxelOptions(options) {
-  if (options.coarseVoxelMode === 'off' && (options.coarseVoxelProvider !== 'baseline' || options.coarseVoxelPlan)) throw new Error('Stage 7 provider options require shadow mode.');
+  if (options.coarseVoxelMode === 'off' && (options.coarseVoxelProvider !== 'baseline' || options.coarseVoxelPlan || options.coarseVoxelCheckpoint)) throw new Error('Stage 7 provider options require shadow mode.');
   if (options.coarseVoxelMode === 'shadow' && options.coarseVoxelProvider === 'artifact' && !options.coarseVoxelPlan) throw new Error('Stage 7 artifact provider requires --coarse-voxel-plan.');
+  if (options.coarseVoxelProvider === 'artifact' && options.coarseVoxelCheckpoint) throw new Error('Stage 7 artifact provider does not accept --coarse-voxel-checkpoint.');
+  if (options.coarseVoxelMode === 'shadow' && options.coarseVoxelProvider === 'python' && !options.coarseVoxelCheckpoint) throw new Error('Stage 7 python provider requires --coarse-voxel-checkpoint.');
+  if (options.coarseVoxelProvider === 'python' && options.coarseVoxelPlan) throw new Error('Stage 7 python provider does not accept --coarse-voxel-plan.');
   if (options.coarseVoxelProvider === 'baseline' && options.coarseVoxelPlan) throw new Error('--coarse-voxel-plan is only valid with the artifact provider.');
+  if (options.coarseVoxelProvider === 'baseline' && options.coarseVoxelCheckpoint) throw new Error('--coarse-voxel-checkpoint is only valid with the python provider.');
   if (options.coarseVoxelMode === 'shadow' && options.coarseVoxelProvider === 'artifact' && (options.candidates > 1 || options.candidateRounds > 1)) throw new Error('Stage 7 M1 artifact provider supports exactly one candidate and one round because each plan is bound to one condition hash.');
 }
 
@@ -173,9 +184,10 @@ Options:
   --no-critics               Disable Stage 4 Critic Council report and critic_council.json.
   --neural-retrieval        Opt into Stage 5 neural fusion retrieval when embedding artifacts are valid.
   --no-neural-retrieval     Keep Stage 5 retrieval disabled. This is the default MVP behavior.
-  --coarse-voxel-mode off|shadow       Stage 7 M1 mode. Defaults to off; shadow does not change primary geometry.
-  --coarse-voxel-provider baseline|artifact  Select deterministic baseline or a canonical external plan.
+  --coarse-voxel-mode off|shadow       Stage 7 mode. Defaults to off; shadow does not change primary geometry.
+  --coarse-voxel-provider baseline|artifact|python  Select baseline, canonical plan, or fixture-only M3 inference.
   --coarse-voxel-plan <path>           Canonical Stage 7 plan path required by the artifact provider.
+  --coarse-voxel-checkpoint <path>     Fixture-only M3 checkpoint; uses sibling checkpoint_manifest.json.
   --candidates <n>           Generate n candidates and auto-select the strongest local result.
   --auto-select              Shortcut for --candidates 3.
   --candidate-rounds <n>     Run up to n reflection rounds. Defaults to 1.
@@ -195,8 +207,8 @@ Options:
   Workflow:
   ArchitectAgent -> PlannerAgent -> CSGBuilder -> BSPPartitioner -> AStarPathfinder.
   construction_method_v1 is the only active generation pipeline.
-  Stage 7 M1: optional coarse semantic voxel shadow runs after CreativeDesign and before geometry.
-  Runtime: Node.js only. Python is not required.
+  Stage 7 M3: optional fixture-only Python semantic inference runs through the existing shadow boundary.
+  Runtime: Node.js by default. Python is optional and runs only when its provider is selected.
   API: configure your own provider in .env and use --mode llm.
   Mock: use --mode mock when no API key is available.
 `);
@@ -260,6 +272,9 @@ async function main() {
     coarseVoxelMode: options.coarseVoxelMode,
     coarseVoxelProvider: options.coarseVoxelProvider,
     coarseVoxelPlan: options.coarseVoxelPlan,
+    coarseVoxelCheckpoint: options.coarseVoxelCheckpoint,
+    coarseVoxelCheckpointManifest: options.coarseVoxelCheckpointManifest,
+    coarseVoxelPythonExecutable: options.coarseVoxelPythonExecutable,
     cwd: projectRoot,
     minecraftDir: options.minecraftDir,
     world: options.world,
