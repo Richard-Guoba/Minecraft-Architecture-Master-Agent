@@ -6,6 +6,7 @@ import pytest
 
 from mcagent_stage7.contracts import pretty_json_bytes, sha256_bytes
 from mcagent_stage7.dataset import Stage7Dataset
+from mcagent_stage7.train_fixture import TrainConfig, train_fixture
 
 
 STAGE7_ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +20,21 @@ def fixture_root() -> Path:
 @pytest.fixture
 def fixture_condition(fixture_root: Path) -> dict:
     return json.loads((fixture_root / "cases/one-floor-house/condition.json").read_text("utf8"))
+
+
+@pytest.fixture
+def trained_checkpoint(tmp_path, fixture_root):
+    return train_fixture(
+        TrainConfig(
+            fixture_root=fixture_root,
+            seed=7101,
+            steps=2,
+            learning_rate=1e-3,
+            device="cpu",
+            code_revision="test-revision",
+        ),
+        tmp_path / "trained",
+    )
 
 
 @pytest.fixture
