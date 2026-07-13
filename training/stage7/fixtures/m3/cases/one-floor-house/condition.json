@@ -1,0 +1,51 @@
+{
+  "condition_hash": "8e7dde35ab5ccb708d6ef66af9ba8beeb3a16e635938b48cb96fab8a0a48903e",
+  "constraints": {
+    "max_total_height": 40,
+    "minecraft_fill_limit": 32768,
+    "resolution": [
+      64,
+      64,
+      64
+    ]
+  },
+  "design": {
+    "abstract_site_tags": [
+      "unknown"
+    ],
+    "footprint": "rectangle",
+    "front_side": "south",
+    "massing_strategy": [
+      "unknown"
+    ],
+    "massing_volumes": [],
+    "quality_targets": [
+      "unknown"
+    ],
+    "selected_concept_id": "unknown",
+    "space_strategy": [
+      "unknown"
+    ],
+    "style_family": "unknown",
+    "topology_program": {
+      "edges": [],
+      "nodes": [],
+      "zoning": {}
+    },
+    "typology": "house"
+  },
+  "dimensions": {
+    "depth": 10,
+    "floor_height": 4,
+    "floors": 1,
+    "lot_depth": 20,
+    "lot_width": 24,
+    "total_height": 5,
+    "width": 12
+  },
+  "prompt": "Synthetic fixture for one-floor-house",
+  "references": [],
+  "schema_version": 1,
+  "seed": 7101,
+  "source": "stage7-coarse-semantic-voxel-condition-v1"
+}

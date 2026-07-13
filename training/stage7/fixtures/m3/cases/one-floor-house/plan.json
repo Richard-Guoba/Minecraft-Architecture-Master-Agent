@@ -1,0 +1,2192 @@
+{
+  "condition_hash": "8e7dde35ab5ccb708d6ef66af9ba8beeb3a16e635938b48cb96fab8a0a48903e",
+  "conflicts": [],
+  "derived_sketches": {
+    "massing": [],
+    "site": [],
+    "spaces": []
+  },
+  "encoding": "rle-x-v1",
+  "evidence": [
+    {
+      "detail": "Source-independent committed Stage 7 M3 fixture",
+      "id": "fixture:one-floor-house",
+      "kind": "synthetic-fixture",
+      "source_id": "one-floor-house"
+    }
+  ],
+  "orientation": {
+    "front_side": "south",
+    "vertical_axis": "y-up"
+  },
+  "provider": {
+    "checkpoint_version": null,
+    "dataset_version": "fixture-v1",
+    "kind": "synthetic-fixture",
+    "model_version": null,
+    "name": "stage7-m3-fixture-generator-v1"
+  },
+  "repairs": [],
+  "resolution": [
+    64,
+    64,
+    64
+  ],
+  "runs": [
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 2
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 3
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 4
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 5
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 6
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 8,
+      "x1": 16,
+      "y": 1,
+      "z": 6
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 19,
+      "y": 1,
+      "z": 6
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 2,
+      "z": 6
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 3,
+      "z": 6
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 4,
+      "z": 6
+    },
+    {
+      "confidence": 1,
+      "envelope": "roof",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 5,
+      "z": 6
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 8,
+      "x1": 16,
+      "y": 1,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 19,
+      "y": 1,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 2,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 9,
+      "x1": 16,
+      "y": 2,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 18,
+      "y": 2,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 2,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 3,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 9,
+      "x1": 16,
+      "y": 3,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 18,
+      "y": 3,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 3,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 4,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 9,
+      "x1": 16,
+      "y": 4,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 18,
+      "y": 4,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 4,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "roof",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 5,
+      "z": 7
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 8,
+      "x1": 16,
+      "y": 1,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 19,
+      "y": 1,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 2,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 9,
+      "x1": 16,
+      "y": 2,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 18,
+      "y": 2,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 2,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 3,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 9,
+      "x1": 16,
+      "y": 3,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 18,
+      "y": 3,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 3,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 4,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 9,
+      "x1": 16,
+      "y": 4,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 18,
+      "y": 4,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 4,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "roof",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 5,
+      "z": 8
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 8,
+      "x1": 16,
+      "y": 1,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 19,
+      "y": 1,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 2,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 9,
+      "x1": 16,
+      "y": 2,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 18,
+      "y": 2,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 2,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 3,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 9,
+      "x1": 16,
+      "y": 3,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 18,
+      "y": 3,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 3,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 4,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 9,
+      "x1": 16,
+      "y": 4,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "service",
+      "x0": 17,
+      "x1": 18,
+      "y": 4,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 4,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "roof",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 5,
+      "z": 9
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 10
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 8,
+      "x1": 19,
+      "y": 1,
+      "z": 10
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 2,
+      "z": 10
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 9,
+      "x1": 18,
+      "y": 2,
+      "z": 10
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 2,
+      "z": 10
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 3,
+      "z": 10
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 9,
+      "x1": 18,
+      "y": 3,
+      "z": 10
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 3,
+      "z": 10
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 4,
+      "z": 10
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "private",
+      "x0": 9,
+      "x1": 18,
+      "y": 4,
+      "z": 10
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 4,
+      "z": 10
+    },
+    {
+      "confidence": 1,
+      "envelope": "roof",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 5,
+      "z": 10
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 11
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 8,
+      "x1": 19,
+      "y": 1,
+      "z": 11
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 2,
+      "z": 11
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 9,
+      "x1": 18,
+      "y": 2,
+      "z": 11
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 2,
+      "z": 11
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 3,
+      "z": 11
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 9,
+      "x1": 18,
+      "y": 3,
+      "z": 11
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 3,
+      "z": 11
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 4,
+      "z": 11
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 9,
+      "x1": 18,
+      "y": 4,
+      "z": 11
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 4,
+      "z": 11
+    },
+    {
+      "confidence": 1,
+      "envelope": "roof",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 5,
+      "z": 11
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 12
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 8,
+      "x1": 19,
+      "y": 1,
+      "z": 12
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 2,
+      "z": 12
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 9,
+      "x1": 18,
+      "y": 2,
+      "z": 12
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 2,
+      "z": 12
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 3,
+      "z": 12
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 9,
+      "x1": 18,
+      "y": 3,
+      "z": 12
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 3,
+      "z": 12
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 4,
+      "z": 12
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 9,
+      "x1": 18,
+      "y": 4,
+      "z": 12
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 4,
+      "z": 12
+    },
+    {
+      "confidence": 1,
+      "envelope": "roof",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 5,
+      "z": 12
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 8,
+      "x1": 12,
+      "y": 1,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "circulation",
+      "x0": 13,
+      "x1": 14,
+      "y": 1,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 15,
+      "x1": 19,
+      "y": 1,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 2,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 9,
+      "x1": 12,
+      "y": 2,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "circulation",
+      "x0": 13,
+      "x1": 14,
+      "y": 2,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 15,
+      "x1": 18,
+      "y": 2,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 2,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 3,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 9,
+      "x1": 12,
+      "y": 3,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "circulation",
+      "x0": 13,
+      "x1": 14,
+      "y": 3,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 15,
+      "x1": 18,
+      "y": 3,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 3,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 4,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 9,
+      "x1": 12,
+      "y": 4,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "circulation",
+      "x0": 13,
+      "x1": 14,
+      "y": 4,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 15,
+      "x1": 18,
+      "y": 4,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 4,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "roof",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 5,
+      "z": 13
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 25,
+      "y": 0,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 8,
+      "x1": 12,
+      "y": 1,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "circulation",
+      "x0": 13,
+      "x1": 14,
+      "y": 1,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 15,
+      "x1": 19,
+      "y": 1,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 2,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 9,
+      "x1": 12,
+      "y": 2,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "circulation",
+      "x0": 13,
+      "x1": 14,
+      "y": 2,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 15,
+      "x1": 18,
+      "y": 2,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 2,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 3,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 9,
+      "x1": 12,
+      "y": 3,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "circulation",
+      "x0": 13,
+      "x1": 14,
+      "y": 3,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 15,
+      "x1": 18,
+      "y": 3,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 3,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 8,
+      "y": 4,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 9,
+      "x1": 12,
+      "y": 4,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "circulation",
+      "x0": 13,
+      "x1": 14,
+      "y": 4,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 15,
+      "x1": 18,
+      "y": 4,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 19,
+      "x1": 19,
+      "y": 4,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "roof",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 5,
+      "z": 14
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 11,
+      "y": 0,
+      "z": 15
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "path",
+      "space": "outside",
+      "x0": 12,
+      "x1": 13,
+      "y": 0,
+      "z": 15
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 14,
+      "x1": 25,
+      "y": 0,
+      "z": 15
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 8,
+      "x1": 12,
+      "y": 1,
+      "z": 15
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "circulation",
+      "x0": 13,
+      "x1": 14,
+      "y": 1,
+      "z": 15
+    },
+    {
+      "confidence": 1,
+      "envelope": "floor",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "public",
+      "x0": 15,
+      "x1": 19,
+      "y": 1,
+      "z": 15
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 12,
+      "y": 2,
+      "z": 15
+    },
+    {
+      "confidence": 1,
+      "envelope": "opening",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "circulation",
+      "x0": 13,
+      "x1": 14,
+      "y": 2,
+      "z": 15
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 15,
+      "x1": 19,
+      "y": 2,
+      "z": 15
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 3,
+      "z": 15
+    },
+    {
+      "confidence": 1,
+      "envelope": "wall",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 4,
+      "z": 15
+    },
+    {
+      "confidence": 1,
+      "envelope": "roof",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "none",
+      "space": "outside",
+      "x0": 8,
+      "x1": 19,
+      "y": 5,
+      "z": 15
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 11,
+      "y": 0,
+      "z": 16
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "path",
+      "space": "outside",
+      "x0": 12,
+      "x1": 13,
+      "y": 0,
+      "z": 16
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 14,
+      "x1": 25,
+      "y": 0,
+      "z": 16
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 11,
+      "y": 0,
+      "z": 17
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "path",
+      "space": "outside",
+      "x0": 12,
+      "x1": 13,
+      "y": 0,
+      "z": 17
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 14,
+      "x1": 25,
+      "y": 0,
+      "z": 17
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 11,
+      "y": 0,
+      "z": 18
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "path",
+      "space": "outside",
+      "x0": 12,
+      "x1": 13,
+      "y": 0,
+      "z": 18
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 14,
+      "x1": 25,
+      "y": 0,
+      "z": 18
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 11,
+      "y": 0,
+      "z": 19
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "path",
+      "space": "outside",
+      "x0": 12,
+      "x1": 13,
+      "y": 0,
+      "z": 19
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 14,
+      "x1": 25,
+      "y": 0,
+      "z": 19
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 11,
+      "y": 0,
+      "z": 20
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "path",
+      "space": "outside",
+      "x0": 12,
+      "x1": 13,
+      "y": 0,
+      "z": 20
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 14,
+      "x1": 25,
+      "y": 0,
+      "z": 20
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 2,
+      "x1": 11,
+      "y": 0,
+      "z": 21
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "path",
+      "space": "outside",
+      "x0": 12,
+      "x1": 13,
+      "y": 0,
+      "z": 21
+    },
+    {
+      "confidence": 1,
+      "envelope": "none",
+      "evidence_ids": [
+        "fixture:one-floor-house"
+      ],
+      "site": "ground",
+      "space": "outside",
+      "x0": 14,
+      "x1": 25,
+      "y": 0,
+      "z": 21
+    }
+  ],
+  "schema_version": 1,
+  "source": "stage7-coarse-semantic-voxel-plan-v1",
+  "summary": {},
+  "warnings": [],
+  "world_transform": {
+    "ground_y": 0,
+    "lot_depth": 20,
+    "lot_width": 24,
+    "total_height": 5
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "case_id": "one-floor-house",
+      "condition_path": "cases/one-floor-house/condition.json",
+      "condition_sha256": "20011654f3b2402e67ac2902de03fa311879fb8aa687e050f168f6f2cb8dfa93",
+      "fixture_only": true,
+      "origin": "synthetic-fixture",
+      "plan_path": "cases/one-floor-house/plan.json",
+      "plan_sha256": "55b252dd3c7d62945f085d4c287c425968a6f4f50615539043ece11a6715ab02",
+      "readiness_contribution": 0
+    },
+    {
+      "case_id": "two-floor-house",
+      "condition_path": "cases/two-floor-house/condition.json",
+      "condition_sha256": "dfeb1fa31a29067e03ab2d2134291726d60cfdf8646a90b7553510a370eea15a",
+      "fixture_only": true,
+      "origin": "synthetic-fixture",
+      "plan_path": "cases/two-floor-house/plan.json",
+      "plan_sha256": "097c5fb88e6f4445bf8c3b3320fb2b544e515fc8cda7e84213575b2311e7b8a9",
+      "readiness_contribution": 0
+    }
+  ],
+  "fixture_only": true,
+  "readiness_contribution": 0,
+  "schema_version": 1,
+  "source": "stage7-m3-fixture-dataset-v1"
+}
