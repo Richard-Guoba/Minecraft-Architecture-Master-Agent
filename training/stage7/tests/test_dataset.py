@@ -173,6 +173,40 @@ def test_real_mode_rejects_fixture_artifact_roots(artifact_root):
     assert error.value.code == "wrong-origin"
 
 
+def test_real_mode_rejects_fixture_plan_beneath_a_parent_artifact_root(tmp_path):
+    fixture_case = json.loads((FIXTURES / "manifest.json").read_text("utf8"))["cases"][0]
+    artifact_root = FIXTURES.parents[1]
+    fixture_plan = FIXTURES / fixture_case["plan_path"]
+    record = {
+        "case_id": "one-floor-house",
+        "dataset_version": "v3",
+        "origin": "real",
+        "source": {"allowed_uses": ["local-training"]},
+        "review": {"status": "approved", "approved_learning_areas": ["envelope", "space", "site"]},
+        "training": {"eligible": True, "permitted_layers": ["envelope", "space", "site"]},
+        "artifacts": {
+            "review_plan_sha256": fixture_case["plan_sha256"],
+            "plan_sha256": fixture_case["plan_sha256"],
+            "local_plan_path": fixture_plan.relative_to(artifact_root).as_posix(),
+        },
+        "extraction": {"semantic_status": "accepted"},
+    }
+    index_root = tmp_path / "index"
+    index_root.mkdir()
+    (index_root / "manifest.json").write_text(json.dumps({
+        "source": "stage7-coarse-semantic-voxel-dataset-v3",
+        "dataset_version": "v3",
+        "training_eligible_count": 1,
+    }), "utf8")
+    (index_root / "cases.jsonl").write_text(json.dumps(record) + "\n", "utf8")
+    dataset = Stage7Dataset.from_real(index_root, artifact_root)
+
+    with pytest.raises(DatasetGateError) as error:
+        dataset.load_case("one-floor-house", ("envelope", "space", "site"))
+
+    assert error.value.code == "wrong-origin"
+
+
 def test_real_mode_rejects_artifact_path_escape(eligible_real_dataset):
     dataset, case_id = eligible_real_dataset({"artifacts.local_plan_path": "../escape.json"})
 

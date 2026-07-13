@@ -13,6 +13,7 @@ REAL_DATASET_SOURCE = "stage7-coarse-semantic-voxel-dataset-v3"
 REAL_DATASET_VERSION = "v3"
 FIXTURE_ORIGIN = "synthetic-fixture"
 REAL_ORIGIN = "real"
+FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "m3"
 
 
 @dataclass(frozen=True)
@@ -77,8 +78,7 @@ class Stage7Dataset:
     def from_real(cls, index_root: Path, artifact_root: Path) -> Stage7Dataset:
         index_root = Path(index_root).resolve()
         artifact_root = Path(artifact_root).resolve()
-        fixture_root = Path(__file__).resolve().parents[1] / "fixtures" / "m3"
-        if _is_equal_to_or_inside(artifact_root, fixture_root):
+        if _is_equal_to_or_inside(artifact_root, FIXTURE_ROOT):
             raise DatasetGateError("wrong-origin", "<dataset>")
 
         manifest = _read_json(index_root / "manifest.json", "Dataset v3 manifest")
@@ -183,6 +183,7 @@ class Stage7Dataset:
             relative=artifacts.get("local_plan_path"),
             expected_sha256=artifacts["plan_sha256"],
             case_id=case_id,
+            forbidden_root=FIXTURE_ROOT,
         )
         return Stage7Case(
             case_id=case_id,
@@ -248,6 +249,7 @@ def _load_hashed_json(
     relative: Any,
     expected_sha256: Any,
     case_id: str,
+    forbidden_root: Path | None = None,
 ) -> dict[str, Any]:
     if not isinstance(relative, str) or not relative:
         raise DatasetGateError("unsafe-artifact-path", case_id)
@@ -257,6 +259,8 @@ def _load_hashed_json(
         path.relative_to(resolved_root)
     except (OSError, ValueError):
         raise DatasetGateError("unsafe-artifact-path", case_id) from None
+    if forbidden_root is not None and _is_equal_to_or_inside(path, forbidden_root):
+        raise DatasetGateError("wrong-origin", case_id)
 
     try:
         artifact_bytes = path.read_bytes()
