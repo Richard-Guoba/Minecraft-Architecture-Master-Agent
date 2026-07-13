@@ -1,12 +1,64 @@
 import json
+import re
 import subprocess
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 import mcagent_stage7.acceptance as acceptance
 from mcagent_stage7.acceptance import AcceptanceConfig, run_acceptance
+
+
+def test_benchmark_evidence_replay_pins_recorded_revision_and_hashes():
+    benchmark = (
+        Path(__file__).resolve().parents[3]
+        / "docs/benchmarks/stage7-m3-fixture-foundation.md"
+    ).read_text("utf8")
+
+    recorded_revision = re.search(
+        r"Recorded code revision: `([0-9a-f]{40})`\.", benchmark
+    )
+    assert recorded_revision is not None
+
+    mandatory = re.search(
+        r"## Mandatory acceptance\n(?P<body>.*?)\n## Immutable evidence replay",
+        benchmark,
+        re.DOTALL,
+    )
+    assert mandatory is not None
+    assert "records the current `HEAD`" in mandatory["body"]
+    mandatory_command = re.search(
+        r"```bash\n(?P<command>[^\n]+)\n```", mandatory["body"]
+    )
+    assert mandatory_command is not None
+    assert mandatory_command["command"] == (
+        "npm run accept:stage7:m3 -- --fixture-root fixtures/m3 "
+        "--output runs/m3-acceptance --seed 7101 --steps 2"
+    )
+
+    replay = re.search(
+        r"## Immutable evidence replay\n(?P<body>.*?)\n## Reproducibility hashes",
+        benchmark,
+        re.DOTALL,
+    )
+    assert replay is not None
+    replay_revision = re.search(
+        r"--code-revision ([0-9a-f]{40})(?:\s|$)", replay["body"]
+    )
+    assert replay_revision is not None
+    assert replay_revision[1] == recorded_revision[1]
+
+    acceptance_hash = re.search(
+        r"Acceptance JSON \| `([0-9a-f]{64})`", replay["body"]
+    )
+    manifest_hashes = re.findall(
+        r"Checkpoint manifest \| `([0-9a-f]{64})`", benchmark
+    )
+    assert acceptance_hash is not None
+    assert len(manifest_hashes) == 2
+    assert len(set(manifest_hashes)) == 1
 
 
 def test_acceptance_runs_twice_and_validates_the_node_boundary(tmp_path, fixture_root):
