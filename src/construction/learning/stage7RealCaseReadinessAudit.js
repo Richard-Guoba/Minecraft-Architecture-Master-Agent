@@ -189,6 +189,10 @@ async function artifactBlockers(record, artifacts) {
   if (!relative || !inside(artifacts.absolute, absolute)) {
     return [blocker('LOCAL_ARTIFACT_PATH_ESCAPE', artifacts.source, pointer, 'relative path inside artifact root', relative)];
   }
+  const symbolicLink = await firstSymbolicLink(artifacts.absolute, absolute);
+  if (symbolicLink) {
+    return [blocker('LOCAL_ARTIFACT_PATH_ESCAPE', sourceFor(artifacts.root, symbolicLink), pointer, 'local artifact path without symbolic links', relative)];
+  }
   const source = sourceFor(artifacts.root, absolute);
   let stat;
   try { stat = await fs.lstat(absolute); }
@@ -212,6 +216,11 @@ async function readInput({ root, requestedPath, inputs, globalBlockers }) {
   const source = sourceFor(root, absolute);
   if (!inside(root, absolute)) {
     globalBlockers.push(blocker('INPUT_PATH_ESCAPE', source, '', 'path inside repository root', requestedPath));
+    return null;
+  }
+  const symbolicLink = await firstSymbolicLink(root, absolute);
+  if (symbolicLink) {
+    globalBlockers.push(blocker('INPUT_SYMLINK', sourceFor(root, symbolicLink), '', 'path without symbolic links', requestedPath));
     return null;
   }
   let stat;
@@ -297,4 +306,16 @@ function sourceFor(root, absolute, bytes = Buffer.alloc(0)) {
 
 function sha256(value) { return createHash('sha256').update(value).digest('hex'); }
 function inside(root, candidate) { return candidate === root || candidate.startsWith(`${root}${path.sep}`); }
+async function firstSymbolicLink(root, candidate) {
+  const relative = path.relative(root, candidate);
+  if (!relative) return null;
+  let current = root;
+  for (const segment of relative.split(path.sep)) {
+    current = path.join(current, segment);
+    try {
+      if ((await fs.lstat(current)).isSymbolicLink()) return current;
+    } catch { return null; }
+  }
+  return null;
+}
 function compareBlockers(left, right) { return left.code.localeCompare(right.code) || left.source.pointer.localeCompare(right.source.pointer); }

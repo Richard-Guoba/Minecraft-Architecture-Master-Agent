@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { tmpdir } from 'node:os';
@@ -8,7 +8,10 @@ import {
   canonicalizeStage7RealCaseReadinessAudit,
   renderStage7RealCaseReadinessMarkdown
 } from '../src/construction/learning/stage7RealCaseReadinessAudit.js';
-import { main as runReadinessAuditCli } from '../src/auditStage7RealCaseReadiness.js';
+import {
+  assertReadinessAuditOutputOutsideDatasets,
+  main as runReadinessAuditCli
+} from '../src/auditStage7RealCaseReadiness.js';
 
 test('canonical readiness audit serialization and Markdown are deterministic', () => {
   const audit = {
@@ -100,6 +103,7 @@ test('CLI writes the canonical advisory report pair outside Dataset roots', asyn
   const root = await mkdtemp(join(tmpdir(), 'stage7-readiness-output-'));
   const output = join(root, 'reports');
   t.after(() => rm(root, { recursive: true, force: true }));
+  const before = await snapshotDatasetBytes();
 
   const audit = await runReadinessAuditCli([
     '--out', output,
@@ -111,6 +115,7 @@ test('CLI writes the canonical advisory report pair outside Dataset roots', asyn
   assert.equal(json.authorizes_training, false);
   assert.deepEqual(json, audit);
   assert.match(markdown, /Advisory only: yes/);
+  assert.deepEqual(await snapshotDatasetBytes(), before);
 });
 
 test('local plan canonical hash mismatch fails closed', async (t) => {
@@ -134,3 +139,81 @@ test('local plan canonical hash mismatch fails closed', async (t) => {
   assert.ok(first.blockers.some((blocker) => blocker.code === 'LOCAL_ARTIFACT_CANONICAL_HASH_MISMATCH'));
   assert.equal(first.gate_contribution, false);
 });
+
+test('Dataset v1 v2 and v3 roots are never valid audit output locations', () => {
+  for (const version of ['v1', 'v2', 'v3']) {
+    assert.throws(
+      () => assertReadinessAuditOutputOutsideDatasets(process.cwd(), `mc_templates/datasets/coarse_semantic_voxels/${version}/audit-output`),
+      /outside Dataset v1, v2, and v3 roots/
+    );
+  }
+});
+
+test('README documents the advisory-only readiness audit command', async () => {
+  const readme = await readFile('README.md', 'utf8');
+  assert.match(readme, /npm run audit:stage7:readiness -- --out <directory>/);
+  assert.match(readme, /cannot authorize training/);
+});
+
+test('symbolic links in Dataset input paths fail closed before evidence is read', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'stage7-readiness-symlink-'));
+  const target = join(root, 'real-dataset');
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(target);
+  await copyFile('mc_templates/datasets/coarse_semantic_voxels/v3/manifest.json', join(target, 'manifest.json'));
+  await copyFile('mc_templates/datasets/coarse_semantic_voxels/v3/cases.jsonl', join(target, 'cases.jsonl'));
+  await copyFile('mc_templates/curation/stage7_dataset_reviews.jsonl', join(root, 'reviews.jsonl'));
+  await symlink(target, join(root, 'dataset'), 'dir');
+
+  const audit = await auditStage7RealCaseReadiness({
+    repositoryRoot: root,
+    datasetRoot: 'dataset',
+    reviewOverlayPath: 'reviews.jsonl',
+    artifactRoot: 'missing-artifacts'
+  });
+
+  assert.ok(audit.global_blockers.some((blocker) => blocker.code === 'INPUT_SYMLINK'));
+  assert.equal(audit.cases.length, 0);
+  assert.equal(audit.authorizes_training, false);
+});
+
+test('symbolic links below the artifact root fail closed', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'stage7-readiness-artifact-symlink-'));
+  const artifactRoot = join(root, 'artifacts');
+  const targetCases = join(root, 'real-cases');
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await copyFile('mc_templates/datasets/coarse_semantic_voxels/v3/manifest.json', join(root, 'manifest.json'));
+  await copyFile('mc_templates/datasets/coarse_semantic_voxels/v3/cases.jsonl', join(root, 'cases.jsonl'));
+  await copyFile('mc_templates/curation/stage7_dataset_reviews.jsonl', join(root, 'reviews.jsonl'));
+  await mkdir(artifactRoot);
+  await mkdir(join(targetCases, 'house-a-small-modern-house'), { recursive: true });
+  await writeFile(join(targetCases, 'house-a-small-modern-house', 'plan.raw.json'), '{}\n', 'utf8');
+  await symlink(targetCases, join(artifactRoot, 'cases'), 'dir');
+
+  const audit = await auditStage7RealCaseReadiness({
+    repositoryRoot: root,
+    datasetRoot: '.',
+    reviewOverlayPath: 'reviews.jsonl',
+    artifactRoot: 'artifacts'
+  });
+
+  const first = audit.cases.find((item) => item.case_id === 'house-a-small-modern-house');
+  assert.ok(first.blockers.some((blocker) => blocker.code === 'LOCAL_ARTIFACT_PATH_ESCAPE'));
+});
+
+async function snapshotDatasetBytes() {
+  const roots = ['v1', 'v2', 'v3'].map((version) => `mc_templates/datasets/coarse_semantic_voxels/${version}`);
+  const entries = await Promise.all(roots.map((root) => snapshotDirectory(root)));
+  return entries.flat().sort((left, right) => left.path.localeCompare(right.path));
+}
+
+async function snapshotDirectory(root) {
+  const entries = await readdir(root, { withFileTypes: true });
+  const output = [];
+  for (const entry of entries) {
+    const file = join(root, entry.name);
+    if (entry.isDirectory()) output.push(...await snapshotDirectory(file));
+    else if (entry.isFile()) output.push({ path: file, bytes: (await readFile(file)).toString('base64') });
+  }
+  return output;
+}

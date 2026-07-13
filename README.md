@@ -21,6 +21,7 @@ The static homepage lives in `docs/index.html`, so GitHub Pages can be enabled f
 - Benchmark readiness: 10/10 baseline prompts generated, average scorecard 100/100, red flags 0, repair priority queue empty
 - Coarse semantic voxel layer: Stage 7 Milestone 1 defines the provider-neutral `64^3` shadow contract; M2/M2.5 establish governed extraction and review; immutable Dataset v3 fixes the coarse extraction foundation; and M3 adds a fixture-only CPU training/inference smoke path behind the existing Node shadow boundary.
 - Active stage: **Stage 7 M3 fixture-only foundation**. The committed two-case synthetic fixture path reproduces checkpoints and canonical inference, Node revalidates the untrusted plan, and Python shadow preserves ordered primary geometry. Dataset v3 remains `ready_for_m3_real_data=false` with `training_eligible_count=0`, so real training is prohibited and M4 Apply Mode is unavailable. See the [benchmark evidence](docs/benchmarks/stage7-m3-fixture-foundation.md).
+- Real-case readiness audit: `npm run audit:stage7:readiness -- --out <directory>` reads the fixed six Dataset v3 pilots and existing review evidence into canonical JSON/Markdown blockers. It is advisory-only, writes outside Dataset roots, and cannot authorize training.
 - Previous milestone record: the earlier line “Active stage: Stage 7 Milestone 2.5” described the trusted-data review-pack phase. Its real-case result remains 0 reviewed training approvals because all six explicit outcomes are research-only, not training-approved.
 
 ## Quick Start

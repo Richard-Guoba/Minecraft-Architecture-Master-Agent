@@ -49,7 +49,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (options.help) { console.log(helpText()); return null; }
   const repositoryRoot = process.cwd();
   const output = path.resolve(repositoryRoot, options.out);
-  rejectDatasetOutput(repositoryRoot, output);
+  assertReadinessAuditOutputOutsideDatasets(repositoryRoot, output);
   const audit = await auditStage7RealCaseReadiness({
     repositoryRoot,
     datasetRoot: options.datasetRoot,
@@ -87,7 +87,8 @@ async function writeAuditOutput(output, audit) {
   }
 }
 
-function rejectDatasetOutput(repositoryRoot, output) {
+export function assertReadinessAuditOutputOutsideDatasets(repositoryRoot, outputPath) {
+  const output = path.resolve(repositoryRoot, outputPath);
   for (const relative of DATASET_ROOTS) {
     const datasetRoot = path.resolve(repositoryRoot, relative);
     if (output === datasetRoot || output.startsWith(`${datasetRoot}${path.sep}`)) {
