@@ -141,7 +141,7 @@ function buildDatasetCondition({caseRecord,raster,volume}) {
   const derivedFloors=Array.isArray(raster.topology?.floor_levels)&&raster.topology.floor_levels.length
     ?raster.topology.floor_levels.length
     :null;
-  const floors=derivedFloors||Math.max(1,Math.min(5,Math.round(occupied[1]/4)));
+  const floors=Math.max(1,Math.min(5,derivedFloors||Math.round(occupied[1]/4)));
   const condition={
     source:STAGE7_CONDITION_SOURCE,schema_version:STAGE7_SCHEMA_VERSION,
     prompt:`reference schematic: ${caseRecord.title||caseRecord.case_id}`,

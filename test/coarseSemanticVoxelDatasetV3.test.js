@@ -1,10 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import {
   buildStage7DatasetCase,
   STAGE7_DATASET_EXTRACTOR_V3
 } from '../src/construction/learning/coarseSemanticVoxelDatasetCase.js';
+import { readSchematicBlockVolume } from '../src/construction/templates/schematicBlockVolume.js';
 import { oneFloorHouseV3Fixture } from './fixtures/stage7DatasetV3Fixtures.js';
 import { reviewedCaseFixture } from './fixtures/stage7DatasetFixtures.js';
 
@@ -100,4 +102,13 @@ test('one-floor v3 fixture matches the reviewed golden transform, layers, topolo
   }
   const expected = JSON.parse(await fs.readFile(goldenUrl, 'utf8'));
   assert.deepEqual(actual, expected);
+});
+
+test('v3 topology with more than five candidate floors stays within the M1 condition range', async () => {
+  const knowledgeBase=JSON.parse(await fs.readFile('mc_templates/analysis/case_library.v2.json','utf8'));
+  const caseRecord=knowledgeBase.cases.find((item)=>item.case_id==='arenas-tennis-court');
+  const volume=await readSchematicBlockVolume(path.resolve('mc_templates',caseRecord.file));
+  const result=buildStage7DatasetCase({volume,caseRecord,datasetVersion:'v3'});
+  assert.ok(result.record.extraction.topology.floor_levels.length>5);
+  assert.equal(result.condition.dimensions.floors,5);
 });
