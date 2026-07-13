@@ -163,3 +163,43 @@ The source front with two upper windows, a ground-level entrance, the cart and w
 - Training-eligible pilot cases: 0
 - Semantic-accepted pilot cases: 0
 - Ready for M3 real-data training: no
+
+## Review 5: Wood Modern House
+
+| Field | Value |
+| --- | --- |
+| Case ID | `house-wood-modern-house` |
+| Source group | `mcbuild.org` |
+| Source SHA-256 | `1d1e80eebfddf7675fc89aaab06e093a23d96b4faa24ae1370f5bf12ecd277e1` |
+| Split | `test` (unchanged fixed split) |
+| Reviewed by | `stage7-curator-01` |
+| Reviewed at | `2026-07-13T08:48:51.299Z` |
+| Source attribution | Creator and publication account `yackx`, based on the page byline and first-person description |
+| Governance outcome | `research-only`; license `restricted`; `local-analysis` only |
+| Learning areas | Approved: none; blocked: `envelope`, `site`, `space` |
+| Canonical front | `north` |
+| Semantic outcome | `rejected` |
+| Sparse corrections | 0 |
+| Evidence reuse | Reused the checked McBuild terms baseline; independently checked this artifact's attribution, source screenshot, raw directional projections, and source-bound identity |
+| Source/license investigation minutes | Approximately 3 |
+| Semantic review minutes | Approximately 6 |
+| Correction minutes | 0 |
+| Total review minutes | Approximately 9; excludes review-pack generation, tests, and dataset rebuild time |
+
+### Evidence
+
+- Source page: <https://mcbuild.org/schematics/15774:wood-modern-house>
+- Site terms, updated 2026-06-28: <https://mcbuild.org/posts/terms>
+- The source page publishes the item `By yackx`, and the description calls it `mi creation`, supporting `yackx` as both creator and publication account.
+- The site terms baseline remains unchanged: without prior written permission, it prohibits automated collection, corpus construction, and using service content or data to develop, train, fine-tune, evaluate, or improve AI/ML models, systems, or datasets.
+
+### Semantic decision
+
+The source view's main house mass, left-side deck, broad arrival stairs, and entrance arrangement match the raw min-Z projection, recorded as canonical `north`; the prior `south` value was only the unreviewed diagnostic default. The 23×16×23 source is sparsely sampled into the 64³ target, leaving all 331 vertical-circulation cells as disconnected singletons; 228 overlap roof labels and no cell is labeled circulation. The extraction still fails circulation, entrance, floor-continuity, roof, usable-space, and vertical-circulation checks after 1,706 repair actions. Correcting this would require broad relabeling or extractor changes, so no sparse correction was approved and all three learning areas remain blocked.
+
+### Readiness impact
+
+- Explicit pilot outcomes: 5/6
+- Training-eligible pilot cases: 0
+- Semantic-accepted pilot cases: 0
+- Ready for M3 real-data training: no

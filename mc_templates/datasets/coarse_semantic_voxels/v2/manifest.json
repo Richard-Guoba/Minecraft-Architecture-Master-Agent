@@ -23,7 +23,7 @@
     "reports": "reports/",
     "readiness": "reports/readiness.md"
   },
-  "reviewed_count": 4,
+  "reviewed_count": 5,
   "semantic_accepted_count": 0,
   "ready_for_m3_real_data": false
 }
