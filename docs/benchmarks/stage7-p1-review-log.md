@@ -203,3 +203,44 @@ The source view's main house mass, left-side deck, broad arrival stairs, and ent
 - Training-eligible pilot cases: 0
 - Semantic-accepted pilot cases: 0
 - Ready for M3 real-data training: no
+
+## Review 6: Japanese Pagoda Plus Tea House
+
+| Field | Value |
+| --- | --- |
+| Case ID | `temples-japanese-pagoda-plus-tea-house` |
+| Source group | `mcbuild.org` |
+| Source SHA-256 | `8033e6f2f38e895529df781b0b7824033aa89bde926528afd4bfbfc2bc5b49e0` |
+| Split | `train` (unchanged fixed split) |
+| Reviewed by | `stage7-curator-01` |
+| Reviewed at | `2026-07-13T08:48:51.299Z` |
+| Source attribution | Original designer unknown; page publication account `ohnoitswoody` |
+| Governance outcome | `research-only`; license `restricted`; `local-analysis` only |
+| Learning areas | Approved: none; blocked: `envelope`, `site`, `space` |
+| Canonical front | `east` |
+| Semantic outcome | `rejected` |
+| Sparse corrections | 0 |
+| Evidence reuse | Reused the checked McBuild terms baseline; independently checked this artifact's attribution, two screenshots, raw directional projections, and source-bound identity |
+| Source/license investigation minutes | Approximately 3 |
+| Semantic review minutes | Approximately 7 |
+| Correction minutes | 0 |
+| Total review minutes | Approximately 10; excludes review-pack generation, tests, and dataset rebuild time |
+
+### Evidence
+
+- Source page: <https://mcbuild.org/schematics/3393:japanese-pagoda-plus-tea-house>
+- Site terms, updated 2026-06-28: <https://mcbuild.org/posts/terms>
+- The source page publishes the item `By ohnoitswoody` but does not separately identify the original designer or schematic creator.
+- The site terms baseline remains unchanged: without prior written permission, it prohibits automated collection, corpus construction, and using service content or data to develop, train, fine-tune, evaluate, or improve AI/ML models, systems, or datasets.
+
+### Semantic decision
+
+Both source views place the pagoda on the left, the tea house on the right, and water in the foreground. This arrangement matches the raw +X projection, recorded as canonical `east`; the prior `south` value was only the unreviewed diagnostic default. The extraction labels 1,494 cells as vertical circulation across 448 disconnected components, with 1,426 overlapping roof labels; no cell is labeled circulation or entrance. It still fails circulation, entrance, floor-continuity, and massing-component checks after 1,839 repair actions. Correcting this would require broad relabeling or extractor changes, so no sparse correction was approved and all three learning areas remain blocked.
+
+### Readiness impact
+
+- Explicit pilot outcomes: 6/6
+- Training-eligible pilot cases: 0
+- Semantic-accepted pilot cases: 0
+- Ready for M3 real-data training: no
+- Next action: expand the fixed-split review candidate set; do not lower the readiness thresholds
