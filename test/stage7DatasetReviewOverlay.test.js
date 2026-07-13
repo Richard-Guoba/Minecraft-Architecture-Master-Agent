@@ -111,3 +111,26 @@ test('latest review wins while all record ids remain in lineage', () => {
   assert.equal(merged.get('house-tavern').status,'rejected');
   assert.deepEqual(merged.get('house-tavern').review_record_ids,['r1','r2']);
 });
+
+test('v3 review scope normalizes dataset, extractor, and plan binding', () => {
+  const record = completeReview({
+    dataset_version: 'v3',
+    extractor_version: 'stage7-coarse-semantic-voxel-schematic-extractor-v3',
+    plan_sha256: 'c'.repeat(64)
+  });
+  const parsed = parseStage7DatasetReviewOverlay(JSON.stringify(record));
+  assert.deepEqual(parsed.errors, []);
+  assert.equal(parsed.records[0].dataset_version, 'v3');
+  assert.equal(parsed.records[0].plan_sha256, 'c'.repeat(64));
+});
+
+test('partial v3 review scope is rejected while legacy unscoped records stay valid', () => {
+  const partial = parseStage7DatasetReviewOverlay(JSON.stringify(completeReview({
+    dataset_version: 'v3'
+  })));
+  assert.match(
+    partial.errors[0].message,
+    /review scope requires dataset_version, extractor_version, and plan_sha256/
+  );
+  assert.deepEqual(parseStage7DatasetReviewOverlay(JSON.stringify(completeReview())).errors, []);
+});

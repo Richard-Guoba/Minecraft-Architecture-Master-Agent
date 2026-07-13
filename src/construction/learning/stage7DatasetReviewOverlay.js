@@ -9,7 +9,7 @@ const ROOT_FIELDS=new Set([
   'record_id','case_id','source_sha256','reviewed_by','reviewed_at','status','canonical_front_side',
   'source_author','source_uploader','author_evidence',
   'license_status','allowed_uses','license_evidence','approved_learning_areas','blocked_learning_areas',
-  'semantic_corrections','notes'
+  'semantic_corrections','notes','dataset_version','extractor_version','plan_sha256'
 ]);
 const STATUSES=new Set(['pending','approved','limited','rejected','research-only']);
 const EXPLICIT_STATUSES=new Set(['approved','limited','rejected','research-only']);
@@ -62,6 +62,15 @@ export function validateStage7DatasetReviewRecord(record={}, {knownCases}={}) {
   }
   const approved=new Set(record.approved_learning_areas||[]); const blocked=new Set(record.blocked_learning_areas||[]);
   for (const layer of approved) if (blocked.has(layer)) errors.push(`learning area cannot be approved and blocked: ${layer}`);
+  const scoped=[record.dataset_version,record.extractor_version,record.plan_sha256];
+  if (scoped.some(Boolean)&&!scoped.every(Boolean)) errors.push('review scope requires dataset_version, extractor_version, and plan_sha256');
+  if (record.plan_sha256&&!/^[a-f0-9]{64}$/.test(record.plan_sha256)) errors.push('plan_sha256 must be lowercase SHA-256');
+  if (record.dataset_version&&record.dataset_version!=='v3') errors.push(`unsupported review dataset_version ${record.dataset_version}`);
+  if (scoped.every(Boolean)) {
+    if (!record.reviewed_by) errors.push('scoped semantic review requires reviewed_by');
+    if (!Number.isFinite(Date.parse(record.reviewed_at))) errors.push('scoped semantic review requires reviewed_at');
+    for (const layer of TARGET_LAYERS) if (!approved.has(layer)&&!blocked.has(layer)) errors.push(`scoped semantic review requires an explicit ${layer} decision`);
+  }
   if (['approved','limited'].includes(record.status)) {
     if (!record.reviewed_by) errors.push('positive review requires reviewed_by');
     if (!Number.isFinite(Date.parse(record.reviewed_at))) errors.push('positive review requires reviewed_at');
@@ -105,7 +114,10 @@ function normalizeRecord(raw) {
     license_evidence:String(raw.license_evidence||'').trim(),approved_learning_areas:sortedUnique(raw.approved_learning_areas),
     blocked_learning_areas:sortedUnique(raw.blocked_learning_areas),
     semantic_corrections:(Array.isArray(raw.semantic_corrections)?raw.semantic_corrections:[]).map(normalizeCorrection),
-    notes:String(raw.notes||'')
+    notes:String(raw.notes||''),
+    dataset_version:raw.dataset_version?String(raw.dataset_version).trim():null,
+    extractor_version:raw.extractor_version?String(raw.extractor_version).trim():null,
+    plan_sha256:raw.plan_sha256?String(raw.plan_sha256).trim().toLowerCase():null
   };
 }
 
