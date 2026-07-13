@@ -2,40 +2,72 @@ import path from 'node:path';
 import { applyStage7DatasetCorrections } from './coarseSemanticVoxelDatasetCorrections.js';
 import { evaluateStage7DatasetEligibility } from './coarseSemanticVoxelDatasetGovernance.js';
 import { rasterizeSchematicToStage7 } from './coarseSemanticVoxelDatasetRasterizer.js';
+import { rasterizeSchematicToStage7V3 } from './coarseSemanticVoxelDatasetRasterizerV3.js';
 import { repairCoarseSemanticVoxelPlan } from './coarseSemanticVoxelRepair.js';
+import { evaluateStage7V3ReviewScope } from './stage7DatasetReviewScopeV3.js';
+import {
+  enforceStage7V3RepairPolicy,
+  validateStage7SemanticTopologyV3
+} from './stage7SemanticValidatorV3.js';
 import {
   STAGE7_CONDITION_SOURCE, STAGE7_SCHEMA_VERSION, createStage7Plan,
-  hashCanonicalValue, validateStage7Condition, validateStage7Plan
+  decodeStage7Runs, hashCanonicalValue, validateStage7Condition, validateStage7Plan
 } from './coarseSemanticVoxelSchema.js';
 
 export const STAGE7_DATASET_EXTRACTOR='stage7-coarse-semantic-voxel-schematic-extractor-v1';
+export const STAGE7_DATASET_EXTRACTOR_V3='stage7-coarse-semantic-voxel-schematic-extractor-v3';
 
 export function buildStage7DatasetCase({volume,caseRecord={},reviewRecord=null,datasetVersion='v1',localArtifactRoot='.tmp/stage7-dataset/v1'}={}) {
   if (!/^[a-f0-9]{64}$/.test(volume?.source_sha256||'')) throw new Error('Stage 7 dataset source SHA-256 must be 64 lowercase hex characters');
   if (!caseRecord.case_id) throw new Error('Stage 7 dataset case requires case_id');
-  const raster=rasterizeSchematicToStage7({volume,caseRecord});
-  const corrections=reviewRecord?.semantic_corrections||[];
-  if (corrections.length&&!reviewRecord?.record_id) throw new Error('Stage 7 semantic corrections require review record provenance');
-  const correctionEvidenceId=corrections.length?`review:${reviewRecord.record_id}`:null;
-  const corrected=applyStage7DatasetCorrections({cells:raster.cells,corrections,evidenceId:correctionEvidenceId});
+  const isV3=datasetVersion==='v3';
+  const extractor=isV3?STAGE7_DATASET_EXTRACTOR_V3:STAGE7_DATASET_EXTRACTOR;
+  const raster=isV3
+    ?rasterizeSchematicToStage7V3({volume,caseRecord})
+    :rasterizeSchematicToStage7({volume,caseRecord});
   const condition=buildDatasetCondition({caseRecord,raster,volume});
   const conditionValidation=validateStage7Condition(condition);
   if (!conditionValidation.ok) throw new Error(`invalid extracted Stage 7 condition: ${conditionValidation.errors.join('; ')}`);
+  const provider={kind:'dataset-extraction',name:extractor,model_version:null,dataset_version:datasetVersion};
+  const evidence=[{
+    id:`source:${caseRecord.case_id}`,kind:'raw-schematic',source_id:volume.source_sha256,
+    detail:caseRecord.file||caseRecord.source?.file||''
+  }];
+  const reviewPlan=createStage7Plan({condition,provider,cells:raster.cells,evidence});
+  const reviewPlanSha256=hashCanonicalValue(reviewPlan);
+  const reviewScope=isV3?evaluateStage7V3ReviewScope({
+    reviewRecord,sourceSha256:volume.source_sha256,extractorVersion:extractor,reviewPlanSha256
+  }):{applies:true,semanticAccepted:true,blockers:[]};
+  const corrections=reviewScope.applies?(reviewRecord?.semantic_corrections||[]):[];
+  if (corrections.length&&!reviewRecord?.record_id) throw new Error('Stage 7 semantic corrections require review record provenance');
+  const correctionEvidenceId=corrections.length?`review:${reviewRecord.record_id}`:null;
+  const corrected=applyStage7DatasetCorrections({cells:raster.cells,corrections,evidenceId:correctionEvidenceId});
   const rawPlan=createStage7Plan({
     condition,
-    provider:{kind:'dataset-extraction',name:STAGE7_DATASET_EXTRACTOR,model_version:null,dataset_version:datasetVersion},
-    cells:corrected.cells,
+    provider,cells:corrected.cells,
     evidence:[
-      {id:`source:${caseRecord.case_id}`,kind:'raw-schematic',source_id:volume.source_sha256,detail:caseRecord.file||caseRecord.source?.file||''},
+      ...evidence,
       ...(corrections.length?[{id:correctionEvidenceId,kind:'human-semantic-correction',source_id:reviewRecord.record_id,detail:`${corrections.length} reviewed sparse correction(s)`}]:[])
     ]
   });
   const schema=validateStage7Plan(rawPlan,{condition});
   if (!schema.ok) throw new Error(`invalid extracted Stage 7 plan: ${schema.errors.join('; ')}`);
   const repair=repairCoarseSemanticVoxelPlan({plan:rawPlan,condition});
+  const topologyValidation=isV3?validateStage7SemanticTopologyV3({
+    cells:corrected.cells,topology:raster.topology,requiredFloors:condition.dimensions.floors
+  }):null;
+  const repairPolicy=isV3?enforceStage7V3RepairPolicy({
+    beforeCells:corrected.cells,
+    repairResult:{...repair,decodedCells:repair.plan?decodeStage7Runs(repair.plan.runs):[]}
+  }):null;
+  const automatedAccepted=isV3
+    ?topologyValidation.accepted&&repairPolicy.accepted
+    :repair.accepted;
+  const semanticAccepted=automatedAccepted&&reviewScope.semanticAccepted;
   const governance=evaluateStage7DatasetEligibility({caseRecord});
   const trainingBlockers=[...governance.blockers];
-  if (!repair.accepted) trainingBlockers.push('semantic-validation-rejected');
+  if (isV3) trainingBlockers.push(...reviewScope.blockers);
+  if (!automatedAccepted) trainingBlockers.push('semantic-validation-rejected');
   const paths=artifactPaths(caseRecord.case_id);
   const record={
     case_id:caseRecord.case_id,
@@ -45,7 +77,7 @@ export function buildStage7DatasetCase({volume,caseRecord={},reviewRecord=null,d
     source:{
       file:caseRecord.file||caseRecord.source?.file||'',sha256:volume.source_sha256,
       url:caseRecord.source?.url||'',author:caseRecord.source?.author||'',
-      ...(datasetVersion==='v2'?{
+      ...(datasetVersion!=='v1'?{
         uploader:caseRecord.source?.uploader||'',
         author_evidence:caseRecord.source?.author_evidence||''
       }:{}),
@@ -61,26 +93,42 @@ export function buildStage7DatasetCase({volume,caseRecord={},reviewRecord=null,d
       canonical_front_side:caseRecord.review?.canonical_front_side||null,
       review_record_ids:[...new Set(caseRecord.review?.review_record_ids||[])].sort()
     },
-    training:{eligible:governance.eligible&&repair.accepted,permitted_layers:governance.permitted_layers,blockers:[...new Set(trainingBlockers)].sort()},
+    training:{eligible:governance.eligible&&(isV3?semanticAccepted:repair.accepted),permitted_layers:governance.permitted_layers,blockers:[...new Set(trainingBlockers)].sort()},
     original_bounds:raster.original_bounds,
     normalized_transform:raster.normalized_transform,
     artifacts:{
-      condition_sha256:hashCanonicalValue(condition),plan_sha256:hashCanonicalValue(rawPlan),
-      repaired_plan_sha256:repair.accepted?hashCanonicalValue(repair.plan):null,
+      condition_sha256:hashCanonicalValue(condition),
+      ...(isV3?{review_plan_sha256:reviewPlanSha256}:{}),
+      plan_sha256:hashCanonicalValue(rawPlan),
+      repaired_plan_sha256:automatedAccepted?hashCanonicalValue(repair.plan):null,
       local_condition_path:paths.condition,local_plan_path:paths.rawPlan,
-      local_repaired_plan_path:repair.accepted?paths.repairedPlan:null
+      local_repaired_plan_path:automatedAccepted?paths.repairedPlan:null
     },
     extraction:{
-      schema_valid:schema.ok,semantic_status:repair.accepted?'accepted':'rejected',run_count:rawPlan.runs.length,
-      ...(datasetVersion==='v2'?{
+      schema_valid:schema.ok,
+      ...(isV3?{extractor_version:extractor,automated_semantic_status:automatedAccepted?'accepted':'rejected'}:{}),
+      semantic_status:isV3
+        ?(semanticAccepted?'accepted':!automatedAccepted||reviewScope.applies?'rejected':'pending-review')
+        :(repair.accepted?'accepted':'rejected'),
+      run_count:rawPlan.runs.length,
+      ...((datasetVersion==='v2'||isV3)?{
         correction_count:corrected.applied.length,
         correction_sha256:corrected.applied.length?hashCanonicalValue(corrected.applied):null
       }:{}),
-      repair_count:repair.repairs?.length||0,blockers:(repair.blockers||[]).map((item)=>item.id||String(item)).sort(),
+      repair_count:repair.repairs?.length||0,
+      ...(isV3?{
+        repair_classes:[...new Set((repair.repairs||[]).map((item)=>item.reason))].sort(),
+        repair_audit:repairPolicy.repair_audit,topology:raster.topology
+      }:{}),
+      blockers:[...new Set([
+        ...(repair.blockers||[]).map((item)=>item.id||String(item)),
+        ...(topologyValidation?.blockers||[]).map((item)=>item.id),
+        ...(repairPolicy?.blockers||[]).map((item)=>item.id)
+      ])].sort(),
       warnings:[...new Set([...(raster.warnings||[]),...(repair.warnings||[])])].sort(),stats:raster.stats
     }
   };
-  return {condition,rawPlan,repairedPlan:repair.accepted?repair.plan:null,record,report:renderStage7DatasetCaseReport(record),localArtifactRoot:path.resolve(localArtifactRoot)};
+  return {condition,rawPlan,repairedPlan:automatedAccepted?repair.plan:null,record,report:renderStage7DatasetCaseReport(record),localArtifactRoot:path.resolve(localArtifactRoot)};
 }
 
 export function renderStage7DatasetCaseReport(record={}) {
@@ -90,11 +138,15 @@ export function renderStage7DatasetCaseReport(record={}) {
 
 function buildDatasetCondition({caseRecord,raster,volume}) {
   const occupied=raster.normalized_transform.occupied_size;
+  const derivedFloors=Array.isArray(raster.topology?.floor_levels)&&raster.topology.floor_levels.length
+    ?raster.topology.floor_levels.length
+    :null;
+  const floors=derivedFloors||Math.max(1,Math.min(5,Math.round(occupied[1]/4)));
   const condition={
     source:STAGE7_CONDITION_SOURCE,schema_version:STAGE7_SCHEMA_VERSION,
     prompt:`reference schematic: ${caseRecord.title||caseRecord.case_id}`,
     seed:Number.parseInt(volume.source_sha256.slice(0,8),16),
-    dimensions:{width:Math.max(1,occupied[0]),depth:Math.max(1,occupied[2]),floors:Math.max(1,Math.min(5,Math.round(occupied[1]/4))),floor_height:4,total_height:Math.max(1,occupied[1]),lot_width:Math.max(1,volume.width),lot_depth:Math.max(1,volume.length)},
+    dimensions:{width:Math.max(1,occupied[0]),depth:Math.max(1,occupied[2]),floors,floor_height:4,total_height:Math.max(1,occupied[1]),lot_width:Math.max(1,volume.width),lot_depth:Math.max(1,volume.length)},
     design:{style_family:caseRecord.identity?.style_family||'general',typology:caseRecord.identity?.typology||'building',footprint:'source-derived',front_side:raster.normalized_transform.front_side,abstract_site_tags:[],selected_concept_id:null,massing_strategy:[],space_strategy:[],quality_targets:['source-traceability']},
     references:[],constraints:{resolution:[64,64,64],max_total_height:Math.max(40,occupied[1]),minecraft_fill_limit:32768}
   };

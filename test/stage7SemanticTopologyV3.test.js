@@ -31,6 +31,7 @@ function extract(volume, caseId) {
 test('one-floor fixture has entrance, circulation, usable space, floor, roof, and no vertical core', () => {
   const result = extract(oneFloorHouseV3Fixture(), 'one-floor');
   assert.ok(result.topology.entrance_keys.length > 0);
+  assert.ok(new Set(result.topology.entrance_keys.map((key) => key.split(',')[2])).size > 1);
   assert.ok(result.topology.circulation_keys.length > 0);
   assert.deepEqual(result.topology.vertical_core_keys, []);
   assert.ok(result.cells.some((cell) => cell.envelope === 'floor'));

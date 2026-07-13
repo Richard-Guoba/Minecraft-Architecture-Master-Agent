@@ -64,3 +64,23 @@ test('dataset case applies reviewed corrections before plan hashing and records 
   assert.match(result.record.extraction.correction_sha256,/^[a-f0-9]{64}$/);
   assert.ok(result.rawPlan.evidence.some((item)=>item.id==='review:review-correction-1'));
 });
+
+test('Dataset v1 and v2 continue to use extractor v1 and retain their record shapes', () => {
+  for (const datasetVersion of ['v1', 'v2']) {
+    const result = buildStage7DatasetCase({
+      volume: hollowHouseVolumeFixture(),
+      caseRecord: reviewedCaseFixture(),
+      datasetVersion
+    });
+    assert.equal(
+      result.rawPlan.provider.name,
+      'stage7-coarse-semantic-voxel-schematic-extractor-v1'
+    );
+    assert.equal(Object.hasOwn(result.record.artifacts, 'review_plan_sha256'), false);
+    assert.equal(Object.hasOwn(result.record.extraction, 'automated_semantic_status'), false);
+    assert.equal(
+      Object.hasOwn(result.record.extraction, 'correction_count'),
+      datasetVersion === 'v2'
+    );
+  }
+});

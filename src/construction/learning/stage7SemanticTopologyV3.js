@@ -158,12 +158,19 @@ function acceptedFloorLevels(cells, primaryKeys, interiorKeys) {
 }
 
 function findConfirmedOpenings(cells, primaryKeys, interiorKeys) {
-  return [...cells.entries()].filter(([key, cell]) => (
+  const candidates = new Map([...cells.entries()].filter(([key, cell]) => (
     primaryKeys.has(key)
     && (cell.flags.includes('opening-candidate') || cell.flags.includes('window-candidate'))
-    && cell.flags.includes('exterior-side')
-    && neighbourKeys(cell).some((next) => interiorKeys.has(next))
-  )).map(([key]) => key).sort();
+  )));
+  const confirmed = [];
+  for (const component of components(candidates, () => true)) {
+    const touchesOutside = component.some((key) => cells.get(key).flags.includes('exterior-side'));
+    const touchesInside = component.some((key) => (
+      neighbourKeys(cells.get(key)).some((next) => interiorKeys.has(next))
+    ));
+    if (touchesOutside && touchesInside) confirmed.push(...component);
+  }
+  return [...new Set(confirmed)].sort();
 }
 
 function findEntrances(cells, openingKeys, interiorKeys) {
