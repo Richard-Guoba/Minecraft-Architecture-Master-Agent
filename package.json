@@ -19,7 +19,8 @@
     "benchmark:baseline": "node src/runBaselineBenchmark.js",
     "analyze:templates": "node src/analyzeTemplateCorpus.js",
     "dataset:stage7": "node src/buildCoarseSemanticVoxelDataset.js",
-    "review-pack:stage7": "node src/buildStage7DatasetReviewPack.js"
+    "review-pack:stage7": "node src/buildStage7DatasetReviewPack.js",
+    "compare:stage7-datasets": "node src/compareStage7DatasetVersions.js"
   },
   "engines": {
     "node": ">=20"
