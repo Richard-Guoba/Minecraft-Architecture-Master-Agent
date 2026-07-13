@@ -231,9 +231,23 @@ This comparison is diagnostic. It may demonstrate that the technical defect is f
 
 Subproject B begins only after Dataset v3 fixture acceptance and review of the six-pilot comparison.
 
+### Platform and Workspace Boundary
+
+WSL2 Ubuntu is the canonical development and training environment for Subproject B and later Stage 7 Python work. The active repository clone lives on the WSL Linux filesystem, for example `~/projects/Minecraft-Constructing-Agents`, rather than under `/mnt/c` or `/mnt/d`. Node.js and Python cross-runtime tests run from the same WSL clone so paths, JSON process boundaries, hashes, and generated artifacts are exercised in the environment that will later match a dedicated Linux training host.
+
+Windows remains the host for Codex Desktop, the Minecraft client, and final in-game acceptance. A transitional Windows clone may be retained as a recovery copy, but it is not a second source of truth and changes are synchronized through Git commits and remote branches rather than manual directory copying. The Windows clone may be archived or deleted only after the WSL clone has passed all of the following migration checks:
+
+- the expected remote URLs, branch name, and commit SHA match the published GitHub state;
+- the complete existing Node.js test suite passes from the WSL Linux filesystem;
+- Dataset v1, v2, and v3 committed manifest hashes match the published commit;
+- the pinned Python 3.12 environment installs and the CPU fixture acceptance command passes;
+- Git reports no unexpected untracked or modified project files.
+
+CPU execution is the mandatory M3 acceptance path. NVIDIA CUDA under WSL2 is an optional acceleration smoke path and cannot replace the CPU gate. The laptop GPU may be used for fixture and small prototype work, but P5 formal-scale training targets a dedicated Linux GPU host or cloud environment rather than treating the Windows laptop as the production training machine.
+
 ### Python Environment
 
-`training/stage7/` owns an independent pinned Python environment and never becomes an import dependency of normal Node.js generation. It contains a `pyproject.toml`, a deterministic lock or fully pinned requirements artifact, environment setup instructions, and CPU-compatible test commands. CUDA is optional and is not required for smoke verification.
+`training/stage7/` owns an independent pinned Python 3.12 environment and never becomes an import dependency of normal Node.js generation. It contains a `pyproject.toml`, a deterministic lock or fully pinned requirements artifact, environment setup instructions, and CPU-compatible test commands. The local virtual environment, downloaded wheels, caches, large checkpoints, and machine-specific environment files remain ignored. CUDA is optional and is not required for smoke verification.
 
 ### Dataset Loader
 
