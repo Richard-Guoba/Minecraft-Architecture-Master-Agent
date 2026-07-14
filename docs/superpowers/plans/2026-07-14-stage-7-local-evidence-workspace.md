@@ -113,7 +113,7 @@ Expected: exit 0; otherwise stop without deleting or replacing it.
 
     /home/guoba/.nvm/versions/node/v24.18.0/bin/npm run audit:stage7:readiness -- --artifact-root .tmp/stage7-dataset/v3 --out .tmp/stage7-readiness-audit-baseline
 
-Expected: exit code 2 because the committed records remain fail-closed; both report files are nevertheless created. The non-zero code is expected safety behavior.
+Expected: exit code 0 because the inputs are valid and the six per-case blockers are advisory findings; both report files are created. The report must still show every gate contribution as false. Exit code 2 is reserved for global input failures, such as a missing or malformed required input.
 
 - [ ] **Step 3: Verify the three mandatory safety claims in the JSON report**
 
