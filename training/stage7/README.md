@@ -51,6 +51,25 @@ Acceptance trains two isolated identical fixture runs, compares checkpoint, mani
 
 Fixture loss is a plumbing signal only. It is not quality evidence and must not be reported as accuracy, model quality, preference, or generalization.
 
+## Private-research corpus preparation
+
+The separate private-research path is local-only experimentation for manually supplied external templates. It is not Dataset v3, does not make any source training-eligible, does not change M3 fixture-only behavior, and may never be used for release, sharing, M4 Apply Mode, or primary construction operations.
+
+Initialize an ignored local root and then create `PRIVATE_RESEARCH_ACK.json` yourself from the printed template. The command intentionally never writes that acknowledgement for you:
+
+```bash
+npm run private-research:stage7 -- init --root .local/stage7-private-research
+```
+
+After you manually place only `.schem` or `.schematic` files in `.local/stage7-private-research/source/`, import their local hashes and prepare bounded 64³ raw volumes:
+
+```bash
+npm run private-research:stage7 -- import --root .local/stage7-private-research --obtained-at 2026-07-15T00:00:00.000Z
+npm run private-research:stage7 -- prepare --root .local/stage7-private-research --seed 7101
+```
+
+The commands never download a source, upload metrics, call Python, or train a model. They reject missing acknowledgement, Git-tracked or non-ignored paths, symbolic-link escapes, unsupported formats, changed source hashes, duplicate content at different paths, malformed NBT, and buildings whose non-air bounds exceed 64³. Private files remain marked `unverified`, `prohibited`, and `local-private-research-only`.
+
 ## Real-data gate
 
 Fixture loading and real Dataset v3 loading are separate constructors with separate origins and roots. Normal real-data admission requires all of the following before tensor data is read:
