@@ -70,6 +70,14 @@ npm run private-research:stage7 -- prepare --root .local/stage7-private-research
 
 The commands never download a source, upload metrics, call Python, or train a model. They reject missing acknowledgement, Git-tracked or non-ignored paths, symbolic-link escapes, unsupported formats, changed source hashes, duplicate content at different paths, malformed NBT, and buildings whose non-air bounds exceed 64³. Private files remain marked `unverified`, `prohibited`, and `local-private-research-only`.
 
+The separately named training command is deliberately offline and requires both a fully prepared corpus and an explicit command-line acknowledgement. It rechecks the private-root acknowledgement, raw source hashes, prepared-volume hashes, split, formal Dataset v1/v2/v3 manifest hashes, and Dataset v3's `false`/`0` gate before and after it writes a local run. It writes only `metrics.jsonl`, `reconstruction.bin`, `checkpoint.pt`, and `checkpoint_manifest.json` below the ignored private `runs/` directory. It has no upload, inference/export, M3, M4, or primary-provider behavior:
+
+```bash
+npm run train:stage7:private-research -- --root .local/stage7-private-research --run-id local-smoke --private-research-only --seed 7101 --steps 1 --batch-size 1 --learning-rate 0.001 --device cpu --code-revision local
+```
+
+Do not run this command until you have manually placed and prepared sources in the private root and have separately decided to begin a private local experiment. It never changes Dataset v3 readiness, never makes an unverified source training-eligible, and must never be used to produce a shared, released, or M4 artifact.
+
 ## Real-data gate
 
 Fixture loading and real Dataset v3 loading are separate constructors with separate origins and roots. Normal real-data admission requires all of the following before tensor data is read:
