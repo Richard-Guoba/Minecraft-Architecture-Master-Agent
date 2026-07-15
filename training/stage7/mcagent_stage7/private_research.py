@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -21,6 +22,8 @@ PRIVATE_MARKERS = {
     "distribution": "prohibited",
     "purpose": "local-private-research-only",
 }
+DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[3]
+PRIVATE_RUN_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 EXPECTED_DATASET_HASHES = {
     "v1": "fb52190f58102540f19bab741ec5ce1a121134d86b88a699b78c2af5bb788749",
     "v2": "af3c8b5b9d9a628a78caf2de95f42c1d6aedcdf301b24d2909d21418bdfec654",
@@ -47,6 +50,33 @@ class PrivateResearchPreflight:
     split_sha256: str
     dataset_hashes: dict[str, str]
     dataset_v3_gate: dict[str, bool | int]
+
+
+def resolve_private_cli_paths(*, root: Path, repo_root: Path) -> tuple[Path, Path]:
+    repository = Path(repo_root).resolve()
+    candidate = Path(root)
+    private_root = (
+        candidate.resolve()
+        if candidate.is_absolute()
+        else (repository / candidate).resolve()
+    )
+    return private_root, repository
+
+
+def validate_private_run_id(run_id: str) -> str:
+    if not isinstance(run_id, str) or not PRIVATE_RUN_ID.fullmatch(run_id):
+        raise PrivateResearchError("RUN_ID_INVALID", str(run_id))
+    return run_id
+
+
+def resolve_existing_private_run(*, root: Path, repo_root: Path, run_id: str) -> Path:
+    validate_private_run_id(run_id)
+    repository = _resolved_directory(repo_root)
+    private_root = _resolved_private_root(root, repository)
+    run_path = _private_candidate(private_root, repository, f"runs/{run_id}")
+    if not run_path.is_dir():
+        raise PrivateResearchError("RUN_MISSING", run_id)
+    return run_path
 
 
 def run_private_preflight(*, root: Path, repo_root: Path) -> PrivateResearchPreflight:

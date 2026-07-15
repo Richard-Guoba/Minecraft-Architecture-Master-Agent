@@ -5,7 +5,6 @@ import hashlib
 import json
 import math
 import random
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
@@ -13,12 +12,14 @@ from typing import Any, Sequence
 import numpy as np
 import torch
 
-from .private_research import PrivatePreparedDataset, PrivateResearchError, run_private_preflight
+from .private_research import (
+    PrivatePreparedDataset,
+    PrivateResearchError,
+    run_private_preflight,
+    validate_private_run_id,
+)
 from .private_research_checkpoints import save_private_checkpoint
 from .private_research_model import TinyMaskedVoxelAutoencoder, masked_reconstruction_loss
-
-
-_RUN_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 
 @dataclass(frozen=True)
@@ -113,8 +114,7 @@ def train_private_research(config: PrivateTrainConfig) -> PrivateRunArtifacts:
 def _validate_config(config: PrivateTrainConfig) -> None:
     if not isinstance(config, PrivateTrainConfig):
         raise PrivateResearchError("CONFIG_INVALID", "config must be PrivateTrainConfig")
-    if not _RUN_ID.fullmatch(config.run_id):
-        raise PrivateResearchError("RUN_ID_INVALID", str(config.run_id))
+    validate_private_run_id(config.run_id)
     if isinstance(config.seed, bool) or not isinstance(config.seed, int) or not 0 <= config.seed < 2**32:
         raise PrivateResearchError("CONFIG_INVALID", "seed")
     if isinstance(config.steps, bool) or not isinstance(config.steps, int) or config.steps <= 0:
