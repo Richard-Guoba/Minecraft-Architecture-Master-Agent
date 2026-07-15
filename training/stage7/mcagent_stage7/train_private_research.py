@@ -13,8 +13,10 @@ import numpy as np
 import torch
 
 from .private_research import (
+    DEFAULT_REPO_ROOT,
     PrivatePreparedDataset,
     PrivateResearchError,
+    resolve_private_cli_paths,
     run_private_preflight,
     validate_private_run_id,
 )
@@ -161,7 +163,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--private-research-only", action="store_true")
-    parser.add_argument("--repo-root", type=Path, default=Path.cwd())
+    parser.add_argument("--metadata-only", action="store_true")
+    parser.add_argument("--repo-root", type=Path, default=DEFAULT_REPO_ROOT)
     parser.add_argument("--seed", type=int, default=7101)
     parser.add_argument("--steps", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=1)
@@ -176,20 +179,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     if not arguments.private_research_only:
         parser.error("--private-research-only acknowledgement is required")
+    private_root, repository = resolve_private_cli_paths(
+        root=arguments.root,
+        repo_root=arguments.repo_root,
+    )
     try:
         artifacts = train_private_research(
             PrivateTrainConfig(
-                root=arguments.root, repo_root=arguments.repo_root, seed=arguments.seed,
+                root=private_root, repo_root=repository, seed=arguments.seed,
                 steps=arguments.steps, batch_size=arguments.batch_size,
                 learning_rate=arguments.learning_rate, device=arguments.device,
                 run_id=arguments.run_id, code_revision=arguments.code_revision,
             )
         )
     except PrivateResearchError as error:
-        parser.error(str(error))
+        parser.error(error.code if arguments.metadata_only else str(error))
     print(f"training_scope: {artifacts.manifest['training_scope']}")
     print(f"distribution: {artifacts.manifest['distribution']}")
-    print(f"final_loss: {artifacts.final_loss}")
+    print("run_complete: true")
+    if not arguments.metadata_only:
+        print(f"final_loss: {artifacts.final_loss}")
     return 0
 
 

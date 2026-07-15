@@ -1,19 +1,22 @@
 from __future__ import annotations
 
+import argparse
 import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import torch
 import torch.nn.functional as functional
 
 from .private_research import (
+    DEFAULT_REPO_ROOT,
     PrivatePreparedDataset,
     PrivateResearchError,
     make_masked_batch,
     resolve_existing_private_run,
+    resolve_private_cli_paths,
     run_private_preflight,
 )
 from .private_research_checkpoints import load_private_checkpoint
@@ -297,3 +300,55 @@ def _update_model(
         mask=mask,
         nll_sum=nll_sum,
     )
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Evaluate the local-only Stage 7 private-research model"
+    )
+    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--private-research-only", action="store_true")
+    parser.add_argument("--metadata-only", action="store_true")
+    parser.add_argument("--repo-root", type=Path, default=DEFAULT_REPO_ROOT)
+    parser.add_argument("--seed", type=int, default=7101)
+    parser.add_argument("--mask-repeats", type=int, default=5)
+    parser.add_argument("--mask-ratio", type=float, default=0.25)
+    parser.add_argument("--device", choices=("cpu",), default="cpu")
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = _parser()
+    arguments = parser.parse_args(argv)
+    if not arguments.private_research_only:
+        parser.error("--private-research-only acknowledgement is required")
+    if not arguments.metadata_only:
+        parser.error("--metadata-only is required")
+    private_root, repository = resolve_private_cli_paths(
+        root=arguments.root,
+        repo_root=arguments.repo_root,
+    )
+    try:
+        artifacts = evaluate_private_research(
+            PrivateEvaluationConfig(
+                root=private_root,
+                repo_root=repository,
+                run_id=arguments.run_id,
+                seed=arguments.seed,
+                mask_repeats=arguments.mask_repeats,
+                mask_ratio=arguments.mask_ratio,
+                device=arguments.device,
+            )
+        )
+    except PrivateResearchError as error:
+        parser.error(error.code)
+    print(f"training_scope: {artifacts.report['training_scope']}")
+    print(f"distribution: {artifacts.report['distribution']}")
+    print("evaluation_complete: true")
+    print(f"quality_gate_passed: {str(artifacts.quality_gate_passed).lower()}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

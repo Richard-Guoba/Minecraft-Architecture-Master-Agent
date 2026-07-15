@@ -73,10 +73,24 @@ The commands never download a source, upload metrics, call Python, or train a mo
 The separately named training command is deliberately offline and requires both a fully prepared corpus and an explicit command-line acknowledgement. It rechecks the private-root acknowledgement, raw source hashes, prepared-volume hashes, split, formal Dataset v1/v2/v3 manifest hashes, and Dataset v3's `false`/`0` gate before and after it writes a local run. It writes only `metrics.jsonl`, `reconstruction.bin`, `checkpoint.pt`, and `checkpoint_manifest.json` below the ignored private `runs/` directory. It has no upload, inference/export, M3, M4, or primary-provider behavior:
 
 ```bash
-npm run train:stage7:private-research -- --root .local/stage7-private-research --run-id local-smoke --private-research-only --seed 7101 --steps 1 --batch-size 1 --learning-rate 0.001 --device cpu --code-revision local
+npm run train:stage7:private-research -- --root .local/stage7-private-research --run-id local-smoke --private-research-only --metadata-only --seed 7101 --steps 1 --batch-size 1 --learning-rate 0.001 --device cpu --code-revision local
 ```
 
 Do not run this command until you have manually placed and prepared sources in the private root and have separately decided to begin a private local experiment. It never changes Dataset v3 readiness, never makes an unverified source training-eligible, and must never be used to produce a shared, released, or M4 artifact.
+
+### Private held-out quality evaluation
+
+The evaluator is separate from optimization. It uses the existing 15/7 private split, evaluates five deterministic 25% masks per validation case, and compares non-air macro F1/IoU against an untrained model and a training-only add-one-smoothed class-prior baseline. Exact metrics remain only in the selected run's local `evaluation.json`; stdout reports only scope, distribution, completion, and quality-gate pass/fail.
+
+Before any overnight run, obtain explicit owner approval for `device=cpu` and `steps=5`, run a fresh five-step batch-one calibration under `/usr/bin/time -v`, and require at least 8 GiB available memory and no more than 2 GiB maximum resident memory. For a later owner-supplied window of `W` seconds, use `floor(0.80 * W / (calibration_seconds / 5))` as the proposed steps, then obtain explicit approval of that exact positive step count.
+
+Evaluate a completed substantive private run with metadata-safe stdout:
+
+```bash
+npm run evaluate:stage7:private-research -- --root .local/stage7-private-research --run-id cpu-quality-run --private-research-only --metadata-only --seed 7101 --mask-repeats 5 --mask-ratio 0.25 --device cpu
+```
+
+This command never exports inference, samples, metrics, checkpoints, or weights and never changes Dataset v1/v2/v3, Dataset v3's false/zero gate, normal Node generation, or M4 Apply Mode.
 
 ## Real-data gate
 

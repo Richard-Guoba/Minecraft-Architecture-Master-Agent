@@ -115,6 +115,86 @@ def test_evaluator_refuses_a_symlinked_run_directory() -> None:
         )
 
 
+def test_evaluator_cli_prints_only_safety_and_gate_booleans(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import mcagent_stage7.evaluate_private_research as module
+
+    captured: list[module.PrivateEvaluationConfig] = []
+    fake = module.PrivateEvaluationArtifacts(
+        report_path=Path("evaluation.json"),
+        report={
+            "training_scope": "private-research-only",
+            "distribution": "prohibited",
+        },
+        quality_gate_passed=False,
+    )
+    monkeypatch.setattr(
+        module,
+        "evaluate_private_research",
+        lambda config: captured.append(config) or fake,
+    )
+    assert (
+        module.main(
+            [
+                "--root",
+                ".local/stage7-private-research",
+                "--run-id",
+                "safe",
+                "--private-research-only",
+                "--metadata-only",
+                "--seed",
+                "7101",
+                "--mask-repeats",
+                "5",
+                "--mask-ratio",
+                "0.25",
+                "--device",
+                "cpu",
+            ]
+        )
+        == 0
+    )
+    assert captured[0].repo_root == REPO_ROOT
+    assert captured[0].root == REPO_ROOT / ".local" / "stage7-private-research"
+    assert capsys.readouterr().out.splitlines() == [
+        "training_scope: private-research-only",
+        "distribution: prohibited",
+        "evaluation_complete: true",
+        "quality_gate_passed: false",
+    ]
+
+
+def test_evaluator_cli_scrubs_private_error_detail(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import mcagent_stage7.evaluate_private_research as module
+
+    def fail(config: module.PrivateEvaluationConfig) -> module.PrivateEvaluationArtifacts:
+        raise module.PrivateResearchError(
+            "SOURCE_HASH_CHANGED",
+            "secret-name.schematic",
+        )
+
+    monkeypatch.setattr(module, "evaluate_private_research", fail)
+    with pytest.raises(SystemExit):
+        module.main(
+            [
+                "--root",
+                ".local/stage7-private-research",
+                "--run-id",
+                "safe",
+                "--private-research-only",
+                "--metadata-only",
+            ]
+        )
+    error = capsys.readouterr().err
+    assert "SOURCE_HASH_CHANGED" in error
+    assert "secret-name.schematic" not in error
+
+
 def make_ready_evaluation_root() -> Path:
     root = REPO_ROOT / ".tmp" / "stage7-private-evaluation-test"
     shutil.rmtree(root, ignore_errors=True)

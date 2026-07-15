@@ -57,6 +57,125 @@ def test_trainer_refuses_output_outside_private_root() -> None:
         train_private_research(config)
 
 
+def test_trainer_metadata_only_never_prints_loss(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import mcagent_stage7.train_private_research as module
+
+    fake = module.PrivateRunArtifacts(
+        checkpoint_path=Path("checkpoint.pt"),
+        manifest_path=Path("checkpoint_manifest.json"),
+        metrics_path=Path("metrics.jsonl"),
+        reconstruction_path=Path("reconstruction.bin"),
+        manifest={
+            "training_scope": "private-research-only",
+            "distribution": "prohibited",
+        },
+        final_loss=123.456,
+    )
+    monkeypatch.setattr(module, "train_private_research", lambda config: fake)
+    assert (
+        module.main(
+            [
+                "--root",
+                ".tmp/private",
+                "--run-id",
+                "safe",
+                "--private-research-only",
+                "--metadata-only",
+                "--steps",
+                "1",
+                "--device",
+                "cpu",
+            ]
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
+    assert "training_scope: private-research-only" in output
+    assert "distribution: prohibited" in output
+    assert "run_complete: true" in output
+    assert "123.456" not in output
+    assert "final_loss" not in output
+
+
+def test_trainer_cli_resolves_dot_local_from_repository_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import mcagent_stage7.train_private_research as module
+
+    captured: list[module.PrivateTrainConfig] = []
+    fake = module.PrivateRunArtifacts(
+        checkpoint_path=Path("checkpoint.pt"),
+        manifest_path=Path("checkpoint_manifest.json"),
+        metrics_path=Path("metrics.jsonl"),
+        reconstruction_path=Path("reconstruction.bin"),
+        manifest={
+            "training_scope": "private-research-only",
+            "distribution": "prohibited",
+        },
+        final_loss=1.0,
+    )
+    monkeypatch.setattr(
+        module,
+        "train_private_research",
+        lambda config: captured.append(config) or fake,
+    )
+    assert (
+        module.main(
+            [
+                "--root",
+                ".local/stage7-private-research",
+                "--run-id",
+                "safe",
+                "--private-research-only",
+                "--metadata-only",
+                "--steps",
+                "1",
+                "--device",
+                "cpu",
+            ]
+        )
+        == 0
+    )
+    assert captured[0].repo_root == REPO_ROOT
+    assert captured[0].root == REPO_ROOT / ".local" / "stage7-private-research"
+
+
+def test_trainer_metadata_only_scrubs_private_error_detail(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import mcagent_stage7.train_private_research as module
+
+    def fail(config: module.PrivateTrainConfig) -> module.PrivateRunArtifacts:
+        raise module.PrivateResearchError(
+            "SOURCE_HASH_CHANGED",
+            "secret-name.schematic",
+        )
+
+    monkeypatch.setattr(module, "train_private_research", fail)
+    with pytest.raises(SystemExit):
+        module.main(
+            [
+                "--root",
+                ".tmp/private",
+                "--run-id",
+                "safe",
+                "--private-research-only",
+                "--metadata-only",
+                "--steps",
+                "1",
+                "--device",
+                "cpu",
+            ]
+        )
+    error = capsys.readouterr().err
+    assert "SOURCE_HASH_CHANGED" in error
+    assert "secret-name.schematic" not in error
+
+
 def make_ready_private_root() -> Path:
     root = REPO_ROOT / ".tmp" / "stage7-private-research-trainer-test"
     shutil.rmtree(root, ignore_errors=True)
