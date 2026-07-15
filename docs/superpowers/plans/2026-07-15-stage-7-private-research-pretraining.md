@@ -14,7 +14,7 @@
 - Keep Dataset v3 `ready_for_m3_real_data=false` and `training_eligible_count=0`; do not enable M4 Apply Mode.
 - All private state is under `.local/stage7-private-research/`, must be Git-ignored and untracked, and must never be pushed, shared, uploaded, or packaged.
 - Do not download or scrape data. The owner manually places local `.schem` or `.schematic` inputs in `source/`.
-- Reject `.litematic`, malformed NBT, input files over 64 MiB, decompressed NBT over 128 MiB, symbolic-link escapes, tracked paths, non-ignored paths, duplicate source hashes, and non-air bounding boxes larger than `64 × 64 × 64`.
+- Reject `.litematic`, malformed NBT, input files over 64 MiB, decompressed NBT over 128 MiB, symbolic-link escapes, tracked paths, non-ignored paths, duplicate source hashes assigned to different source paths, and non-air bounding boxes larger than `64 × 64 × 64`. Re-importing an unchanged source at its original path is idempotent.
 - Private data always records `rights_state: "unverified"`, `distribution: "prohibited"`, and `purpose: "local-private-research-only"`; never infer author or permission details.
 - All default training is offline, has no experiment-tracker integration, and writes only below `runs/`.
 - Use committed synthetic fixtures only in automated tests. Never commit an external building or private manifest.
@@ -87,7 +87,7 @@ Every prepared case has a one-byte-per-voxel file at `prepared/pr-0123456789abcd
 - Test: `test/stage7PrivateResearchBoundary.test.js`
 
 **Interfaces:**
-- Produces `PRIVATE_ROOT_RELATIVE`, `PRIVATE_SCOPE`, `assertPrivateRoot`, `assertPrivateAcknowledgement`, `assertPrivateCandidate`, `assertFormalDatasetBoundary`, `readCanonicalJson`, and `writeCanonicalJson` for later Node corpus commands.
+- Produces `PRIVATE_ROOT_RELATIVE`, `PRIVATE_SCOPE`, `assertPrivateRoot`, `assertPrivateAcknowledgement`, `assertPrivateCandidate`, `assertFormalDatasetBoundary`, `readCanonicalJson`, and `writeCanonicalJson` for later Node corpus commands. Tests create synthetic files only below the already Git-ignored `.tmp/` directory; production roots remain `.local/stage7-private-research/`.
 - Extends `parseNbt(buffer, { maxInflatedBytes } = {})` and preserves `parseNbt(buffer)` compatibility for existing callers.
 
 - [ ] **Step 1: Write the failing Node boundary tests**
@@ -98,7 +98,7 @@ test('private boundary rejects a missing acknowledgement and a tracked or escape
   await assert.rejects(assertPrivateAcknowledgement(root), /PRIVATE_RESEARCH_ACK/);
   await writeAck(root);
   await assert.rejects(assertPrivateCandidate(root, path.resolve('package.json')), /outside private root|Git-tracked/);
-  await assert.rejects(assertPrivateCandidate(root, root / 'linked-source'), /symbolic link/);
+  await assert.rejects(assertPrivateCandidate(root, path.join(root, 'linked-source')), /symbolic link/);
 });
 
 test('formal dataset boundary verifies all immutable hashes and false/zero gate', async () => {
@@ -139,7 +139,10 @@ function inflateNbt(buffer, maxInflatedBytes) {
     : undefined;
   if (buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b) return zlib.gunzipSync(buffer, options);
   if (buffer.length >= 2 && buffer[0] === 0x78) {
-    try { return zlib.inflateSync(buffer, options); } catch { return buffer; }
+    try { return zlib.inflateSync(buffer, options); } catch (error) {
+      if (options) throw error;
+      return buffer;
+    }
   }
   if (options && buffer.length > options.maxOutputLength) throw new Error('NBT input exceeds maximum decoded size.');
   return buffer;
@@ -183,7 +186,13 @@ export async function assertFormalDatasetBoundary(cwd = process.cwd()) {
   if (manifest.ready_for_m3_real_data !== false || manifest.training_eligible_count !== 0) throw new PrivateResearchBoundaryError('DATASET_GATE_CHANGED', 'Dataset v3 must stay false/zero');
   return Object.freeze({ dataset_hashes: datasetHashes, dataset_v3_gate: { ready_for_m3_real_data: false, training_eligible_count: 0 } });
 }
-export function canonicalJson(value) { return `${JSON.stringify(value, Object.keys(value).sort(), 2)}\n`; }
+export function canonicalJson(value) { return `${JSON.stringify(sortJson(value), null, 2)}\n`; }
+
+function sortJson(value) {
+  if (Array.isArray(value)) return value.map(sortJson);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortJson(value[key])]));
+  return value;
+}
 ```
 
 Use `fs.lstat`, `fs.realpath`, `path.relative`, `git check-ignore --quiet -- candidate-path`, and `git ls-files --error-unmatch -- candidate-path` via `execFile`. Return a stable `PrivateResearchBoundaryError` with codes such as `ACK_MISSING`, `ACK_INVALID`, `PATH_OUTSIDE_PRIVATE_ROOT`, `PATH_SYMLINK`, `PATH_NOT_IGNORED`, `PATH_GIT_TRACKED`, `DATASET_HASH_MISMATCH`, and `DATASET_GATE_CHANGED`.
@@ -209,17 +218,19 @@ git commit -m "feat(stage7): isolate private research root"
 
 **Interfaces:**
 - Consumes Task 1 boundary checks and existing `decodeSchematicBlockVolume`.
-- Produces `importPrivateSources({ cwd, root, obtainedAt })`, `preparePrivateCorpus({ cwd, root, splitSeed })`, `PRIVATE_TAXONOMY_VERSION`, and `mapPrivateToken(block)`.
+- Produces `importPrivateSources({ cwd, root, obtainedAt, sourceUrl = '' })`, `preparePrivateCorpus({ cwd, root, splitSeed })`, `PRIVATE_TAXONOMY_VERSION`, and `mapPrivateToken(block)`.
 
 - [ ] **Step 1: Write synthetic schematic and corpus tests**
 
 Create raw MCEdit NBT test bytes in the test file; do not read `mc_templates` or commit an external building. Assert all of the following:
 
 ```js
-const imported = await importPrivateSources({ cwd, root, obtainedAt: '2026-07-15T00:00:00.000Z' });
+const imported = await importPrivateSources({ cwd, root, obtainedAt: '2026-07-15T00:00:00.000Z', sourceUrl: '' });
 assert.equal(imported.records.length, 1);
 assert.equal(imported.records[0].rights_state, 'unverified');
-await assert.rejects(importPrivateSources({ cwd, root, obtainedAt }), /DUPLICATE_SOURCE/);
+assert.equal((await importPrivateSources({ cwd, root, obtainedAt: '2026-07-15T00:00:00.000Z', sourceUrl: '' })).records.length, 1);
+await fs.writeFile(path.join(root, 'source', 'duplicate.schematic'), syntheticSchematicBytes());
+await assert.rejects(importPrivateSources({ cwd, root, obtainedAt: '2026-07-15T00:00:00.000Z', sourceUrl: '' }), /DUPLICATE_SOURCE/);
 
 const prepared = await preparePrivateCorpus({ cwd, root, splitSeed: 7101 });
 assert.equal(prepared.records[0].shape.join(','), '64,64,64');
@@ -254,7 +265,7 @@ export async function readSchematicBlockVolume(filePath, options = {}) {
 
 `importPrivateSources` must first call `assertPrivateAcknowledgement`, `assertFormalDatasetBoundary`, and `assertPrivateCandidate` for `source/`, `manifests/`, and every source file. Read extensions only from `.schem` and `.schematic`, sort relative paths with `localeCompare`, cap raw bytes at `64 * 1024 * 1024`, and decode using `maxInflatedBytes: 128 * 1024 * 1024`.
 
-For each source, derive `source_id` from the first 16 characters of its SHA-256. Write `manifests/sources.jsonl` only when the complete sorted set has passed validation. Refuse an existing equal hash with `DUPLICATE_SOURCE` and a changed source with `SOURCE_HASH_CHANGED`; do not overwrite a prior manifest silently.
+For each source, derive `source_id` from the first 16 characters of its SHA-256. Write `manifests/sources.jsonl` only when the complete sorted set has passed validation. An existing record with the same relative path and equal hash is an idempotent re-import and is retained unchanged. Refuse an equal hash at a different relative path with `DUPLICATE_SOURCE`, and reject a changed hash at an existing relative path with `SOURCE_HASH_CHANGED`; do not overwrite a prior manifest silently.
 
 - [ ] **Step 5: Implement preparation and split**
 

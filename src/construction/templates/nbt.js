@@ -16,8 +16,8 @@ const TAG = {
   LONG_ARRAY: 12
 };
 
-export function parseNbt(buffer) {
-  const source = inflateNbt(buffer);
+export function parseNbt(buffer, { maxInflatedBytes } = {}) {
+  const source = inflateNbt(buffer, maxInflatedBytes);
   const reader = new BinaryReader(source);
   const type = reader.u8();
   if (type !== TAG.COMPOUND) {
@@ -30,16 +30,21 @@ export function parseNbt(buffer) {
   };
 }
 
-function inflateNbt(buffer) {
+function inflateNbt(buffer, maxInflatedBytes) {
   if (!Buffer.isBuffer(buffer)) throw new Error('NBT input must be a Buffer.');
-  if (buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b) return zlib.gunzipSync(buffer);
+  const options = Number.isSafeInteger(maxInflatedBytes) && maxInflatedBytes > 0
+    ? { maxOutputLength: maxInflatedBytes }
+    : undefined;
+  if (buffer.length >= 2 && buffer[0] === 0x1f && buffer[1] === 0x8b) return zlib.gunzipSync(buffer, options);
   if (buffer.length >= 2 && buffer[0] === 0x78) {
     try {
-      return zlib.inflateSync(buffer);
-    } catch {
+      return zlib.inflateSync(buffer, options);
+    } catch (error) {
+      if (options) throw error;
       return buffer;
     }
   }
+  if (options && buffer.length > options.maxOutputLength) throw new Error('NBT input exceeds maximum decoded size.');
   return buffer;
 }
 

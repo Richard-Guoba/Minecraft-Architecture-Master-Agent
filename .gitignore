@@ -14,3 +14,6 @@ training/stage7/**/__pycache__/
 training/stage7/.pytest_cache/
 training/stage7/checkpoints/
 training/stage7/runs/
+
+# Local-only, non-distributable Stage 7 private-research corpus and outputs
+.local/stage7-private-research/

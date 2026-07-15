@@ -20,8 +20,8 @@ const OLD_BLOCK_NAMES = {
   0:'air',1:'stone',2:'grass_block',3:'dirt',4:'cobblestone',5:'planks',8:'water',9:'stationary_water',12:'sand',13:'gravel',17:'log',18:'leaves',20:'glass',24:'sandstone',31:'tall_grass',35:'wool',41:'gold_block',42:'iron_block',43:'double_slab',44:'slab',45:'bricks',47:'bookshelf',48:'mossy_cobblestone',49:'obsidian',50:'torch',53:'oak_stairs',54:'chest',58:'crafting_table',64:'wooden_door',65:'ladder',67:'cobblestone_stairs',79:'ice',80:'snow_block',81:'cactus',82:'clay',85:'fence',87:'netherrack',88:'soul_sand',89:'glowstone',91:'jack_o_lantern',95:'stained_glass',96:'trapdoor',98:'stone_bricks',101:'iron_bars',102:'glass_pane',106:'vine',107:'fence_gate',108:'brick_stairs',109:'stone_brick_stairs',110:'mycelium',111:'lily_pad',112:'nether_bricks',113:'nether_brick_fence',114:'nether_brick_stairs',116:'enchanting_table',118:'cauldron',121:'end_stone',123:'redstone_lamp',124:'lit_redstone_lamp',125:'double_wooden_slab',126:'wooden_slab',128:'sandstone_stairs',130:'ender_chest',134:'spruce_stairs',135:'birch_stairs',136:'jungle_stairs',138:'beacon',139:'cobblestone_wall',140:'flower_pot',144:'skull',145:'anvil',146:'trapped_chest',151:'daylight_detector',152:'redstone_block',154:'hopper',155:'quartz_block',156:'quartz_stairs',159:'stained_hardened_clay',160:'stained_glass_pane',161:'leaves2',162:'log2',163:'acacia_stairs',164:'dark_oak_stairs',168:'prismarine',169:'sea_lantern',171:'carpet',172:'hardened_clay',174:'packed_ice',175:'double_plant',179:'red_sandstone',180:'red_sandstone_stairs',181:'double_red_sandstone_slab',182:'red_sandstone_slab'
 };
 
-export function decodeSchematicBlockVolume(buffer) {
-  const parsed = parseNbt(buffer);
+export function decodeSchematicBlockVolume(buffer, { maxInflatedBytes } = {}) {
+  const parsed = parseNbt(buffer, { maxInflatedBytes });
   const schematic = normalizeSchematicRoot(parsed.value);
   const blockAtIndex = (index) => Number.isInteger(index) && index >= 0 && index < schematic.blockCount ? decodeBlockAt(schematic, index) : AIR;
   const blockAt = (x, y, z) => {
@@ -42,8 +42,8 @@ export function decodeSchematicBlockVolume(buffer) {
   });
 }
 
-export async function readSchematicBlockVolume(filePath) {
-  return decodeSchematicBlockVolume(await fs.readFile(filePath));
+export async function readSchematicBlockVolume(filePath, options = {}) {
+  return decodeSchematicBlockVolume(await fs.readFile(filePath), options);
 }
 
 function normalizeSchematicRoot(root) {

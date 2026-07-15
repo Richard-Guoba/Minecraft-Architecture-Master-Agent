@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { readSchematicBlockVolume, decodeSchematicBlockVolume } from '../src/construction/templates/schematicBlockVolume.js';
+import { parseNbt } from '../src/construction/templates/nbt.js';
 
 const FIXTURE = path.resolve('mc_templates/House/A Small Modern House - (mcbuild_org).schematic');
 
@@ -20,4 +21,12 @@ test('schematic block volume exposes stable hash, dimensions, and bounded block 
 
 test('schematic block volume rejects malformed NBT without partial output', () => {
   assert.throws(() => decodeSchematicBlockVolume(Buffer.from('not nbt')), /NBT|schematic|Unexpected end/);
+});
+
+test('NBT parser rejects a valid uncompressed payload over an explicit decoded-size limit', () => {
+  const emptyCompound = Buffer.from([10, 0, 0, 0]);
+  assert.throws(
+    () => parseNbt(emptyCompound, { maxInflatedBytes: 3 }),
+    /maximum decoded size/
+  );
 });
