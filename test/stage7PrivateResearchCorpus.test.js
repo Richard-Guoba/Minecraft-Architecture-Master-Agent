@@ -22,6 +22,19 @@ test('private corpus imports a synthetic schematic with local-only provenance an
   assert.deepEqual(first.records[0].dimensions, { x: 2, y: 2, z: 2 });
 });
 
+test('private corpus rejects duplicate content at different source paths in one import batch', async () => {
+  await resetRoot();
+  const bytes = syntheticSchematic();
+  await fs.writeFile(path.join(ROOT, 'source', 'first.schematic'), bytes);
+  await fs.writeFile(path.join(ROOT, 'source', 'second.schematic'), bytes);
+
+  await assert.rejects(
+    importPrivateSources({ cwd: process.cwd(), root: ROOT, obtainedAt: OBTAINED_AT, sourceUrl: '' }),
+    /DUPLICATE_SOURCE/
+  );
+  await assert.rejects(fs.access(path.join(ROOT, 'manifests', 'sources.jsonl')));
+});
+
 test('private corpus prepares a centered 64-cube and deterministic source-group split', async () => {
   await resetRoot();
   await fs.mkdir(path.join(ROOT, 'prepared'), { recursive: true });

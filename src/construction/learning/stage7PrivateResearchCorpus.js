@@ -43,11 +43,13 @@ export async function importPrivateSources({ cwd = process.cwd(), root, obtained
     if (priorPath && priorPath.content_sha256 !== contentSha256) throw new PrivateResearchBoundaryError('SOURCE_HASH_CHANGED', sourcePath);
     const priorHash = byHash.get(contentSha256);
     if (priorHash && priorHash.source_path !== sourcePath) throw new PrivateResearchBoundaryError('DUPLICATE_SOURCE', sourcePath);
-    records.push(priorPath || Object.freeze({
+    const record = priorPath || Object.freeze({
       source_id: `pr-${contentSha256.slice(0, 16)}`, source_path: sourcePath, source_url: sourceUrl,
       obtained_at: obtainedAt, content_sha256: contentSha256, format: extension.slice(1), ...MARKERS,
       dimensions: { x: volume.width, y: volume.height, z: volume.length }
-    }));
+    });
+    byHash.set(contentSha256, record);
+    records.push(record);
   }
   const sorted = records.sort((a, b) => a.source_path.localeCompare(b.source_path));
   await fs.writeFile(existingPath, sorted.map((record) => JSON.stringify(record)).join('\n') + (sorted.length ? '\n' : ''), 'utf8');
