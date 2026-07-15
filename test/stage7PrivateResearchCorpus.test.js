@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
-import { importPrivateSources } from '../src/construction/learning/stage7PrivateResearchCorpus.js';
+import { importPrivateSources, preparePrivateCorpus } from '../src/construction/learning/stage7PrivateResearchCorpus.js';
 
 const ROOT = path.resolve('.tmp/stage7-private-research-corpus-test');
 const OBTAINED_AT = '2026-07-15T00:00:00.000Z';
@@ -20,6 +20,27 @@ test('private corpus imports a synthetic schematic with local-only provenance an
   assert.equal(first.records[0].distribution, 'prohibited');
   assert.equal(first.records[0].purpose, 'local-private-research-only');
   assert.deepEqual(first.records[0].dimensions, { x: 2, y: 2, z: 2 });
+});
+
+test('private corpus prepares a centered 64-cube and deterministic source-group split', async () => {
+  await resetRoot();
+  await fs.mkdir(path.join(ROOT, 'prepared'), { recursive: true });
+  await fs.mkdir(path.join(ROOT, 'splits'), { recursive: true });
+  await fs.writeFile(path.join(ROOT, 'source', 'small-house.schematic'), syntheticSchematic());
+  await importPrivateSources({ cwd: process.cwd(), root: ROOT, obtainedAt: OBTAINED_AT, sourceUrl: '' });
+
+  const first = await preparePrivateCorpus({ cwd: process.cwd(), root: ROOT, splitSeed: 7101 });
+  const second = await preparePrivateCorpus({ cwd: process.cwd(), root: ROOT, splitSeed: 7101 });
+  const sidecar = JSON.parse(await fs.readFile(path.join(ROOT, first.records[0].metadata_path), 'utf8'));
+  const voxels = await fs.readFile(path.join(ROOT, first.records[0].voxel_path));
+
+  assert.deepEqual(second, first);
+  assert.equal(first.records.length, 1);
+  assert.deepEqual(first.records[0].shape, [64, 64, 64]);
+  assert.equal(voxels.length, 64 ** 3);
+  assert.equal(sidecar.taxonomy_version, 'private-raw-material-family-v1');
+  assert.equal(voxels[31 * 64 * 64 + 31 * 64 + 31], 2);
+  assert.deepEqual(first.split.case_ids, [first.records[0].source_id]);
 });
 
 async function resetRoot() {
