@@ -5,9 +5,13 @@ import json
 import math
 import platform
 import random
+import signal
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Protocol
+from types import FrameType
+from typing import Any, Iterator, Protocol
 
 import numpy as np
 import torch
@@ -99,6 +103,49 @@ class PauseSignal(Protocol):
 class NoPauseSignal:
     def consume(self) -> str | None:
         return None
+
+
+class SignalPauseToken:
+    def __init__(self) -> None:
+        self._event = threading.Event()
+        self._lock = threading.Lock()
+        self._reason: str | None = None
+
+    def request(self, reason: str) -> None:
+        if reason != "signal":
+            raise PrivateResearchError("PAUSE_REQUEST_INVALID", reason)
+        with self._lock:
+            if not self._event.is_set():
+                self._reason = reason
+                self._event.set()
+
+    def consume(self) -> str | None:
+        with self._lock:
+            if not self._event.is_set():
+                return None
+            reason = self._reason
+            self._reason = None
+            self._event.clear()
+            return reason
+
+
+@contextmanager
+def cooperative_signal_handlers(token: SignalPauseToken) -> Iterator[None]:
+    def handle_signal(number: int, frame: FrameType | None) -> None:
+        token.request("signal")
+
+    previous = {
+        number: signal.signal(number, handle_signal)
+        for number in (signal.SIGINT, signal.SIGTERM)
+    }
+    try:
+        yield
+    finally:
+        for number, handler in previous.items():
+            signal.signal(number, handler)
+
+
+install_pause_signal_handlers = cooperative_signal_handlers
 
 
 def start_private_training(
@@ -344,8 +391,13 @@ def resume_private_training(
 def train_private_research(
     config: PrivateTrainConfig,
     services: RuntimeServices | None = None,
+    pause_signal: PauseSignal | None = None,
 ) -> PrivateTrainingResult:
-    return start_private_training(config, services=services)
+    return start_private_training(
+        config,
+        services=services,
+        pause_signal=pause_signal,
+    )
 
 
 def _run_training_loop(

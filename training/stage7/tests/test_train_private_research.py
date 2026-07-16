@@ -80,7 +80,11 @@ def test_trainer_metadata_only_never_prints_loss(
             "distribution": "prohibited",
         },
     )
-    monkeypatch.setattr(module, "train_private_research", lambda config: fake)
+    monkeypatch.setattr(
+        module,
+        "train_private_research",
+        lambda config, **kwargs: fake,
+    )
     assert (
         module.main(
             [
@@ -101,9 +105,14 @@ def test_trainer_metadata_only_never_prints_loss(
         == 0
     )
     output = capsys.readouterr().out
-    assert "training_scope: private-research-only" in output
-    assert "distribution: prohibited" in output
-    assert "run_complete: true" in output
+    assert output.splitlines() == [
+        "training_scope: private-research-only",
+        "distribution: prohibited",
+        "run_state: completed",
+        "completed_steps: 1",
+        "target_steps: 1",
+        "run_complete: true",
+    ]
     assert "final_loss" not in output
 
 
@@ -126,7 +135,7 @@ def test_trainer_cli_resolves_dot_local_from_repository_root(
     monkeypatch.setattr(
         module,
         "train_private_research",
-        lambda config: captured.append(config) or fake,
+        lambda config, **kwargs: captured.append(config) or fake,
     )
     assert (
         module.main(
@@ -157,7 +166,10 @@ def test_trainer_metadata_only_scrubs_private_error_detail(
 ) -> None:
     import mcagent_stage7.train_private_research as module
 
-    def fail(config: module.PrivateTrainConfig) -> module.PrivateTrainingResult:
+    def fail(
+        config: module.PrivateTrainConfig,
+        **kwargs: object,
+    ) -> module.PrivateTrainingResult:
         raise module.PrivateResearchError(
             "SOURCE_HASH_CHANGED",
             "secret-name.schematic",
