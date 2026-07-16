@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import math
 import os
+import zipfile
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -488,22 +490,36 @@ def _atomic_torch_save(
     if temporary.is_symlink() or checkpoint_path.is_symlink():
         raise PrivateResearchError("CHECKPOINT_MODEL_INVALID", checkpoint_path.name)
     try:
-        with temporary.open("wb") as handle:
-            torch.save(
-                state_dict,
-                handle,
-                _use_new_zipfile_serialization=False,
-            )
-            handle.flush()
-            os.fsync(handle.fileno())
-        loaded = torch.load(temporary, map_location="cpu", weights_only=True)
+        raw = io.BytesIO()
+        torch.save(state_dict, raw)
+        canonical_bytes = _canonical_torch_zip(raw.getvalue())
+        if checkpoint_path.exists():
+            if not checkpoint_path.is_file():
+                raise PrivateResearchError(
+                    "FINAL_ARTIFACT_CONFLICT",
+                    checkpoint_path.name,
+                )
+            if checkpoint_path.read_bytes() != canonical_bytes:
+                raise PrivateResearchError(
+                    "FINAL_ARTIFACT_CONFLICT",
+                    checkpoint_path.name,
+                )
+            validation_path = checkpoint_path
+        else:
+            with temporary.open("wb") as handle:
+                handle.write(canonical_bytes)
+                handle.flush()
+                os.fsync(handle.fileno())
+            validation_path = temporary
+        loaded = torch.load(validation_path, map_location="cpu", weights_only=True)
         if not isinstance(loaded, dict) or list(loaded) != list(state_dict):
             raise PrivateResearchError("CHECKPOINT_MODEL_INVALID", "temporary state")
         for name, expected in state_dict.items():
             if not torch.equal(loaded[name], expected):
                 raise PrivateResearchError("CHECKPOINT_MODEL_INVALID", name)
-        os.replace(temporary, checkpoint_path)
-        _fsync_directory(checkpoint_path.parent)
+        if validation_path == temporary:
+            os.replace(temporary, checkpoint_path)
+            _fsync_directory(checkpoint_path.parent)
     except PrivateResearchError:
         raise
     except Exception as error:
@@ -513,19 +529,53 @@ def _atomic_torch_save(
         ) from error
 
 
+def _canonical_torch_zip(payload: bytes) -> bytes:
+    source_buffer = io.BytesIO(payload)
+    target_buffer = io.BytesIO()
+    try:
+        with zipfile.ZipFile(source_buffer, "r") as source:
+            with zipfile.ZipFile(
+                target_buffer,
+                "w",
+                compression=zipfile.ZIP_STORED,
+            ) as target:
+                for name in source.namelist():
+                    info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                    info.compress_type = zipfile.ZIP_STORED
+                    info.external_attr = 0o600 << 16
+                    target.writestr(info, source.read(name))
+    except (OSError, zipfile.BadZipFile) as error:
+        raise PrivateResearchError(
+            "CHECKPOINT_MODEL_INVALID",
+            "canonical serialization",
+        ) from error
+    return target_buffer.getvalue()
+
+
 def _atomic_manifest_write(manifest: dict[str, Any], manifest_path: Path) -> None:
     temporary = manifest_path.with_name(manifest_path.name + ".tmp")
     if temporary.is_symlink() or manifest_path.is_symlink():
         raise PrivateResearchError("CHECKPOINT_MANIFEST_INVALID", manifest_path.name)
     try:
-        with temporary.open("wb") as handle:
-            handle.write(_canonical_json(manifest).encode("utf8"))
-            handle.flush()
-            os.fsync(handle.fileno())
-        if _read_manifest(temporary) != manifest:
+        payload = _canonical_json(manifest).encode("utf8")
+        if manifest_path.exists():
+            if not manifest_path.is_file() or manifest_path.read_bytes() != payload:
+                raise PrivateResearchError(
+                    "FINAL_ARTIFACT_CONFLICT",
+                    manifest_path.name,
+                )
+            validation_path = manifest_path
+        else:
+            with temporary.open("wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            validation_path = temporary
+        if _read_manifest(validation_path) != manifest:
             raise PrivateResearchError("CHECKPOINT_MANIFEST_INVALID", "temporary")
-        os.replace(temporary, manifest_path)
-        _fsync_directory(manifest_path.parent)
+        if validation_path == temporary:
+            os.replace(temporary, manifest_path)
+            _fsync_directory(manifest_path.parent)
     except PrivateResearchError:
         raise
     except OSError as error:

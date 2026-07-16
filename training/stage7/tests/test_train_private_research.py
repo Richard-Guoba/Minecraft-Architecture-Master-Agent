@@ -1,46 +1,53 @@
 from __future__ import annotations
 
-import hashlib
-import json
-import shutil
 from pathlib import Path
 
 import pytest
 
 from mcagent_stage7.private_research import PrivateResearchError
 from mcagent_stage7.train_private_research import PrivateTrainConfig, train_private_research
+from private_research_test_support import (
+    bypass_repository_identity,
+    make_ready_private_root,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_one_step_private_smoke_run_writes_only_private_non_distributable_artifacts() -> None:
-    root = make_ready_private_root()
+def test_one_step_private_smoke_run_writes_only_private_non_distributable_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = make_ready_private_root("legacy-smoke")
+    bypass_repository_identity(monkeypatch)
 
-    artifacts = train_private_research(
+    result = train_private_research(
         PrivateTrainConfig(
             root=root,
             repo_root=REPO_ROOT,
             seed=7101,
             steps=1,
-            batch_size=2,
+            batch_size=1,
             learning_rate=1e-3,
             device="cpu",
             run_id="smoke",
-            code_revision="test",
+            code_revision="a" * 40,
         )
     )
 
-    assert artifacts.checkpoint_path.is_relative_to(root / "runs")
-    assert artifacts.manifest["training_scope"] == "private-research-only"
-    assert artifacts.manifest["distribution"] == "prohibited"
-    assert artifacts.manifest["config"]["batch_size"] == 2
-    assert artifacts.final_loss > 0
-    assert (root / "runs" / "smoke" / "reconstruction.bin").stat().st_size == 64 ** 3
+    assert result.status == "completed"
+    assert result.completed_steps == 1
+    assert result.manifest is not None
+    assert result.manifest["training_scope"] == "private-research-only"
+    assert result.manifest["distribution"] == "prohibited"
+    assert result.manifest["config"]["batch_size"] == 1
+    assert result.run_path.is_relative_to(root / "runs")
+    assert (result.run_path / "reconstruction.bin").stat().st_size == 64**3
+    assert (result.run_path / ".runtime" / "run-state.json").is_file()
 
 
 def test_trainer_refuses_output_outside_private_root() -> None:
-    root = make_ready_private_root()
+    root = make_ready_private_root("escape")
     config = PrivateTrainConfig(
         root=root,
         repo_root=REPO_ROOT,
@@ -50,7 +57,7 @@ def test_trainer_refuses_output_outside_private_root() -> None:
         learning_rate=1e-3,
         device="cpu",
         run_id="../escape",
-        code_revision="test",
+        code_revision="a" * 40,
     )
 
     with pytest.raises(PrivateResearchError, match="RUN_ID_INVALID|PATH_OUTSIDE_PRIVATE_ROOT"):
@@ -63,16 +70,15 @@ def test_trainer_metadata_only_never_prints_loss(
 ) -> None:
     import mcagent_stage7.train_private_research as module
 
-    fake = module.PrivateRunArtifacts(
-        checkpoint_path=Path("checkpoint.pt"),
-        manifest_path=Path("checkpoint_manifest.json"),
-        metrics_path=Path("metrics.jsonl"),
-        reconstruction_path=Path("reconstruction.bin"),
+    fake = module.PrivateTrainingResult(
+        run_path=Path(".tmp/private/runs/safe"),
+        status="completed",
+        completed_steps=1,
+        target_steps=1,
         manifest={
             "training_scope": "private-research-only",
             "distribution": "prohibited",
         },
-        final_loss=123.456,
     )
     monkeypatch.setattr(module, "train_private_research", lambda config: fake)
     assert (
@@ -88,6 +94,8 @@ def test_trainer_metadata_only_never_prints_loss(
                 "1",
                 "--device",
                 "cpu",
+                "--code-revision",
+                "a" * 40,
             ]
         )
         == 0
@@ -96,7 +104,6 @@ def test_trainer_metadata_only_never_prints_loss(
     assert "training_scope: private-research-only" in output
     assert "distribution: prohibited" in output
     assert "run_complete: true" in output
-    assert "123.456" not in output
     assert "final_loss" not in output
 
 
@@ -106,16 +113,15 @@ def test_trainer_cli_resolves_dot_local_from_repository_root(
     import mcagent_stage7.train_private_research as module
 
     captured: list[module.PrivateTrainConfig] = []
-    fake = module.PrivateRunArtifacts(
-        checkpoint_path=Path("checkpoint.pt"),
-        manifest_path=Path("checkpoint_manifest.json"),
-        metrics_path=Path("metrics.jsonl"),
-        reconstruction_path=Path("reconstruction.bin"),
+    fake = module.PrivateTrainingResult(
+        run_path=Path(".tmp/private/runs/safe"),
+        status="completed",
+        completed_steps=1,
+        target_steps=1,
         manifest={
             "training_scope": "private-research-only",
             "distribution": "prohibited",
         },
-        final_loss=1.0,
     )
     monkeypatch.setattr(
         module,
@@ -135,6 +141,8 @@ def test_trainer_cli_resolves_dot_local_from_repository_root(
                 "1",
                 "--device",
                 "cpu",
+                "--code-revision",
+                "a" * 40,
             ]
         )
         == 0
@@ -149,7 +157,7 @@ def test_trainer_metadata_only_scrubs_private_error_detail(
 ) -> None:
     import mcagent_stage7.train_private_research as module
 
-    def fail(config: module.PrivateTrainConfig) -> module.PrivateRunArtifacts:
+    def fail(config: module.PrivateTrainConfig) -> module.PrivateTrainingResult:
         raise module.PrivateResearchError(
             "SOURCE_HASH_CHANGED",
             "secret-name.schematic",
@@ -169,52 +177,10 @@ def test_trainer_metadata_only_scrubs_private_error_detail(
                 "1",
                 "--device",
                 "cpu",
+                "--code-revision",
+                "a" * 40,
             ]
         )
     error = capsys.readouterr().err
     assert "SOURCE_HASH_CHANGED" in error
     assert "secret-name.schematic" not in error
-
-
-def make_ready_private_root() -> Path:
-    root = REPO_ROOT / ".tmp" / "stage7-private-research-trainer-test"
-    shutil.rmtree(root, ignore_errors=True)
-    for name in ("source", "manifests", "prepared", "splits", "runs"):
-        (root / name).mkdir(parents=True, exist_ok=True)
-    (root / "PRIVATE_RESEARCH_ACK.json").write_text(json.dumps({
-        "scope": "stage7-private-research-only", "distribution_prohibited": True,
-        "dataset_v3_unchanged": True, "m4_apply_mode_unchanged": True,
-        "acknowledged_at": "2026-07-15T00:00:00.000Z", "acknowledged_by": "test-owner",
-    }))
-    records = []
-    source_records = []
-    for index in range(2):
-        case_id = f"pr-test-{index}"
-        source_path = root / "source" / f"test-{index}.schematic"
-        source_bytes = f"synthetic-private-source-{index}".encode("ascii")
-        source_path.write_bytes(source_bytes)
-        source_sha = hashlib.sha256(source_bytes).hexdigest()
-        voxels = bytes([index + 1]) * (64 ** 3)
-        voxel_path = root / "prepared" / f"{case_id}.voxels.bin"
-        voxel_path.write_bytes(voxels)
-        record = {
-            "source_id": case_id, "source_sha256": source_sha,
-            "taxonomy_version": "private-raw-material-family-v1", "shape": [64, 64, 64],
-            "voxel_path": f"prepared/{case_id}.voxels.bin", "metadata_path": f"prepared/{case_id}.json",
-            "voxel_sha256": hashlib.sha256(voxels).hexdigest(), "rights_state": "unverified",
-            "distribution": "prohibited", "purpose": "local-private-research-only",
-        }
-        (root / "prepared" / f"{case_id}.json").write_text(json.dumps(record))
-        records.append(record)
-        source_records.append({
-            "source_id": case_id, "source_path": f"source/test-{index}.schematic",
-            "content_sha256": source_sha, "rights_state": "unverified", "distribution": "prohibited",
-            "purpose": "local-private-research-only",
-        })
-    (root / "manifests" / "sources.jsonl").write_text("".join(json.dumps(record) + "\n" for record in source_records))
-    (root / "manifests" / "prepared.jsonl").write_text("".join(json.dumps(record) + "\n" for record in records))
-    (root / "splits" / "split.json").write_text(json.dumps({
-        "case_ids": ["pr-test-0", "pr-test-1"], "train_case_ids": ["pr-test-0", "pr-test-1"],
-        "validation_case_ids": [],
-    }))
-    return root
