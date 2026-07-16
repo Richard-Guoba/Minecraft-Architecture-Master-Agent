@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -10,11 +11,25 @@ import torch
 
 from mcagent_stage7.evaluate_private_research import (
     PrivateEvaluationConfig,
+    _detect_run_schema,
+    _validate_training_artifacts,
     evaluate_private_research,
 )
 from mcagent_stage7.private_research import PrivateResearchError, run_private_preflight
 from mcagent_stage7.private_research_checkpoints import save_private_checkpoint
 from mcagent_stage7.private_research_model import TinyMaskedVoxelAutoencoder
+from mcagent_stage7.private_research_runtime import (
+    paths_for_run,
+    read_run_state,
+    write_run_state,
+)
+from mcagent_stage7.private_research_training import start_private_training
+from private_research_test_support import (
+    bypass_repository_identity,
+    lightweight_services,
+    make_config,
+    make_ready_private_root,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -193,6 +208,81 @@ def test_evaluator_cli_scrubs_private_error_detail(
     error = capsys.readouterr().err
     assert "SOURCE_HASH_CHANGED" in error
     assert "secret-name.schematic" not in error
+
+
+def test_v1_evaluator_artifact_contract_stays_exact() -> None:
+    root = make_ready_evaluation_root()
+    run = root / "runs" / "quality"
+    manifest = json.loads((run / "checkpoint_manifest.json").read_text("utf8"))
+    assert _detect_run_schema(run / "checkpoint_manifest.json") == 1
+    _validate_training_artifacts(
+        run,
+        expected_steps=1,
+        manifest=manifest,
+    )
+
+
+def test_v2_evaluator_accepts_only_completed_declared_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = make_ready_v2_evaluation_root(monkeypatch)
+    run = root / "runs" / "quality-v2"
+    manifest = json.loads((run / "checkpoint_manifest.json").read_text("utf8"))
+    _validate_training_artifacts(run, expected_steps=3, manifest=manifest)
+    assert read_run_state(paths_for_run(run)).status == "completed"
+
+
+@pytest.mark.parametrize("state", ["paused", "interrupted", "running"])
+def test_v2_evaluator_refuses_noncompleted_state(
+    monkeypatch: pytest.MonkeyPatch,
+    state: str,
+) -> None:
+    root = make_ready_v2_evaluation_root(monkeypatch)
+    run = root / "runs" / "quality-v2"
+    paths = paths_for_run(run)
+    original = read_run_state(paths)
+    changes: dict[str, object] = {"status": state}
+    if state == "paused":
+        changes.update({
+            "pause_request_id": 1,
+            "pause_acknowledged_id": 1,
+            "pause_reason": "owner",
+            "paused_at_epoch_seconds": 1000.0,
+        })
+    write_run_state(paths, replace(original, **changes))
+    with pytest.raises(PrivateResearchError, match="RUN_NOT_COMPLETED"):
+        evaluate_private_research(
+            PrivateEvaluationConfig(root=root, repo_root=REPO_ROOT, run_id="quality-v2")
+        )
+
+
+def test_v2_evaluator_refuses_unknown_or_temporary_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = make_ready_v2_evaluation_root(monkeypatch)
+    extra = root / "runs" / "quality-v2" / ".runtime" / "resume-a.pt.tmp"
+    extra.write_bytes(b"partial")
+    with pytest.raises(PrivateResearchError, match="RUN_ARTIFACT_INVALID"):
+        evaluate_private_research(
+            PrivateEvaluationConfig(root=root, repo_root=REPO_ROOT, run_id="quality-v2")
+        )
+
+
+def make_ready_v2_evaluation_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    root = make_ready_private_root(
+        "evaluation",
+        case_count=22,
+        validation_count=7,
+    )
+    bypass_repository_identity(monkeypatch)
+    result = start_private_training(
+        make_config(root, "quality-v2", steps=3),
+        services=lightweight_services(),
+    )
+    assert result.status == "completed"
+    return root
 
 
 def make_ready_evaluation_root() -> Path:

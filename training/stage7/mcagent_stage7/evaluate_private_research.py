@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Sequence
 
 import torch
@@ -19,7 +20,11 @@ from .private_research import (
     resolve_private_cli_paths,
     run_private_preflight,
 )
-from .private_research_checkpoints import load_private_checkpoint
+from .private_research_checkpoints import (
+    PRIVATE_CHECKPOINT_SOURCE,
+    PRIVATE_CHECKPOINT_SOURCE_V2,
+    load_private_checkpoint,
+)
 from .private_research_evaluation import (
     MetricAccumulator,
     build_class_prior,
@@ -28,11 +33,19 @@ from .private_research_evaluation import (
     quality_gate,
 )
 from .private_research_model import TinyMaskedVoxelAutoencoder
+from .private_research_runtime import (
+    atomic_write_bytes,
+    paths_for_run,
+    read_pause_request,
+    read_public_progress,
+    read_run_state,
+)
+from .private_research_snapshots import load_latest_resume_snapshot
 
 
 EVALUATION_SOURCE = "stage7-private-research-evaluation-v1"
 MODEL_NAME = "tiny-masked-voxel-autoencoder-v1"
-TRAINING_ARTIFACTS = {
+TRAINING_ARTIFACTS_V1 = {
     "metrics.jsonl",
     "reconstruction.bin",
     "checkpoint.pt",
@@ -96,7 +109,11 @@ def evaluate_private_research(
         or expected_steps <= 0
     ):
         raise PrivateResearchError("CHECKPOINT_MANIFEST_INVALID", "steps")
-    _validate_training_artifacts(run_path, expected_steps)
+    _validate_training_artifacts(
+        run_path,
+        expected_steps=expected_steps,
+        manifest=loaded.manifest,
+    )
 
     train_dataset = PrivatePreparedDataset(
         root=preflight.root,
@@ -214,12 +231,18 @@ def evaluate_private_research(
         "dataset_v3_gate": postflight.dataset_v3_gate,
     }
     try:
-        report_path.write_text(
-            json.dumps(report, sort_keys=True, indent=2) + "\n",
-            encoding="utf8",
+        atomic_write_bytes(
+            report_path,
+            (json.dumps(report, sort_keys=True, indent=2) + "\n").encode("utf8"),
         )
-    except OSError as error:
+    except PrivateResearchError as error:
         raise PrivateResearchError("EVALUATION_WRITE_FAILED", report_path.name) from error
+    _validate_training_artifacts(
+        run_path,
+        expected_steps=expected_steps,
+        manifest=loaded.manifest,
+        allow_evaluation=True,
+    )
     run_private_preflight(
         root=preflight.root,
         repo_root=Path(config.repo_root),
@@ -240,7 +263,56 @@ def _validate_config(config: PrivateEvaluationConfig) -> None:
         raise PrivateResearchError("EVALUATION_CONFIG_INVALID", "mask protocol")
 
 
-def _validate_training_artifacts(run_path: Path, expected_steps: int) -> None:
+def _detect_run_schema(manifest_path: Path) -> int:
+    path = Path(manifest_path)
+    if path.is_symlink() or not path.is_file():
+        raise PrivateResearchError("CHECKPOINT_MANIFEST_INVALID", path.name)
+    try:
+        manifest = json.loads(path.read_text("utf8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise PrivateResearchError("CHECKPOINT_MANIFEST_INVALID", path.name) from error
+    if not isinstance(manifest, dict):
+        raise PrivateResearchError("CHECKPOINT_MANIFEST_INVALID", path.name)
+    pair = (manifest.get("source"), manifest.get("schema_version"))
+    if pair == (PRIVATE_CHECKPOINT_SOURCE, 1):
+        return 1
+    if pair == (PRIVATE_CHECKPOINT_SOURCE_V2, 2):
+        return 2
+    raise PrivateResearchError("CHECKPOINT_MANIFEST_INVALID", "source/schema")
+
+
+def _validate_training_artifacts(
+    run_path: Path,
+    expected_steps: int,
+    manifest: dict[str, Any],
+    *,
+    allow_evaluation: bool = False,
+) -> None:
+    pair = (manifest.get("source"), manifest.get("schema_version"))
+    if pair == (PRIVATE_CHECKPOINT_SOURCE, 1):
+        _validate_v1_training_artifacts(
+            run_path,
+            expected_steps=expected_steps,
+            allow_evaluation=allow_evaluation,
+        )
+        return
+    if pair == (PRIVATE_CHECKPOINT_SOURCE_V2, 2):
+        _validate_v2_training_artifacts(
+            run_path,
+            expected_steps=expected_steps,
+            manifest=manifest,
+            allow_evaluation=allow_evaluation,
+        )
+        return
+    raise PrivateResearchError("CHECKPOINT_MANIFEST_INVALID", "source/schema")
+
+
+def _validate_v1_training_artifacts(
+    run_path: Path,
+    *,
+    expected_steps: int,
+    allow_evaluation: bool,
+) -> None:
     try:
         entries = list(run_path.iterdir())
     except OSError as error:
@@ -248,10 +320,139 @@ def _validate_training_artifacts(run_path: Path, expected_steps: int) -> None:
     if any(entry.is_symlink() or not entry.is_file() for entry in entries):
         raise PrivateResearchError("RUN_ARTIFACT_INVALID", "entry type")
     names = {entry.name for entry in entries}
-    if "evaluation.json" in names:
+    if "evaluation.json" in names and not allow_evaluation:
         raise PrivateResearchError("EVALUATION_EXISTS", "evaluation.json")
-    if names != TRAINING_ARTIFACTS:
+    expected = set(TRAINING_ARTIFACTS_V1)
+    if allow_evaluation:
+        expected.add("evaluation.json")
+    if names != expected:
         raise PrivateResearchError("RUN_ARTIFACT_INVALID", "artifact set")
+    _validate_metrics_and_reconstruction(
+        run_path,
+        expected_steps=expected_steps,
+        require_canonical_metrics=False,
+    )
+
+
+def _validate_v2_training_artifacts(
+    run_path: Path,
+    *,
+    expected_steps: int,
+    manifest: dict[str, Any],
+    allow_evaluation: bool,
+) -> None:
+    if (
+        manifest.get("source") != PRIVATE_CHECKPOINT_SOURCE_V2
+        or manifest.get("schema_version") != 2
+        or manifest.get("completed_steps") != expected_steps
+    ):
+        raise PrivateResearchError("CHECKPOINT_MANIFEST_INVALID", "v2 completion")
+    declared = manifest.get("artifact_inventory")
+    if (
+        not isinstance(declared, list)
+        or any(not isinstance(item, str) for item in declared)
+        or declared != sorted(set(declared))
+    ):
+        raise PrivateResearchError("RUN_ARTIFACT_INVALID", "declared inventory")
+    for item in declared:
+        relative = PurePosixPath(item)
+        if (
+            not item
+            or "\\" in item
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or relative.as_posix() != item
+        ):
+            raise PrivateResearchError("RUN_ARTIFACT_INVALID", "declared path")
+    runtime_path = run_path / ".runtime"
+    if runtime_path.is_symlink() or not runtime_path.is_dir():
+        raise PrivateResearchError("RUN_ARTIFACT_INVALID", "runtime directory")
+    actual = _recursive_regular_inventory(run_path)
+    expected_inventory = set(declared)
+    if allow_evaluation:
+        expected_inventory.add("evaluation.json")
+    if actual != expected_inventory:
+        raise PrivateResearchError("RUN_ARTIFACT_INVALID", "artifact inventory")
+    if any(name.endswith(".tmp") for name in actual):
+        raise PrivateResearchError("RUN_ARTIFACT_INVALID", "temporary artifact")
+    paths = paths_for_run(run_path)
+    state = read_run_state(paths)
+    if (
+        state.status != "completed"
+        or state.completed_steps != expected_steps
+        or state.snapshot_steps != expected_steps
+        or state.target_steps != expected_steps
+    ):
+        raise PrivateResearchError("RUN_NOT_COMPLETED", state.status)
+    snapshot = load_latest_resume_snapshot(
+        paths=paths,
+        expected_binding=state.binding,
+    )
+    if snapshot.completed_steps != expected_steps:
+        raise PrivateResearchError("RUN_ARTIFACT_INVALID", "terminal snapshot")
+    if ".runtime/pause-request.json" in declared:
+        request = read_pause_request(paths)
+        if (
+            request["request_id"] != request["acknowledged_id"]
+            or request["acknowledged_state"] != "paused"
+            or request["acknowledged_id"] != state.pause_acknowledged_id
+        ):
+            raise PrivateResearchError("RUN_ARTIFACT_INVALID", "pause request")
+    for file_field, hash_field in (
+        ("checkpoint_file", "checkpoint_sha256"),
+        ("metrics_file", "metrics_sha256"),
+        ("reconstruction_file", "reconstruction_sha256"),
+    ):
+        relative = manifest.get(file_field)
+        expected_hash = manifest.get(hash_field)
+        if (
+            not isinstance(relative, str)
+            or not isinstance(expected_hash, str)
+            or len(expected_hash) != 64
+        ):
+            raise PrivateResearchError("RUN_ARTIFACT_INVALID", hash_field)
+        path = run_path / relative
+        if hashlib.sha256(path.read_bytes()).hexdigest() != expected_hash:
+            raise PrivateResearchError("RUN_ARTIFACT_INVALID", hash_field)
+    _validate_metrics_and_reconstruction(
+        run_path,
+        expected_steps=expected_steps,
+        require_canonical_metrics=True,
+    )
+    public_progress = read_public_progress(paths)
+    if (
+        public_progress["state"] != "completed"
+        or public_progress["completed_steps"] != expected_steps
+        or public_progress["target_steps"] != expected_steps
+    ):
+        raise PrivateResearchError("RUN_ARTIFACT_INVALID", "completed progress")
+
+
+def _recursive_regular_inventory(run_path: Path) -> set[str]:
+    result: set[str] = set()
+    try:
+        entries = list(run_path.rglob("*"))
+    except OSError as error:
+        raise PrivateResearchError("RUN_ARTIFACT_INVALID", "run directory") from error
+    for entry in entries:
+        if entry.is_symlink():
+            raise PrivateResearchError("RUN_ARTIFACT_INVALID", "symbolic link")
+        if entry.is_dir():
+            if entry != run_path / ".runtime":
+                raise PrivateResearchError("RUN_ARTIFACT_INVALID", "nested directory")
+            continue
+        if not entry.is_file():
+            raise PrivateResearchError("RUN_ARTIFACT_INVALID", "entry type")
+        result.add(entry.relative_to(run_path).as_posix())
+    return result
+
+
+def _validate_metrics_and_reconstruction(
+    run_path: Path,
+    *,
+    expected_steps: int,
+    require_canonical_metrics: bool,
+) -> None:
     try:
         reconstruction_size = (run_path / "reconstruction.bin").stat().st_size
         lines = (run_path / "metrics.jsonl").read_text("utf8").splitlines()
@@ -274,6 +475,10 @@ def _validate_training_artifacts(run_path: Path, expected_steps: int) -> None:
             or not math.isfinite(float(metric["masked_reconstruction_loss"]))
         ):
             raise PrivateResearchError("RUN_ARTIFACT_INVALID", "metrics row")
+        if require_canonical_metrics:
+            canonical = json.dumps(metric, sort_keys=True, separators=(",", ":"))
+            if line != canonical:
+                raise PrivateResearchError("RUN_ARTIFACT_INVALID", "metrics canonical")
 
 
 def _update_model(
