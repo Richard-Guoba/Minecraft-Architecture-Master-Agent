@@ -48,3 +48,28 @@ test('project docs surface Stage 7 M2.5 trusted-data readiness as work in progre
   }
   assert.doesNotMatch(agent, /下一阶段：Stage 3 Concept Studio/);
 });
+
+test('Stage 7 private training documents interruptible local operation', async () => {
+  const [packageText, stage7Readme] = await Promise.all([
+    fs.readFile('package.json', 'utf8'),
+    fs.readFile('training/stage7/README.md', 'utf8'),
+  ]);
+  const pkg = JSON.parse(packageText);
+  assert.equal(
+    pkg.scripts['pause:stage7:private-research'],
+    'conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.pause_private_research',
+  );
+  assert.equal(
+    pkg.scripts['resume:stage7:private-research'],
+    'conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.resume_private_research',
+  );
+  assert.equal(
+    pkg.scripts['monitor:stage7:private-research'],
+    'conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.monitor_private_research',
+  );
+  assert.match(stage7Readme, /--show-private-loss/);
+  assert.match(stage7Readme, /five active minutes/i);
+  assert.match(stage7Readme, /two overwritten slots/i);
+  assert.match(stage7Readme, /1\.5 GiB/);
+  assert.match(stage7Readme, /device=cpu,steps=185946/);
+});
