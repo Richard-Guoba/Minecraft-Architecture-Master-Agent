@@ -5,6 +5,7 @@ import json
 import shutil
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
 
@@ -19,6 +20,7 @@ from mcagent_stage7.private_research import (
 from mcagent_stage7.private_research_checkpoints import (
     load_private_checkpoint,
     save_private_checkpoint,
+    save_private_checkpoint_v2,
 )
 from mcagent_stage7.private_research_model import TinyMaskedVoxelAutoencoder
 
@@ -125,6 +127,182 @@ def test_safe_loader_rejects_invalid_training_configuration(tmp_path: Path) -> N
             preflight=preflight,
             device="cpu",
         )
+
+
+def test_v1_checkpoint_contract_remains_unchanged(tmp_path: Path) -> None:
+    checkpoint, manifest_path, preflight = make_checkpoint(tmp_path)
+    manifest = json.loads(manifest_path.read_text("utf8"))
+    assert manifest["source"] == "stage7-private-research-checkpoint-v1"
+    assert manifest["schema_version"] == 1
+    assert load_private_checkpoint(
+        checkpoint_path=checkpoint,
+        manifest_path=manifest_path,
+        preflight=preflight,
+        device="cpu",
+    ).manifest == manifest
+
+
+def test_v2_checkpoint_declares_exact_artifact_inventory(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "checkpoint.pt"
+    manifest_path = tmp_path / "checkpoint_manifest.json"
+    inventory = [
+        ".runtime/private-progress.json",
+        ".runtime/progress.json",
+        ".runtime/resume-a.pt",
+        ".runtime/resume-b.pt",
+        ".runtime/resume-pointer.json",
+        ".runtime/run-state.json",
+        ".runtime/run.lock",
+        "checkpoint.pt",
+        "checkpoint_manifest.json",
+        "metrics.jsonl",
+        "reconstruction.bin",
+    ]
+    manifest = save_private_checkpoint_v2(
+        model=TinyMaskedVoxelAutoencoder(),
+        checkpoint_path=checkpoint,
+        manifest_path=manifest_path,
+        binding=make_v2_binding(),
+        completed_steps=4,
+        artifact_inventory=inventory,
+        metrics_sha256=hashlib.sha256(b"metrics").hexdigest(),
+        reconstruction_sha256=hashlib.sha256(b"reconstruction").hexdigest(),
+    )
+    assert manifest["source"] == "stage7-private-research-checkpoint-v2"
+    assert manifest["schema_version"] == 2
+    assert manifest["completed_steps"] == 4
+    assert manifest["artifact_inventory"] == inventory
+
+
+def test_v2_checkpoint_loads_only_with_matching_preflight(tmp_path: Path) -> None:
+    checkpoint, manifest_path, preflight = make_v2_checkpoint(tmp_path)
+    loaded = load_private_checkpoint(
+        checkpoint_path=checkpoint,
+        manifest_path=manifest_path,
+        preflight=preflight,
+        device="cpu",
+    )
+    assert loaded.manifest["source"] == "stage7-private-research-checkpoint-v2"
+    assert loaded.manifest["completed_steps"] == 4
+    assert loaded.model.training is False
+
+
+def test_v2_checkpoint_rejects_mixed_source_and_schema(tmp_path: Path) -> None:
+    checkpoint, manifest_path, preflight = make_v2_checkpoint(tmp_path)
+    manifest = json.loads(manifest_path.read_text("utf8"))
+    manifest["schema_version"] = 1
+    manifest_path.write_text(json.dumps(manifest), encoding="utf8")
+    with pytest.raises(PrivateResearchError, match="CHECKPOINT_MANIFEST_INVALID"):
+        load_private_checkpoint(
+            checkpoint_path=checkpoint,
+            manifest_path=manifest_path,
+            preflight=preflight,
+            device="cpu",
+        )
+
+
+def test_v2_checkpoint_rejects_preflight_drift(tmp_path: Path) -> None:
+    checkpoint, manifest_path, preflight = make_v2_checkpoint(tmp_path)
+    changed = PrivateResearchPreflight(
+        root=preflight.root,
+        case_count=preflight.case_count,
+        sources_manifest_sha256=preflight.sources_manifest_sha256,
+        prepared_manifest_sha256="f" * 64,
+        split_sha256=preflight.split_sha256,
+        dataset_hashes=preflight.dataset_hashes,
+        dataset_v3_gate=preflight.dataset_v3_gate,
+    )
+    with pytest.raises(PrivateResearchError, match="CHECKPOINT_MANIFEST_INVALID"):
+        load_private_checkpoint(
+            checkpoint_path=checkpoint,
+            manifest_path=manifest_path,
+            preflight=changed,
+            device="cpu",
+        )
+
+
+def test_v2_checkpoint_rejects_unsafe_inventory(tmp_path: Path) -> None:
+    inventory = v2_inventory()
+    inventory.append("../escape")
+    inventory.sort()
+    with pytest.raises(PrivateResearchError, match="CHECKPOINT_CONFIG_INVALID"):
+        save_private_checkpoint_v2(
+            model=TinyMaskedVoxelAutoencoder(),
+            checkpoint_path=tmp_path / "checkpoint.pt",
+            manifest_path=tmp_path / "checkpoint_manifest.json",
+            binding=make_v2_binding(),
+            completed_steps=4,
+            artifact_inventory=inventory,
+            metrics_sha256=hashlib.sha256(b"metrics").hexdigest(),
+            reconstruction_sha256=hashlib.sha256(b"reconstruction").hexdigest(),
+        )
+
+
+def make_v2_binding() -> dict[str, object]:
+    return {
+        "run_id": "safe-run",
+        "target_steps": 4,
+        "seed": 7101,
+        "batch_size": 1,
+        "learning_rate": 0.001,
+        "device": "cpu",
+        "code_revision": "a" * 40,
+        "training_code_sha256": "b" * 64,
+        "prepared_manifest_sha256": hashlib.sha256(b"prepared").hexdigest(),
+        "split_sha256": hashlib.sha256(b"split").hexdigest(),
+        "dataset_hashes": {"v1": "1" * 64, "v2": "2" * 64, "v3": "3" * 64},
+        "dataset_v3_gate": {
+            "ready_for_m3_real_data": False,
+            "training_eligible_count": 0,
+        },
+        "python_version": "3.12",
+        "torch_version": str(torch.__version__),
+        "numpy_version": np.__version__,
+    }
+
+
+def make_v2_checkpoint(
+    tmp_path: Path,
+) -> tuple[Path, Path, PrivateResearchPreflight]:
+    checkpoint = tmp_path / "checkpoint.pt"
+    manifest_path = tmp_path / "checkpoint_manifest.json"
+    binding = make_v2_binding()
+    save_private_checkpoint_v2(
+        model=TinyMaskedVoxelAutoencoder(),
+        checkpoint_path=checkpoint,
+        manifest_path=manifest_path,
+        binding=binding,
+        completed_steps=4,
+        artifact_inventory=v2_inventory(),
+        metrics_sha256=hashlib.sha256(b"metrics").hexdigest(),
+        reconstruction_sha256=hashlib.sha256(b"reconstruction").hexdigest(),
+    )
+    preflight = PrivateResearchPreflight(
+        root=tmp_path,
+        case_count=22,
+        sources_manifest_sha256="0" * 64,
+        prepared_manifest_sha256=str(binding["prepared_manifest_sha256"]),
+        split_sha256=str(binding["split_sha256"]),
+        dataset_hashes=dict(binding["dataset_hashes"]),
+        dataset_v3_gate=dict(binding["dataset_v3_gate"]),
+    )
+    return checkpoint, manifest_path, preflight
+
+
+def v2_inventory() -> list[str]:
+    return [
+        ".runtime/private-progress.json",
+        ".runtime/progress.json",
+        ".runtime/resume-a.pt",
+        ".runtime/resume-b.pt",
+        ".runtime/resume-pointer.json",
+        ".runtime/run-state.json",
+        ".runtime/run.lock",
+        "checkpoint.pt",
+        "checkpoint_manifest.json",
+        "metrics.jsonl",
+        "reconstruction.bin",
+    ]
 
 
 def make_checkpoint(tmp_path: Path) -> tuple[Path, Path, PrivateResearchPreflight]:
