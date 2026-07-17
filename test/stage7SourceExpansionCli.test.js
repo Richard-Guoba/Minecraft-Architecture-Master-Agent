@@ -314,6 +314,50 @@ test('saved card identity drift blocks later commands', async (t) => {
   );
 });
 
+test('README documents metadata-only source audit without acquisition authority', async () => {
+  const readme = await readFile('README.md', 'utf8');
+  assert.match(readme, /npm run audit:stage7:sources -- discovery/u);
+  assert.match(readme, /metadata-only/u);
+  assert.match(readme, /does not authorize download, Dataset admission, or training/iu);
+});
+
+test('synthetic source audit leaves formal Dataset manifests byte-identical', async (t) => {
+  const before = await formalDatasetBytes();
+  const context = await populatedFixtureContext(t);
+  await runStage7SourceExpansionCli(discoveryArgs(), context);
+  assert.deepEqual(await formalDatasetBytes(), before);
+});
+
+test('source expansion metadata implementation has no payload or network surface', async () => {
+  const files = [
+    'src/construction/learning/stage7SourceExpansionContracts.js',
+    'src/construction/learning/stage7SourceExpansionRights.js',
+    'src/construction/learning/stage7SourceExpansionRanking.js',
+    'src/construction/learning/stage7SourceExpansionReview.js',
+    'src/construction/learning/stage7SourceExpansionBoundary.js',
+    'src/auditStage7SourceExpansion.js'
+  ];
+  const forbidden = [
+    'http.request',
+    'https.request',
+    'fetch(',
+    'axios',
+    'playwright',
+    'puppeteer',
+    '.schematic',
+    '.litematic',
+    '.mcstructure',
+    'child_process.spawn',
+    'training/stage7'
+  ];
+  for (const file of files) {
+    const source = await readFile(file, 'utf8');
+    for (const token of forbidden) {
+      assert.equal(source.includes(token), false, `${file} contains ${token}`);
+    }
+  }
+});
+
 async function fixtureContext(t) {
   const repositoryRoot = await mkdtemp(join(tmpdir(), 'stage7-source-expansion-'));
   t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
@@ -407,6 +451,15 @@ async function assertMetadataOnlyJsonReports(directory) {
     assert.equal(report.authorizes_download, false, filename);
     assert.equal(report.authorizes_training, false, filename);
   }
+}
+
+async function formalDatasetBytes() {
+  return Promise.all(['v1', 'v2', 'v3'].map(async (version) => ({
+    version,
+    bytes: (await readFile(
+      `mc_templates/datasets/coarse_semantic_voxels/${version}/manifest.json`
+    )).toString('base64')
+  })));
 }
 
 function hasCode(code) {

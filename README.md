@@ -145,6 +145,28 @@ npm start -- --help
 npm start -- --list-prompts
 ```
 
+## Stage 7 Source-Expansion Metadata Pilot
+
+The source-expansion pilot is a local, metadata-only audit for identifying public candidates that may be worth human review. Initialize the exact ignored root, then run each review wave with an explicit observation date:
+
+```bash
+npm run audit:stage7:sources -- init --root .local/stage7-source-expansion
+npm run audit:stage7:sources -- discovery --root .local/stage7-source-expansion --as-of YYYY-MM-DD --metadata-only
+npm run audit:stage7:sources -- yield --root .local/stage7-source-expansion --as-of YYYY-MM-DD --metadata-only
+npm run audit:stage7:sources -- finalize --root .local/stage7-source-expansion --as-of YYYY-MM-DD --metadata-only
+```
+
+The operator manually supplies only these four JSONL inputs under that root:
+
+- `metadata/candidates.jsonl`
+- `evidence/rights.jsonl`
+- `reviews/discovery-decisions.jsonl`
+- `reviews/yield-decisions.jsonl`
+
+Discovery selects up to 30 review cards with at most 5 per source. Yield selects up to 20 unseen cards only from sources accepted in discovery, with at most 15 total cards per source across both waves. Rights evidence is fail-closed, human-reviewed, and no more than 30 days old. Review cards link to canonical public pages and public preview pages; they do not download or copy preview images.
+
+This workflow does not authorize download, Dataset admission, or training. Human acceptance only supports a later acquisition-design review; it is not permission to acquire or process an asset. The 42 deferred oversized private buildings, normal Node generation, M4 Apply Mode, and Dataset v1/v2/v3 remain outside this workflow and unchanged.
+
 ## Boundaries
 
 - This repository produces Minecraft datapacks; it is not a Mineflayer real-time player bot.
