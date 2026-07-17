@@ -115,6 +115,27 @@ test('init creates only the four empty metadata directories and checks formal bo
   assert.equal(context.datasetChecks, 2);
 });
 
+test('repository ignores the exact local source-expansion audit root', async () => {
+  const gitignore = await readFile(new URL('../.gitignore', import.meta.url), 'utf8');
+  assert.equal(
+    gitignore.split(/\r?\n/u).includes('.local/stage7-source-expansion/'),
+    true
+  );
+});
+
+test('init removes its newly created root when the boundary check fails', async (t) => {
+  const context = await fixtureContext(t);
+  context.gitStatus = async (args) => args[0] === 'check-ignore' ? 1 : 1;
+
+  await assert.rejects(
+    runStage7SourceExpansionCli([
+      'init', '--root', SOURCE_EXPANSION_ROOT_RELATIVE
+    ], context),
+    hasCode('ROOT_NOT_IGNORED')
+  );
+  await assert.rejects(readFile(context.root), { code: 'ENOENT' });
+});
+
 test('source root must be exact, ignored, untracked, regular, and not a symlink', async (t) => {
   const context = await fixtureContext(t);
   await mkdir(context.root, { recursive: true });

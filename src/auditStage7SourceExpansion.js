@@ -137,10 +137,15 @@ async function initializeRoot({ root, repositoryRoot, gitStatus }) {
   }
   await fs.mkdir(path.dirname(root), { recursive: true });
   await fs.mkdir(root);
-  for (const directory of SOURCE_EXPANSION_DIRECTORIES) {
-    await fs.mkdir(path.join(root, directory));
+  try {
+    for (const directory of SOURCE_EXPANSION_DIRECTORIES) {
+      await fs.mkdir(path.join(root, directory));
+    }
+    await assertSourceExpansionRoot(root, { repositoryRoot, gitStatus });
+  } catch (error) {
+    await fs.rm(root, { recursive: true, force: true });
+    throw error;
   }
-  await assertSourceExpansionRoot(root, { repositoryRoot, gitStatus });
   return Object.freeze({
     command: 'init',
     root: SOURCE_EXPANSION_ROOT_RELATIVE,

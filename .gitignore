@@ -17,3 +17,6 @@ training/stage7/runs/
 
 # Local-only, non-distributable Stage 7 private-research corpus and outputs
 .local/stage7-private-research/
+
+# Local-only Stage 7 source-expansion metadata audit
+.local/stage7-source-expansion/
