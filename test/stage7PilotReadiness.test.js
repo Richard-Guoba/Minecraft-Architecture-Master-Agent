@@ -1,17 +1,23 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { decodeBoundedNbt } from '../src/construction/learning/stage7BoundedNbt.js';
 import { CandidateReadinessError } from '../src/construction/learning/stage7CandidateBoundary.js';
 import {
+  canonicalReadinessJson,
   createOperationalReadinessEvent,
   createSyntheticReadinessEvent,
   reduceCandidateReadiness,
   validateReadinessEvent
 } from '../src/construction/learning/stage7CandidateReadinessState.js';
 import { appendSyntheticReadinessEvent } from '../src/construction/learning/stage7CandidateReadinessStore.js';
+import {
+  appendPilotReadinessEvent,
+  readPilotReadinessLedger
+} from '../src/construction/learning/stage7PilotReadinessStore.js';
+import { ensurePilotLayout } from '../src/construction/learning/stage7PilotFilesystem.js';
 import { fingerprintConditionalVolume } from '../src/construction/learning/stage7ConditionalFingerprint.js';
 import { prepareConditionalVolume } from '../src/construction/learning/stage7ConditionalVoxelPreparation.js';
 import { validateVanillaStructureNbt } from '../src/construction/learning/stage7VanillaStructureNbt.js';
@@ -148,6 +154,66 @@ test('R2 synthetic store rejects operational records', async (t) => {
     evidenceHashes: { metadata_sha256: '1'.repeat(64) }
   });
   assert.equal((await appendSyntheticReadinessEvent(root, synthetic)).synthetic_only, true);
+});
+
+test('operational ledger is canonical, hash-chained, idempotent, and rejects synthetic events', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'stage7-pilot-readiness-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const deps = { assertRoot: async () => root };
+  await ensurePilotLayout(root, deps);
+  const approval = operationalEvent({
+    revision: 1,
+    before: 'admission_contract_ready',
+    after: 'named_batch_approved'
+  });
+  const acquired = operationalEvent({
+    revision: 2,
+    before: 'named_batch_approved',
+    after: 'acquired_quarantine',
+    previous: approval.event_sha256
+  });
+  await appendPilotReadinessEvent(root, approval, deps);
+  await appendPilotReadinessEvent(root, approval, deps);
+  await appendPilotReadinessEvent(root, acquired, deps);
+  assert.deepEqual(await readPilotReadinessLedger(root, deps), [approval, acquired]);
+  const synthetic = createSyntheticReadinessEvent({
+    candidateId: 'synthetic-source:other-01',
+    revision: 1,
+    eventType: 'named_batch_approved',
+    stateBefore: 'admission_contract_ready',
+    stateAfter: 'named_batch_approved',
+    recordedAt: '2026-07-20T02:00:00.000Z',
+    recordedBy: 'synthetic-test',
+    evidenceHashes: { metadata_sha256: '2'.repeat(64) }
+  });
+  await assert.rejects(
+    appendPilotReadinessEvent(root, synthetic, deps),
+    hasCode('OPERATIONAL_EVENT_REQUIRED')
+  );
+  const revisionGap = operationalEvent({
+    revision: 4,
+    before: 'acquired_quarantine',
+    after: 'bytes_verified',
+    previous: acquired.event_sha256
+  });
+  await assert.rejects(
+    appendPilotReadinessEvent(root, revisionGap, deps),
+    hasCode('READINESS_REVISION_NOT_NEXT')
+  );
+
+  const tampered = {
+    ...approval,
+    evidence_hashes: { evidence_sha256: '9'.repeat(64) }
+  };
+  await writeFile(
+    join(root, 'manifests', 'acquisition-events.jsonl'),
+    canonicalReadinessJson(tampered),
+    'utf8'
+  );
+  await assert.rejects(
+    readPilotReadinessLedger(root, deps),
+    hasCode('READINESS_EVENT_HASH_INVALID')
+  );
 });
 
 function operationalEvent({
