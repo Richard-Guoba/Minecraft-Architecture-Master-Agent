@@ -34,9 +34,19 @@ export function mapConditionalMaterial(identifier) {
     : { token: 8, mapped: false });
 }
 
-export function prepareConditionalVolume({ candidateId, contentSha256, volume }) {
+export function prepareConditionalVolume({
+  candidateId,
+  contentSha256,
+  volume,
+  evidenceMode = 'synthetic'
+}) {
   const id = assertCandidateId(candidateId);
   if (!/^[a-f0-9]{64}$/u.test(contentSha256 || '')) fail('CONTENT_HASH_INVALID', id);
+  const syntheticOnly = evidenceMode === 'synthetic'
+    ? true
+    : evidenceMode === 'operational'
+      ? false
+      : fail('EVIDENCE_MODE_INVALID', id);
   if (!volume || volume.version !== VANILLA_STRUCTURE_ADAPTER_VERSION
     || volume.candidate_id !== id) fail('PREPARATION_INPUT_INVALID', id);
   const extent = volume.non_air_bounds.extent;
@@ -93,7 +103,7 @@ export function prepareConditionalVolume({ candidateId, contentSha256, volume })
     entity_count: volume.entity_count,
     block_entity_count: volume.block_entity_count,
     voxel_sha256: voxelSha256,
-    synthetic_only: true,
+    synthetic_only: syntheticOnly,
     authorizes_acquisition: false,
     authorizes_training: false,
     authorizes_dataset_admission: false

@@ -24,7 +24,9 @@ export async function readSyntheticReadinessLedger(root) {
   }
   const records = text.split(/\r?\n/u).filter(Boolean).map((line, index) => {
     try {
-      return validateReadinessEvent(JSON.parse(line));
+      const event = validateReadinessEvent(JSON.parse(line));
+      if (event.synthetic_only !== true) fail('SYNTHETIC_EVENT_REQUIRED');
+      return event;
     } catch (error) {
       if (error instanceof CandidateReadinessError) throw error;
       fail('READINESS_LEDGER_INVALID', { line: index + 1 });
@@ -44,6 +46,7 @@ export async function appendSyntheticReadinessEvent(root, input, {
   remove = fs.rm
 } = {}) {
   const event = validateReadinessEvent(input);
+  if (event.synthetic_only !== true) fail('SYNTHETIC_EVENT_REQUIRED');
   const target = await ledgerPath(root);
   const existing = await readSyntheticReadinessLedger(root);
   const prior = existing.filter((record) => record.candidate_id === event.candidate_id);

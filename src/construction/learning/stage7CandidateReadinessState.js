@@ -20,15 +20,15 @@ const FORWARD = Object.freeze({
 });
 const FAILURE_FROM = Object.freeze({
   deferred_rights: new Set(['admission_contract_ready', 'named_batch_approved']),
-  deferred_incomplete: new Set(['structure_validated']),
+  deferred_incomplete: new Set(['structure_validated', 'fingerprinted']),
   deferred_oversized_public: new Set(['structure_validated']),
   quarantined_technical: new Set([
-    'acquired_quarantine', 'bytes_verified', 'format_validated',
+    'named_batch_approved', 'acquired_quarantine', 'bytes_verified', 'format_validated',
     'structure_validated', 'completeness_validated', 'prepared', 'fingerprinted'
   ]),
   rejected_duplicate: new Set(['fingerprinted']),
-  deferred_label: new Set(['admission_contract_ready']),
-  rejected_quality: new Set(['duplicate_clustered', 'pilot_ready'])
+  deferred_label: new Set(['admission_contract_ready', 'fingerprinted']),
+  rejected_quality: new Set(['fingerprinted', 'duplicate_clustered', 'pilot_ready'])
 });
 const EVENT_KEYS = new Set([
   'schema_version', 'candidate_id', 'revision', 'event_type', 'state_before',
@@ -41,6 +41,26 @@ export function createSyntheticReadinessEvent({
   candidateId, revision, eventType, stateBefore, stateAfter, recordedAt,
   recordedBy, reasonCodes = [], evidenceHashes, previousEventSha256 = null
 }) {
+  return createReadinessEvent({
+    candidateId, revision, eventType, stateBefore, stateAfter, recordedAt,
+    recordedBy, reasonCodes, evidenceHashes, previousEventSha256
+  }, true);
+}
+
+export function createOperationalReadinessEvent({
+  candidateId, revision, eventType, stateBefore, stateAfter, recordedAt,
+  recordedBy, reasonCodes = [], evidenceHashes, previousEventSha256 = null
+}) {
+  return createReadinessEvent({
+    candidateId, revision, eventType, stateBefore, stateAfter, recordedAt,
+    recordedBy, reasonCodes, evidenceHashes, previousEventSha256
+  }, false);
+}
+
+function createReadinessEvent({
+  candidateId, revision, eventType, stateBefore, stateAfter, recordedAt,
+  recordedBy, reasonCodes, evidenceHashes, previousEventSha256
+}, syntheticOnly) {
   const value = {
     schema_version: READINESS_SCHEMA_VERSION,
     candidate_id: assertCandidateId(candidateId),
@@ -53,8 +73,8 @@ export function createSyntheticReadinessEvent({
     reason_codes: [...reasonCodes],
     evidence_hashes: { ...evidenceHashes },
     previous_event_sha256: previousEventSha256,
-    synthetic_only: true,
-    authorizes_acquisition: false,
+    synthetic_only: syntheticOnly,
+    authorizes_acquisition: syntheticOnly === false && stateAfter === 'named_batch_approved',
     authorizes_training: false,
     authorizes_dataset_admission: false
   };
@@ -80,7 +100,10 @@ export function validateReadinessEvent(record) {
     || !(record.previous_event_sha256 === null || /^[a-f0-9]{64}$/u.test(record.previous_event_sha256))) {
     fail('READINESS_RECORD_INVALID', id);
   }
-  if (record.synthetic_only !== true || record.authorizes_acquisition !== false
+  const expectedAcquisition = record.synthetic_only === false
+    && record.state_after === 'named_batch_approved';
+  if (typeof record.synthetic_only !== 'boolean'
+    || record.authorizes_acquisition !== expectedAcquisition
     || record.authorizes_training !== false || record.authorizes_dataset_admission !== false) {
     fail('READINESS_MARKERS_INVALID', id);
   }

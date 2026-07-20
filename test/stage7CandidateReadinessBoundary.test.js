@@ -44,18 +44,32 @@ test('R2 has no npm command and documents its synthetic-only R3 gate', async () 
   assert.match(readme, /five exact candidates/iu);
 });
 
-test('all record-producing R2 modules hard-code non-authorization', async () => {
+test('R2 defaults to synthetic evidence and hard-codes training and Dataset non-authorization', async () => {
   for (const filename of [
     'src/construction/learning/stage7ConditionalVoxelPreparation.js',
     'src/construction/learning/stage7ConditionalFingerprint.js',
     'src/construction/learning/stage7CandidateReadinessState.js'
   ]) {
     const source = await readFile(filename, 'utf8');
-    assert.match(source, /synthetic_only:\s*true/u);
-    assert.match(source, /authorizes_acquisition:\s*false/u);
     assert.match(source, /authorizes_training:\s*false/u);
     assert.match(source, /authorizes_dataset_admission:\s*false/u);
   }
+  const preparation = await readFile(
+    'src/construction/learning/stage7ConditionalVoxelPreparation.js', 'utf8'
+  );
+  assert.match(preparation, /evidenceMode\s*=\s*'synthetic'/u);
+  assert.match(preparation, /evidenceMode\s*===\s*'operational'/u);
+  assert.match(preparation, /authorizes_acquisition:\s*false/u);
+  const fingerprint = await readFile(
+    'src/construction/learning/stage7ConditionalFingerprint.js', 'utf8'
+  );
+  assert.match(fingerprint, /synthetic_only:\s*prepared\.record\.synthetic_only/u);
+  assert.match(fingerprint, /authorizes_acquisition:\s*false/u);
+  const state = await readFile(
+    'src/construction/learning/stage7CandidateReadinessState.js', 'utf8'
+  );
+  assert.match(state, /synthetic_only:\s*syntheticOnly/u);
+  assert.match(state, /stateAfter\s*===\s*'named_batch_approved'/u);
 });
 
 test('payload stages have no write API and the store is temporary-root-only', async () => {

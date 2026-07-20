@@ -20,7 +20,7 @@ export function fingerprintConditionalVolume(prepared) {
     yaw_sha256: views.map((view) => view.structural_sha256),
     yaw_canonical_sha256: structural[0],
     views,
-    synthetic_only: true,
+    synthetic_only: prepared.record.synthetic_only,
     authorizes_acquisition: false,
     authorizes_training: false,
     authorizes_dataset_admission: false
@@ -139,7 +139,8 @@ function equalShare(left, right) {
 function assertPrepared(prepared) {
   if (!prepared || !Buffer.isBuffer(prepared.voxels) || prepared.voxels.length !== GRID ** 3
     || prepared.voxels.some((token) => token > 8)
-    || !prepared.record || !/^[a-f0-9]{64}$/u.test(prepared.record.content_sha256 || '')) {
+    || !prepared.record || typeof prepared.record.synthetic_only !== 'boolean'
+    || !/^[a-f0-9]{64}$/u.test(prepared.record.content_sha256 || '')) {
     fail('FINGERPRINT_INPUT_INVALID', prepared?.record?.candidate_id || 'synthetic');
   }
 }
