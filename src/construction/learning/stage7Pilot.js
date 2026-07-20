@@ -1,5 +1,3 @@
-import { execFile as execFileCallback } from 'node:child_process';
-import { promisify } from 'node:util';
 import {
   CandidateReadinessError,
   readQuarantinedNbt
@@ -39,7 +37,6 @@ import {
 } from './stage7PilotReadinessStore.js';
 import { validateVanillaStructureNbt } from './stage7VanillaStructureNbt.js';
 
-const execFile = promisify(execFileCallback);
 const PROCESS_STATES = new Set([
   'named_batch_approved', 'acquired_quarantine', 'bytes_verified',
   'format_validated', 'structure_validated', 'completeness_validated',
@@ -289,20 +286,18 @@ async function assertExecutionBinding(root, batch, candidate, deps) {
       'PILOT_BATCH_MANIFEST_MISMATCH', 'pilot', candidate.candidate_id
     );
   }
-  const currentCodeRevision = deps.currentCodeRevision || defaultCodeRevision;
+  const currentCodeRevision = deps.currentCodeRevision;
+  if (typeof currentCodeRevision !== 'function') {
+    throw new CandidateReadinessError(
+      'PILOT_CODE_REVISION_UNAVAILABLE', 'pilot', candidate.candidate_id
+    );
+  }
   const revision = await currentCodeRevision();
   if (revision !== batch.batch.code_revision) {
     throw new CandidateReadinessError(
       'PILOT_CODE_REVISION_MISMATCH', 'pilot', candidate.candidate_id
     );
   }
-}
-
-async function defaultCodeRevision() {
-  const { stdout } = await execFile('git', ['rev-parse', 'HEAD'], {
-    cwd: process.cwd(), encoding: 'utf8'
-  });
-  return stdout.trim();
 }
 
 function machineResult({

@@ -186,6 +186,23 @@ R2 is a synthetic-only safety and parser-readiness library for a later public-ca
 
 R2 intentionally has no operational npm command, downloader, archive reader, or real-payload entry point. It does not write a payload or prepared volume under `.local/stage7-source-expansion/`, and it does not authorize acquisition, Dataset admission, or training. R3 remains blocked until five exact candidates are named, rights are refreshed, and the owner explicitly approves those exact assets under a separate design and plan.
 
+### Stage 7 Public NBT Pilot R3
+
+R3 accepts one exact owner-approved Minecraft Java Structure `.nbt` candidate at a time. The tooling-readiness implementation was tested with synthetic payloads only. No real 5+3 batch is approved by this implementation.
+
+After a separate metadata-only 5+3 nomination, exact owner approval, and a batch whose date and code revision match the fresh mandatory preflight, the isolated commands are:
+
+```bash
+npm run pilot:stage7:public-nbt -- validate-batch --root .local/stage7-source-expansion --batch manifests/named-batch.json --public-pilot-only
+npm run pilot:stage7:public-nbt -- run-candidate --root .local/stage7-source-expansion --batch manifests/named-batch.json --candidate-id <approved-candidate-id> --public-pilot-only
+npm run pilot:stage7:public-nbt -- record-review --root .local/stage7-source-expansion --batch manifests/named-batch.json --candidate-id <approved-candidate-id> --input reviews/pilot-review-input.json --public-pilot-only
+npm run pilot:stage7:public-nbt -- audit --root .local/stage7-source-expansion --batch manifests/named-batch.json --public-pilot-only
+```
+
+The CLI cannot accept a general URL, archive, repository, directory, dependency, or process-all request. All real artifacts remain ignored below `.local/stage7-source-expansion/`. The machine runner stops at `fingerprinted`; a hash-bound human review is required for `pilot_ready`.
+
+pilot_ready does not authorize Dataset admission, a split, training, generation, publication, upload, package, or export. Training still requires a new literal owner-approved device and positive optimizer-step budget. R3 does not alter Dataset v1/v2/v3, Dataset v3's false/zero gate, normal Node generation, the primary provider, the private-research lane, or M4 Apply Mode.
+
 ## Boundaries
 
 - This repository produces Minecraft datapacks; it is not a Mineflayer real-time player bot.

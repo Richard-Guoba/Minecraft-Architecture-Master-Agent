@@ -98,7 +98,7 @@ export async function runStage7PublicNbtPilotCli(argv, context = {}) {
   const audit = context.audit || auditPilot;
   const batchDocument = validatePilotBatchDocument(await readJson(root, options.batch));
   const preflightInput = { repositoryRoot, root, batchDocument };
-  await preflight(preflightInput);
+  const preflightResult = await preflight(preflightInput);
 
   if (options.command === 'validate-batch') {
     return Object.freeze({
@@ -119,6 +119,8 @@ export async function runStage7PublicNbtPilotCli(argv, context = {}) {
         candidateId: options.candidateId,
         recordedAt: (context.now || (() => new Date().toISOString()))(),
         recordedBy: batchDocument.approval.approved_by
+      }, {
+        currentCodeRevision: async () => preflightResult.git_head
       });
       return machineSummary(result);
     }

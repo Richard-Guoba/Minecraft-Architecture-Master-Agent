@@ -12,6 +12,14 @@ const IMPLEMENTATION_FILES = [
   'src/construction/learning/stage7CandidateReadinessStore.js'
 ];
 
+test('R2 boundary remains exactly seven synthetic-default modules and excludes the R3 receiver', () => {
+  assert.equal(IMPLEMENTATION_FILES.length, 7);
+  assert.equal(IMPLEMENTATION_FILES.includes(
+    'src/construction/learning/stage7CandidateAcquisition.js'
+  ), false);
+  assert.equal(IMPLEMENTATION_FILES.every((filename) => !filename.includes('Pilot')), true);
+});
+
 test('R2 exposes no network, downloader, archive, private, Dataset, Python, trainer, or M4 surface', async () => {
   const forbidden = [
     /\bfetch\s*\(/u, /\bhttp\.request\b/u, /\bhttps\.request\b/u,

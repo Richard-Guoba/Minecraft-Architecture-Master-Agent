@@ -139,10 +139,10 @@ async function privateAggregate(root) {
   const validation = Array.isArray(split.validation_case_ids) ? split.validation_case_ids : [];
   const splitUnique = new Set([...train, ...validation]).size === train.length + validation.length;
   return {
-    source_files: unsafeSource ? -1 : source.filter((entry) => entry.isFile()
-      && !entry.isSymbolicLink() && entry.name.endsWith('.schematic')).length,
-    deferred_oversized: unsafeOversized ? -1 : oversized.filter((entry) => entry.isFile()
-      && !entry.isSymbolicLink() && entry.name.endsWith('.schematic')).length,
+    source_files: unsafeSource ? -1 : source.filter((entry) =>
+      entry.isFile() && !entry.isSymbolicLink()).length,
+    deferred_oversized: unsafeOversized ? -1 : oversized.filter((entry) =>
+      entry.isFile() && !entry.isSymbolicLink()).length,
     source_records: await lineCount(path.join(root, 'manifests', 'sources.jsonl')),
     prepared_records: await lineCount(path.join(root, 'manifests', 'prepared.jsonl')),
     prepared_binary_count: preparedBinaries.length,
