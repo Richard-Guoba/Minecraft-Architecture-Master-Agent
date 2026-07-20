@@ -22,6 +22,7 @@ import { VANILLA_STRUCTURE_ADAPTER_VERSION } from './stage7VanillaStructureNbt.j
 
 export const PILOT_PREPARED_LEDGER_RELATIVE = 'manifests/prepared-cases.jsonl';
 export const PILOT_FINGERPRINT_LEDGER_RELATIVE = 'fingerprints/structural-fingerprints.jsonl';
+export const PILOT_REVIEW_LEDGER_RELATIVE = 'reviews/pilot-reviews.jsonl';
 
 const GRID = 64;
 const VOXEL_COUNT = GRID ** 3;
@@ -44,6 +45,22 @@ const FINGERPRINT_KEYS = Object.freeze([
 const VIEW_KEYS = Object.freeze([
   'yaw', 'extent', 'structural_sha256', 'occupancy_minhash',
   'material_minhash', 'lsh_buckets'
+]);
+const REVIEW_KEYS = Object.freeze([
+  'schema_version', 'candidate_id', 'reviewed_at', 'reviewed_by', 'batch_sha256',
+  'content_sha256', 'preparation_sha256', 'fingerprint_sha256',
+  'identity_consistent', 'completeness', 'quality_decision', 'primary_function',
+  'building_type', 'style_family', 'environment', 'label_confidence',
+  'near_duplicate_decisions', 'reason_codes', 'authorizes_training',
+  'authorizes_dataset_admission'
+]);
+const REVIEW_REASON_CODES = new Set([
+  'IDENTITY_MISMATCH', 'INCOMPLETE_BUILDING', 'QUALITY_REJECTED',
+  'LABEL_CONFIDENCE_LOW', 'NEAR_DUPLICATE_REJECTED'
+]);
+const DECISION_KEYS = Object.freeze([
+  'compared_candidate_id', 'decision', 'structural_equivalent',
+  'occupancy_similarity', 'material_similarity', 'shares_lsh_bucket'
 ]);
 
 export class PilotArtifactError extends Error {
@@ -135,6 +152,49 @@ export async function readPilotFingerprints(root, deps = {}) {
     }
   }
   return Object.freeze(validated);
+}
+
+export async function appendPilotReview(root, input, deps = {}) {
+  const review = validateStoredReview(input);
+  const fingerprints = await readPilotFingerprints(root, deps);
+  if (!fingerprints.some((record) => record.candidate_id === review.candidate_id
+    && record.content_sha256 === review.content_sha256
+    && record.preparation_sha256 === review.preparation_sha256
+    && hashRecord(record) === review.fingerprint_sha256)) {
+    fail('REVIEW_FINGERPRINT_BINDING_MISSING', review.candidate_id);
+  }
+  try {
+    await appendPilotJsonlIdempotent(
+      root,
+      PILOT_REVIEW_LEDGER_RELATIVE,
+      review,
+      preparedIdentity(review),
+      { ...deps, identityOf: preparedIdentity }
+    );
+  } catch (error) {
+    rethrowFilesystem(error, review.candidate_id);
+  }
+  return review;
+}
+
+export async function readPilotReviews(root, deps = {}) {
+  let records;
+  try {
+    records = await readPilotJsonl(root, PILOT_REVIEW_LEDGER_RELATIVE, deps);
+  } catch (error) {
+    rethrowFilesystem(error, 'operational');
+  }
+  const reviews = records.map(validateStoredReview);
+  const fingerprints = await readPilotFingerprints(root, deps);
+  for (const review of reviews) {
+    if (!fingerprints.some((record) => record.candidate_id === review.candidate_id
+      && record.content_sha256 === review.content_sha256
+      && record.preparation_sha256 === review.preparation_sha256
+      && hashRecord(record) === review.fingerprint_sha256)) {
+      fail('REVIEW_FINGERPRINT_BINDING_MISSING', review.candidate_id);
+    }
+  }
+  return Object.freeze(reviews);
 }
 
 function validatePrepared(prepared) {
@@ -236,6 +296,47 @@ function validateView(view, yaw, candidateId) {
   return view;
 }
 
+function validateStoredReview(input) {
+  const id = assertCandidateId(input?.candidate_id);
+  exactKeys(input, REVIEW_KEYS, 'REVIEW_RECORD_INVALID', id);
+  if (input.schema_version !== 1
+    || Number.isNaN(Date.parse(input.reviewed_at))
+    || new Date(input.reviewed_at).toISOString() !== input.reviewed_at
+    || typeof input.reviewed_by !== 'string' || input.reviewed_by.trim().length === 0
+    || ![input.batch_sha256, input.content_sha256, input.preparation_sha256,
+      input.fingerprint_sha256].every((value) => SHA256_PATTERN.test(value || ''))
+    || typeof input.identity_consistent !== 'boolean'
+    || !['complete', 'module', 'fragment'].includes(input.completeness)
+    || !['accept', 'reject'].includes(input.quality_decision)
+    || !['high', 'low'].includes(input.label_confidence)
+    || !['primary_function', 'building_type', 'style_family', 'environment']
+      .every((key) => typeof input[key] === 'string' && input[key].length > 0)
+    || !Array.isArray(input.reason_codes)
+    || new Set(input.reason_codes).size !== input.reason_codes.length
+    || input.reason_codes.some((code) => !REVIEW_REASON_CODES.has(code))
+    || !Array.isArray(input.near_duplicate_decisions)
+    || new Set(input.near_duplicate_decisions.map(
+      (decision) => decision?.compared_candidate_id
+    )).size !== input.near_duplicate_decisions.length) {
+    fail('REVIEW_RECORD_INVALID', id);
+  }
+  input.near_duplicate_decisions.forEach((decision) => {
+    exactKeys(decision, DECISION_KEYS, 'REVIEW_RECORD_INVALID', id);
+    assertCandidateId(decision.compared_candidate_id);
+    if (!['distinct', 'same_cluster'].includes(decision.decision)
+      || typeof decision.structural_equivalent !== 'boolean'
+      || typeof decision.shares_lsh_bucket !== 'boolean'
+      || ![decision.occupancy_similarity, decision.material_similarity]
+        .every((value) => Number.isFinite(value) && value >= 0 && value <= 1)) {
+      fail('REVIEW_RECORD_INVALID', id);
+    }
+  });
+  if (input.authorizes_training !== false || input.authorizes_dataset_admission !== false) {
+    fail('REVIEW_AUTHORITY_INVALID', id);
+  }
+  return deepFreeze(structuredClone(input));
+}
+
 async function preparedInventory(root, candidateId, deps) {
   const absoluteRoot = await assertPilotRoot(root, deps);
   const prepared = path.join(absoluteRoot, 'prepared');
@@ -265,6 +366,10 @@ async function assertDirectory(directory, candidateId, deps) {
 
 function preparedIdentity(record) {
   return `${record.candidate_id}:${record.preparation_sha256}`;
+}
+
+function hashRecord(record) {
+  return createHash('sha256').update(canonicalPilotJson(record)).digest('hex');
 }
 
 function validDimension(value, maximum = Number.MAX_SAFE_INTEGER) {

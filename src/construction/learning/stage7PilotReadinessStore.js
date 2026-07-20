@@ -56,7 +56,7 @@ export async function appendPilotReadinessEvent(root, input, deps = {}) {
 }
 
 function identityOf(event) {
-  return `${event.candidate_id}:${event.revision}`;
+  return `${event.candidate_id}:${String(event.revision).padStart(16, '0')}`;
 }
 
 function fail(code, candidateId, safeDetail = {}) {

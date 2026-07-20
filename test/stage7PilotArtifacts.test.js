@@ -19,9 +19,11 @@ import { prepareConditionalVolume } from '../src/construction/learning/stage7Con
 import {
   PilotArtifactError,
   appendPilotFingerprint,
+  appendPilotReview,
   persistPilotPrepared,
   readPilotFingerprints,
-  readPilotPreparedIndex
+  readPilotPreparedIndex,
+  readPilotReviews
 } from '../src/construction/learning/stage7PilotArtifacts.js';
 import {
   ensurePilotLayout,
@@ -30,6 +32,8 @@ import {
 } from '../src/construction/learning/stage7PilotFilesystem.js';
 import { validateVanillaStructureNbt } from '../src/construction/learning/stage7VanillaStructureNbt.js';
 import { structureNbt } from './fixtures/stage7CandidateReadinessFixtures.js';
+import { hashPilotValue } from '../src/construction/learning/stage7PilotBatch.js';
+import { pilotBatchFixture } from './fixtures/stage7PilotFixtures.js';
 
 const ID = 'source-a:house-01';
 
@@ -170,4 +174,42 @@ test('fingerprints refuse missing prepared bindings and noncanonical ledgers', a
   );
   await assert.rejects(readPilotFingerprints(current.root, current.deps),
     hasCode('PILOT_JSONL_NONCANONICAL'));
+});
+
+test('review ledger is canonical, identity-idempotent, and non-authorizing', async (t) => {
+  const { root, deps } = await context(t);
+  const prepared = preparedFixture();
+  await persistPilotPrepared(root, prepared, deps);
+  const fingerprint = fingerprintConditionalVolume(prepared);
+  await appendPilotFingerprint(root, fingerprint, deps);
+  const batch = pilotBatchFixture();
+  const review = {
+    schema_version: 1,
+    candidate_id: ID,
+    reviewed_at: '2026-07-20T14:00:00.000Z',
+    reviewed_by: 'owner',
+    batch_sha256: batch.batch_sha256,
+    content_sha256: fingerprint.content_sha256,
+    preparation_sha256: fingerprint.preparation_sha256,
+    fingerprint_sha256: hashPilotValue(fingerprint),
+    identity_consistent: true,
+    completeness: 'complete',
+    quality_decision: 'accept',
+    primary_function: 'residential',
+    building_type: 'house',
+    style_family: 'rustic',
+    environment: 'overworld',
+    label_confidence: 'high',
+    near_duplicate_decisions: [],
+    reason_codes: [],
+    authorizes_training: false,
+    authorizes_dataset_admission: false
+  };
+  await appendPilotReview(root, review, deps);
+  await appendPilotReview(root, review, deps);
+  assert.deepEqual(await readPilotReviews(root, deps), [review]);
+  await assert.rejects(appendPilotReview(root, {
+    ...review,
+    authorizes_training: true
+  }, deps), hasCode('REVIEW_AUTHORITY_INVALID'));
 });
