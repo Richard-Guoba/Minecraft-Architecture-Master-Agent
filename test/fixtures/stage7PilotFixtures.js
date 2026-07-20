@@ -129,6 +129,21 @@ export function resignPilotBatch(document) {
   return copy;
 }
 
+export function pilotHttpResponse(chunks, {
+  status = 200,
+  headers = { 'content-type': 'application/octet-stream' },
+  streamError = null
+} = {}) {
+  const body = chunks === null ? null : new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(new Uint8Array(chunk));
+      if (streamError) controller.error(streamError);
+      else controller.close();
+    }
+  });
+  return new Response(body, { status, headers });
+}
+
 function mergeCandidate(base, overrides) {
   const copy = structuredClone(base);
   for (const [key, value] of Object.entries(overrides)) {
