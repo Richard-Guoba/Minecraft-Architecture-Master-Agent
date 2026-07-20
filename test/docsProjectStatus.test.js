@@ -30,6 +30,10 @@ test('project docs surface Stage 7 M2.5 trusted-data readiness as work in progre
   assert.match(home, /Stage 6 - Semantic Patch Completion[\s\S]*Completed/);
   assert.match(home, /Stage 7 - Coarse Semantic Voxels[\s\S]*In Progress/);
   assert.match(home, /review|governance/i);
+  assert.match(home, /Stage 7 R3 Public Pilot Tooling Ready/);
+  assert.match(home, /5 primary \+ 3 reserve nomination pending/);
+  assert.match(home, /public NBT pilot tooling/);
+  assert.match(home, /does not authorize acquisition, Dataset admission, or training/i);
   assert.match(readme, /Active stage: Stage 7 Milestone 2\.5/);
   assert.match(readme, /--coarse-voxel-mode shadow/);
   assert.match(readme, /stage7_coarse_semantic_plan\.repaired\.json/);
