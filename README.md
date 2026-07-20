@@ -180,6 +180,12 @@ The audit consumes the existing candidate and rights ledgers, both review-decisi
 
 `admission_contract_ready` means only that the metadata contract can enter a later named acquisition proposal. It does not authorize download, Dataset admission, or training. R1 has no downloader, payload reader, parser, voxel preparer, model, or trainer.
 
+### Stage 7 Candidate Readiness R2
+
+R2 is a synthetic-only safety and parser-readiness library for a later public-candidate pilot. It tests quarantine containment, bounded Minecraft Java Structure NBT decoding, complete-single-structure validation, deterministic centered `64 x 64 x 64` nine-token preparation, structural fingerprints, and append-only readiness evidence using generated fixtures under operating-system temporary directories.
+
+R2 intentionally has no operational npm command, downloader, archive reader, or real-payload entry point. It does not write a payload or prepared volume under `.local/stage7-source-expansion/`, and it does not authorize acquisition, Dataset admission, or training. R3 remains blocked until five exact candidates are named, rights are refreshed, and the owner explicitly approves those exact assets under a separate design and plan.
+
 ## Boundaries
 
 - This repository produces Minecraft datapacks; it is not a Mineflayer real-time player bot.
