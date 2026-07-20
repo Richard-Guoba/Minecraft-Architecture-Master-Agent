@@ -167,6 +167,19 @@ Discovery selects up to 30 review cards with at most 5 per source. Yield selects
 
 This workflow does not authorize download, Dataset admission, or training. Human acceptance only supports a later acquisition-design review; it is not permission to acquire or process an asset. The 42 deferred oversized private buildings, normal Node generation, M4 Apply Mode, and Dataset v1/v2/v3 remain outside this workflow and unchanged.
 
+### Stage 7 Conditional Admission R1
+
+R1 adds a metadata-only controlled taxonomy and pre-acquisition admission audit. Prepare one assessment at the exact ignored-root input path, append it as the next revision, then create a fresh dated audit:
+
+```bash
+npm run audit:stage7:conditional-admission -- record --root .local/stage7-source-expansion --input reviews/taxonomy-input.json --metadata-only
+npm run audit:stage7:conditional-admission -- audit --root .local/stage7-source-expansion --as-of YYYY-MM-DD --metadata-only
+```
+
+The audit consumes the existing candidate and rights ledgers, both review-decision ledgers, and `reviews/conditional-taxonomy.jsonl`. It validates the eight controlled primary functions, complete-building rule, label confidence, building-type parent, style, environment, biome, source group, and asset family. It also exposes pure future 100/500/2,000 balance and locked-split contracts for later snapshot builders.
+
+`admission_contract_ready` means only that the metadata contract can enter a later named acquisition proposal. It does not authorize download, Dataset admission, or training. R1 has no downloader, payload reader, parser, voxel preparer, model, or trainer.
+
 ## Boundaries
 
 - This repository produces Minecraft datapacks; it is not a Mineflayer real-time player bot.
