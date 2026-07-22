@@ -97,7 +97,12 @@ export async function runStage7PublicNbtPilotCli(argv, context = {}) {
   const finalizeCandidate = context.finalizeCandidate || finalizePilotCandidate;
   const audit = context.audit || auditPilot;
   const batchDocument = validatePilotBatchDocument(await readJson(root, options.batch));
-  const preflightInput = { repositoryRoot, root, batchDocument };
+  const preflightInput = {
+    repositoryRoot,
+    root,
+    batchDocument,
+    reviewRecovery: options.command === 'record-review'
+  };
   const preflightResult = await preflight(preflightInput);
 
   if (options.command === 'validate-batch') {

@@ -20,7 +20,7 @@ import {
   parseStage7PublicNbtPilotArgs,
   runStage7PublicNbtPilotCli
 } from '../src/runStage7PublicNbtPilot.js';
-import { pilotBatchFixture } from './fixtures/stage7PilotFixtures.js';
+import { pilotBatchFixture, resignPilotBatch } from './fixtures/stage7PilotFixtures.js';
 
 const ROOT = '.local/stage7-source-expansion';
 const BATCH = 'manifests/named-batch.json';
@@ -123,6 +123,52 @@ test('preflight drift stops before Python and exposes no private names', async (
   assert.equal(calls.some(([command]) => command === 'conda'), false);
 });
 
+test('preflight permits only a past descendant batch for review recovery', async (t) => {
+  const descendantHead = 'a'.repeat(40);
+  const fixture = await preflightFixture(t);
+  const calls = [];
+  const recovered = await runPilotPreflight({
+    repositoryRoot: fixture.repositoryRoot,
+    root: fixture.publicRoot,
+    batchDocument: fixture.batch,
+    today: '2026-07-21',
+    reviewRecovery: true,
+    execFileImpl: commandDouble(calls, { head: descendantHead, isAncestor: true }),
+    assertDatasetBoundary: datasetBoundary
+  });
+  assert.equal(recovered.git_head, descendantHead);
+  assert.deepEqual(calls.filter(([command, commandArgs]) =>
+    command === 'git' && commandArgs[0] === 'merge-base'
+  ), [[
+    'git', ['merge-base', '--is-ancestor', fixture.batch.batch.code_revision, descendantHead],
+    { cwd: fixture.repositoryRoot }
+  ]]);
+
+  const futureCalls = [];
+  await assert.rejects(runPilotPreflight({
+    repositoryRoot: fixture.repositoryRoot,
+    root: fixture.publicRoot,
+    batchDocument: batchForDate('2026-07-22'),
+    today: '2026-07-21',
+    reviewRecovery: true,
+    execFileImpl: commandDouble(futureCalls, { head: descendantHead, isAncestor: true }),
+    assertDatasetBoundary: datasetBoundary
+  }), hasCode(PilotPreflightError, 'PREFLIGHT_DATE_DRIFT'));
+  assert.equal(futureCalls.some(([command]) => command === 'conda'), false);
+
+  const ancestryCalls = [];
+  await assert.rejects(runPilotPreflight({
+    repositoryRoot: fixture.repositoryRoot,
+    root: fixture.publicRoot,
+    batchDocument: fixture.batch,
+    today: '2026-07-21',
+    reviewRecovery: true,
+    execFileImpl: commandDouble(ancestryCalls, { head: descendantHead, isAncestor: false }),
+    assertDatasetBoundary: datasetBoundary
+  }), hasCode(PilotPreflightError, 'GIT_HEAD_DRIFT'));
+  assert.equal(ancestryCalls.some(([command]) => command === 'conda'), false);
+});
+
 test('CLI preflights validation without writes and mutating commands before and after writes', async () => {
   const batch = pilotBatchFixture();
   const calls = [];
@@ -130,6 +176,7 @@ test('CLI preflights validation without writes and mutating commands before and 
   const validated = await runStage7PublicNbtPilotCli(args('validate-batch'), context);
   assert.equal(validated.command, 'validate-batch');
   assert.deepEqual(calls.map((call) => call[0]), ['read', 'preflight']);
+  assert.equal(calls[1][1].reviewRecovery, false);
 
   calls.length = 0;
   const runResult = await runStage7PublicNbtPilotCli(args('run-candidate', [
@@ -140,6 +187,8 @@ test('CLI preflights validation without writes and mutating commands before and 
     'read', 'preflight', 'layout', 'run', 'preflight'
   ]);
   assert.equal(calls.find((call) => call[0] === 'run')[1].candidateId, 'source-a:house-01');
+  assert.equal(calls.filter((call) => call[0] === 'preflight')
+    .every((call) => call[1].reviewRecovery === false), true);
 
   calls.length = 0;
   const review = await runStage7PublicNbtPilotCli(args('record-review', [
@@ -149,6 +198,8 @@ test('CLI preflights validation without writes and mutating commands before and 
   assert.deepEqual(calls.map((call) => call[0]), [
     'read', 'preflight', 'layout', 'read-review', 'review', 'preflight'
   ]);
+  assert.equal(calls.filter((call) => call[0] === 'preflight')
+    .every((call) => call[1].reviewRecovery === true), true);
 
   calls.length = 0;
   const audited = await runStage7PublicNbtPilotCli(args('audit'), context);
@@ -156,6 +207,8 @@ test('CLI preflights validation without writes and mutating commands before and 
   assert.deepEqual(calls.map((call) => call[0]), [
     'read', 'preflight', 'layout', 'audit', 'preflight'
   ]);
+  assert.equal(calls.filter((call) => call[0] === 'preflight')
+    .every((call) => call[1].reviewRecovery === false), true);
 });
 
 test('CLI always postflights a failed mutation and returns only safe summary fields', async () => {
@@ -249,7 +302,19 @@ async function preflightFixture(t) {
   return { repositoryRoot, publicRoot, privateRoot, batch: pilotBatchFixture() };
 }
 
-function commandDouble(calls) {
+const datasetBoundary = async () => ({
+  dataset_hashes: EXPECTED_DATASET_HASHES,
+  dataset_v3_gate: { ready_for_m3_real_data: false, training_eligible_count: 0 }
+});
+
+function batchForDate(asOf) {
+  const batch = pilotBatchFixture();
+  batch.batch.as_of = asOf;
+  for (const candidate of batch.batch.candidates) candidate.rights.verified_at = asOf;
+  return resignPilotBatch(batch);
+}
+
+function commandDouble(calls, { head = REVISION, isAncestor = true } = {}) {
   return async (command, commandArgs, options) => {
     calls.push([command, commandArgs, options]);
     if (command === 'conda') return { stdout: '22\n', stderr: '' };
@@ -260,7 +325,11 @@ function commandDouble(calls) {
     if (joined === 'branch --show-current') {
       return { stdout: 'codex/stage7-dataset-v3-extraction\n', stderr: '' };
     }
-    if (joined === 'rev-parse HEAD') return { stdout: `${REVISION}\n`, stderr: '' };
+    if (joined === 'rev-parse HEAD') return { stdout: `${head}\n`, stderr: '' };
+    if (commandArgs[0] === 'merge-base') {
+      if (isAncestor) return { stdout: '', stderr: '' };
+      throw Object.assign(new Error('not-descendant'), { code: 1, stdout: '', stderr: '' });
+    }
     if (commandArgs[0] === 'check-ignore') return { stdout: '', stderr: '' };
     if (commandArgs[0] === 'ls-files') {
       throw Object.assign(new Error('untracked'), { code: 1, stdout: '', stderr: '' });

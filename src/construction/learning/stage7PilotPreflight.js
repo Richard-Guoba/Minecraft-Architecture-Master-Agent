@@ -28,7 +28,8 @@ export async function runPilotPreflight({
   batchDocument,
   execFileImpl = execFile,
   assertDatasetBoundary = assertFormalDatasetBoundary,
-  today = new Date().toISOString().slice(0, 10)
+  today = new Date().toISOString().slice(0, 10),
+  reviewRecovery = false
 }) {
   const repository = path.resolve(repositoryRoot);
   const publicRoot = path.resolve(root);
@@ -47,7 +48,10 @@ export async function runPilotPreflight({
   if (await fs.realpath(privateRoot) !== path.join(repositoryReal, PRIVATE_ROOT_RELATIVE)) {
     fail('PREFLIGHT_ROOT_INVALID', 'private-root');
   }
-  if (batch.batch.as_of !== today) fail('PREFLIGHT_DATE_DRIFT', 'batch-as-of');
+  const allowsPastBatch = reviewRecovery === true && batch.batch.as_of < today;
+  if (batch.batch.as_of !== today && !allowsPastBatch) {
+    fail('PREFLIGHT_DATE_DRIFT', 'batch-as-of');
+  }
 
   const status = await gitSuccess(execFileImpl, repository, [
     'status', '--porcelain=v1', '--untracked-files=no'
@@ -60,7 +64,14 @@ export async function runPilotPreflight({
   const head = text((await gitSuccess(
     execFileImpl, repository, ['rev-parse', 'HEAD'], 'GIT_HEAD_FAILED'
   )).stdout).trim();
-  if (head !== batch.batch.code_revision) fail('GIT_HEAD_DRIFT', 'batch-code-revision');
+  const descendant = reviewRecovery === true && await gitSucceeds(
+    execFileImpl,
+    repository,
+    ['merge-base', '--is-ancestor', batch.batch.code_revision, head]
+  );
+  if (head !== batch.batch.code_revision && !descendant) {
+    fail('GIT_HEAD_DRIFT', 'batch-code-revision');
+  }
 
   for (const [label, candidate] of [
     ['public-root', publicRoot],
