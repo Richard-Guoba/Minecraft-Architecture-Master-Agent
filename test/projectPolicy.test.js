@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const RETIRED_SCRIPTS = [
@@ -19,4 +20,10 @@ test('retired governance commands are absent', () => {
   for (const name of RETIRED_SCRIPTS) {
     assert.equal(packageJson.scripts[name], undefined, name);
   }
+});
+
+test('retired governed dataset artifacts are not tracked', () => {
+  const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' });
+  assert.doesNotMatch(tracked, /^mc_templates\/datasets\/coarse_semantic_voxels\//mu);
+  assert.doesNotMatch(tracked, /^mc_templates\/curation\/stage7_dataset_reviews\.jsonl$/mu);
 });
