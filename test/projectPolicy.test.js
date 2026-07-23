@@ -14,6 +14,13 @@ const RETIRED_SCRIPTS = [
   'audit:stage7:conditional-admission',
   'pilot:stage7:public-nbt'
 ];
+const CURRENT_DOCS = [
+  'README.md',
+  'AGENT.md',
+  'docs/architecture.md',
+  'docs/training.md'
+];
+const FORBIDDEN_POLICY = /ready_for_m3_real_data|training_eligible_count|Dataset v[123].*(?:required|gate|approval)|R[123].*(?:approval|admission)|real-data training is prohibited/iu;
 
 test('retired governance commands are absent', () => {
   const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
@@ -26,4 +33,14 @@ test('retired governed dataset artifacts are not tracked', () => {
   const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' });
   assert.doesNotMatch(tracked, /^mc_templates\/datasets\/coarse_semantic_voxels\//mu);
   assert.doesNotMatch(tracked, /^mc_templates\/curation\/stage7_dataset_reviews\.jsonl$/mu);
+});
+
+test('current project documents use the training-first policy', () => {
+  for (const relative of CURRENT_DOCS) {
+    const text = fs.readFileSync(path.join(ROOT, relative), 'utf8');
+    assert.doesNotMatch(text, FORBIDDEN_POLICY, relative);
+  }
+  const training = fs.readFileSync(path.join(ROOT, 'docs/training.md'), 'utf8');
+  assert.match(training, /all 64 local templates/iu);
+  assert.match(training, /external release/iu);
 });
