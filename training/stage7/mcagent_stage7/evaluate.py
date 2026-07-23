@@ -82,6 +82,12 @@ def evaluate_run(
     validation = TrainingPatchDataset(root, split="validation", seed=seed)
     training = TrainingPatchDataset(root, split="train", seed=seed)
     prior = _training_prior(training)
+    prior["occupancy_probabilities"] = prior[
+        "occupancy_probabilities"
+    ].to(evaluation_device)
+    prior["semantic_probabilities"] = prior[
+        "semantic_probabilities"
+    ].to(evaluation_device)
     accumulators = {
         "trained": MetricAccumulator(),
         "untrained": MetricAccumulator(),

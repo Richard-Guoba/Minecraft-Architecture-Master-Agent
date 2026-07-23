@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+import torch
+
 from mcagent_stage7.evaluate import (
     build_parser as evaluation_parser,
     main as evaluation_main,
@@ -109,6 +112,36 @@ def test_status_reports_an_unprepared_root_without_a_traceback(
     root.mkdir()
     assert status_main(["--root", str(root)]) == 0
     assert capsys.readouterr().out == "dataset_status=not_prepared\n"
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+def test_evaluation_keeps_class_prior_probabilities_on_cuda(
+    tmp_path: Path,
+) -> None:
+    root = make_training_root(tmp_path)
+    assert training_main(
+        [
+            "--root",
+            str(root),
+            "--run-id",
+            "cuda-evaluation",
+            "--steps",
+            "1",
+            "--device",
+            "cpu",
+        ]
+    ) == 0
+
+    assert evaluation_main(
+        [
+            "--root",
+            str(root),
+            "--run-id",
+            "cuda-evaluation",
+            "--device",
+            "cuda",
+        ]
+    ) == 0
 
 
 def test_package_scripts_expose_exactly_the_replacement_training_commands() -> None:
