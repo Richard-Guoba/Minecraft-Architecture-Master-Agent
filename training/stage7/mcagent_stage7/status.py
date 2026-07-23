@@ -75,37 +75,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     print(
         "gate2_passed="
-        + (
-            str(evaluation.get("gate2", {}).get("passed")).lower()
-            if evaluation is not None
-            else "not_run"
-        )
+        + _section_passed(evaluation, "gate2")
     )
     print(
         "phase2_passed="
-        + (
-            str(evaluation.get("phase2", {}).get("passed")).lower()
-            if evaluation is not None
-            else "not_run"
-        )
+        + _section_passed(evaluation, "phase2")
     )
     print(
         "test_gate2_passed="
-        + (
-            str(test_evaluation.get("gate2", {}).get("passed")).lower()
-            if test_evaluation is not None
-            else "not_run"
-        )
+        + _section_passed(test_evaluation, "gate2")
     )
     print(
         "test_phase2_passed="
-        + (
-            str(
-                test_evaluation.get("phase2", {}).get("passed")
-            ).lower()
-            if test_evaluation is not None
-            else "not_run"
-        )
+        + _section_passed(test_evaluation, "phase2")
     )
     return 0
 
@@ -131,6 +113,18 @@ def _evaluation_for_run(
     if document is None or document.get("run_id") != run_id:
         return None
     return document
+
+
+def _section_passed(
+    document: dict[str, Any] | None,
+    section: str,
+) -> str:
+    if document is None:
+        return "not_run"
+    value = document.get(section)
+    if not isinstance(value, dict) or type(value.get("passed")) is not bool:
+        return "not_run"
+    return str(value["passed"]).lower()
 
 
 def _json_or_none(path: Path) -> dict[str, Any] | None:

@@ -226,6 +226,22 @@ def test_status_rejects_an_evaluation_bound_to_another_run(
     ) is None
 
 
+def test_status_renders_missing_legacy_sections_as_not_run() -> None:
+    legacy = {
+        "run_id": "legacy",
+        "gate2": {"passed": True},
+    }
+    current = {
+        "run_id": "current",
+        "phase2": {"passed": False},
+    }
+
+    assert status_module._section_passed(legacy, "gate2") == "true"
+    assert status_module._section_passed(legacy, "phase2") == "not_run"
+    assert status_module._section_passed(current, "phase2") == "false"
+    assert status_module._section_passed(None, "phase2") == "not_run"
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
 def test_evaluation_keeps_class_prior_probabilities_on_cuda(
     tmp_path: Path,
