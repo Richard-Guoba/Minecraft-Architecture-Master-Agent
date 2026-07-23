@@ -184,7 +184,8 @@ Every report also records the fixed phase-two acceptance checks:
 
 The validation report chooses an ablation winner by higher
 `selection_score`. An exact score tie is broken by higher non-air macro-F1,
-then lexicographically by run ID. Test metrics never participate in selection.
+then by the lexicographically smaller run ID. Test metrics never participate
+in selection.
 
 ## Experiment Protocol
 
