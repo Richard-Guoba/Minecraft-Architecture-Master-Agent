@@ -9,6 +9,9 @@ import torch
 from .training_data import TOKEN_COUNT, TrainingError
 
 
+BASELINE_NON_AIR_MACRO_F1 = 0.3609670072698868
+
+
 class MetricAccumulator:
     def __init__(self) -> None:
         self.semantic_confusion = torch.zeros(
@@ -200,6 +203,121 @@ def gate2_result(
     }
 
 
+def selection_score(macro_f1: float, token5_f1: float) -> float:
+    macro = _nonnegative_metric(macro_f1, "non_air_macro_f1")
+    token5 = _nonnegative_metric(token5_f1, "token5_f1")
+    if macro <= 0.0 or token5 <= 0.0:
+        return 0.0
+    return 2.0 * macro * token5 / (macro + token5)
+
+
+def phase2_result(
+    trained: dict[str, Any],
+    gate2: dict[str, Any],
+) -> dict[str, Any]:
+    if not isinstance(trained, dict) or not isinstance(gate2, dict):
+        raise TrainingError(
+            "EVALUATION_METRIC_INVALID",
+            "phase2",
+        )
+    classes = trained.get("classes")
+    occupancy = trained.get("occupancy")
+    if (
+        not isinstance(classes, dict)
+        or not isinstance(classes.get("5"), dict)
+        or not isinstance(occupancy, dict)
+    ):
+        raise TrainingError(
+            "EVALUATION_METRIC_INVALID",
+            "phase2 classes",
+        )
+    macro_f1 = _nonnegative_metric(
+        trained.get("non_air_macro_f1"),
+        "non_air_macro_f1",
+    )
+    token5_f1 = _nonnegative_metric(
+        classes["5"].get("f1"),
+        "token5_f1",
+    )
+    occupancy_f1 = _nonnegative_metric(
+        occupancy.get("f1"),
+        "occupancy_f1",
+    )
+    ratio = _nonnegative_metric(
+        gate2.get("predicted_to_target_non_air_ratio"),
+        "predicted_to_target_non_air_ratio",
+    )
+    checks = {
+        "macro_f1_beats_baseline": (
+            macro_f1 > BASELINE_NON_AIR_MACRO_F1
+        ),
+        "token5_f1_minimum": token5_f1 >= 0.10,
+        "occupancy_f1_minimum": occupancy_f1 >= 0.90,
+        "non_air_fraction": 0.5 <= ratio <= 2.0,
+        "gate2_passed": gate2.get("passed") is True,
+    }
+    return {
+        **checks,
+        "non_air_macro_f1": macro_f1,
+        "token5_f1": token5_f1,
+        "occupancy_f1": occupancy_f1,
+        "predicted_to_target_non_air_ratio": ratio,
+        "selection_score": selection_score(macro_f1, token5_f1),
+        "passed": all(checks.values()),
+    }
+
+
+def select_ablation_winner(
+    reports: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
+    candidates = list(reports)
+    ranked: list[tuple[float, float, str, dict[str, Any]]] = []
+    for report in candidates:
+        if not isinstance(report, dict):
+            raise TrainingError(
+                "ABLATION_REPORT_INVALID",
+                "report",
+            )
+        if report.get("split") != "validation":
+            raise TrainingError(
+                "ABLATION_REPORT_SPLIT_INVALID",
+                str(report.get("split")),
+            )
+        run_id = report.get("run_id")
+        gate2 = report.get("gate2")
+        metrics = report.get("metrics")
+        if (
+            not isinstance(run_id, str)
+            or not run_id
+            or not isinstance(gate2, dict)
+            or not isinstance(metrics, dict)
+            or not isinstance(metrics.get("trained"), dict)
+        ):
+            raise TrainingError(
+                "ABLATION_REPORT_INVALID",
+                str(run_id),
+            )
+        score = _nonnegative_metric(
+            report.get("selection_score"),
+            "selection_score",
+        )
+        macro_f1 = _nonnegative_metric(
+            metrics["trained"].get("non_air_macro_f1"),
+            "non_air_macro_f1",
+        )
+        if gate2.get("passed") is True:
+            ranked.append((score, macro_f1, run_id, report))
+    if not ranked:
+        raise TrainingError(
+            "ABLATION_WINNER_MISSING",
+            "no Gate 2 pass",
+        )
+    return min(
+        ranked,
+        key=lambda item: (-item[0], -item[1], item[2]),
+    )[3]
+
+
 def _class_metrics(confusion: torch.Tensor, index: int) -> dict[str, Any]:
     true_positive = int(confusion[index, index])
     false_positive = int(confusion[:, index].sum()) - true_positive
@@ -270,6 +388,13 @@ def _finite_metric(metrics: dict[str, Any], key: str) -> float:
     ):
         raise TrainingError("EVALUATION_METRIC_INVALID", key)
     return float(value)
+
+
+def _nonnegative_metric(value: object, key: str) -> float:
+    parsed = _finite_metric({key: value}, key)
+    if parsed < 0.0:
+        raise TrainingError("EVALUATION_METRIC_INVALID", key)
+    return parsed
 
 
 def _assert_finite_summary(summary: dict[str, Any]) -> None:

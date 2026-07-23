@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 import torch
 
+import mcagent_stage7.evaluate as evaluation_module
+import mcagent_stage7.status as status_module
 from mcagent_stage7.evaluate import (
     build_parser as evaluation_parser,
     main as evaluation_main,
@@ -47,6 +49,7 @@ def test_command_help_exposes_only_the_new_local_training_contract() -> None:
     assert "--semantic-balance" in helps[0]
     assert "--run-id" in helps[0]
     assert "--run-id" in helps[1]
+    assert "--split" in helps[1]
     assert "--root" in helps[2]
 
 
@@ -69,6 +72,16 @@ def test_training_command_defaults_to_none_and_rejects_unknown_balance() -> None
         )
 
 
+def test_evaluation_command_defaults_to_validation_and_rejects_unknown_split() -> None:
+    arguments = evaluation_parser().parse_args(["--run-id", "parser-test"])
+    assert arguments.split == "validation"
+
+    with pytest.raises(SystemExit):
+        evaluation_parser().parse_args(
+            ["--run-id", "parser-test", "--split", "training"]
+        )
+
+
 def test_relative_training_root_is_resolved_from_the_repository() -> None:
     assert resolve_cli_root(Path(".local/training")) == (
         REPOSITORY_ROOT / ".local" / "training"
@@ -78,6 +91,7 @@ def test_relative_training_root_is_resolved_from_the_repository() -> None:
 def test_train_evaluate_and_status_commands_complete_a_cpu_smoke_run(
     tmp_path: Path,
     capsys,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = make_training_root(tmp_path, train_count=8)
 
@@ -94,11 +108,25 @@ def test_train_evaluate_and_status_commands_complete_a_cpu_smoke_run(
             "--device",
             "cpu",
             "--semantic-balance",
-            "weighted",
+            "weighted-mask",
         ]
     ) == 0
     assert "completed_steps=3" in capsys.readouterr().out
 
+    evaluation_strategies: list[str] = []
+    real_make_balanced_mask = evaluation_module.make_balanced_mask
+
+    def recording_mask(*args: object, **kwargs: object):
+        evaluation_strategies.append(
+            str(kwargs.get("semantic_balance"))
+        )
+        return real_make_balanced_mask(*args, **kwargs)
+
+    monkeypatch.setattr(
+        evaluation_module,
+        "make_balanced_mask",
+        recording_mask,
+    )
     assert evaluation_main(
         [
             "--root",
@@ -111,15 +139,56 @@ def test_train_evaluate_and_status_commands_complete_a_cpu_smoke_run(
             "7101",
         ]
     ) == 0
-    assert "gate2_passed=" in capsys.readouterr().out
+    validation_output = capsys.readouterr().out
+    assert "split=validation" in validation_output
+    assert "gate2_passed=" in validation_output
+    assert "phase2_passed=" in validation_output
     run = root / "runs" / "command-smoke"
-    report = json.loads((run / "evaluation.json").read_text("utf8"))
+    validation_report_path = run / "evaluation.json"
+    validation_reconstruction_path = run / "reconstruction.bin"
+    validation_report_bytes = validation_report_path.read_bytes()
+    validation_reconstruction_bytes = (
+        validation_reconstruction_path.read_bytes()
+    )
+    report = json.loads(validation_report_bytes)
     checkpoint = json.loads((run / "checkpoint.json").read_text("utf8"))
-    assert checkpoint["semantic_balance"] == "weighted"
+    assert checkpoint["semantic_balance"] == "weighted-mask"
     assert len(checkpoint["semantic_class_weights"]) == 8
+    assert report["split"] == "validation"
+    assert report["semantic_balance"] == "weighted-mask"
+    assert isinstance(report["selection_score"], float)
+    assert isinstance(report["phase2"]["passed"], bool)
     assert set(report["metrics"]) == {"trained", "untrained", "class_prior"}
     assert isinstance(report["gate2"]["passed"], bool)
-    assert (run / "reconstruction.bin").stat().st_size == 32**3
+    assert validation_reconstruction_path.stat().st_size == 32**3
+
+    assert evaluation_main(
+        [
+            "--root",
+            str(root),
+            "--run-id",
+            "command-smoke",
+            "--device",
+            "cpu",
+            "--seed",
+            "7101",
+            "--split",
+            "test",
+        ]
+    ) == 0
+    test_output = capsys.readouterr().out
+    assert "split=test" in test_output
+    assert validation_report_path.read_bytes() == validation_report_bytes
+    assert (
+        validation_reconstruction_path.read_bytes()
+        == validation_reconstruction_bytes
+    )
+    test_report = json.loads(
+        (run / "evaluation.test.json").read_text("utf8")
+    )
+    assert test_report["split"] == "test"
+    assert (run / "reconstruction.test.bin").stat().st_size == 32**3
+    assert evaluation_strategies == ["none", "none"]
 
     assert status_main(["--root", str(root)]) == 0
     output = capsys.readouterr().out
@@ -127,6 +196,9 @@ def test_train_evaluate_and_status_commands_complete_a_cpu_smoke_run(
     assert "latest_run_id=command-smoke" in output
     assert "completed_steps=3" in output
     assert "gate2_passed=" in output
+    assert "phase2_passed=" in output
+    assert "test_gate2_passed=" in output
+    assert "test_phase2_passed=" in output
 
 
 def test_status_reports_an_unprepared_root_without_a_traceback(
@@ -137,6 +209,21 @@ def test_status_reports_an_unprepared_root_without_a_traceback(
     root.mkdir()
     assert status_main(["--root", str(root)]) == 0
     assert capsys.readouterr().out == "dataset_status=not_prepared\n"
+
+
+def test_status_rejects_an_evaluation_bound_to_another_run(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "evaluation.json"
+    path.write_text(
+        json.dumps({"run_id": "stale-run"}),
+        encoding="utf8",
+    )
+
+    assert status_module._evaluation_for_run(
+        path,
+        "latest-run",
+    ) is None
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")

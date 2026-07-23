@@ -23,9 +23,19 @@ from .training_data import (
     TrainingPatchDataset,
     make_balanced_mask,
 )
-from .training_metrics import MetricAccumulator, gate2_result
+from .training_metrics import (
+    MetricAccumulator,
+    gate2_result,
+    phase2_result,
+)
 from .training_paths import resolve_cli_root
 from .voxel_model import TinyVoxelCompletionModel, predict_tokens
+
+
+_EVALUATION_OUTPUTS = {
+    "validation": ("evaluation.json", "reconstruction.bin"),
+    "test": ("evaluation.test.json", "reconstruction.test.bin"),
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,6 +46,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--seed", type=_uint32, default=7101)
+    parser.add_argument(
+        "--split",
+        choices=tuple(_EVALUATION_OUTPUTS),
+        default="validation",
+    )
     return parser
 
 
@@ -45,7 +60,10 @@ def evaluate_run(
     run_id: str,
     device: str,
     seed: int,
+    split: str = "validation",
 ) -> dict[str, Any]:
+    if split not in _EVALUATION_OUTPUTS:
+        raise TrainingError("EVALUATION_SPLIT_INVALID", str(split))
     if device == "cuda" and not torch.cuda.is_available():
         raise TrainingError("TRAINING_DEVICE_UNAVAILABLE", "cuda")
     run_path = resolve_run_path(root, run_id, create=False)
@@ -71,7 +89,11 @@ def evaluate_run(
     )
     torch.manual_seed(7101)
     untrained = TinyVoxelCompletionModel().to(evaluation_device)
-    validation = TrainingPatchDataset(root, split="validation", seed=seed)
+    evaluation_dataset = TrainingPatchDataset(
+        root,
+        split=split,
+        seed=seed,
+    )
     training = TrainingPatchDataset(root, split="train", seed=seed)
     prior = _training_prior(training)
     prior["occupancy_probabilities"] = prior[
@@ -90,15 +112,22 @@ def evaluate_run(
     untrained.eval()
     with torch.no_grad():
         for batch_index, start in enumerate(
-            range(0, len(validation), binding.batch_size)
+            range(0, len(evaluation_dataset), binding.batch_size)
         ):
-            stop = min(start + binding.batch_size, len(validation))
+            stop = min(
+                start + binding.batch_size,
+                len(evaluation_dataset),
+            )
             targets = torch.stack(
-                [validation[index] for index in range(start, stop)]
+                [
+                    evaluation_dataset[index]
+                    for index in range(start, stop)
+                ]
             )
             visible, mask = make_balanced_mask(
                 targets,
                 seed=_evaluation_seed(seed, batch_index),
+                semantic_balance="none",
             )
             targets = targets.to(evaluation_device)
             visible = visible.to(evaluation_device)
@@ -158,18 +187,31 @@ def evaluate_run(
         metrics["untrained"],
         metrics["class_prior"],
     )
+    phase2 = phase2_result(metrics["trained"], gate)
     report = {
-        "source": "minecraft-architecture-training-evaluation-v1",
+        "source": "minecraft-architecture-training-evaluation-v2",
         "run_id": run_id,
+        "split": split,
         "seed": seed,
         "device": device,
+        "objective_version": binding.objective_version,
+        "semantic_balance": binding.semantic_balance,
+        "semantic_class_weights": list(
+            binding.semantic_class_weights
+        ),
+        "semantic_class_weights_sha256": (
+            binding.semantic_class_weights_sha256
+        ),
         "metrics": metrics,
         "gate2": gate,
+        "selection_score": phase2["selection_score"],
+        "phase2": phase2,
     }
     if reconstruction is None or len(reconstruction) != 32**3:
         raise TrainingError("EVALUATION_RECONSTRUCTION_INVALID", run_id)
-    atomic_write_bytes(run_path / "reconstruction.bin", reconstruction)
-    atomic_write_json(run_path / "evaluation.json", report)
+    report_name, reconstruction_name = _EVALUATION_OUTPUTS[split]
+    atomic_write_bytes(run_path / reconstruction_name, reconstruction)
+    atomic_write_json(run_path / report_name, report)
     return report
 
 
@@ -187,9 +229,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         run_id=arguments.run_id,
         device=device,
         seed=arguments.seed,
+        split=arguments.split,
     )
     print(f"run_id={arguments.run_id}")
+    print(f"split={arguments.split}")
     print(f"gate2_passed={str(report['gate2']['passed']).lower()}")
+    print(f"phase2_passed={str(report['phase2']['passed']).lower()}")
+    print(f"selection_score={report['selection_score']:.6f}")
     print(
         "non_air_macro_f1="
         f"{report['metrics']['trained']['non_air_macro_f1']:.6f}"
@@ -197,6 +243,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         "non_air_macro_iou="
         f"{report['metrics']['trained']['non_air_macro_iou']:.6f}"
+    )
+    print(
+        "token5_f1="
+        f"{report['metrics']['trained']['classes']['5']['f1']:.6f}"
     )
     return 0
 

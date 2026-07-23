@@ -55,8 +55,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"completed_steps={latest['document'].get('completed_steps', 0)}"
     )
     print(f"target_steps={latest['document'].get('target_steps', 0)}")
-    gate = _latest_artifact(root, runs, "gate1.json")
-    evaluation = _latest_artifact(root, runs, "evaluation.json")
+    latest_run = root / "runs" / latest_id
+    gate = _json_or_none(latest_run / "gate1.json")
+    evaluation = _evaluation_for_run(
+        latest_run / "evaluation.json",
+        latest_id,
+    )
+    test_evaluation = _evaluation_for_run(
+        latest_run / "evaluation.test.json",
+        latest_id,
+    )
     print(
         "gate1_passed="
         + (
@@ -70,6 +78,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         + (
             str(evaluation.get("gate2", {}).get("passed")).lower()
             if evaluation is not None
+            else "not_run"
+        )
+    )
+    print(
+        "phase2_passed="
+        + (
+            str(evaluation.get("phase2", {}).get("passed")).lower()
+            if evaluation is not None
+            else "not_run"
+        )
+    )
+    print(
+        "test_gate2_passed="
+        + (
+            str(test_evaluation.get("gate2", {}).get("passed")).lower()
+            if test_evaluation is not None
+            else "not_run"
+        )
+    )
+    print(
+        "test_phase2_passed="
+        + (
+            str(
+                test_evaluation.get("phase2", {}).get("passed")
+            ).lower()
+            if test_evaluation is not None
             else "not_run"
         )
     )
@@ -89,18 +123,14 @@ def _run_documents(root: Path) -> dict[str, dict[str, Any]]:
     return output
 
 
-def _latest_artifact(
-    root: Path,
-    runs: dict[str, dict[str, Any]],
-    name: str,
+def _evaluation_for_run(
+    path: Path,
+    run_id: str,
 ) -> dict[str, Any] | None:
-    candidates = []
-    for run_id in runs:
-        path = root / "runs" / run_id / name
-        document = _json_or_none(path)
-        if document is not None:
-            candidates.append((path.stat().st_mtime_ns, run_id, document))
-    return max(candidates, default=(0, "", None))[-1]
+    document = _json_or_none(path)
+    if document is None or document.get("run_id") != run_id:
+        return None
+    return document
 
 
 def _json_or_none(path: Path) -> dict[str, Any] | None:
