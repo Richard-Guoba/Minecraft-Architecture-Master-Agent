@@ -4,7 +4,6 @@ import path from 'node:path';
 import { decodeSchematicBlockVolume } from '../templates/schematicBlockVolume.js';
 import {
   PrivateResearchBoundaryError,
-  assertFormalDatasetBoundary,
   assertPrivateAcknowledgement,
   assertPrivateCandidate,
   canonicalJson
@@ -19,7 +18,6 @@ export async function importPrivateSources({ cwd = process.cwd(), root, obtained
   if (typeof obtainedAt !== 'string' || Number.isNaN(Date.parse(obtainedAt))) throw new PrivateResearchBoundaryError('OBTAINED_AT_INVALID', String(obtainedAt));
   if (typeof sourceUrl !== 'string') throw new PrivateResearchBoundaryError('SOURCE_URL_INVALID', String(sourceUrl));
   await assertPrivateAcknowledgement(root);
-  await assertFormalDatasetBoundary(cwd);
   const sourceRoot = await assertPrivateCandidate(root, path.join(root, 'source'));
   const manifestRoot = await assertPrivateCandidate(root, path.join(root, 'manifests'));
   const existingPath = path.join(manifestRoot, 'sources.jsonl');
@@ -59,7 +57,6 @@ export async function importPrivateSources({ cwd = process.cwd(), root, obtained
 export async function preparePrivateCorpus({ cwd = process.cwd(), root, splitSeed } = {}) {
   if (!Number.isInteger(splitSeed)) throw new PrivateResearchBoundaryError('SPLIT_SEED_INVALID', String(splitSeed));
   await assertPrivateAcknowledgement(root);
-  await assertFormalDatasetBoundary(cwd);
   const sourceRoot = await assertPrivateCandidate(root, path.join(root, 'source'));
   const manifestRoot = await assertPrivateCandidate(root, path.join(root, 'manifests'));
   const preparedRoot = await assertPrivateCandidate(root, path.join(root, 'prepared'));

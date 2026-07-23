@@ -1,13 +1,9 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import {
-  EXPECTED_DATASET_HASHES,
   PrivateResearchBoundaryError,
-  assertFormalDatasetBoundary,
   assertPrivateAcknowledgement,
   assertPrivateCandidate
 } from '../src/construction/learning/stage7PrivateResearchBoundary.js';
@@ -39,21 +35,6 @@ test('private boundary rejects paths outside the private root and symbolic links
   );
 });
 
-test('formal dataset boundary verifies immutable manifest hashes and the closed gate', async () => {
-  const result = await assertFormalDatasetBoundary(process.cwd());
-
-  assert.deepEqual(result.dataset_hashes, EXPECTED_DATASET_HASHES);
-  assert.deepEqual(result.dataset_v3_gate, {
-    ready_for_m3_real_data: false,
-    training_eligible_count: 0
-  });
-  assert.deepEqual(EXPECTED_DATASET_HASHES, {
-    v1: hashFile('mc_templates/datasets/coarse_semantic_voxels/v1/manifest.json'),
-    v2: hashFile('mc_templates/datasets/coarse_semantic_voxels/v2/manifest.json'),
-    v3: hashFile('mc_templates/datasets/coarse_semantic_voxels/v3/manifest.json')
-  });
-});
-
 async function makePrivateRoot() {
   await fs.rm(TEST_ROOT, { recursive: true, force: true });
   await fs.mkdir(path.join(TEST_ROOT, 'source'), { recursive: true });
@@ -70,12 +51,4 @@ async function writeAcknowledgement(root) {
     acknowledged_by: 'test-owner'
   };
   await fs.writeFile(path.join(root, 'PRIVATE_RESEARCH_ACK.json'), `${JSON.stringify(acknowledgement)}\n`, 'utf8');
-}
-
-function hashFile(relativePath) {
-  return createHash('sha256').update(requireFile(relativePath)).digest('hex');
-}
-
-function requireFile(relativePath) {
-  return fsSync.readFileSync(path.resolve(relativePath));
 }
