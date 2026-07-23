@@ -8,16 +8,17 @@ Local use and external distribution are separate decisions. Data, prepared sampl
 
 ## Current evidence
 
-The repository contains 64 local schematic sources.
+The active preparation and training run uses seed 7101.
 
-- 22 sources previously fit a centered `64 x 64 x 64` whole-building preparation path.
-- 42 oversized sources were deferred by that old whole-volume-only path.
-- Three local training attempts were recorded.
-- The largest run reached 185,946 optimizer steps.
-- Held-out non-air macro-F1 and macro-IoU were both zero.
-- More than 96% of evaluation voxels were air, and the model collapsed to predicting air everywhere.
+- All 64 local sources were accepted; none were rejected.
+- Preparation produced 22 centered `64 x 64 x 64` whole volumes and 11,600 non-empty `32 x 32 x 32` patches.
+- The source split is 45/10/9 buildings, producing 8,260/1,546/1,794 train/validation/test patches.
+- Gate 1 passed at step 2,300 with non-air macro-F1 `0.9054`.
+- The held-out run completed 50,000 optimizer steps on CUDA.
+- Gate 2 passed with validation non-air macro-F1 `0.3610`, macro-IoU `0.2546`, and occupancy F1 `0.9193`.
+- The trained model beat the untrained macro-F1 baseline (`0.0093`) and class-prior baseline (`0.0`). Its predicted/target non-air ratio was `1.0487`.
 
-The old runs prove that data loading, optimization, and checkpoint plumbing executed. They do not prove useful structure learning.
+This is the first run in the repository that demonstrates useful held-out non-air learning. It is not a production-quality architecture model: the architectural-shape class remains near zero F1 and needs targeted data or objective work.
 
 ## Data preparation
 
@@ -50,10 +51,11 @@ Every whole volume and patch inherits its source assignment. No derivative may d
 The replacement command surface is:
 
 ```bash
-npm run training:prepare
-npm run training:train
-npm run training:evaluate
-npm run training:status
+npm run training:prepare -- --source-root mc_templates --root .local/training --seed 7101
+npm run training:train -- --root .local/training --run-id tiny-overfit-7101 --tiny-overfit --steps 5000 --batch-size 2 --learning-rate 0.001 --device auto --seed 7101
+npm run training:train -- --root .local/training --run-id heldout-7101 --steps 50000 --batch-size 2 --learning-rate 0.001 --device auto --seed 7101
+npm run training:evaluate -- --root .local/training --run-id heldout-7101 --device auto --seed 7101
+npm run training:status -- --root .local/training
 ```
 
 Preparation and source splitting are implemented in Node.js. Training uses PyTorch in the Conda environment `mcagent-stage7`.
@@ -76,7 +78,7 @@ Gate 2 is held-out validation:
 - both metrics strictly beat the untrained and class-prior baselines;
 - predicted non-air fraction is between 0.5 and 2.0 times the target fraction.
 
-Thresholds are fixed before the experiment. A failed Gate 2 is reported honestly and keeps the model outside primary generation.
+Thresholds were fixed before the experiment. The seed-7101 run passed every Gate 2 check. Passing proves that the model learned beyond the baselines; it does not automatically place the checkpoint in primary generation.
 
 ## Local artifacts
 

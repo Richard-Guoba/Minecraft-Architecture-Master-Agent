@@ -22,7 +22,7 @@
         <div class="hero-copy-block">
           <h1>Semantic intent. Deterministic Minecraft architecture.</h1>
           <p class="hero-copy">
-            The active construction_method_v1 pipeline turns Chinese or English building requests into Minecraft Java 1.21 datapacks. A separate local-training reset uses all 64 local templates, keeps artifacts private by default, and measures non-air learning explicitly.
+            The active construction_method_v1 pipeline turns Chinese or English building requests into Minecraft Java 1.21 datapacks. A separate local workflow trains on all 64 templates, keeps artifacts private by default, and has now passed its first held-out non-air learning gate.
           </p>
           <div class="terminal-stack" aria-label="Project commands">
             <pre class="terminal"><code><span>$</span> npm start -- --mode mock --seed 7101 "建一个湖边现代两层别墅"</code></pre>
@@ -49,14 +49,14 @@
           <em>all considered for local training</em>
         </article>
         <article>
-          <span>Previous Result</span>
-          <strong>All-air collapse</strong>
-          <em>185,946 steps; useful non-air score 0</em>
+          <span>Gate 2</span>
+          <strong>Passed</strong>
+          <em>50,000 steps on 1,546 validation patches</em>
         </article>
         <article>
-          <span>Training Goal</span>
-          <strong>Balanced two-head learning</strong>
-          <em>occupancy plus non-air semantics</em>
+          <span>Validation</span>
+          <strong>F1 0.361 · IoU 0.255</strong>
+          <em>occupancy F1 0.919; both baselines beaten</em>
         </article>
       </section>
 
@@ -77,7 +77,7 @@
           <ul class="check-list">
             <li><strong>No per-file approval</strong><span>All existing local templates may be used for local experiments.</span></li>
             <li><strong>Leakage prevention</strong><span>Buildings and duplicate groups are split before whole volumes or patches are created.</span></li>
-            <li><strong>Honest gates</strong><span>Non-air F1, IoU, baselines, and occupancy calibration decide progress.</span></li>
+            <li><strong>Measured progress</strong><span>Gate 1 and Gate 2 passed; the architectural-shape class remains the main known weakness.</span></li>
             <li><strong>Local by default</strong><span>Prepared data, weights, metrics, and reconstructions stay below .local/training/.</span></li>
           </ul>
         </section>

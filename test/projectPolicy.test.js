@@ -44,3 +44,24 @@ test('current project documents use the training-first policy', () => {
   assert.match(training, /all 64 local templates/iu);
   assert.match(training, /external release/iu);
 });
+
+test('working tree has no process-document archive', () => {
+  assert.equal(fs.existsSync(path.join(ROOT, 'docs/superpowers')), false);
+});
+
+test('exactly four training commands are supported', () => {
+  const scripts = JSON.parse(
+    fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')
+  ).scripts;
+  assert.deepEqual(
+    Object.keys(scripts)
+      .filter((name) => name.startsWith('training:'))
+      .sort(),
+    [
+      'training:evaluate',
+      'training:prepare',
+      'training:status',
+      'training:train'
+    ]
+  );
+});

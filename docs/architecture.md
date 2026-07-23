@@ -1,6 +1,6 @@
 # Architecture
 
-The project has two independent flows: a production construction flow and a local training flow. Training may produce experimental checkpoints, but it does not alter primary Minecraft generation until its held-out gate passes.
+The project has two independent flows: a production construction flow and a local training flow. The first replacement checkpoint passed its held-out learning gate, but model integration remains an explicit boundary rather than an automatic side effect of training.
 
 ## Construction flow
 
@@ -44,9 +44,11 @@ The model predicts two related outputs:
 
 Balanced supervision prevents the majority air class from hiding non-air failure. Gate 1 requires deterministic overfitting of four training patches. Gate 2 measures held-out non-air F1/IoU, improvement over untrained and class-prior baselines, and predicted occupancy calibration.
 
+With seed 7101, preparation accepted all 64 sources and produced 11,600 patches. Gate 1 passed at step 2,300. A separate 50,000-step run passed Gate 2 on 1,546 validation patches with non-air macro-F1 `0.3610`, macro-IoU `0.2546`, occupancy F1 `0.9193`, and predicted/target non-air ratio `1.0487`.
+
 ## Experimental shadow boundary
 
-The optional coarse semantic shadow interface remains an experimental integration boundary. It may compare a deterministic baseline or a validated artifact without changing primary operations. A learned provider is not part of normal generation during this reset.
+The optional coarse semantic shadow interface remains the integration boundary. It may compare the passed checkpoint with deterministic output without changing primary operations. The learned model is not yet part of normal generation because its architectural-shape classification remains weak and Gate 2 establishes learning, not production readiness.
 
 ## Ownership boundaries
 

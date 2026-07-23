@@ -23,8 +23,10 @@ The LLM does not need to emit exact block coordinates. The Node.js runtime turns
 - Normal mock generation is deterministic and does not need an API key or Python.
 - The generator targets Minecraft Java 1.21 / 1.21.1 and datapack `pack_format: 48`.
 - The repository contains 64 local schematic templates. Every one may be used for local training without per-file approval.
-- Earlier local training reached 185,946 optimizer steps but collapsed to all-air predictions. That run proved plumbing, not useful learning.
-- The training path is being replaced with automatic source preparation, leakage-safe splitting, balanced non-air learning, checkpointing, and explicit progress gates.
+- Automatic preparation accepts all 64 sources and produces 11,600 non-empty patches. The source split is 45 train, 10 validation, and 9 test buildings.
+- The replacement model passed its four-patch overfit gate at step 2,300 with non-air macro-F1 `0.9054`.
+- The 50,000-step held-out run passed Gate 2 with validation non-air macro-F1 `0.3610`, macro-IoU `0.2546`, and occupancy F1 `0.9193`.
+- The checkpoint remains experimental and outside primary generation. Its clearest measured weakness is the architectural-shape class.
 - Training artifacts remain local by default. A separate license and distribution review happens only before a concrete artifact is shared externally.
 
 ## Quick start
@@ -67,16 +69,16 @@ Copy `architect_datapack/` into a world's `datapacks` directory, then run:
 
 ## Local training
 
-The replacement training workflow has one target command surface:
+The supported local workflow is:
 
 ```bash
-npm run training:prepare -- --source-root mc_templates --output-root .local/training --seed 7101
-npm run training:train -- --root .local/training --run-id held-out-7101 --steps 50000
-npm run training:evaluate -- --root .local/training --run-id held-out-7101
+npm run training:prepare -- --source-root mc_templates --root .local/training --seed 7101
+npm run training:train -- --root .local/training --run-id heldout-7101 --steps 50000
+npm run training:evaluate -- --root .local/training --run-id heldout-7101
 npm run training:status -- --root .local/training
 ```
 
-These commands are the interface being implemented by the current reset; until that implementation lands, the construction pipeline remains the supported executable path. See [docs/training.md](docs/training.md) for data preparation, split, model, metrics, and artifact rules.
+Preparation, training, resume, held-out evaluation, and status reporting are implemented. See [docs/training.md](docs/training.md) for the observed results, fixed gates, model limits, and local artifact rules.
 
 ## Repository map
 
@@ -101,4 +103,4 @@ docs/
 - Normal generation requires Node.js, not Python. Training uses the Conda environment `mcagent-stage7`; do not create a repository-local `.venv`.
 - Secrets, `.env`, `out/`, `.local/`, checkpoints, prepared datasets, and reconstructions must not be committed.
 - Existing `.local/` data is preserved. Project cleanup must not delete, move, publish, or overwrite it.
-- The learned model stays outside primary generation until held-out metrics pass the documented gate.
+- Passing the held-out gate proves useful learning, not production readiness. Integrating a checkpoint into primary generation remains a separate engineering decision.
