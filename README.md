@@ -24,9 +24,11 @@ The LLM does not need to emit exact block coordinates. The Node.js runtime turns
 - The generator targets Minecraft Java 1.21 / 1.21.1 and datapack `pack_format: 48`.
 - The repository contains 64 local schematic templates. Every one may be used for local training without per-file approval.
 - Automatic preparation accepts all 64 sources and produces 11,600 non-empty patches. The source split is 45 train, 10 validation, and 9 test buildings.
-- The replacement model passed its four-patch overfit gate at step 2,300 with non-air macro-F1 `0.9054`.
-- The 50,000-step held-out run passed Gate 2 with validation non-air macro-F1 `0.3610`, macro-IoU `0.2546`, and occupancy F1 `0.9193`.
-- The checkpoint remains experimental and outside primary generation. Its clearest measured weakness is the architectural-shape class.
+- The original `heldout-7101` reference passed Gate 2 with validation non-air macro-F1 `0.3609670073`.
+- Semantic-balance v2 compared weighted loss with weighted loss plus class-aware masking. Both passed the four-patch Gate 1; `weighted-mask` won the fixed 10,000-step ablation ranking.
+- The from-scratch 50,000-step `balanced-v2-7101` run passed validation Gate 2 but failed the stricter phase-two gate: macro-F1 was `0.3490899391` and architectural-shape/token-5 F1 was `0.0395156268`.
+- On the untouched test split, the same checkpoint failed Gate 2 and phase two with macro-F1 `0.1620096727`, exposing a material source-level generalization gap.
+- The checkpoint remains experimental and is not part of primary generation. The LLM still describes the house; deterministic Node.js code still turns that intent into exact geometry and datapack commands.
 - Training artifacts remain local by default. A separate license and distribution review happens only before a concrete artifact is shared externally.
 
 ## Quick start
@@ -73,12 +75,12 @@ The supported local workflow is:
 
 ```bash
 npm run training:prepare -- --source-root mc_templates --root .local/training --seed 7101
-npm run training:train -- --root .local/training --run-id heldout-7101 --steps 50000
-npm run training:evaluate -- --root .local/training --run-id heldout-7101
+npm run training:train -- --root .local/training --run-id balanced-v2-7101 --steps 50000 --batch-size 2 --learning-rate 0.001 --device auto --seed 7101 --semantic-balance weighted-mask
+npm run training:evaluate -- --root .local/training --run-id balanced-v2-7101 --device auto --seed 7101 --split validation
 npm run training:status -- --root .local/training
 ```
 
-Preparation, training, resume, held-out evaluation, and status reporting are implemented. See [docs/training.md](docs/training.md) for the observed results, fixed gates, model limits, and local artifact rules.
+Preparation, training, resume, split-specific evaluation, and status reporting are implemented. See [docs/training.md](docs/training.md) for the full ablation sequence, untouched-test command, observed results, fixed gates, model limits, and local artifact rules.
 
 ## Repository map
 
