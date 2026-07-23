@@ -1,27 +1,46 @@
 import { createHash } from 'node:crypto';
 import { TextDecoder } from 'node:util';
 import { gunzipSync, inflateSync } from 'node:zlib';
-import {
-  CANDIDATE_NBT_LIMITS,
-  CandidateReadinessError,
-  assertCandidateId
-} from './stage7CandidateBoundary.js';
+import { TrainingDataError, assertSourceId } from './trainingError.js';
 
-export const BOUNDED_NBT_VERSION = 'stage7-bounded-nbt-v1';
+export const BOUNDED_NBT_VERSION = 'bounded-nbt-v1';
+export const BOUNDED_NBT_LIMITS = Object.freeze({
+  maxRawBytes: 16 * 1024 * 1024,
+  maxInflatedBytes: 64 * 1024 * 1024,
+  maxCompressionRatio: 200,
+  maxDepth: 32,
+  maxEntries: 1_500_000,
+  maxStringBytes: 32 * 1024,
+  maxBlocks: 64 ** 3,
+  maxPaletteEntries: 4096,
+  maxBlockEntities: 16_384
+});
 
 const TAG = Object.freeze({
-  END: 0, BYTE: 1, SHORT: 2, INT: 3, LONG: 4, FLOAT: 5, DOUBLE: 6,
-  BYTE_ARRAY: 7, STRING: 8, LIST: 9, COMPOUND: 10, INT_ARRAY: 11, LONG_ARRAY: 12
+  END: 0,
+  BYTE: 1,
+  SHORT: 2,
+  INT: 3,
+  LONG: 4,
+  FLOAT: 5,
+  DOUBLE: 6,
+  BYTE_ARRAY: 7,
+  STRING: 8,
+  LIST: 9,
+  COMPOUND: 10,
+  INT_ARRAY: 11,
+  LONG_ARRAY: 12
 });
 const VALID_TYPES = new Set(Object.values(TAG));
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 
 export function decodeBoundedNbt(buffer, {
-  candidateId,
-  limits = CANDIDATE_NBT_LIMITS
+  sourceId,
+  limits = BOUNDED_NBT_LIMITS
 } = {}) {
-  const id = assertCandidateId(candidateId);
+  const id = assertSourceId(sourceId);
   if (!Buffer.isBuffer(buffer)) fail('NBT_INPUT_INVALID', id);
+  if (buffer.length === 0) fail('NBT_ROOT_INVALID', id);
   if (buffer.length > limits.maxRawBytes) {
     fail('RAW_BYTES_LIMIT', id, { byte_count: buffer.length });
   }
@@ -39,7 +58,9 @@ export function decodeBoundedNbt(buffer, {
   const rootName = reader.string();
   const value = reader.payload(TAG.COMPOUND, 1, false);
   if (reader.offset !== inflated.bytes.length) {
-    fail('NBT_TRAILING_BYTES', id, { trailing_byte_count: inflated.bytes.length - reader.offset });
+    fail('NBT_TRAILING_BYTES', id, {
+      trailing_byte_count: inflated.bytes.length - reader.offset
+    });
   }
   return Object.freeze({
     version: BOUNDED_NBT_VERSION,
@@ -51,8 +72,10 @@ export function decodeBoundedNbt(buffer, {
   });
 }
 
-function inflateBounded(buffer, limits, candidateId) {
-  if (buffer[0] === 0x50 && buffer[1] === 0x4b) fail('NBT_CONTAINER_UNSUPPORTED', candidateId);
+function inflateBounded(buffer, limits, sourceId) {
+  if (buffer[0] === 0x50 && buffer[1] === 0x4b) {
+    fail('NBT_CONTAINER_UNSUPPORTED', sourceId);
+  }
   const options = { maxOutputLength: limits.maxInflatedBytes };
   try {
     if (buffer[0] === 0x1f && buffer[1] === 0x8b) {
@@ -62,13 +85,20 @@ function inflateBounded(buffer, limits, candidateId) {
       return { compression: 'zlib', bytes: inflateSync(buffer, options) };
     }
   } catch (error) {
-    if (error.code === 'ERR_BUFFER_TOO_LARGE' || /maxOutputLength|larger than/u.test(error.message || '')) {
-      fail('NBT_INFLATED_LIMIT', candidateId, { max_inflated_bytes: limits.maxInflatedBytes });
+    if (
+      error.code === 'ERR_BUFFER_TOO_LARGE'
+      || /maxOutputLength|larger than/u.test(error.message || '')
+    ) {
+      fail('NBT_INFLATED_LIMIT', sourceId, {
+        max_inflated_bytes: limits.maxInflatedBytes
+      });
     }
-    fail('NBT_DECOMPRESSION_FAILED', candidateId);
+    fail('NBT_DECOMPRESSION_FAILED', sourceId);
   }
   if (buffer.length > limits.maxInflatedBytes) {
-    fail('NBT_INFLATED_LIMIT', candidateId, { max_inflated_bytes: limits.maxInflatedBytes });
+    fail('NBT_INFLATED_LIMIT', sourceId, {
+      max_inflated_bytes: limits.maxInflatedBytes
+    });
   }
   return { compression: 'none', bytes: buffer };
 }
@@ -80,17 +110,21 @@ function isZlib(buffer) {
 }
 
 class Reader {
-  constructor(buffer, limits, candidateId) {
+  constructor(buffer, limits, sourceId) {
     this.buffer = buffer;
     this.limits = limits;
-    this.candidateId = candidateId;
+    this.sourceId = sourceId;
     this.offset = 0;
     this.entries = 0;
   }
 
   payload(type, depth, charge = true) {
-    if (!VALID_TYPES.has(type) || type === TAG.END) fail('NBT_TAG_INVALID', this.candidateId, { tag_type: type });
-    if (depth > this.limits.maxDepth) fail('NBT_DEPTH_LIMIT', this.candidateId, { depth });
+    if (!VALID_TYPES.has(type) || type === TAG.END) {
+      fail('NBT_TAG_INVALID', this.sourceId, { tag_type: type });
+    }
+    if (depth > this.limits.maxDepth) {
+      fail('NBT_DEPTH_LIMIT', this.sourceId, { depth });
+    }
     if (charge) this.charge(1);
     if (type === TAG.BYTE) return this.i8();
     if (type === TAG.SHORT) return this.i16();
@@ -104,14 +138,14 @@ class Reader {
     if (type === TAG.LONG_ARRAY) return this.arrayDescriptor('long', 8);
     if (type === TAG.LIST) return this.list(depth);
     if (type === TAG.COMPOUND) return this.compound(depth);
-    fail('NBT_TAG_INVALID', this.candidateId, { tag_type: type });
+    fail('NBT_TAG_INVALID', this.sourceId, { tag_type: type });
   }
 
   list(depth) {
     const childType = this.u8();
     const length = this.length('NBT_LIST_LENGTH_INVALID');
     if (length > 0 && (!VALID_TYPES.has(childType) || childType === TAG.END)) {
-      fail('NBT_TAG_INVALID', this.candidateId, { tag_type: childType });
+      fail('NBT_TAG_INVALID', this.sourceId, { tag_type: childType });
     }
     this.charge(length);
     const output = [];
@@ -126,9 +160,11 @@ class Reader {
     while (true) {
       const type = this.u8();
       if (type === TAG.END) return Object.freeze(output);
-      if (!VALID_TYPES.has(type)) fail('NBT_TAG_INVALID', this.candidateId, { tag_type: type });
+      if (!VALID_TYPES.has(type)) {
+        fail('NBT_TAG_INVALID', this.sourceId, { tag_type: type });
+      }
       const name = this.string();
-      if (Object.hasOwn(output, name)) fail('NBT_DUPLICATE_NAME', this.candidateId);
+      if (Object.hasOwn(output, name)) fail('NBT_DUPLICATE_NAME', this.sourceId);
       output[name] = this.payload(type, depth + 1);
     }
   }
@@ -137,21 +173,25 @@ class Reader {
     const length = this.length('NBT_ARRAY_LENGTH_INVALID');
     this.charge(length);
     const byteLength = length * width;
-    if (!Number.isSafeInteger(byteLength)) fail('NBT_ARRAY_LENGTH_INVALID', this.candidateId);
+    if (!Number.isSafeInteger(byteLength)) {
+      fail('NBT_ARRAY_LENGTH_INVALID', this.sourceId);
+    }
     this.ensure(byteLength);
     const start = this.offset;
     this.offset += byteLength;
     return Object.freeze({
       nbt_array: kind,
       length,
-      sha256: createHash('sha256').update(this.buffer.subarray(start, this.offset)).digest('hex')
+      sha256: createHash('sha256')
+        .update(this.buffer.subarray(start, this.offset))
+        .digest('hex')
     });
   }
 
   string() {
     const length = this.u16();
     if (length > this.limits.maxStringBytes) {
-      fail('NBT_STRING_LIMIT', this.candidateId, { string_byte_count: length });
+      fail('NBT_STRING_LIMIT', this.sourceId, { string_byte_count: length });
     }
     this.ensure(length);
     const bytes = this.buffer.subarray(this.offset, this.offset + length);
@@ -159,39 +199,100 @@ class Reader {
     try {
       return UTF8.decode(bytes);
     } catch {
-      fail('NBT_UTF8_INVALID', this.candidateId, { string_byte_count: length });
+      fail('NBT_UTF8_INVALID', this.sourceId, { string_byte_count: length });
     }
   }
 
   length(code) {
     const value = this.i32();
-    if (value < 0) fail(code, this.candidateId, { declared_length: value });
+    if (value < 0) fail(code, this.sourceId, { declared_length: value });
     return value;
   }
 
   charge(count) {
-    if (!Number.isSafeInteger(count) || count < 0 || this.entries + count > this.limits.maxEntries) {
-      fail('NBT_ENTRY_LIMIT', this.candidateId, { entry_count: this.entries + count });
+    if (
+      !Number.isSafeInteger(count)
+      || count < 0
+      || this.entries + count > this.limits.maxEntries
+    ) {
+      fail('NBT_ENTRY_LIMIT', this.sourceId, {
+        entry_count: this.entries + count
+      });
     }
     this.entries += count;
   }
 
   ensure(length) {
-    if (!Number.isSafeInteger(length) || length < 0 || this.offset + length > this.buffer.length) {
-      fail('NBT_TRUNCATED', this.candidateId, { byte_offset: this.offset });
+    if (
+      !Number.isSafeInteger(length)
+      || length < 0
+      || this.offset + length > this.buffer.length
+    ) {
+      fail('NBT_TRUNCATED', this.sourceId, { byte_offset: this.offset });
     }
   }
 
-  u8() { this.ensure(1); const value = this.buffer.readUInt8(this.offset); this.offset += 1; return value; }
-  i8() { this.ensure(1); const value = this.buffer.readInt8(this.offset); this.offset += 1; return value; }
-  u16() { this.ensure(2); const value = this.buffer.readUInt16BE(this.offset); this.offset += 2; return value; }
-  i16() { this.ensure(2); const value = this.buffer.readInt16BE(this.offset); this.offset += 2; return value; }
-  i32() { this.ensure(4); const value = this.buffer.readInt32BE(this.offset); this.offset += 4; return value; }
-  i64() { this.ensure(8); const value = this.buffer.readBigInt64BE(this.offset); this.offset += 8; return value; }
-  f32() { this.ensure(4); const value = this.buffer.readFloatBE(this.offset); this.offset += 4; return value; }
-  f64() { this.ensure(8); const value = this.buffer.readDoubleBE(this.offset); this.offset += 8; return value; }
+  u8() {
+    this.ensure(1);
+    const value = this.buffer.readUInt8(this.offset);
+    this.offset += 1;
+    return value;
+  }
+
+  i8() {
+    this.ensure(1);
+    const value = this.buffer.readInt8(this.offset);
+    this.offset += 1;
+    return value;
+  }
+
+  u16() {
+    this.ensure(2);
+    const value = this.buffer.readUInt16BE(this.offset);
+    this.offset += 2;
+    return value;
+  }
+
+  i16() {
+    this.ensure(2);
+    const value = this.buffer.readInt16BE(this.offset);
+    this.offset += 2;
+    return value;
+  }
+
+  i32() {
+    this.ensure(4);
+    const value = this.buffer.readInt32BE(this.offset);
+    this.offset += 4;
+    return value;
+  }
+
+  i64() {
+    this.ensure(8);
+    const value = this.buffer.readBigInt64BE(this.offset);
+    this.offset += 8;
+    return value;
+  }
+
+  f32() {
+    this.ensure(4);
+    const value = this.buffer.readFloatBE(this.offset);
+    this.offset += 4;
+    return value;
+  }
+
+  f64() {
+    this.ensure(8);
+    const value = this.buffer.readDoubleBE(this.offset);
+    this.offset += 8;
+    return value;
+  }
 }
 
-function fail(code, candidateId, safeDetail = {}) {
-  throw new CandidateReadinessError(code, 'nbt', candidateId, safeDetail);
+function fail(code, sourceId, metadata = {}) {
+  throw new TrainingDataError(code, `nbt:${sourceId}`, {
+    stage: 'nbt',
+    source_id: sourceId,
+    ...metadata
+  });
 }
