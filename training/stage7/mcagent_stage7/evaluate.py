@@ -194,6 +194,7 @@ def evaluate_run(
         "split": split,
         "seed": seed,
         "device": device,
+        "model_version": binding.model_version,
         "objective_version": binding.objective_version,
         "semantic_balance": binding.semantic_balance,
         "semantic_class_weights": list(

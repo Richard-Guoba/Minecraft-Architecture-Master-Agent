@@ -156,6 +156,7 @@ def test_train_evaluate_and_status_commands_complete_a_cpu_smoke_run(
     assert len(checkpoint["semantic_class_weights"]) == 8
     assert report["split"] == "validation"
     assert report["semantic_balance"] == "weighted-mask"
+    assert report["model_version"] == checkpoint["model_version"]
     assert isinstance(report["selection_score"], float)
     assert isinstance(report["phase2"]["passed"], bool)
     assert set(report["metrics"]) == {"trained", "untrained", "class_prior"}
@@ -187,6 +188,7 @@ def test_train_evaluate_and_status_commands_complete_a_cpu_smoke_run(
         (run / "evaluation.test.json").read_text("utf8")
     )
     assert test_report["split"] == "test"
+    assert test_report["model_version"] == checkpoint["model_version"]
     assert (run / "reconstruction.test.bin").stat().st_size == 32**3
     assert evaluation_strategies == ["none", "none"]
 
