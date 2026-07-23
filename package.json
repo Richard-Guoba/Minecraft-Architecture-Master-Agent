@@ -19,15 +19,10 @@
     "benchmark:baseline": "node src/runBaselineBenchmark.js",
     "analyze:templates": "node src/analyzeTemplateCorpus.js",
     "training:prepare": "node src/runTrainingPrepare.js",
-    "private-research:stage7": "node src/runStage7PrivateResearch.js",
-    "train:stage7:private-research": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.train_private_research",
-    "pause:stage7:private-research": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.pause_private_research",
-    "resume:stage7:private-research": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.resume_private_research",
-    "monitor:stage7:private-research": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.monitor_private_research",
-    "evaluate:stage7:private-research": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.evaluate_private_research",
-    "test:stage7:m3": "conda run -n mcagent-stage7 --cwd training/stage7 python -m pytest -q -p no:cacheprovider .",
-    "train:stage7:fixture": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.train_fixture",
-    "accept:stage7:m3": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.acceptance"
+    "training:train": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.train",
+    "training:evaluate": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.evaluate",
+    "training:status": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.status",
+    "test:training": "conda run -n mcagent-stage7 --cwd training/stage7 python -m pytest -q -p no:cacheprovider ."
   },
   "engines": {
     "node": ">=20"
