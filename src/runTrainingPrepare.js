@@ -9,7 +9,7 @@ import { TrainingDataError } from './training/trainingError.js';
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname, '..');
 const LOCAL_TRAINING_ROOT = path.join(PROJECT_ROOT, '.local', 'training');
-const OPTIONS = new Set(['--source-root', '--output-root', '--seed']);
+const OPTIONS = new Set(['--source-root', '--output-root', '--root', '--seed']);
 
 export function parseTrainingPrepareArgs(
   argv,
@@ -33,11 +33,14 @@ export function parseTrainingPrepareArgs(
   if (!Number.isSafeInteger(seed) || seed > 0xffffffff) {
     fail('SEED_INVALID', seedValue);
   }
+  if (values['--root'] !== undefined && values['--output-root'] !== undefined) {
+    fail('ARGUMENT_DUPLICATE', '--root/--output-root');
+  }
   return Object.freeze({
     sourceRoot: path.resolve(cwd, values['--source-root'] ?? 'mc_templates'),
     outputRoot: path.resolve(
       cwd,
-      values['--output-root'] ?? '.local/training'
+      values['--root'] ?? values['--output-root'] ?? '.local/training'
     ),
     seed
   });

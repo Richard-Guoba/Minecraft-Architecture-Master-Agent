@@ -4,12 +4,21 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
+import { parseTrainingPrepareArgs } from '../src/runTrainingPrepare.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const RUNNER = path.join(ROOT, 'src', 'runTrainingPrepare.js');
 
 test('training prepare CLI rejects unknown flags', () => {
   assertCliRejects(['--unknown'], 'ARGUMENT_UNKNOWN');
+});
+
+test('training prepare CLI accepts --root as the training output root', () => {
+  const options = parseTrainingPrepareArgs(
+    ['--root', '.local/training'],
+    { cwd: ROOT }
+  );
+  assert.equal(options.outputRoot, path.join(ROOT, '.local', 'training'));
 });
 
 test('training prepare CLI rejects a tracked output target', () => {
