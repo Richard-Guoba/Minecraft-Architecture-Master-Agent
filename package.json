@@ -18,6 +18,7 @@
     "evaluate:variation": "node src/evaluateDesignVariation.js",
     "benchmark:baseline": "node src/runBaselineBenchmark.js",
     "analyze:templates": "node src/analyzeTemplateCorpus.js",
+    "training:prepare": "node src/runTrainingPrepare.js",
     "private-research:stage7": "node src/runStage7PrivateResearch.js",
     "train:stage7:private-research": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.train_private_research",
     "pause:stage7:private-research": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.pause_private_research",
