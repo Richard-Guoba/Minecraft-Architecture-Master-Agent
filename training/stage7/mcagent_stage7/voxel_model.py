@@ -58,8 +58,13 @@ def voxel_loss(
     output: VoxelModelOutput,
     targets: torch.Tensor,
     mask: torch.Tensor,
+    semantic_class_weights: torch.Tensor | None = None,
 ) -> VoxelLoss:
     _validate_loss_inputs(output, targets, mask)
+    _validate_semantic_class_weights(
+        semantic_class_weights,
+        output.semantic_logits,
+    )
     selected = mask
     occupancy_targets = (targets != 0).long()
     occupancy = F.cross_entropy(
@@ -72,6 +77,7 @@ def voxel_loss(
     semantic = F.cross_entropy(
         output.semantic_logits.permute(0, 2, 3, 4, 1)[semantic_selected],
         targets[semantic_selected] - 1,
+        weight=semantic_class_weights,
     )
     total = occupancy + semantic
     if not all(
@@ -84,6 +90,33 @@ def voxel_loss(
         occupancy=occupancy,
         semantic=semantic,
     )
+
+
+def _validate_semantic_class_weights(
+    weights: torch.Tensor | None,
+    semantic_logits: torch.Tensor,
+) -> None:
+    if weights is None:
+        return
+    if (
+        not isinstance(weights, torch.Tensor)
+        or tuple(weights.shape) != (TOKEN_COUNT - 1,)
+        or not weights.is_floating_point()
+        or weights.dtype != semantic_logits.dtype
+        or weights.device != semantic_logits.device
+    ):
+        raise TrainingError(
+            "SEMANTIC_CLASS_WEIGHTS_INVALID",
+            "shape, dtype, or device",
+        )
+    if (
+        not bool(torch.isfinite(weights).all())
+        or not bool((weights > 0.0).all())
+    ):
+        raise TrainingError(
+            "SEMANTIC_CLASS_WEIGHTS_INVALID",
+            "values",
+        )
 
 
 def predict_tokens(output: VoxelModelOutput) -> torch.Tensor:

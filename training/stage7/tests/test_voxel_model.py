@@ -85,6 +85,83 @@ def test_loss_requires_masked_non_air_semantic_supervision() -> None:
     assert captured.value.code == "SEMANTIC_SUPERVISION_EMPTY"
 
 
+def test_semantic_weights_change_only_the_semantic_objective() -> None:
+    output, targets, mask = _weighted_loss_case()
+
+    unweighted = voxel_loss(output, targets, mask)
+    unit_weighted = voxel_loss(
+        output,
+        targets,
+        mask,
+        semantic_class_weights=torch.ones(8),
+    )
+    weights = torch.ones(8)
+    weights[4] = 4.0
+    rare_weighted = voxel_loss(
+        output,
+        targets,
+        mask,
+        semantic_class_weights=weights,
+    )
+
+    assert torch.equal(unweighted.occupancy, rare_weighted.occupancy)
+    assert torch.allclose(unweighted.semantic, unit_weighted.semantic)
+    assert rare_weighted.semantic > unweighted.semantic
+    assert torch.allclose(
+        rare_weighted.total,
+        rare_weighted.occupancy + rare_weighted.semantic,
+    )
+
+
+@pytest.mark.parametrize(
+    "weights",
+    (
+        "not-a-tensor",
+        torch.ones(7),
+        torch.ones(8, dtype=torch.float64),
+        torch.tensor(
+            [1.0, 1.0, 1.0, 1.0, float("nan"), 1.0, 1.0, 1.0]
+        ),
+        torch.tensor(
+            [1.0, 1.0, 1.0, 1.0, float("inf"), 1.0, 1.0, 1.0]
+        ),
+        torch.tensor(
+            [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0]
+        ),
+    ),
+)
+def test_semantic_loss_rejects_invalid_class_weights(
+    weights: object,
+) -> None:
+    output, targets, mask = _weighted_loss_case()
+
+    with pytest.raises(
+        TrainingError,
+        match="SEMANTIC_CLASS_WEIGHTS_INVALID",
+    ):
+        voxel_loss(
+            output,
+            targets,
+            mask,
+            semantic_class_weights=weights,
+        )
+
+
+def test_semantic_loss_rejects_class_weights_on_another_device() -> None:
+    output, targets, mask = _weighted_loss_case()
+
+    with pytest.raises(
+        TrainingError,
+        match="SEMANTIC_CLASS_WEIGHTS_INVALID",
+    ):
+        voxel_loss(
+            output,
+            targets,
+            mask,
+            semantic_class_weights=torch.ones(8, device="meta"),
+        )
+
+
 def test_model_and_loss_reject_invalid_tensors() -> None:
     model = TinyVoxelCompletionModel()
     with pytest.raises(TrainingError, match="MODEL_INPUT_INVALID"):
@@ -100,3 +177,25 @@ def test_model_and_loss_reject_invalid_tensors() -> None:
     )
     with pytest.raises(TrainingError, match="LOSS_NONFINITE"):
         voxel_loss(output, targets, mask)
+
+
+def _weighted_loss_case() -> tuple[
+    VoxelModelOutput,
+    torch.Tensor,
+    torch.Tensor,
+]:
+    targets = torch.zeros((1, *PATCH_SHAPE), dtype=torch.long)
+    targets[0, 0, 0, 0] = 5
+    targets[0, 0, 0, 1] = 2
+    mask = torch.zeros_like(targets, dtype=torch.bool)
+    mask[0, 0, 0, 0] = True
+    mask[0, 0, 0, 1] = True
+    occupancy_logits = torch.zeros((1, 2, *PATCH_SHAPE))
+    semantic_logits = torch.zeros((1, 8, *PATCH_SHAPE))
+    semantic_logits[0, 4, 0, 0, 0] = -4.0
+    semantic_logits[0, 1, 0, 0, 1] = 4.0
+    return (
+        VoxelModelOutput(occupancy_logits, semantic_logits),
+        targets,
+        mask,
+    )
