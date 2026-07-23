@@ -139,14 +139,14 @@ def make_balanced_mask(
         flattened = targets[batch_index].reshape(-1)
         air = torch.nonzero(flattened == 0, as_tuple=False).flatten()
         non_air = torch.nonzero(flattened != 0, as_tuple=False).flatten()
-        if air.numel() == 0 or non_air.numel() == 0:
+        if non_air.numel() == 0:
             raise TrainingError(
                 "MASK_CLASS_MISSING",
                 f"batch_index={batch_index}",
             )
-        selected_count = min(desired, air.numel(), non_air.numel())
         generator = torch.Generator(device=targets.device)
         generator.manual_seed(_mask_seed(seed, batch_index))
+        selected_count = min(desired, air.numel(), non_air.numel())
         air_selected = air[
             torch.randperm(
                 air.numel(),
@@ -154,12 +154,17 @@ def make_balanced_mask(
                 device=targets.device,
             )[:selected_count]
         ]
+        non_air_count = (
+            selected_count
+            if air.numel() > 0
+            else min(desired * 2, non_air.numel())
+        )
         non_air_selected = non_air[
             torch.randperm(
                 non_air.numel(),
                 generator=generator,
                 device=targets.device,
-            )[:selected_count]
+            )[:non_air_count]
         ]
         flat_mask = mask[batch_index].reshape(-1)
         flat_mask[air_selected] = True

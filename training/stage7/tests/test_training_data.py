@@ -123,10 +123,20 @@ def test_dataset_rejects_manifest_and_assignment_mismatches(
         TrainingPatchDataset(root, split="train", seed=7101)
 
 
-def test_balanced_mask_requires_air_and_non_air_supervision() -> None:
+def test_balanced_mask_requires_non_air_supervision() -> None:
     all_air = torch.zeros((1, *PATCH_SHAPE), dtype=torch.long)
     with pytest.raises(TrainingError, match="MASK_CLASS_MISSING"):
         make_balanced_mask(all_air, seed=7101)
+
+
+def test_balanced_mask_accepts_a_fully_occupied_patch() -> None:
+    target = torch.full((1, *PATCH_SHAPE), 2, dtype=torch.long)
+
+    visible, mask = make_balanced_mask(target, seed=7101)
+
+    assert int(mask.sum()) == int(0.25 * np.prod(PATCH_SHAPE))
+    assert torch.all(visible[mask] == MASK_TOKEN)
+    assert torch.equal(visible[~mask], target[~mask])
 
 
 def _dataset_root(tmp_path: Path) -> Path:
