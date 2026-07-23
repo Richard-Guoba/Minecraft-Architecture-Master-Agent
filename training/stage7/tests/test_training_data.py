@@ -139,6 +139,139 @@ def test_balanced_mask_accepts_a_fully_occupied_patch() -> None:
     assert torch.equal(visible[~mask], target[~mask])
 
 
+def test_explicit_none_preserves_the_existing_mask_exactly() -> None:
+    target = _mixed_mask_target()
+
+    implicit = make_balanced_mask(target, seed=7101)
+    explicit = make_balanced_mask(
+        target,
+        seed=7101,
+        semantic_balance="none",
+    )
+    weighted = make_balanced_mask(
+        target,
+        seed=7101,
+        semantic_balance="weighted",
+    )
+
+    assert torch.equal(implicit[0], explicit[0])
+    assert torch.equal(implicit[1], explicit[1])
+    assert torch.equal(implicit[0], weighted[0])
+    assert torch.equal(implicit[1], weighted[1])
+
+
+def test_class_aware_mask_is_deterministic_and_preserves_budgets() -> None:
+    target = _mixed_mask_target()
+
+    first_visible, first_mask = make_balanced_mask(
+        target,
+        seed=7101,
+        semantic_balance="weighted-mask",
+    )
+    second_visible, second_mask = make_balanced_mask(
+        target,
+        seed=7101,
+        semantic_balance="weighted-mask",
+    )
+    _, uniform_mask = make_balanced_mask(target, seed=7101)
+
+    assert torch.equal(first_visible, second_visible)
+    assert torch.equal(first_mask, second_mask)
+    assert int(first_mask.sum()) == int(uniform_mask.sum())
+    assert int((first_mask & (target == 0)).sum()) == 4096
+    assert int((first_mask & (target != 0)).sum()) == 4096
+    selected_by_class = sum(
+        int((first_mask & (target == token)).sum())
+        for token in range(9)
+    )
+    assert selected_by_class == int(first_mask.sum())
+    assert torch.all(first_visible[first_mask] == MASK_TOKEN)
+    assert torch.equal(first_visible[~first_mask], target[~first_mask])
+
+
+def test_class_aware_mask_increases_rare_class_selection() -> None:
+    target = _mixed_mask_target()
+
+    _, uniform_mask = make_balanced_mask(target, seed=7101)
+    _, class_aware_mask = make_balanced_mask(
+        target,
+        seed=7101,
+        semantic_balance="weighted-mask",
+    )
+
+    uniform_rare = int((uniform_mask & (target == 5)).sum())
+    class_aware_rare = int((class_aware_mask & (target == 5)).sum())
+    assert uniform_rare == 24
+    assert class_aware_rare == 64
+    assert class_aware_rare > uniform_rare
+
+
+def test_class_aware_mask_redistributes_short_class_quotas() -> None:
+    target = torch.zeros((1, *PATCH_SHAPE), dtype=torch.long)
+    flattened = target.reshape(-1)
+    flattened[:8190] = 2
+    flattened[8190] = 5
+    flattened[8191] = 8
+
+    _, mask = make_balanced_mask(
+        target,
+        seed=7101,
+        semantic_balance="weighted-mask",
+    )
+
+    assert int((mask & (target != 0)).sum()) == 4096
+    assert int((mask & (target == 5)).sum()) == 1
+    assert int((mask & (target == 8)).sum()) == 1
+    assert int((mask & (target == 2)).sum()) == 4094
+
+
+def test_class_aware_mask_accepts_a_fully_occupied_patch() -> None:
+    target = torch.full((1, *PATCH_SHAPE), 2, dtype=torch.long)
+    target.reshape(-1)[-64:] = 5
+
+    visible, mask = make_balanced_mask(
+        target,
+        seed=7101,
+        semantic_balance="weighted-mask",
+    )
+
+    assert int(mask.sum()) == int(0.25 * np.prod(PATCH_SHAPE))
+    assert int((mask & (target == 5)).sum()) == 64
+    assert torch.all(visible[mask] == MASK_TOKEN)
+    assert torch.equal(visible[~mask], target[~mask])
+
+
+def test_class_aware_mask_still_requires_non_air_supervision() -> None:
+    all_air = torch.zeros((1, *PATCH_SHAPE), dtype=torch.long)
+
+    with pytest.raises(TrainingError, match="MASK_CLASS_MISSING"):
+        make_balanced_mask(
+            all_air,
+            seed=7101,
+            semantic_balance="weighted-mask",
+        )
+
+
+def test_balanced_mask_rejects_an_unknown_profile() -> None:
+    with pytest.raises(
+        TrainingError,
+        match="SEMANTIC_BALANCE_PROFILE_INVALID",
+    ):
+        make_balanced_mask(
+            _mixed_mask_target(),
+            seed=7101,
+            semantic_balance="unknown",
+        )
+
+
+def _mixed_mask_target() -> torch.Tensor:
+    target = torch.zeros((1, *PATCH_SHAPE), dtype=torch.long)
+    flattened = target.reshape(-1)
+    flattened[:8128] = 2
+    flattened[8128:8192] = 5
+    return target
+
+
 def _dataset_root(tmp_path: Path) -> Path:
     root = tmp_path / "training"
     samples = root / "dataset" / "samples"

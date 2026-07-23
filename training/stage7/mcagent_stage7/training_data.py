@@ -109,8 +109,14 @@ def make_balanced_mask(
     targets: torch.Tensor,
     seed: int,
     ratio: float = 0.25,
+    semantic_balance: str = "none",
 ) -> tuple[torch.Tensor, torch.Tensor]:
     _validate_seed(seed)
+    if semantic_balance not in ("none", "weighted", "weighted-mask"):
+        raise TrainingError(
+            "SEMANTIC_BALANCE_PROFILE_INVALID",
+            str(semantic_balance),
+        )
     if (
         not isinstance(ratio, (int, float))
         or isinstance(ratio, bool)
@@ -144,8 +150,9 @@ def make_balanced_mask(
                 "MASK_CLASS_MISSING",
                 f"batch_index={batch_index}",
             )
+        sample_seed = _mask_seed(seed, batch_index)
         generator = torch.Generator(device=targets.device)
-        generator.manual_seed(_mask_seed(seed, batch_index))
+        generator.manual_seed(sample_seed)
         selected_count = min(desired, air.numel(), non_air.numel())
         air_selected = air[
             torch.randperm(
@@ -159,18 +166,123 @@ def make_balanced_mask(
             if air.numel() > 0
             else min(desired * 2, non_air.numel())
         )
-        non_air_selected = non_air[
-            torch.randperm(
-                non_air.numel(),
+        if semantic_balance == "weighted-mask":
+            non_air_selected = _class_aware_non_air_selection(
+                flattened=flattened,
+                non_air=non_air,
+                count=non_air_count,
+                seed=sample_seed,
                 generator=generator,
-                device=targets.device,
-            )[:non_air_count]
-        ]
+            )
+        else:
+            non_air_selected = non_air[
+                torch.randperm(
+                    non_air.numel(),
+                    generator=generator,
+                    device=targets.device,
+                )[:non_air_count]
+            ]
         flat_mask = mask[batch_index].reshape(-1)
         flat_mask[air_selected] = True
         flat_mask[non_air_selected] = True
     visible[mask] = MASK_TOKEN
     return visible, mask
+
+
+def _class_aware_non_air_selection(
+    *,
+    flattened: torch.Tensor,
+    non_air: torch.Tensor,
+    count: int,
+    seed: int,
+    generator: torch.Generator,
+) -> torch.Tensor:
+    if (
+        type(count) is not int
+        or count <= 0
+        or count > int(non_air.numel())
+    ):
+        raise TrainingError("MASK_SELECTION_INVALID", "count")
+    present = [
+        token
+        for token in range(1, TOKEN_COUNT)
+        if bool((flattened[non_air] == token).any())
+    ]
+    if not present:
+        raise TrainingError("MASK_SELECTION_INVALID", "classes")
+    offset = seed % len(present)
+    ordered = present[offset:] + present[:offset]
+    quota_budget = count // 2
+    base_quota, remainder = divmod(quota_budget, len(ordered))
+    quotas = {
+        token: base_quota + (index < remainder)
+        for index, token in enumerate(ordered)
+    }
+
+    shuffled: dict[int, torch.Tensor] = {}
+    cursors: dict[int, int] = {}
+    selected_chunks: list[torch.Tensor] = []
+    for token in ordered:
+        positions = non_air[flattened[non_air] == token]
+        permutation = torch.randperm(
+            positions.numel(),
+            generator=generator,
+            device=flattened.device,
+        )
+        shuffled[token] = positions[permutation]
+        selected_count = min(quotas[token], int(positions.numel()))
+        cursors[token] = selected_count
+        if selected_count:
+            selected_chunks.append(shuffled[token][:selected_count])
+
+    selected_count = sum(int(chunk.numel()) for chunk in selected_chunks)
+    remaining_quota = quota_budget - selected_count
+    cycle_index = 0
+    while remaining_quota > 0:
+        token = ordered[cycle_index % len(ordered)]
+        cycle_index += 1
+        cursor = cursors[token]
+        if cursor >= int(shuffled[token].numel()):
+            if cycle_index > len(ordered) * (quota_budget + 1):
+                raise TrainingError(
+                    "MASK_SELECTION_INVALID",
+                    "quota redistribution",
+                )
+            continue
+        selected_chunks.append(shuffled[token][cursor : cursor + 1])
+        cursors[token] = cursor + 1
+        remaining_quota -= 1
+
+    quota_selected = (
+        torch.cat(selected_chunks)
+        if selected_chunks
+        else torch.empty(
+            0,
+            dtype=torch.long,
+            device=flattened.device,
+        )
+    )
+    selected_flags = torch.zeros_like(flattened, dtype=torch.bool)
+    selected_flags[quota_selected] = True
+    remaining_positions = non_air[~selected_flags[non_air]]
+    fill_count = count - int(quota_selected.numel())
+    fill_selected = remaining_positions[
+        torch.randperm(
+            remaining_positions.numel(),
+            generator=generator,
+            device=flattened.device,
+        )[:fill_count]
+    ]
+    result = torch.cat((quota_selected, fill_selected))
+    if (
+        int(result.numel()) != count
+        or int(torch.unique(result).numel()) != count
+    ):
+        raise TrainingError(
+            "MASK_SELECTION_INVALID",
+            "budget or duplicate",
+        )
+    return result
 
 
 def _validate_manifest(
