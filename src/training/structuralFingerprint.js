@@ -207,10 +207,17 @@ function coordinateKey(x, y, z, token) {
 
 function minhash(keys) {
   const output = Array(SIGNATURE_LENGTH).fill(0xffffffff);
+  let aggregate = 0;
   for (const key of keys) {
-    for (let index = 0; index < SIGNATURE_LENGTH; index += 1) {
-      const value = mix32((key ^ seed(index)) >>> 0);
-      if (value < output[index]) output[index] = value;
+    const distributed = mix32(key);
+    const index = distributed % SIGNATURE_LENGTH;
+    const value = mix32((distributed ^ seed(index)) >>> 0);
+    if (value < output[index]) output[index] = value;
+    aggregate = (aggregate + distributed) >>> 0;
+  }
+  for (let index = 0; index < SIGNATURE_LENGTH; index += 1) {
+    if (output[index] === 0xffffffff) {
+      output[index] = mix32((aggregate ^ seed(index)) >>> 0);
     }
   }
   return Object.freeze(output);
