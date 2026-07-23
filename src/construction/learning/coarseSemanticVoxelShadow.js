@@ -3,7 +3,6 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { buildStage7Condition } from './coarseSemanticVoxelCondition.js';
 import { deterministicCoarseSemanticVoxelProvider } from './coarseSemanticVoxelBaseline.js';
-import { createPythonCoarseSemanticVoxelProvider } from './pythonCoarseSemanticVoxelProvider.js';
 import { repairCoarseSemanticVoxelPlan } from './coarseSemanticVoxelRepair.js';
 import { convertSemanticVoxelPlanToProceduralPlan } from './semanticVoxelProceduralPlan.js';
 
@@ -23,7 +22,6 @@ export function createArtifactCoarseSemanticVoxelProvider({ artifactPath } = {})
 export function selectCoarseSemanticVoxelProvider(name, options = {}) {
   if (name === 'baseline') return deterministicCoarseSemanticVoxelProvider;
   if (name === 'artifact') return createArtifactCoarseSemanticVoxelProvider(options);
-  if (name === 'python') return createPythonCoarseSemanticVoxelProvider(options);
   throw new Error(`unsupported Stage 7 coarse voxel provider: ${name}`);
 }
 
@@ -31,10 +29,6 @@ export async function runCoarseSemanticVoxelShadow({
   mode = 'off',
   provider = 'baseline',
   artifactPath,
-  checkpointPath,
-  manifestPath,
-  pythonExecutable,
-  pythonInvoke,
   ...rest
 } = {}) {
   if (mode === 'off') {
@@ -57,11 +51,7 @@ export async function runCoarseSemanticVoxelShadow({
     if (mode !== 'shadow') throw new Error(`unsupported Stage 7 coarse voxel mode: ${mode}`);
     stage = 'provider';
     rawPlan = await selectCoarseSemanticVoxelProvider(provider, {
-      artifactPath,
-      checkpointPath,
-      manifestPath,
-      pythonExecutable,
-      invoke: pythonInvoke
+      artifactPath
     }).generate({ condition, options: { artifactPath } });
     stage = 'semantic-validation';
     repair = repairCoarseSemanticVoxelPlan({ plan: rawPlan, condition });
@@ -102,9 +92,6 @@ export function compactCoarseSemanticVoxelShadow(result = {}) {
     status: result.status,
     condition_hash: condition.condition_hash,
     artifact_sha256: provenance.sha256 || result.failureCase?.artifact?.sha256,
-    checkpoint_sha256: provenance.checkpoint_sha256,
-    manifest_sha256: provenance.manifest_sha256,
-    training_scope: provenance.training_scope,
     selected_concept_id: condition.design?.selected_concept_id,
     reference_ids: (condition.references || []).map((item) => item.case_id),
     raw_run_count: result.rawPlan?.runs?.length || 0,
@@ -135,9 +122,6 @@ export function renderCoarseSemanticVoxelShadowReport(result = {}) {
 - Status: ${result.status || 'unknown'}
 - Condition hash: ${condition.condition_hash || 'not-created'}
 - Artifact sha256: ${provenance.sha256 || failure.artifact?.sha256 || 'not-applicable'}
-- Checkpoint sha256: ${provenance.checkpoint_sha256 || 'not-applicable'}
-- Manifest sha256: ${provenance.manifest_sha256 || 'not-applicable'}
-- Training scope: ${provenance.training_scope || 'not-applicable'}
 - Selected concept: ${condition.design?.selected_concept_id || 'none'}
 - Raw runs: ${result.rawPlan?.runs?.length || 0}
 - Repaired runs: ${result.repairedPlan?.runs?.length || 0}
@@ -219,13 +203,12 @@ async function readArtifact(inputPath) {
 }
 
 function providerProvenance(rawPlan) {
-  return rawPlan?.__stage7PythonProvenance || rawPlan?.__stage7ArtifactProvenance || rawPlan?.provider;
+  return rawPlan?.__stage7ArtifactProvenance || rawPlan?.provider;
 }
 
 function reject({ mode, provider, condition, rawPlan, repair, stage, error, artifactPath }) {
   const artifact = error?.artifact || rawPlan?.__stage7ArtifactProvenance || (artifactPath ? { path: path.resolve(artifactPath) } : undefined);
-  const pythonMetadata = error?.stage7PythonProvenance || rawPlan?.__stage7PythonProvenance;
-  const metadata = pythonMetadata || rawPlan?.provider;
+  const metadata = rawPlan?.provider;
   const failureCase = {
     source: STAGE7_FAILURE_SOURCE,
     prompt: condition?.prompt,
@@ -236,7 +219,7 @@ function reject({ mode, provider, condition, rawPlan, repair, stage, error, arti
     reference_ids: (condition?.references || []).map((item) => item.case_id),
     provider,
     failure_stage: stage,
-    provider_name: rawPlan?.provider?.name || metadata?.model_name,
+    provider_name: rawPlan?.provider?.name,
     provider_metadata: metadata,
     artifact,
     schema_source: rawPlan?.source,
@@ -258,7 +241,7 @@ function reject({ mode, provider, condition, rawPlan, repair, stage, error, arti
     condition,
     rawPlan: provider === 'artifact' ? undefined : rawPlan,
     repair,
-    providerProvenance: pythonMetadata,
+    providerProvenance: metadata,
     failureCase,
     warnings: error ? [error.message] : []
   };
