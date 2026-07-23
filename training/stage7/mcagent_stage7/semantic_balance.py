@@ -46,6 +46,15 @@ class SemanticBalance:
                 "SEMANTIC_CLASS_WEIGHTS_INVALID",
                 "expected eight finite weights in [1.0, 4.0]",
             )
+        if (
+            self.profile == "none"
+            and tuple(float(value) for value in self.class_weights)
+            != UNIT_CLASS_WEIGHTS
+        ):
+            raise TrainingError(
+                "SEMANTIC_CLASS_WEIGHTS_INVALID",
+                "none requires unit weights",
+            )
         if self.class_weights_sha256 != semantic_class_weights_sha256(
             self.class_weights
         ):
@@ -65,6 +74,11 @@ def semantic_class_weights_sha256(
         allow_nan=False,
     ).encode("utf8")
     return hashlib.sha256(payload).hexdigest()
+
+
+UNIT_CLASS_WEIGHTS_SHA256 = semantic_class_weights_sha256(
+    UNIT_CLASS_WEIGHTS
+)
 
 
 def build_semantic_balance(

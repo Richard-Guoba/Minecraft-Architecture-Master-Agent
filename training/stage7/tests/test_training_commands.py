@@ -44,9 +44,29 @@ def test_command_help_exposes_only_the_new_local_training_contract() -> None:
         for prohibited in PROHIBITED:
             assert prohibited not in help_text
     assert "--tiny-overfit" in helps[0]
+    assert "--semantic-balance" in helps[0]
     assert "--run-id" in helps[0]
     assert "--run-id" in helps[1]
     assert "--root" in helps[2]
+
+
+def test_training_command_defaults_to_none_and_rejects_unknown_balance() -> None:
+    arguments = training_parser().parse_args(
+        ["--run-id", "parser-test", "--steps", "1"]
+    )
+    assert arguments.semantic_balance == "none"
+
+    with pytest.raises(SystemExit):
+        training_parser().parse_args(
+            [
+                "--run-id",
+                "parser-test",
+                "--steps",
+                "1",
+                "--semantic-balance",
+                "unknown",
+            ]
+        )
 
 
 def test_relative_training_root_is_resolved_from_the_repository() -> None:
@@ -59,7 +79,7 @@ def test_train_evaluate_and_status_commands_complete_a_cpu_smoke_run(
     tmp_path: Path,
     capsys,
 ) -> None:
-    root = make_training_root(tmp_path)
+    root = make_training_root(tmp_path, train_count=8)
 
     assert training_main(
         [
@@ -73,6 +93,8 @@ def test_train_evaluate_and_status_commands_complete_a_cpu_smoke_run(
             "2",
             "--device",
             "cpu",
+            "--semantic-balance",
+            "weighted",
         ]
     ) == 0
     assert "completed_steps=3" in capsys.readouterr().out
@@ -92,6 +114,9 @@ def test_train_evaluate_and_status_commands_complete_a_cpu_smoke_run(
     assert "gate2_passed=" in capsys.readouterr().out
     run = root / "runs" / "command-smoke"
     report = json.loads((run / "evaluation.json").read_text("utf8"))
+    checkpoint = json.loads((run / "checkpoint.json").read_text("utf8"))
+    assert checkpoint["semantic_balance"] == "weighted"
+    assert len(checkpoint["semantic_class_weights"]) == 8
     assert set(report["metrics"]) == {"trained", "untrained", "class_prior"}
     assert isinstance(report["gate2"]["passed"], bool)
     assert (run / "reconstruction.bin").stat().st_size == 32**3

@@ -6,6 +6,7 @@ from typing import Sequence
 
 import torch
 
+from .semantic_balance import SEMANTIC_BALANCE_PROFILES
 from .training_data import TrainingError
 from .training_loop import TrainingConfig, train_model
 from .training_paths import resolve_cli_root
@@ -23,6 +24,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--seed", type=_uint32, default=7101)
     parser.add_argument("--tiny-overfit", action="store_true")
+    parser.add_argument(
+        "--semantic-balance",
+        choices=SEMANTIC_BALANCE_PROFILES,
+        default="none",
+    )
     return parser
 
 
@@ -45,6 +51,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             device=device,
             seed=arguments.seed,
             tiny_overfit=arguments.tiny_overfit,
+            semantic_balance=arguments.semantic_balance,
         )
     )
     print(f"run_id={arguments.run_id}")
@@ -52,6 +59,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"completed_steps={result.completed_steps}")
     print(f"target_steps={result.target_steps}")
     print(f"device={device}")
+    print(f"semantic_balance={arguments.semantic_balance}")
     return 0
 
 

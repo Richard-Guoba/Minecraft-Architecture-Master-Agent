@@ -10,9 +10,9 @@ import torch
 import torch.nn.functional as F
 
 from .training_checkpoint import (
-    TrainingCheckpointBinding,
     atomic_write_bytes,
     atomic_write_json,
+    binding_from_checkpoint_metadata,
     load_training_checkpoint,
     read_json,
     resolve_run_path,
@@ -55,17 +55,9 @@ def evaluate_run(
     )
     if metadata.get("status") != "completed":
         raise TrainingError("EVALUATION_RUN_INCOMPLETE", run_id)
-    binding = TrainingCheckpointBinding(
-        run_id=run_id,
-        target_steps=metadata.get("target_steps"),
-        seed=metadata.get("seed"),
-        device=metadata.get("device"),
-        batch_size=metadata.get("batch_size"),
-        learning_rate=metadata.get("learning_rate"),
-        dataset_manifest_sha256=metadata.get("dataset_manifest_sha256"),
-        split_sha256=metadata.get("split_sha256"),
-        model_version=metadata.get("model_version"),
-    )
+    binding = binding_from_checkpoint_metadata(metadata)
+    if binding.run_id != run_id:
+        raise TrainingError("CHECKPOINT_CONFIG_MISMATCH", "run_id")
     torch.manual_seed(seed)
     torch.use_deterministic_algorithms(True)
     torch.set_num_threads(1)

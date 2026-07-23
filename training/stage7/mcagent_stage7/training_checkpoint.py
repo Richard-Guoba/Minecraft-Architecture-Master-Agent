@@ -14,6 +14,12 @@ from typing import Any
 import torch
 from torch import nn
 
+from .semantic_balance import (
+    OBJECTIVE_VERSION,
+    UNIT_CLASS_WEIGHTS,
+    UNIT_CLASS_WEIGHTS_SHA256,
+    SemanticBalance,
+)
 from .training_data import TrainingError
 from .voxel_model import MODEL_VERSION
 
@@ -22,6 +28,14 @@ CHECKPOINT_SOURCE = "minecraft-architecture-training-checkpoint-v1"
 _RUN_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
 _STATUSES = {"running", "completed", "failed"}
+_SEMANTIC_BINDING_KEYS = frozenset(
+    {
+        "objective_version",
+        "semantic_balance",
+        "semantic_class_weights",
+        "semantic_class_weights_sha256",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -34,6 +48,10 @@ class TrainingCheckpointBinding:
     learning_rate: float
     dataset_manifest_sha256: str
     split_sha256: str
+    objective_version: str
+    semantic_balance: str
+    semantic_class_weights: tuple[float, ...]
+    semantic_class_weights_sha256: str
     model_version: str = MODEL_VERSION
 
     def __post_init__(self) -> None:
@@ -59,6 +77,16 @@ class TrainingCheckpointBinding:
             or self.model_version != MODEL_VERSION
         ):
             raise TrainingError("CHECKPOINT_BINDING_INVALID", "version or hash")
+        if self.objective_version != OBJECTIVE_VERSION:
+            raise TrainingError(
+                "CHECKPOINT_BINDING_INVALID",
+                "objective_version",
+            )
+        SemanticBalance(
+            profile=self.semantic_balance,
+            class_weights=self.semantic_class_weights,
+            class_weights_sha256=self.semantic_class_weights_sha256,
+        )
 
 
 @dataclass(frozen=True)
@@ -178,6 +206,57 @@ def dataset_binding_hashes(root: Path) -> tuple[str, str]:
     return sha256_file(manifest), sha256_file(split)
 
 
+def binding_from_checkpoint_metadata(
+    metadata: dict[str, Any],
+) -> TrainingCheckpointBinding:
+    if (
+        not isinstance(metadata, dict)
+        or metadata.get("source") != CHECKPOINT_SOURCE
+    ):
+        raise TrainingError("CHECKPOINT_METADATA_INVALID", "source")
+    present = _SEMANTIC_BINDING_KEYS.intersection(metadata)
+    if present and present != _SEMANTIC_BINDING_KEYS:
+        raise TrainingError(
+            "CHECKPOINT_METADATA_INVALID",
+            "partial semantic binding",
+        )
+    if present:
+        weights = metadata.get("semantic_class_weights")
+        if not isinstance(weights, list):
+            raise TrainingError(
+                "CHECKPOINT_METADATA_INVALID",
+                "semantic_class_weights",
+            )
+        objective_version = metadata.get("objective_version")
+        semantic_balance = metadata.get("semantic_balance")
+        semantic_class_weights = tuple(weights)
+        semantic_class_weights_sha256 = metadata.get(
+            "semantic_class_weights_sha256"
+        )
+    else:
+        objective_version = OBJECTIVE_VERSION
+        semantic_balance = "none"
+        semantic_class_weights = UNIT_CLASS_WEIGHTS
+        semantic_class_weights_sha256 = UNIT_CLASS_WEIGHTS_SHA256
+    return TrainingCheckpointBinding(
+        run_id=metadata.get("run_id"),
+        target_steps=metadata.get("target_steps"),
+        seed=metadata.get("seed"),
+        device=metadata.get("device"),
+        batch_size=metadata.get("batch_size"),
+        learning_rate=metadata.get("learning_rate"),
+        dataset_manifest_sha256=metadata.get(
+            "dataset_manifest_sha256"
+        ),
+        split_sha256=metadata.get("split_sha256"),
+        objective_version=objective_version,
+        semantic_balance=semantic_balance,
+        semantic_class_weights=semantic_class_weights,
+        semantic_class_weights_sha256=semantic_class_weights_sha256,
+        model_version=metadata.get("model_version"),
+    )
+
+
 def resolve_run_path(root: Path, run_id: str, *, create: bool) -> Path:
     validate_run_id(run_id)
     training_root = resolved_training_root(root)
@@ -274,18 +353,17 @@ def _validate_metadata(
     metadata: dict[str, Any],
     binding: TrainingCheckpointBinding,
 ) -> None:
-    if metadata.get("source") != CHECKPOINT_SOURCE:
-        raise TrainingError("CHECKPOINT_METADATA_INVALID", "source")
+    saved_binding = binding_from_checkpoint_metadata(metadata)
     if (
-        metadata.get("dataset_manifest_sha256")
+        saved_binding.dataset_manifest_sha256
         != binding.dataset_manifest_sha256
-        or metadata.get("split_sha256") != binding.split_sha256
+        or saved_binding.split_sha256 != binding.split_sha256
     ):
         raise TrainingError("CHECKPOINT_DATASET_MISMATCH", binding.run_id)
     for key, value in asdict(binding).items():
         if key in {"dataset_manifest_sha256", "split_sha256"}:
             continue
-        if metadata.get(key) != value:
+        if getattr(saved_binding, key) != value:
             raise TrainingError("CHECKPOINT_CONFIG_MISMATCH", key)
     completed_steps = metadata.get("completed_steps")
     status = metadata.get("status")

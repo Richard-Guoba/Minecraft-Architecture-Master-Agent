@@ -80,6 +80,23 @@ def test_none_uses_unit_weights_without_requiring_full_support() -> None:
     )
 
 
+def test_none_balance_value_rejects_non_unit_weights() -> None:
+    semantic_balance = _semantic_balance_module()
+    weights = (2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0)
+
+    with pytest.raises(
+        TrainingError,
+        match="SEMANTIC_CLASS_WEIGHTS_INVALID",
+    ):
+        semantic_balance.SemanticBalance(
+            profile="none",
+            class_weights=weights,
+            class_weights_sha256=(
+                semantic_balance.semantic_class_weights_sha256(weights)
+            ),
+        )
+
+
 def test_unknown_profile_is_rejected() -> None:
     semantic_balance = _semantic_balance_module()
 

@@ -23,12 +23,17 @@ from .training_checkpoint import (
     save_training_checkpoint,
     validate_run_id,
 )
-from .training_metrics import MetricAccumulator, gate1_result
+from .semantic_balance import (
+    OBJECTIVE_VERSION,
+    SEMANTIC_BALANCE_PROFILES,
+    build_semantic_balance,
+)
 from .training_data import (
     TrainingError,
     TrainingPatchDataset,
     make_balanced_mask,
 )
+from .training_metrics import MetricAccumulator, gate1_result
 from .voxel_model import (
     TinyVoxelCompletionModel,
     predict_tokens,
@@ -46,6 +51,7 @@ class TrainingConfig:
     device: str = "cpu"
     seed: int = 7101
     tiny_overfit: bool = False
+    semantic_balance: str = "none"
 
     def __post_init__(self) -> None:
         validate_run_id(self.run_id)
@@ -66,6 +72,11 @@ class TrainingConfig:
             raise TrainingError("TRAINING_CONFIG_INVALID", "seed")
         if type(self.tiny_overfit) is not bool:
             raise TrainingError("TRAINING_CONFIG_INVALID", "tiny_overfit")
+        if self.semantic_balance not in SEMANTIC_BALANCE_PROFILES:
+            raise TrainingError(
+                "TRAINING_CONFIG_INVALID",
+                "semantic_balance",
+            )
 
 
 @dataclass(frozen=True)
@@ -91,6 +102,10 @@ def train_model(
         split="train",
         seed=config.seed,
     )
+    balance = build_semantic_balance(
+        dataset.samples,
+        config.semantic_balance,
+    )
     manifest_hash, split_hash = dataset_binding_hashes(config.root)
     binding = TrainingCheckpointBinding(
         run_id=config.run_id,
@@ -101,6 +116,10 @@ def train_model(
         learning_rate=float(config.learning_rate),
         dataset_manifest_sha256=manifest_hash,
         split_sha256=split_hash,
+        objective_version=OBJECTIVE_VERSION,
+        semantic_balance=balance.profile,
+        semantic_class_weights=balance.class_weights,
+        semantic_class_weights_sha256=balance.class_weights_sha256,
     )
     run_path = resolve_run_path(config.root, config.run_id, create=True)
     checkpoint_path = run_path / "checkpoint.pt"
@@ -110,6 +129,15 @@ def train_model(
 
     device = torch.device(config.device)
     model = TinyVoxelCompletionModel().to(device)
+    semantic_class_weights = (
+        None
+        if balance.profile == "none"
+        else torch.tensor(
+            balance.class_weights,
+            dtype=torch.float32,
+            device=device,
+        )
+    )
     optimizer = torch.optim.Adam(
         model.parameters(),
         lr=float(config.learning_rate),
@@ -144,12 +172,18 @@ def train_model(
         visible, mask = make_balanced_mask(
             targets,
             seed=_step_seed(config.seed, step),
+            semantic_balance=config.semantic_balance,
         )
         targets = targets.to(device)
         visible = visible.to(device)
         mask = mask.to(device)
         optimizer.zero_grad(set_to_none=True)
-        losses = voxel_loss(model(visible), targets, mask)
+        losses = voxel_loss(
+            model(visible),
+            targets,
+            mask,
+            semantic_class_weights=semantic_class_weights,
+        )
         losses.total.backward()
         optimizer.step()
         _append_metric(
