@@ -246,3 +246,101 @@ export function validHouseSceneFixture() {
     };
   }
 }
+
+export function validSourceProfileFixture() {
+  return {
+    source: 'residential-source-profile-v1',
+    schema_version: 1,
+    case_id: 'house-fixture',
+    batch_id: 'batch-001',
+    title: 'Fixture Survival House',
+    origin: {
+      url: 'https://example.invalid/fixture-house',
+      author: 'Fixture Author',
+      license_status: 'recorded',
+      license_text: 'Local training fixture permission.',
+      allowed_uses: ['local-analysis', 'local-training'],
+      acquired_at: '2026-07-24T12:00:00.000Z'
+    },
+    artifact: {
+      original_filename: 'fixture-house.schem',
+      format: 'schem',
+      byte_size: 1024,
+      sha256: 'b'.repeat(64)
+    },
+    lineage: {
+      source_project: 'fixture-project',
+      asset_family: 'fixture-family'
+    },
+    measurements: {
+      occupied_bounds: {
+        min: [0, 0, 0],
+        max: [31, 23, 27],
+        extent: [32, 24, 28]
+      }
+    },
+    fingerprints: {
+      exact_sha256: 'b'.repeat(64),
+      structural_sha256: 'c'.repeat(64)
+    },
+    evidence: {
+      complete_residence: 'pass',
+      furnished: 'pass',
+      survival_core: 'pass',
+      supported_content: 'pass'
+    },
+    status: 'eligible',
+    decisions: [
+      {
+        id: 'decision-001',
+        at: '2026-07-24T12:00:01.000Z',
+        actor: 'fixture-tool',
+        action: 'quarantine',
+        from_status: null,
+        to_status: 'quarantined',
+        reason: 'immutable source recorded'
+      },
+      {
+        id: 'decision-002',
+        at: '2026-07-24T12:00:02.000Z',
+        actor: 'fixture-tool',
+        action: 'parse',
+        from_status: 'quarantined',
+        to_status: 'parsed',
+        reason: 'supported fixture parsed'
+      },
+      {
+        id: 'decision-003',
+        at: '2026-07-24T12:00:03.000Z',
+        actor: 'fixture-reviewer',
+        action: 'admit',
+        from_status: 'parsed',
+        to_status: 'eligible',
+        reason: 'fixture evidence passes'
+      }
+    ]
+  };
+}
+
+export function validReviewRecordFixture() {
+  return {
+    source: 'residential-review-record-v1',
+    schema_version: 1,
+    review_id: 'review-house-fixture-001',
+    case_id: 'house-fixture',
+    annotation_revision: 1,
+    kind: 'golden',
+    status: 'accepted',
+    reviewer: 'fixture-reviewer',
+    reviewed_at: '2026-07-24T13:00:00.000Z',
+    field_decisions: [
+      {
+        path: 'HouseSpec.rooms[0].type',
+        action: 'confirm',
+        value: 'entry',
+        reason: 'front threshold and door evidence agree'
+      }
+    ],
+    notes: 'Fixture review accepted.'
+  };
+}
