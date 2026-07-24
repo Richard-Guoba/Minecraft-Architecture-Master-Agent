@@ -18,6 +18,7 @@
     "evaluate:variation": "node src/evaluateDesignVariation.js",
     "benchmark:baseline": "node src/runBaselineBenchmark.js",
     "analyze:templates": "node src/analyzeTemplateCorpus.js",
+    "residential:workspace": "node src/runResidentialWorkspace.js",
     "training:prepare": "node src/runTrainingPrepare.js",
     "training:train": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.train",
     "training:evaluate": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.evaluate",

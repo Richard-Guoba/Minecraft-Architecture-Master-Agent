@@ -23,3 +23,6 @@ training/stage7/runs/
 
 # Local training datasets, checkpoints, metrics, and reconstructions
 .local/training/
+
+# Local residential renderer sources, annotations, datasets, and model evidence
+.local/residential-model/
