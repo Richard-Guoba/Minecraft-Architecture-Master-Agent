@@ -169,3 +169,80 @@ export function validHouseSpecFixture() {
     }
   };
 }
+
+const HASH = 'a'.repeat(64);
+
+export function validHouseSceneFixture() {
+  return {
+    source: 'residential-housescene-v1',
+    schema_version: 1,
+    minecraft_version: '1.21.1',
+    resolution: [64, 64, 64],
+    house_spec_hash: HASH,
+    seed: 18402933,
+    vocabularies: {
+      structure_role: 1,
+      space_role: 1,
+      material_role: 1,
+      object_role: 1
+    },
+    grids: [
+      layer('structure_role', 'uint8', 'grids/structure-role.bin'),
+      layer('room_id', 'uint16-le', 'grids/room-id.bin'),
+      layer('space_role', 'uint8', 'grids/space-role.bin'),
+      layer('material_role', 'uint8', 'grids/material-role.bin')
+    ],
+    room_index: [
+      { index: 1, room_id: 'entry' },
+      { index: 2, room_id: 'living' },
+      { index: 3, room_id: 'bedroom_1' }
+    ],
+    objects: [
+      {
+        id: 'living_gallery_01',
+        role: 'painting',
+        room_id: 'living',
+        anchor: [18, 6, 11],
+        facing: 'west',
+        attachment: 'wall',
+        occupied_cells: [[18, 6, 11], [18, 7, 11]],
+        support_cells: [[19, 6, 11], [19, 7, 11]],
+        clearance_cells: [[17, 6, 11], [17, 7, 11]],
+        material_role: 'accent_primary',
+        group_id: 'gallery_wall',
+        required: false,
+        confidence: 0.91,
+        provenance: 'decoration_model'
+      }
+    ],
+    generation: {
+      structure_model_version: 'fixture-structure-v1',
+      structure_checkpoint_sha256: HASH,
+      decoration_model_version: 'fixture-decoration-v1',
+      decoration_checkpoint_sha256: HASH,
+      dataset_sha256: HASH,
+      split_sha256: HASH,
+      sampling_protocol: 'fixture-mask-predict-v1',
+      seed: 18402933
+    },
+    validation: {
+      status: 'not_run',
+      blockers: [],
+      warnings: []
+    },
+    repair: {
+      applied: false,
+      changes: []
+    }
+  };
+
+  function layer(name, encoding, file) {
+    return {
+      name,
+      encoding,
+      shape: [64, 64, 64],
+      file,
+      sha256: HASH
+    };
+  }
+}
