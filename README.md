@@ -31,6 +31,10 @@ The LLM does not need to emit exact block coordinates. The Node.js runtime turns
 - The checkpoint remains experimental and is not part of primary generation. The LLM still describes the house; deterministic Node.js code still turns that intent into exact geometry and datapack commands.
 - Training artifacts remain local by default. A separate license and distribution review happens only before a concrete artifact is shared externally.
 
+## Residential learned renderer
+
+The approved next-generation direction is a residential `HouseSpec -> HouseScene` learned renderer with separate structure and room-decoration stages. Its current implementation scope is contracts and local workspace only; it is not trained or connected to production. See [the residential renderer design](docs/residential-model/design.md).
+
 ## Quick start
 
 Requirements: Node.js 20+ and npm.

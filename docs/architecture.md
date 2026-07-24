@@ -61,6 +61,10 @@ The selected profile was then trained from scratch for 50,000 CPU steps as `bala
 
 The optional coarse semantic shadow interface remains the integration boundary. It may compare a checkpoint with deterministic output without changing primary operations. `balanced-v2-7101` is not part of normal generation: it missed both phase-two semantic thresholds on validation, failed Gate 2 on the untouched test split, and showed especially weak test F1 for glass/token 4 (`0.0069029417`), architectural shape/token 5 (`0.0420108418`), and other/token 8 (`0.0375643824`).
 
+## Residential renderer foundation
+
+The approved residential renderer program will eventually learn whole-house structure and room-aware decoration from paired HouseSpec/HouseScene data. R1 establishes only versioned contracts and an ignored local workspace. It does not change production generation, activate a model, process real sources, or alter the current Stage 7 completion baseline.
+
 ## Ownership boundaries
 
 ```text
