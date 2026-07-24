@@ -20,3 +20,9 @@ training/stage7/runs/
 
 # Local-only Stage 7 source-expansion metadata audit
 .local/stage7-source-expansion/
+
+# Local training datasets, checkpoints, metrics, and reconstructions
+.local/training/
+
+# Local residential renderer sources, annotations, datasets, and model evidence
+.local/residential-model/

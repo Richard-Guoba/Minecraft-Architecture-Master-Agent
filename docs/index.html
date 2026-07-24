@@ -4,224 +4,81 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Minecraft Architecture Master Agent</title>
-    <meta name="description" content="A hybrid semantic-agent and deterministic-geometry pipeline for generating Minecraft Java architecture datapacks from natural language, with an auditable, gated Stage 7 research lane.">
+    <meta name="description" content="Natural-language Minecraft Java datapack generation with deterministic geometry and a local training-first workflow.">
     <link rel="stylesheet" href="assets/site.css">
   </head>
   <body>
     <header class="site-header">
-      <a class="brand" href="#top" aria-label="Minecraft Architecture Master Agent home">
-        <span class="brand-mark" aria-hidden="true">
-          <span></span>
-        </span>
-        <span>Minecraft Architecture Master Agent</span>
-      </a>
+      <a class="brand" href="#top">Minecraft Architecture Master Agent</a>
       <nav class="nav" aria-label="Primary navigation">
         <a class="active" href="#overview">Overview</a>
-        <a href="#architecture">Architecture</a>
-        <a href="#benchmarks">Benchmarks</a>
-        <a href="#roadmap">Roadmap</a>
-        <a class="github-link" href="https://github.com/Richard-Guoba/Minecraft-Architecture-Master-Agent" aria-label="Open GitHub repository">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.52 2.87 8.35 6.84 9.71.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.72-2.78.62-3.37-1.38-3.37-1.38-.45-1.18-1.1-1.49-1.1-1.49-.9-.63.07-.62.07-.62 1 .07 1.52 1.05 1.52 1.05.89 1.55 2.34 1.1 2.91.84.09-.66.35-1.1.63-1.35-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.31.1-2.72 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.96c.85 0 1.7.12 2.5.35 1.9-1.33 2.74-1.05 2.74-1.05.55 1.41.2 2.46.1 2.72.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.81-4.57 5.07.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.8 0 .27.18.59.69.49A10.08 10.08 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/>
-          </svg>
-          GitHub
-        </a>
+        <a href="#construction">Construction</a>
+        <a href="#training">Training</a>
       </nav>
     </header>
 
     <main id="top">
-      <section id="overview" class="hero" aria-labelledby="hero-title">
+      <section id="overview" class="hero">
         <div class="hero-copy-block">
-          <h1 id="hero-title">Minecraft Architecture Master Agent</h1>
+          <h1>Semantic intent. Deterministic Minecraft architecture.</h1>
           <p class="hero-copy">
-            Research project exploring how semantic agents, deterministic geometry, template memory, semantic patch artifacts, benchmarking, and repair loops can turn natural-language prompts into runnable Minecraft Java datapacks. Stage 7 keeps learned research auditable: M3 fixture validation is complete, R3 public NBT pilot tooling is ready, and real-data training remains explicitly gated.
+            The active construction_method_v1 pipeline turns Chinese or English building requests into Minecraft Java 1.21 datapacks. A separate local workflow trains on all 64 templates, keeps artifacts private by default, and has now passed its first held-out non-air learning gate.
           </p>
           <div class="terminal-stack" aria-label="Project commands">
-            <pre class="terminal"><code><span>$</span> npm start -- --mode mock --concepts 3 "建一个湖边现代两层别墅，带大玻璃、水边平台和前景花园"</code></pre>
-            <pre class="terminal"><code><span>$</span> npm run query:patches -- --dataset mc_templates/analysis/semantic_patch_dataset.json --category facade --band high</code></pre>
-            <pre class="terminal"><code><span>$</span> npm run review-pack:stage7 -- --out .tmp/stage7-m2-5-review-pack</code></pre>
+            <pre class="terminal"><code><span>$</span> npm start -- --mode mock --seed 7101 "建一个湖边现代两层别墅"</code></pre>
+            <pre class="terminal"><code><span>$</span> npm test</code></pre>
+            <pre class="terminal"><code><span>$</span> npm run training:prepare</code></pre>
           </div>
           <div class="hero-actions">
-            <a href="https://github.com/Richard-Guoba/Minecraft-Architecture-Master-Agent#readme">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15.5a2.5 2.5 0 0 1-2.5 2.5H6.75A2.75 2.75 0 0 1 4 18.25V5.5Zm2.5-.7a.7.7 0 0 0-.7.7v10.82c.3-.12.62-.18.95-.18H18.2V4.8H6.5Zm.25 13.14a.95.95 0 0 0 0 1.9H17.5a.7.7 0 0 0 .7-.7v-1.2H6.75Z"/></svg>
-              Read the README
-            </a>
-            <a href="https://github.com/Richard-Guoba/Minecraft-Architecture-Master-Agent/blob/main/docs/architecture.md">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4V4Zm2 2v2h2V6H6Zm8-2h6v6h-6V4Zm2 2v2h2V6h-2ZM4 14h6v6H4v-6Zm2 2v2h2v-2H6Zm8-2h6v6h-6v-6Zm2 2v2h2v-2h-2Z"/></svg>
-              Read the docs
-            </a>
+            <a href="https://github.com/Richard-Guoba/Minecraft-Architecture-Master-Agent#readme">README</a>
+            <a href="architecture.md">Architecture</a>
+            <a href="training.md">Local training</a>
           </div>
         </div>
-
-        <section class="system-overview" aria-labelledby="system-overview-title">
-          <h2 id="system-overview-title">System Overview</h2>
-          <div class="system-grid">
-            <div class="system-column input-column">
-              <span class="column-label">Input</span>
-              <article class="system-card input-card">
-                <h3>Natural Language Prompt</h3>
-                <p>"Modern waterfront villa with glass, deck, roof terrace, and detailed interiors"</p>
-                <ul>
-                  <li>Seed</li>
-                  <li>Style and site intent</li>
-                  <li>Size and material hints</li>
-                </ul>
-              </article>
-            </div>
-
-            <div class="flow-arrow" aria-hidden="true"></div>
-
-            <div class="system-column semantic-column">
-              <span class="column-label green">Semantic Agents</span>
-              <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5 12 2l8 4.5v9L12 20l-8-4.5v-9Zm2 1.17v6.66l6 3.38 6-3.38V7.67l-6-3.38-6 3.38Z"/></svg><span>Architect intent</span></article>
-              <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4V4Zm2 2v3h3V6H6Zm7-2h7v7h-7V4Zm2 2v3h3V6h-3ZM4 13h7v7H4v-7Zm2 2v3h3v-3H6Zm7-2h7v7h-7v-7Zm2 2v3h3v-3h-3Z"/></svg><span>Room graph planning</span></article>
-              <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v3H5V4Zm0 5h14v3H5V9Zm0 5h14v3H5v-3Zm0 5h9v1H5v-1Z"/></svg><span>Template KB v2 retrieval</span></article>
-              <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Zm0 2.2L17.4 8 12 10.8 6.6 8 12 5.2ZM6 9.7l5 2.6v5.8l-5-2.5V9.7Zm7 8.4v-5.8l5-2.6v5.9l-5 2.5Z"/></svg><span>Concept Studio</span></article>
-              <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v3H4V5Zm2 5h12v3H6v-3Zm3 5h6v4H9v-4Z"/></svg><span>Neural retrieval artifacts</span></article>
-              <article class="system-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Zm-7-7v3h3V6H6Zm9 0v3h3V6h-3ZM6 15v3h3v-3H6Zm9 0v3h3v-3h-3Z"/></svg><span>Semantic patch candidates</span></article>
-            </div>
-
-            <div class="flow-arrow" aria-hidden="true"></div>
-
-            <div class="system-column geometry-column">
-              <span class="column-label blue">Deterministic Geometry</span>
-              <article class="system-step blue-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h18v18H3V3Zm2 2v4h4V5H5Zm6 0v4h8V5h-8ZM5 11v8h4v-8H5Zm6 0v8h8v-8h-8Z"/></svg><span>CSG / BSP / A*</span></article>
-              <article class="system-step blue-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 2.3 6.8 3.8L12 12 5.2 8.1 12 4.3Zm-7 5.5 6 3.4v6.5l-6-3.4V9.8Zm8 9.9v-6.5l6-3.4v6.5l-6 3.4Z"/></svg><span>Shell, roof, rooms</span></article>
-              <article class="system-step blue-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v4H5V5Zm0 6h14v8H5v-8Zm2 2v4h10v-4H7Z"/></svg><span>Interior and site modules</span></article>
-              <article class="system-step blue-step"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10.3 15.6 7.8-7.8 1.4 1.4-9.2 9.2-5-5 1.4-1.4 3.6 3.6Z"/></svg><span>QA, critics, scorecard</span></article>
-            </div>
-
-            <div class="flow-arrow" aria-hidden="true"></div>
-
-            <div class="system-column output-column">
-              <span class="column-label amber">Output</span>
-              <article class="output-card">
-                <h3>Datapack and Analysis Artifacts</h3>
-                <pre><code>out/&lt;timestamp&gt;/
-├─ blueprint.json
-├─ architect_datapack/
-├─ preview.html
-├─ run_report.md
-├─ architecture_scorecard.json
-├─ concept_studio.json
-└─ critic_council.json
-
-mc_templates/analysis/
-├─ embedding_index.json
-├─ semantic_patch_dataset.json
-└─ semantic_patch_report.md</code></pre>
-              </article>
-              <article class="load-card">
-                <strong>Load in Minecraft</strong>
-                <code>/function architect:run</code>
-              </article>
-            </div>
-          </div>
-        </section>
       </section>
 
-      <section id="benchmarks" class="metric-strip" aria-label="Current verified project metrics">
+      <section class="metric-strip" aria-label="Current project facts">
         <article>
-          <span>Latest Stage</span>
-          <strong>Stage 7 R3 Public Pilot Tooling Ready</strong>
-          <em>5 primary + 3 reserve nomination pending; Dataset v3 real-data gate false / 0 reviewed training approvals</em>
-          <a href="superpowers/handoffs/2026-07-20-stage-7-r3-operational-tooling-readiness-complete.md">R3 readiness handoff</a>
+          <span>Generator</span>
+          <strong>construction_method_v1</strong>
+          <em>normal executable path</em>
         </article>
         <article>
-          <span>Test Gate</span>
-          <strong>Full Node Suite</strong>
-          <em>npm test, zero failures required</em>
+          <span>Local Sources</span>
+          <strong>64</strong>
+          <em>all considered for local training</em>
         </article>
         <article>
-          <span>Semantic Patches</span>
-          <strong>255</strong>
-          <em>real corpus smoke</em>
+          <span>Gate 2</span>
+          <strong>Passed</strong>
+          <em>50,000 steps on 1,546 validation patches</em>
         </article>
         <article>
-          <span>Training Candidates</span>
-          <strong>250</strong>
-          <em>ranked for review</em>
-        </article>
-        <article>
-          <span>Baseline Prompts</span>
-          <strong>10 / 10</strong>
-          <em>all generated</em>
-        </article>
-        <article>
-          <span>Repair Queue</span>
-          <strong>0</strong>
-          <em>priorities open</em>
+          <span>Validation</span>
+          <strong>F1 0.361 · IoU 0.255</strong>
+          <em>occupancy F1 0.919; both baselines beaten</em>
         </article>
       </section>
 
-      <section class="summary-band" aria-label="Project summary">
-        <section id="architecture" class="summary-panel pipeline-panel" aria-labelledby="pipeline-title">
-          <h2 id="pipeline-title">Pipeline</h2>
-          <ol class="numbered-list">
-            <li><span>1</span><div><strong>Parse intent</strong><p>Extract style, site, scale, materials, constraints, and design brief.</p></div></li>
-            <li><span>2</span><div><strong>Plan space graph</strong><p>Generate rooms, privacy levels, edges, circulation, and floor hints.</p></div></li>
-            <li><span>3</span><div><strong>Retrieve templates</strong><p>Use KB v2 case cards, laws, and reviewed learning areas as references.</p></div></li>
-            <li><span>4</span><div><strong>Develop concepts</strong><p>Generate, rank, select, or fuse explainable design concepts before construction.</p></div></li>
-            <li><span>5</span><div><strong>Validate coarse semantics</strong><p>Preserve M1 shadow safety and M2/M2.5 license governance while the M3 fixture-only Python provider is revalidated, repaired, converted, or rejected by Node without changing primary operations.</p></div></li>
-            <li><span>6</span><div><strong>Analyze learning artifacts</strong><p>Build Stage 5 embeddings and Stage 6 semantic patch candidates without changing default generation.</p></div></li>
-            <li><span>7</span><div><strong>Synthesize geometry</strong><p>Turn semantic plans into shells, rooms, roofs, doors, stairs, interiors, and site modules.</p></div></li>
-            <li><span>8</span><div><strong>Evaluate and critique</strong><p>Run QA, repair hints, score rubric, command optimization, benchmark reporting, and Critic Council review.</p></div></li>
-            <li><span>9</span><div><strong>Export datapack</strong><p>Write Minecraft Java 1.21 commands, preview, report, scorecard, concept, and critic artifacts.</p></div></li>
-          </ol>
-        </section>
-
-        <section id="capabilities" class="summary-panel" aria-labelledby="capabilities-title">
-          <h2 id="capabilities-title">Current Capabilities</h2>
+      <section class="summary-band">
+        <section id="construction" class="summary-panel">
+          <h2>Construction flow</h2>
+          <p>Prompt → semantic agents → deterministic geometry → QA and repair → datapack.</p>
           <ul class="check-list">
-            <li><strong>Natural language to buildable datapacks</strong><span>Mock mode works without API keys; LLM mode can supply semantic JSON.</span></li>
-            <li><strong>Deterministic geometry engine</strong><span>CSG, BSP, A*, structure modules, facade, roof, site, and interiors.</span></li>
-            <li><strong>Template Knowledge Base v2</strong><span>Reviewed case cards, retrieval index, design laws, and explainable references.</span></li>
-            <li><strong>Neural retrieval artifacts</strong><span>Stage 5 labels, deterministic embedding indexes, retrieval evaluation, and opt-in fusion retrieval.</span></li>
-            <li><strong>Concept Studio</strong><span>Generates, ranks, selects, or fuses multiple explainable concepts before construction.</span></li>
-            <li><strong>Critic Council</strong><span>Buildability, connectivity, habitation, style, composition, and site critics produce repair guidance; use `--no-critics` to disable it.</span></li>
-            <li><strong>Semantic patch dataset</strong><span>Stage 6 produces roof, facade, interior, and courtyard patch artifacts plus ranked training candidates via `query:patches`.</span></li>
-            <li><strong>Stage 7 coarse semantic voxel shadow</strong><span>Provider-neutral 64³ condition/plan artifacts, deterministic baseline, repair diagnostics, and procedural candidates without changing primary geometry.</span></li>
-            <li><strong>Stage 7 M2.5 Trusted Data</strong><span>Historical governance foundation: source-bound review packs, strict overlays, sparse correction provenance, Dataset v2, readiness reports, and zero implicit training approval.</span></li>
-            <li><strong>Stage 7 M3 fixture-only foundation</strong><span>Two committed synthetic fixtures, reproducible CPU checkpoint/inference hashes, authoritative Node validation, and exact Python-shadow operation parity. Fixture loss is plumbing-only; Dataset v3 remains `ready_for_m3_real_data=false` with `training_eligible_count=0`.</span></li>
-            <li><strong>Stage 7 R3 public NBT pilot</strong><span>Strict public NBT pilot tooling is ready for an exact five-primary, three-reserve slate. The next step is metadata-only nomination; tooling readiness does not authorize acquisition, Dataset admission, or training.</span></li>
-            <li><strong>Benchmark suite</strong><span>Fixed Architecture Master prompt set, summaries, gallery, CSV, and feedback template.</span></li>
-            <li><strong>Repair readiness</strong><span>Stage 1 closed the visible site and comfort repair queue.</span></li>
-            <li><strong>Extensible architecture</strong><span>Agents and evaluators stay modular around `src/construction`.</span></li>
+            <li><strong>Semantic planning</strong><span>Style, massing, rooms, circulation, facade, roof, structure, and site intent.</span></li>
+            <li><strong>Local geometry</strong><span>CSG shells, BSP rooms, A* paths, interiors, decoration, and Minecraft command validation.</span></li>
+            <li><strong>Reproducible output</strong><span>Mock mode needs no API key and writes datapack, preview, report, and scorecard artifacts.</span></li>
           </ul>
         </section>
 
-        <section id="roadmap" class="summary-panel" aria-labelledby="roadmap-title">
-          <h2 id="roadmap-title">Roadmap</h2>
-          <ol class="roadmap-list">
-            <li class="done"><span></span><div><strong>Stage 1 - Baseline Readiness</strong><em>Completed</em><p>Stable benchmark floor, scorecard, and repair closure evidence.</p></div></li>
-            <li class="done"><span></span><div><strong>Stage 2 - Template KB v2</strong><em>Completed</em><p>Reviewed knowledge units, retrieval explanations, and design laws.</p></div></li>
-            <li class="done"><span></span><div><strong>Stage 3 - Concept Studio</strong><em>Completed</em><p>Generate, compare, select, or fuse explainable design concepts per prompt.</p></div></li>
-            <li class="done"><span></span><div><strong>Stage 4 - Critic Council</strong><em>Completed</em><p>Separate critics summarize buildability, habitation, style, composition, connectivity, and site repair guidance.</p></div></li>
-            <li class="done"><span></span><div><strong>Stage 5 - Neural Retrieval</strong><em>Completed</em><p>Artifacts-first neural assist suggests labels, builds deterministic embedding indexes, and evaluates fusion retrieval while default generation remains rule-only.</p></div></li>
-            <li class="done"><span></span><div><strong>Stage 6 - Semantic Patch Completion</strong><em>Completed</em><p>Deterministic semantic voxel patch dataset, completion repair boundary, inspection report, training candidate ranking, and `query:patches` review CLI.</p></div></li>
-            <li class="active"><span></span><div><strong>Stage 7 - Coarse Semantic Voxels</strong><em>In Progress</em><p>M3 validates fixture-only CPU plumbing and shadow parity; R3 public NBT pilot tooling is now ready. The next public-data task is a metadata-only 5+3 nomination, while acquisition, human review, Dataset admission, and real-data training remain separately gated. <a href="benchmarks/stage7-m3-fixture-foundation.md">View M3 benchmark evidence.</a></p></div></li>
-          </ol>
-        </section>
-
-        <section class="summary-panel files-panel" aria-labelledby="files-title">
-          <h2 id="files-title">Project Files</h2>
-          <div class="repo-tree" aria-label="Repository structure">
-            <code>src/</code>
-            <span>├─ construction/</span>
-            <span>│  ├─ agents/</span>
-            <span>│  ├─ engine/</span>
-            <span>│  └─ templates/</span>
-            <code>mc_templates/</code>
-            <span>├─ analysis/</span>
-            <span>└─ curation/</span>
-            <code>test/</code>
-            <code>docs/</code>
-          </div>
-          <ul class="file-notes">
-            <li><strong>Core runtime</strong><span>`src/construction` generation pipeline</span></li>
-            <li><strong>Template memory</strong><span>case cards, indexes, reviews, laws</span></li>
-            <li><strong>Benchmarks</strong><span>versioned summaries under `docs/benchmarks`</span></li>
-            <li><strong>Docs</strong><span>architecture, roadmap, project map, Pages source</span></li>
+        <section id="training" class="summary-panel">
+          <h2>Local training flow</h2>
+          <p>Local templates → automatic preparation → source-level split → training → evaluation.</p>
+          <ul class="check-list">
+            <li><strong>No per-file approval</strong><span>All existing local templates may be used for local experiments.</span></li>
+            <li><strong>Leakage prevention</strong><span>Buildings and duplicate groups are split before whole volumes or patches are created.</span></li>
+            <li><strong>Measured progress</strong><span>Gate 1 and Gate 2 passed; the architectural-shape class remains the main known weakness.</span></li>
+            <li><strong>Local by default</strong><span>Prepared data, weights, metrics, and reconstructions stay below .local/training/.</span></li>
           </ul>
         </section>
       </section>
@@ -229,9 +86,8 @@ mc_templates/analysis/
 
     <footer class="footer">
       <span>MIT License</span>
-      <span>Built for research and reproducibility.</span>
-      <a href="https://github.com/Richard-Guoba/Minecraft-Architecture-Master-Agent">Star on GitHub</a>
-      <a href="https://github.com/Richard-Guoba/Minecraft-Architecture-Master-Agent/blob/main/docs/project-map.md">Project map</a>
+      <a href="architecture.md">Architecture</a>
+      <a href="training.md">Training</a>
     </footer>
   </body>
 </html>
