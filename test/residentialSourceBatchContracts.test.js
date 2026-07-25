@@ -179,6 +179,32 @@ test('intake report accepts only the legitimate R2 outcome shapes', () => {
   }
 });
 
+test('intake report binds residential lifecycle reasons to submitted lanes', () => {
+  const houseAsReference = validIntakeReportFixture();
+  Object.assign(houseAsReference.candidates[0], {
+    outcome: 'deferred',
+    reason: 'non_residential_reference_only'
+  });
+  refreshSummary(houseAsReference);
+  assert.throws(
+    () => validateIntakeReport(houseAsReference),
+    /INTAKE_REPORT_LANE_REASON_INVALID/u
+  );
+
+  const otherAsHouse = validIntakeReportFixture();
+  Object.assign(otherAsHouse.candidates[1], {
+    source_profile_file:
+      `sources/${otherAsHouse.candidates[1].case_id}.json`,
+    outcome: 'parsed',
+    reason: 'residential_candidate_requires_review'
+  });
+  refreshSummary(otherAsHouse);
+  assert.throws(
+    () => validateIntakeReport(otherAsHouse),
+    /INTAKE_REPORT_LANE_REASON_INVALID/u
+  );
+});
+
 test('intake report rejects invalid outcome, identity, and profile relationships', () => {
   const mutations = [
     {

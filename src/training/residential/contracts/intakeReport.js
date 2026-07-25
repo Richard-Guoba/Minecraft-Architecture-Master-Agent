@@ -94,10 +94,25 @@ export function validateIntakeReport(value) {
         `${candidate.outcome}/${candidate.reason}`
       );
     }
+    validateCandidateLaneReason(candidate, itemPath);
     validateCandidateRelationships(candidate, itemPath);
   });
   validateSummary(document.summary, document.candidates);
   return deepFreeze(document);
+}
+
+function validateCandidateLaneReason(candidate, itemPath) {
+  const expectedLane = {
+    residential_candidate_requires_review: 'houses',
+    non_residential_reference_only: 'other-architecture'
+  }[candidate.reason];
+  if (expectedLane && candidate.submitted.lane !== expectedLane) {
+    failContract(
+      'INTAKE_REPORT_LANE_REASON_INVALID',
+      `${itemPath}.reason`,
+      `${candidate.submitted.lane}/${candidate.reason}`
+    );
+  }
 }
 
 function validateCandidateRelationships(candidate, itemPath) {
