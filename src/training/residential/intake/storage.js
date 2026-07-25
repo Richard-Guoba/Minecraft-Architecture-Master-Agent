@@ -128,37 +128,92 @@ export async function writeQuarantineFingerprint({
   const context = await readyQuarantineRoot({ root, projectRoot });
   const target = path.join(context.quarantine.path, caseId);
   const directory = await snapshotDirectory(target, target);
-  if ((directory.mode & 0o777) !== QUARANTINE_DIRECTORY_MODE) {
-    throw quarantineConflict(target);
-  }
-  const filePath = path.join(target, 'fingerprint.json');
-  const existing = await safeLstat(filePath);
-  if (existing) {
-    if (!existing.isFile() || existing.isSymbolicLink()) throw quarantineConflict(target);
-    return writeJsonOnceOrVerify(filePath, fingerprint);
-  }
-
-  await assertContext(context);
-  await assertSameDirectory(directory, target);
-  await fs.chmod(target, 0o700);
+  const desired = canonicalFileJson(fingerprint);
+  let handle;
+  let descriptorRoot;
+  let result;
   try {
+    handle = await openPinnedDirectory(directory, target);
+    descriptorRoot = await pinnedDescriptorRoot(handle, directory, target);
     await assertContext(context);
-    await assertSameDirectory(directory, target);
-    return await writeJsonOnceOrVerify(filePath, fingerprint);
+    const before = await verifyPinnedQuarantineCase({
+      context,
+      handle,
+      directory,
+      descriptorRoot,
+      target,
+      caseId,
+      expectedMode: QUARANTINE_DIRECTORY_MODE
+    });
+    if (before.fingerprint !== null) {
+      if (!before.fingerprint.equals(desired)) throw quarantineConflict(target);
+      result = 'verified';
+      return result;
+    }
+    await handle.chmod(0o700);
+    await assertPinnedDirectoryHandle(handle, directory, 0o700, target);
+    await assertContext(context);
+    await verifyPinnedQuarantineCase({
+      context,
+      handle,
+      directory,
+      descriptorRoot,
+      target,
+      caseId,
+      expectedMode: 0o700
+    });
+    await writePinnedReadOnlyJson({
+      descriptorRoot,
+      name: 'fingerprint.json',
+      bytes: desired,
+      target
+    });
+    await verifyPinnedQuarantineCase({
+      context,
+      handle,
+      directory,
+      descriptorRoot,
+      target,
+      caseId,
+      expectedMode: 0o700,
+      expectedFingerprint: desired,
+      requireFingerprint: true
+    });
+    result = 'created';
+    return result;
   } catch (error) {
     if (error instanceof TrainingDataError) throw error;
     throw quarantineConflict(target, error);
   } finally {
     try {
-      await fs.chmod(target, QUARANTINE_DIRECTORY_MODE);
-      await assertContext(context);
-      const restored = await assertSameDirectory(directory, target);
-      if ((restored.mode & 0o777) !== QUARANTINE_DIRECTORY_MODE) {
-        throw quarantineConflict(target);
+      if (handle) {
+        await handle.chmod(QUARANTINE_DIRECTORY_MODE);
+        await assertPinnedDirectoryHandle(
+          handle,
+          directory,
+          QUARANTINE_DIRECTORY_MODE,
+          target
+        );
+        await assertContext(context);
+        await verifyPinnedQuarantineCase({
+          context,
+          handle,
+          directory,
+          descriptorRoot,
+          target,
+          caseId,
+          expectedMode: QUARANTINE_DIRECTORY_MODE,
+          expectedFingerprint: result === 'created' || result === 'verified'
+            ? desired
+            : undefined,
+          requireFingerprint: result === 'created' || result === 'verified'
+        });
       }
     } catch (error) {
       if (error instanceof TrainingDataError) throw error;
       throw quarantineConflict(target, error);
+    } finally {
+      await handle?.close();
     }
   }
 }
@@ -219,73 +274,178 @@ async function readyQuarantineRoot({ root, projectRoot }) {
 }
 
 async function verifyQuarantineArtifact({ context, target, caseId, bytes, sha256 }) {
+  let handle;
   try {
     await assertContext(context);
     const directory = await snapshotDirectory(target, target);
-    if ((directory.mode & 0o777) !== QUARANTINE_DIRECTORY_MODE) {
-      throw quarantineConflict(target);
-    }
-    await assertContext(context);
-    await assertSameDirectory(directory, target);
-    const entries = await fs.readdir(target, { withFileTypes: true });
-    await assertContext(context);
-    await assertSameDirectory(directory, target);
-    const allowed = new Set(['identity.json', 'payload', 'fingerprint.json']);
-    if (
-      entries.length < 2 || entries.length > 3 ||
-      entries.some((entry) => !allowed.has(entry.name) || !entry.isFile() || entry.isSymbolicLink()) ||
-      !entries.some((entry) => entry.name === 'identity.json') ||
-      !entries.some((entry) => entry.name === 'payload')
-    ) {
-      throw quarantineConflict(target);
-    }
-    const identityPath = path.join(target, 'identity.json');
-    const payloadPath = path.join(target, 'payload');
-    const expectedIdentity = canonicalFileJson(
-      quarantineIdentity({ caseId, sha256, byteSize: bytes.length })
-    );
-    const identity = await readSecureQuarantineFile({
-      context, directory, filePath: identityPath, target
+    handle = await openPinnedDirectory(directory, target);
+    const descriptorRoot = await pinnedDescriptorRoot(handle, directory, target);
+    await verifyPinnedQuarantineCase({
+      context,
+      handle,
+      directory,
+      descriptorRoot,
+      target,
+      caseId,
+      expectedMode: QUARANTINE_DIRECTORY_MODE,
+      expectedBytes: bytes,
+      expectedSha256: sha256
     });
-    const payload = await readSecureQuarantineFile({
-      context, directory, filePath: payloadPath, target
-    });
-    if (
-      !identity.equals(expectedIdentity) ||
-      !payload.equals(bytes) ||
-      hashBytes(payload) !== sha256
-    ) {
-      throw quarantineConflict(target);
-    }
-    const fingerprint = entries.find((entry) => entry.name === 'fingerprint.json');
-    if (fingerprint) {
-      await readSecureQuarantineFile({
-        context,
-        directory,
-        filePath: path.join(target, 'fingerprint.json'),
-        target
-      });
-    }
   } catch (error) {
     if (error instanceof TrainingDataError && error.code === 'QUARANTINE_CONFLICT') {
       throw error;
     }
     throw quarantineConflict(target, error);
+  } finally {
+    await handle?.close();
   }
 }
 
-async function readSecureQuarantineFile({ context, directory, filePath, target }) {
+async function verifyPinnedQuarantineCase({
+  context,
+  handle,
+  directory,
+  descriptorRoot,
+  target,
+  caseId,
+  expectedMode,
+  expectedBytes,
+  expectedSha256,
+  expectedFingerprint,
+  requireFingerprint = false
+}) {
   await assertContext(context);
-  await assertSameDirectory(directory, target);
-  const file = await readRegularFile(filePath, {
-    nonRegularCode: 'QUARANTINE_CONFLICT',
-    symlinkCode: 'QUARANTINE_CONFLICT'
+  await assertPinnedDirectoryHandle(handle, directory, expectedMode, target);
+  const entries = await fs.readdir(descriptorRoot, { withFileTypes: true });
+  const names = new Set(entries.map((entry) => entry.name));
+  const allowed = new Set(['identity.json', 'payload', 'fingerprint.json']);
+  if (
+    entries.length < 2 || entries.length > 3 ||
+    entries.some((entry) => !allowed.has(entry.name) || !entry.isFile() || entry.isSymbolicLink()) ||
+    !names.has('identity.json') || !names.has('payload') ||
+    (requireFingerprint && !names.has('fingerprint.json'))
+  ) {
+    throw quarantineConflict(target);
+  }
+  const identity = await readPinnedReadOnlyFile({
+    descriptorRoot,
+    name: 'identity.json',
+    target
   });
-  if ((file.metadata.mode & 0o777) !== READ_ONLY_MODE) throw quarantineConflict(target);
-  await assertContext(context);
-  await assertSameDirectory(directory, target);
-  await assertSameFile(filePath, file.metadata, target);
+  const payload = await readPinnedReadOnlyFile({
+    descriptorRoot,
+    name: 'payload',
+    target,
+    maxBytes: RESIDENTIAL_INTAKE_LIMITS.maxRawBytes
+  });
+  const identityValue = parseCanonicalJson(identity, target);
+  const identitySha256 = identityValue?.sha256;
+  const identitySize = identityValue?.byte_size;
+  let derivedCaseId;
+  try {
+    derivedCaseId = caseIdFromSha256(identitySha256);
+  } catch {
+    throw quarantineConflict(target);
+  }
+  if (
+    !/^[a-f0-9]{64}$/u.test(identitySha256 || '') ||
+    derivedCaseId !== caseId ||
+    !Number.isInteger(identitySize) || identitySize !== payload.length ||
+    hashBytes(payload) !== identitySha256 ||
+    !identity.equals(canonicalFileJson(quarantineIdentity({
+      caseId,
+      sha256: identitySha256,
+      byteSize: identitySize
+    }))) ||
+    (expectedBytes !== undefined && !payload.equals(expectedBytes)) ||
+    (expectedSha256 !== undefined && identitySha256 !== expectedSha256)
+  ) {
+    throw quarantineConflict(target);
+  }
+  let fingerprint = null;
+  if (names.has('fingerprint.json')) {
+    fingerprint = await readPinnedReadOnlyFile({
+      descriptorRoot,
+      name: 'fingerprint.json',
+      target
+    });
+    parseCanonicalJson(fingerprint, target);
+    if (expectedFingerprint !== undefined && !fingerprint.equals(expectedFingerprint)) {
+      throw quarantineConflict(target);
+    }
+  }
+  return Object.freeze({ fingerprint });
+}
+
+async function pinnedDescriptorRoot(handle, directory, target) {
+  const descriptorRoot = `/proc/self/fd/${handle.fd}`;
+  try {
+    const metadata = await fs.stat(descriptorRoot);
+    if (
+      !metadata.isDirectory() ||
+      metadata.dev !== directory.dev || metadata.ino !== directory.ino
+    ) {
+      throw quarantineConflict(target);
+    }
+    return descriptorRoot;
+  } catch (error) {
+    if (error instanceof TrainingDataError) throw error;
+    throw quarantineConflict(target, error);
+  }
+}
+
+async function readPinnedReadOnlyFile({
+  descriptorRoot,
+  name,
+  target,
+  maxBytes
+}) {
+  const file = await readRegularFile(path.join(descriptorRoot, name), {
+    nonRegularCode: 'QUARANTINE_CONFLICT',
+    symlinkCode: 'QUARANTINE_CONFLICT',
+    overflowCode: 'QUARANTINE_CONFLICT',
+    maxBytes
+  });
+  if ((file.metadata.mode & 0o777) !== READ_ONLY_MODE) {
+    throw quarantineConflict(target);
+  }
   return file.bytes;
+}
+
+async function writePinnedReadOnlyJson({ descriptorRoot, name, bytes, target }) {
+  const filePath = path.join(descriptorRoot, name);
+  const handle = await fs.open(
+    filePath,
+    FS_CONSTANTS.O_WRONLY |
+      FS_CONSTANTS.O_CREAT |
+      FS_CONSTANTS.O_EXCL |
+      FS_CONSTANTS.O_NOFOLLOW,
+    READ_ONLY_MODE
+  );
+  try {
+    await handle.writeFile(bytes);
+    await handle.sync();
+    const metadata = await handle.stat();
+    if (!metadata.isFile() || (metadata.mode & 0o777) !== READ_ONLY_MODE) {
+      throw quarantineConflict(target);
+    }
+  } catch (error) {
+    if (error instanceof TrainingDataError) throw error;
+    throw quarantineConflict(target, error);
+  } finally {
+    await handle.close();
+  }
+}
+
+function parseCanonicalJson(bytes, target) {
+  try {
+    const value = JSON.parse(bytes.toString('utf8'));
+    if (!bytes.equals(canonicalFileJson(value))) throw quarantineConflict(target);
+    return value;
+  } catch (error) {
+    if (error instanceof TrainingDataError) throw error;
+    throw quarantineConflict(target, error);
+  }
 }
 
 async function readRegularFile(filePath, {

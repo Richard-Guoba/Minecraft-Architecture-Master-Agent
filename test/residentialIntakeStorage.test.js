@@ -11,7 +11,8 @@ import {
   caseIdFromSha256,
   quarantineArtifact,
   readCandidateBytes,
-  writeJsonOnceOrVerify
+  writeJsonOnceOrVerify,
+  writeQuarantineFingerprint
 } from '../src/training/residential/intake/index.js';
 
 async function fixture(t) {
@@ -151,6 +152,144 @@ test('quarantine leaves an existing abandoned temporary sibling untouched', asyn
   await fs.mkdir(abandoned, { mode: 0o500 });
   await quarantineArtifact({ root, projectRoot, bytes, sha256: sha256(bytes) });
   assert.equal((await fs.lstat(abandoned)).isDirectory(), true);
+});
+
+test('fingerprint publication validates the complete pinned quarantine case', async (t) => {
+  const { root, projectRoot } = await fixture(t);
+  const bytes = Buffer.from('fingerprint integrity');
+  const exactSha256 = sha256(bytes);
+  const quarantined = await quarantineArtifact({
+    root,
+    projectRoot,
+    bytes,
+    sha256: exactSha256
+  });
+  const fingerprint = { version: 'fixture-v1', value: 'abc' };
+  assert.equal(await writeQuarantineFingerprint({
+    root,
+    projectRoot,
+    caseId: quarantined.case_id,
+    fingerprint
+  }), 'created');
+  assert.equal((await fs.stat(quarantined.directory)).mode & 0o777, 0o500);
+  assert.equal(
+    (await fs.stat(path.join(quarantined.directory, 'fingerprint.json'))).mode & 0o777,
+    0o400
+  );
+
+  await fs.chmod(quarantined.directory, 0o700);
+  await fs.chmod(path.join(quarantined.directory, 'fingerprint.json'), 0o600);
+  await fs.chmod(quarantined.directory, 0o500);
+  await assert.rejects(
+    writeQuarantineFingerprint({
+      root,
+      projectRoot,
+      caseId: quarantined.case_id,
+      fingerprint
+    }),
+    /QUARANTINE_CONFLICT/u
+  );
+});
+
+test('fingerprint publication rejects corrupt identity, payload, and extra entries', async (t) => {
+  const { root, projectRoot } = await fixture(t);
+  const bytes = Buffer.from('fingerprint corruption');
+  const exactSha256 = sha256(bytes);
+  const quarantined = await quarantineArtifact({
+    root,
+    projectRoot,
+    bytes,
+    sha256: exactSha256
+  });
+  await fs.chmod(quarantined.directory, 0o700);
+  await fs.writeFile(path.join(quarantined.directory, 'extra'), 'unsafe');
+  await fs.chmod(quarantined.directory, 0o500);
+  await assert.rejects(
+    writeQuarantineFingerprint({
+      root,
+      projectRoot,
+      caseId: quarantined.case_id,
+      fingerprint: { version: 'fixture-v1' }
+    }),
+    /QUARANTINE_CONFLICT/u
+  );
+});
+
+test('fingerprint publication rejects a corrupt canonical identity', async (t) => {
+  const { root, projectRoot } = await fixture(t);
+  const bytes = Buffer.from('fingerprint identity corruption');
+  const quarantined = await quarantineArtifact({
+    root,
+    projectRoot,
+    bytes,
+    sha256: sha256(bytes)
+  });
+  await fs.chmod(quarantined.directory, 0o700);
+  const identityPath = path.join(quarantined.directory, 'identity.json');
+  await fs.chmod(identityPath, 0o600);
+  await fs.writeFile(identityPath, '{"case_id":"forged"}\n');
+  await fs.chmod(quarantined.directory, 0o500);
+  await assert.rejects(
+    writeQuarantineFingerprint({
+      root,
+      projectRoot,
+      caseId: quarantined.case_id,
+      fingerprint: { version: 'fixture-v1' }
+    }),
+    /QUARANTINE_CONFLICT/u
+  );
+});
+
+test('fingerprint publication rejects a corrupt payload', async (t) => {
+  const { root, projectRoot } = await fixture(t);
+  const bytes = Buffer.from('fingerprint payload corruption');
+  const quarantined = await quarantineArtifact({
+    root,
+    projectRoot,
+    bytes,
+    sha256: sha256(bytes)
+  });
+  await fs.chmod(quarantined.directory, 0o700);
+  const payloadPath = path.join(quarantined.directory, 'payload');
+  await fs.chmod(payloadPath, 0o600);
+  await fs.writeFile(payloadPath, 'forged payload');
+  await fs.chmod(quarantined.directory, 0o500);
+  await assert.rejects(
+    writeQuarantineFingerprint({
+      root,
+      projectRoot,
+      caseId: quarantined.case_id,
+      fingerprint: { version: 'fixture-v1' }
+    }),
+    /QUARANTINE_CONFLICT/u
+  );
+});
+
+test('fingerprint publication rejects a swapped case-path symlink', async (t) => {
+  const { root, projectRoot } = await fixture(t);
+  const bytes = Buffer.from('fingerprint swapped target');
+  const exactSha256 = sha256(bytes);
+  const quarantined = await quarantineArtifact({
+    root,
+    projectRoot,
+    bytes,
+    sha256: exactSha256
+  });
+  const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'r2-fingerprint-outside-'));
+  t.after(() => removeFixture(outside));
+  const moved = path.join(root, 'quarantine', `${quarantined.case_id}-moved`);
+  await fs.rename(quarantined.directory, moved);
+  await fs.symlink(outside, quarantined.directory);
+  await assert.rejects(
+    writeQuarantineFingerprint({
+      root,
+      projectRoot,
+      caseId: quarantined.case_id,
+      fingerprint: { version: 'fixture-v1' }
+    }),
+    /QUARANTINE_CONFLICT/u
+  );
+  assert.equal((await fs.readdir(outside)).length, 0);
 });
 
 test('candidate reads reject symlinks and raw-byte overflow', async (t) => {

@@ -169,6 +169,35 @@ test('a completed batch ID cannot be reused with changed manifest content', asyn
   );
 });
 
+test('same-batch interruption recovers the immutable profile outcome without a new clock call', async (t) => {
+  const local = await fixture(t);
+  await writeBatchFixture({
+    ...local,
+    batchId: '2026-07-24-fixture-001',
+    houseBytes: classicSchematic(),
+    otherBytes: classicSchematic({ blockId: 5 })
+  });
+  const first = await intakeResidentialBatch({
+    ...local,
+    batchId: '2026-07-24-fixture-001',
+    clock: () => new Date('2026-07-24T14:00:00.000Z')
+  });
+  const reportPath = path.join(
+    local.root,
+    'reports',
+    'intake-2026-07-24-fixture-001.json'
+  );
+  const before = await fs.readFile(reportPath);
+  await fs.rm(reportPath);
+  const recovered = await intakeResidentialBatch({
+    ...local,
+    batchId: '2026-07-24-fixture-001',
+    clock: () => { throw new Error('clock must not run during recovery'); }
+  });
+  assert.deepEqual(recovered, first);
+  assert.deepEqual(await fs.readFile(reportPath), before);
+});
+
 test('a prior unsupported observation prevents a later duplicate from fabricating a profile', async (t) => {
   const local = await fixture(t);
   await writeBatchFixture({

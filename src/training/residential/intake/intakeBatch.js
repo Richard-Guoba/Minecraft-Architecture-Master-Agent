@@ -12,6 +12,7 @@ import {
 import { assertId } from '../contracts/validation.js';
 import { inventorySourceBatch } from './batch.js';
 import { supportedResidentialFormat, parseResidentialArtifact } from './artifactParser.js';
+import { canonicalJson } from './canonicalJson.js';
 import { buildSourceProfile } from './profileBuilder.js';
 import {
   quarantineArtifact,
@@ -182,6 +183,18 @@ async function intakeCandidate({
         quarantine.case_id
       );
     }
+    if (existing.batch_id === manifest.batch_id) {
+      return recoverSameBatchProfile({
+        base,
+        common,
+        profileFile,
+        profile: existing,
+        manifest,
+        candidate: candidate.submitted,
+        artifact,
+        caseId: quarantine.case_id
+      });
+    }
     return candidateOutcome(base, {
       ...common,
       source_profile_file: profileFile,
@@ -214,6 +227,74 @@ async function intakeCandidate({
     reason: candidate.submitted.lane === 'houses'
       ? 'residential_candidate_requires_review'
       : 'non_residential_reference_only'
+  });
+}
+
+function recoverSameBatchProfile({
+  base,
+  common,
+  profileFile,
+  profile,
+  manifest,
+  candidate,
+  artifact,
+  caseId
+}) {
+  const deferred = candidate.lane === 'other-architecture';
+  const expectedStatus = deferred ? 'deferred' : 'parsed';
+  const expectedSteps = [
+    ['quarantine', null, 'quarantined', 'immutable source recorded'],
+    ['parse', 'quarantined', 'parsed', 'bounded source parsed'],
+    ...(deferred
+      ? [['defer_reference', 'parsed', 'deferred', 'non_residential_reference_only']]
+      : [])
+  ];
+  const matches = (
+    profile.case_id === caseId &&
+    profile.batch_id === manifest.batch_id &&
+    profile.title === candidate.title &&
+    canonicalJson(profile.origin) === canonicalJson(candidate.origin) &&
+    profile.artifact.original_filename === candidate.relative_path.split('/').at(-1) &&
+    profile.artifact.format === artifact.format &&
+    profile.artifact.byte_size === artifact.byte_size &&
+    profile.artifact.sha256 === artifact.exact_sha256 &&
+    profile.lineage.source_project === manifest.source_project &&
+    profile.lineage.asset_family ===
+      `family-${artifact.structural_fingerprint.yaw_canonical_sha256.slice(0, 24)}` &&
+    canonicalJson(profile.measurements.occupied_bounds) ===
+      canonicalJson(artifact.occupied_bounds) &&
+    profile.fingerprints.exact_sha256 === artifact.exact_sha256 &&
+    profile.fingerprints.structural_sha256 ===
+      artifact.structural_fingerprint.yaw_canonical_sha256 &&
+    canonicalJson(profile.evidence) === canonicalJson({
+      complete_residence: 'unknown',
+      furnished: 'unknown',
+      survival_core: 'unknown',
+      supported_content: 'unknown'
+    }) &&
+    profile.status === expectedStatus &&
+    profile.decisions.length === expectedSteps.length &&
+    profile.decisions.every((decision, index) => (
+      decision.action === expectedSteps[index][0] &&
+      decision.from_status === expectedSteps[index][1] &&
+      decision.to_status === expectedSteps[index][2] &&
+      decision.reason === expectedSteps[index][3]
+    ))
+  );
+  if (!matches) {
+    failContract(
+      'SOURCE_PROFILE_BATCH_RECOVERY_CONFLICT',
+      'SourceProfile.case_id',
+      caseId
+    );
+  }
+  return candidateOutcome(base, {
+    ...common,
+    source_profile_file: profileFile,
+    outcome: expectedStatus,
+    reason: deferred
+      ? 'non_residential_reference_only'
+      : 'residential_candidate_requires_review'
   });
 }
 
