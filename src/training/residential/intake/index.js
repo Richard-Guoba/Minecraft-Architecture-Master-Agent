@@ -20,3 +20,4 @@ export {
 } from './artifactParser.js';
 export { buildSourceProfile } from './profileBuilder.js';
 export { intakeResidentialBatch } from './intakeBatch.js';
+export { auditLegacyTemplates } from './legacyAudit.js';
