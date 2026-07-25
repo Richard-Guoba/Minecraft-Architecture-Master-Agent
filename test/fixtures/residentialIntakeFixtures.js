@@ -38,7 +38,8 @@ export function spongeSchematic({
   height = 1,
   length = 1,
   palette = { 'minecraft:oak_planks': 0, 'minecraft:air': 1 },
-  blockData = [0, 1]
+  blockData = [0, 1],
+  encodedBlockData = undefined
 } = {}) {
   return encodeNbtRoot({
     Width: dimension(width),
@@ -47,7 +48,9 @@ export function spongeSchematic({
     Palette: compound(Object.fromEntries(
       Object.entries(palette).map(([name, value]) => [name, int(value)])
     )),
-    BlockData: byteArray(Buffer.from(encodeVarints(blockData)))
+    BlockData: byteArray(Buffer.from(
+      encodedBlockData === undefined ? encodeVarints(blockData) : encodedBlockData
+    ))
   });
 }
 

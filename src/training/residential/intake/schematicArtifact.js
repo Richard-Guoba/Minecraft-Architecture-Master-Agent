@@ -269,19 +269,24 @@ function decodeVarints(bytes, expected, sourceId) {
   let offset = 0;
   for (let index = 0; index < expected; index += 1) {
     let value = 0;
-    let shift = 0;
     let terminated = false;
-    while (offset < bytes.length && shift <= 28) {
+    for (let byteIndex = 0; byteIndex < 5 && offset < bytes.length; byteIndex += 1) {
       const byte = bytes[offset++];
-      value |= (byte & 0x7f) << shift;
+      if (byteIndex === 4 && (byte & 0xf0) !== 0) {
+        fail('SCHEMATIC_BLOCK_DATA_INVALID', sourceId);
+      }
+      const payload = byte & 0x7f;
+      value += payload * (2 ** (byteIndex * 7));
       if ((byte & 0x80) === 0) {
+        if (byteIndex > 0 && payload === 0) {
+          fail('SCHEMATIC_BLOCK_DATA_INVALID', sourceId);
+        }
         terminated = true;
         break;
       }
-      shift += 7;
     }
     if (!terminated) fail('SCHEMATIC_BLOCK_DATA_INVALID', sourceId);
-    values[index] = value >>> 0;
+    values[index] = value;
   }
   if (offset !== bytes.length) fail('SCHEMATIC_BLOCK_DATA_INVALID', sourceId);
   return values;

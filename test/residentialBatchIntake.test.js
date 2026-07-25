@@ -586,6 +586,306 @@ test('a prior unsupported observation prevents a later duplicate from fabricatin
   assert.equal(duplicate.source_profile_file, null);
 });
 
+test('cross-batch pre-profile outcomes take exact-duplicate precedence', async (t) => {
+  const cases = [
+    {
+      name: 'malformed',
+      filename: 'malformed.schematic',
+      bytes: Buffer.from('not an NBT document'),
+      first: ['rejected', 'malformed_or_unsafe_source']
+    },
+    {
+      name: 'parser limit',
+      filename: 'parser-limit.schematic',
+      bytes: classicSchematic({
+        width: 4097,
+        height: 4097,
+        length: 1,
+        blocks: [1]
+      }),
+      first: ['deferred', 'parser_limit']
+    },
+    {
+      name: 'occupied extent',
+      filename: 'occupied-extent.schematic',
+      bytes: classicSchematic({
+        width: 65,
+        height: 1,
+        length: 1,
+        blocks: [1, ...Array(63).fill(0), 1]
+      }),
+      first: ['deferred', 'occupied_bounds_exceed_64']
+    }
+  ];
+  for (const [index, item] of cases.entries()) {
+    await t.test(item.name, async (t) => {
+      const local = await fixture(t);
+      const firstBatchId = `2026-07-24-cross-batch-${index}01`;
+      await initializeSourceBatch({
+        ...local,
+        batchId: firstBatchId,
+        sourceProject: 'fixture-project'
+      });
+      await writeBatchFixture({
+        ...local,
+        batchId: firstBatchId,
+        houseFilename: item.filename,
+        houseBytes: item.bytes
+      });
+      const firstReport = await intakeResidentialBatch({
+        ...local,
+        batchId: firstBatchId
+      });
+      const first = firstReport.candidates.find(
+        (candidate) => candidate.submitted.relative_path === `houses/${item.filename}`
+      );
+      assert.deepEqual([first.outcome, first.reason], item.first, item.name);
+
+      const secondBatchId = `2026-07-24-cross-batch-${index}02`;
+      await initializeSourceBatch({
+        ...local,
+        batchId: secondBatchId,
+        sourceProject: 'fixture-project'
+      });
+      await writeBatchFixture({
+        ...local,
+        batchId: secondBatchId,
+        houseFilename: item.filename,
+        houseBytes: item.bytes
+      });
+      const secondReport = await intakeResidentialBatch({
+        ...local,
+        batchId: secondBatchId
+      });
+      const duplicate = secondReport.candidates.find(
+        (candidate) => candidate.submitted.relative_path === `houses/${item.filename}`
+      );
+      assert.deepEqual(
+        [
+          duplicate.outcome,
+          duplicate.reason,
+          duplicate.case_id,
+          duplicate.source_profile_file
+        ],
+        ['duplicate', 'exact_duplicate', first.case_id, null],
+        item.name
+      );
+    });
+  }
+});
+
+test('cross-batch exact duplicates preserve an existing source profile path', async (t) => {
+  const local = await fixture(t);
+  const firstBatchId = '2026-07-24-profile-source-001';
+  await initializeSourceBatch({
+    ...local,
+    batchId: firstBatchId,
+    sourceProject: 'fixture-project'
+  });
+  await writeBatchFixture({ ...local, batchId: firstBatchId });
+  const firstReport = await intakeResidentialBatch({
+    ...local,
+    batchId: firstBatchId
+  });
+  const first = firstReport.candidates.find(
+    (candidate) => candidate.submitted.lane === 'houses'
+  );
+
+  const secondBatchId = '2026-07-24-profile-source-002';
+  await initializeSourceBatch({
+    ...local,
+    batchId: secondBatchId,
+    sourceProject: 'fixture-project'
+  });
+  await writeBatchFixture({ ...local, batchId: secondBatchId });
+  const secondReport = await intakeResidentialBatch({
+    ...local,
+    batchId: secondBatchId
+  });
+  const duplicate = secondReport.candidates.find(
+    (candidate) => candidate.submitted.lane === 'houses'
+  );
+  assert.deepEqual(
+    [duplicate.outcome, duplicate.reason, duplicate.case_id],
+    ['duplicate', 'exact_duplicate', first.case_id]
+  );
+  assert.equal(duplicate.source_profile_file, first.source_profile_file);
+  await assert.doesNotReject(fs.access(path.join(
+    local.root,
+    ...duplicate.source_profile_file.split('/')
+  )));
+});
+
+test('cross-batch exact duplicates validate an existing source profile', async (t) => {
+  const local = await fixture(t);
+  const firstBatchId = '2026-07-24-profile-validation-001';
+  await initializeSourceBatch({
+    ...local,
+    batchId: firstBatchId,
+    sourceProject: 'fixture-project'
+  });
+  await writeBatchFixture({ ...local, batchId: firstBatchId });
+  const firstReport = await intakeResidentialBatch({
+    ...local,
+    batchId: firstBatchId
+  });
+  const first = firstReport.candidates.find(
+    (candidate) => candidate.submitted.lane === 'houses'
+  );
+  const profilePath = path.join(local.root, ...first.source_profile_file.split('/'));
+  await fs.chmod(profilePath, 0o600);
+  await fs.writeFile(profilePath, '{');
+
+  const secondBatchId = '2026-07-24-profile-validation-002';
+  await initializeSourceBatch({
+    ...local,
+    batchId: secondBatchId,
+    sourceProject: 'fixture-project'
+  });
+  await writeBatchFixture({ ...local, batchId: secondBatchId });
+  await assert.rejects(
+    intakeResidentialBatch({ ...local, batchId: secondBatchId }),
+    (error) => error.code === 'SOURCE_PROFILE_FILE_INVALID'
+  );
+});
+
+test('cross-batch duplicate metadata prefers a later existing profile over an earlier null', async (t) => {
+  const local = await fixture(t);
+  const bytes = classicSchematic();
+  const nullBatchId = 'a-profile-history-null';
+  await initializeSourceBatch({
+    ...local,
+    batchId: nullBatchId,
+    sourceProject: 'fixture-project'
+  });
+  await writeBatchFixture({
+    ...local,
+    batchId: nullBatchId,
+    houseFilename: 'fixture.litematic',
+    houseBytes: bytes
+  });
+  const nullReport = await intakeResidentialBatch({ ...local, batchId: nullBatchId });
+  const nullCandidate = nullReport.candidates.find(
+    (candidate) => candidate.submitted.lane === 'houses'
+  );
+  assert.equal(nullCandidate.source_profile_file, null);
+  const nullReportPath = path.join(local.root, 'reports', `intake-${nullBatchId}.json`);
+  const heldReportPath = path.join(local.projectRoot, `intake-${nullBatchId}.json`);
+  await fs.rename(nullReportPath, heldReportPath);
+
+  const profileBatchId = 'z-profile-history-profile';
+  await initializeSourceBatch({
+    ...local,
+    batchId: profileBatchId,
+    sourceProject: 'fixture-project'
+  });
+  await writeBatchFixture({
+    ...local,
+    batchId: profileBatchId,
+    houseBytes: bytes
+  });
+  const profileReport = await intakeResidentialBatch({
+    ...local,
+    batchId: profileBatchId
+  });
+  const profiled = profileReport.candidates.find(
+    (candidate) => candidate.submitted.lane === 'houses'
+  );
+  await fs.rename(heldReportPath, nullReportPath);
+
+  const duplicateBatchId = 'zz-profile-history-duplicate';
+  await initializeSourceBatch({
+    ...local,
+    batchId: duplicateBatchId,
+    sourceProject: 'fixture-project'
+  });
+  await writeBatchFixture({ ...local, batchId: duplicateBatchId, houseBytes: bytes });
+  const duplicateReport = await intakeResidentialBatch({
+    ...local,
+    batchId: duplicateBatchId
+  });
+  const duplicate = duplicateReport.candidates.find(
+    (candidate) => candidate.submitted.lane === 'houses'
+  );
+  assert.equal(duplicate.source_profile_file, profiled.source_profile_file);
+});
+
+test('cross-batch duplicate metadata treats a missing prior profile as null', async (t) => {
+  const local = await fixture(t);
+  const firstBatchId = 'profile-missing-source';
+  await initializeSourceBatch({
+    ...local,
+    batchId: firstBatchId,
+    sourceProject: 'fixture-project'
+  });
+  await writeBatchFixture({ ...local, batchId: firstBatchId });
+  const firstReport = await intakeResidentialBatch({ ...local, batchId: firstBatchId });
+  const first = firstReport.candidates.find(
+    (candidate) => candidate.submitted.lane === 'houses'
+  );
+  await fs.rm(path.join(local.root, ...first.source_profile_file.split('/')));
+
+  const secondBatchId = 'profile-missing-duplicate';
+  await initializeSourceBatch({
+    ...local,
+    batchId: secondBatchId,
+    sourceProject: 'fixture-project'
+  });
+  await writeBatchFixture({ ...local, batchId: secondBatchId });
+  const secondReport = await intakeResidentialBatch({ ...local, batchId: secondBatchId });
+  const duplicate = secondReport.candidates.find(
+    (candidate) => candidate.submitted.lane === 'houses'
+  );
+  assert.deepEqual(
+    [duplicate.outcome, duplicate.reason, duplicate.source_profile_file],
+    ['duplicate', 'exact_duplicate', null]
+  );
+});
+
+for (const profileMutation of ['symlink', 'mismatched identity']) {
+  test(`cross-batch exact duplicates reject a ${profileMutation} profile`, async (t) => {
+    const local = await fixture(t);
+    const firstBatchId = `profile-${profileMutation.replaceAll(' ', '-')}-source`;
+    await initializeSourceBatch({
+      ...local,
+      batchId: firstBatchId,
+      sourceProject: 'fixture-project'
+    });
+    await writeBatchFixture({ ...local, batchId: firstBatchId });
+    const firstReport = await intakeResidentialBatch({ ...local, batchId: firstBatchId });
+    const house = firstReport.candidates.find(
+      (candidate) => candidate.submitted.lane === 'houses'
+    );
+    const other = firstReport.candidates.find(
+      (candidate) => candidate.submitted.lane === 'other-architecture'
+    );
+    const housePath = path.join(local.root, ...house.source_profile_file.split('/'));
+    const otherPath = path.join(local.root, ...other.source_profile_file.split('/'));
+    await fs.rm(housePath);
+    if (profileMutation === 'symlink') {
+      await fs.symlink(path.basename(otherPath), housePath);
+    } else {
+      await fs.copyFile(otherPath, housePath);
+    }
+
+    const secondBatchId = `profile-${profileMutation.replaceAll(' ', '-')}-duplicate`;
+    await initializeSourceBatch({
+      ...local,
+      batchId: secondBatchId,
+      sourceProject: 'fixture-project'
+    });
+    await writeBatchFixture({ ...local, batchId: secondBatchId });
+    await assert.rejects(
+      intakeResidentialBatch({ ...local, batchId: secondBatchId }),
+      (error) => error.code === (
+        profileMutation === 'symlink'
+          ? 'SOURCE_PROFILE_FILE_INVALID'
+          : 'SOURCE_PROFILE_ARTIFACT_CONFLICT'
+      )
+    );
+  });
+}
+
 test('parser bounds limits defer a quarantined artifact and malformed input is rejected', async (t) => {
   const local = await fixture(t);
   await writeBatchFixture({

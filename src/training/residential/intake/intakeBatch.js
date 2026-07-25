@@ -44,7 +44,7 @@ export async function intakeResidentialBatch({
     return completed;
   }
 
-  const observedHashes = await priorArtifactHashes({
+  const priorObservations = await priorArtifactObservations({
     root,
     reportPath
   });
@@ -58,7 +58,7 @@ export async function intakeResidentialBatch({
       candidate,
       actor,
       clock,
-      observedHashes,
+      priorObservations,
       currentRunObservations
     });
     candidates.push(outcome);
@@ -93,7 +93,7 @@ async function intakeCandidate({
   candidate,
   actor,
   clock,
-  observedHashes,
+  priorObservations,
   currentRunObservations
 }) {
   const base = {
@@ -133,15 +133,22 @@ async function intakeCandidate({
       reason: 'exact_duplicate'
     });
   }
+  const priorObservation = priorObservations.get(sha256);
+  if (priorObservation) {
+    const sourceProfileFile = await priorSourceProfileFile({
+      root,
+      observation: priorObservation,
+      sha256
+    });
+    return candidateOutcome(base, {
+      case_id: priorObservation.case_id,
+      artifact_sha256: sha256,
+      source_profile_file: sourceProfileFile,
+      outcome: 'duplicate',
+      reason: 'exact_duplicate'
+    });
+  }
   if (!supportedResidentialFormat(candidate.relative_path)) {
-    if (observedHashes.has(sha256)) {
-      return candidateOutcome(base, {
-        ...common,
-        source_profile_file: null,
-        outcome: 'duplicate',
-        reason: 'exact_duplicate'
-      });
-    }
     return candidateOutcome(base, {
       ...common,
       source_profile_file: null,
@@ -215,15 +222,6 @@ async function intakeCandidate({
       reason: 'exact_duplicate'
     });
   }
-  if (observedHashes.has(sha256)) {
-    return candidateOutcome(base, {
-      ...common,
-      source_profile_file: null,
-      outcome: 'duplicate',
-      reason: 'exact_duplicate'
-    });
-  }
-
   const profile = buildSourceProfile({
     manifest,
     candidate: candidate.submitted,
@@ -406,8 +404,27 @@ async function readSourceProfile(profilePath) {
   return validateSourceProfile(raw);
 }
 
-async function priorArtifactHashes({ root, reportPath }) {
-  const hashes = new Set();
+async function priorSourceProfileFile({ root, observation, sha256 }) {
+  const profileFile = observation.source_profile_file;
+  if (profileFile === null) return null;
+  const profilePath = path.join(root, ...profileFile.split('/'));
+  const profile = await readSourceProfile(profilePath);
+  if (profile === null) return null;
+  if (
+    profile.case_id !== observation.case_id
+    || profile.fingerprints.exact_sha256 !== sha256
+  ) {
+    failContract(
+      'SOURCE_PROFILE_ARTIFACT_CONFLICT',
+      'SourceProfile.case_id',
+      observation.case_id
+    );
+  }
+  return profileFile;
+}
+
+async function priorArtifactObservations({ root, reportPath }) {
+  const observations = new Map();
   const directory = path.join(root, 'reports');
   const entries = await fs.readdir(directory, { withFileTypes: true });
   entries.sort((left, right) => left.name.localeCompare(right.name));
@@ -422,10 +439,25 @@ async function priorArtifactHashes({ root, reportPath }) {
     }
     const report = await readIntakeReport(candidatePath);
     for (const candidate of report.candidates) {
-      if (candidate.artifact_sha256 !== null) hashes.add(candidate.artifact_sha256);
+      const existing = observations.get(candidate.artifact_sha256);
+      if (
+        candidate.artifact_sha256 !== null
+        && (
+          existing === undefined
+          || (
+            existing.source_profile_file === null
+            && candidate.source_profile_file !== null
+          )
+        )
+      ) {
+        observations.set(candidate.artifact_sha256, Object.freeze({
+          case_id: candidate.case_id,
+          source_profile_file: candidate.source_profile_file
+        }));
+      }
     }
   }
-  return hashes;
+  return observations;
 }
 
 function parserOutcome(error) {

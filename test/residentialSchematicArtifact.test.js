@@ -25,6 +25,72 @@ test('residential adapter decodes bounded legacy and Sponge schematics', () => {
   assert.equal(sponge.blockAtIndex(1).air, true);
 });
 
+for (const { name, encodedBlockData } of [
+  {
+    name: 'overflowing',
+    encodedBlockData: [0x80, 0x80, 0x80, 0x80, 0x10]
+  },
+  {
+    name: 'overlong',
+    encodedBlockData: [0x80, 0x80, 0x80, 0x80, 0x80, 0x00]
+  },
+  {
+    name: 'noncanonical',
+    encodedBlockData: [0x80, 0x00]
+  }
+]) {
+  test(`Sponge block data rejects ${name} varints`, () => {
+    assert.throws(
+      () => decodeResidentialSchematic(spongeSchematic({
+        width: 1,
+        encodedBlockData
+      }), {
+        sourceId: `${name}-varint`,
+        format: 'schem'
+      }),
+      (error) => error.code === 'SCHEMATIC_BLOCK_DATA_INVALID'
+    );
+  });
+}
+
+test('Sponge block data accepts canonical varint boundaries', () => {
+  const palette = Object.fromEntries(Array.from(
+    { length: 4096 },
+    (_, index) => [`minecraft:test_${index}`, index]
+  ));
+  const schematic = decodeResidentialSchematic(spongeSchematic({
+    width: 4,
+    palette,
+    encodedBlockData: [0x00, 0x7f, 0x80, 0x01, 0xff, 0x1f]
+  }), {
+    sourceId: 'canonical-varint-boundaries',
+    format: 'schem'
+  });
+  assert.deepEqual(
+    Array.from(
+      { length: schematic.block_count },
+      (_, index) => schematic.blockAtIndex(index).canonical_state
+    ),
+    [
+      'minecraft:test_0',
+      'minecraft:test_127',
+      'minecraft:test_128',
+      'minecraft:test_4095'
+    ]
+  );
+
+  assert.throws(
+    () => decodeResidentialSchematic(spongeSchematic({
+      width: 1,
+      encodedBlockData: [0xff, 0xff, 0xff, 0xff, 0x0f]
+    }), {
+      sourceId: 'canonical-uint32-maximum',
+      format: 'schem'
+    }),
+    (error) => error.code === 'SCHEMATIC_PALETTE_INDEX_INVALID'
+  );
+});
+
 test('residential adapter decodes a bounded one-region packed-state schematic', () => {
   const region = decodeResidentialSchematic(regionSchematic(), {
     sourceId: 'fixture-region',
