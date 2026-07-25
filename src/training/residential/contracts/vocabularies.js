@@ -6,10 +6,14 @@ export const HOUSE_SCENE_SOURCE = 'residential-housescene-v1';
 export const SOURCE_PROFILE_SOURCE = 'residential-source-profile-v1';
 export const REVIEW_RECORD_SOURCE = 'residential-review-record-v1';
 export const WORKSPACE_SOURCE = 'residential-workspace-v1';
+export const SOURCE_BATCH_SOURCE = 'residential-source-batch-v1';
+export const INTAKE_REPORT_SOURCE = 'residential-intake-report-v1';
+export const LEGACY_AUDIT_REPORT_SOURCE = 'residential-legacy-audit-v1';
 export const RESIDENTIAL_MINECRAFT_VERSION = '1.21.1';
 export const RESIDENTIAL_RESOLUTION = frozen([64, 64, 64]);
 
 export const SIDES = frozen(['north', 'south', 'east', 'west']);
+export const SOURCE_LANES = frozen(['houses', 'other-architecture']);
 export const DENSITIES = frozen(['minimal', 'balanced', 'rich']);
 export const ROOM_TYPES = frozen([
   'entry',

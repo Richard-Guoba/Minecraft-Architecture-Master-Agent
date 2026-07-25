@@ -172,6 +172,119 @@ export function validHouseSpecFixture() {
 
 const HASH = 'a'.repeat(64);
 
+export function validSourceBatchManifestFixture() {
+  return {
+    source: 'residential-source-batch-v1',
+    schema_version: 1,
+    batch_id: '2026-07-24-fixture-001',
+    source_project: 'fixture-project',
+    candidates: [
+      {
+        relative_path: 'houses/warm-house.schem',
+        lane: 'houses',
+        title: 'Warm Survival House',
+        origin: {
+          url: 'https://example.invalid/warm-house',
+          author: 'Fixture Builder',
+          license_status: 'recorded',
+          license_text: 'Local training allowed.',
+          allowed_uses: ['local-analysis', 'local-training'],
+          acquired_at: '2026-07-24T12:00:00.000Z'
+        },
+        collector_note: 'Complete furnished residence.'
+      },
+      {
+        relative_path: 'other-architecture/clock-tower.schematic',
+        lane: 'other-architecture',
+        title: 'Clock Tower',
+        origin: {
+          url: 'https://example.invalid/clock-tower',
+          author: '',
+          license_status: 'unknown',
+          license_text: '',
+          allowed_uses: ['local-analysis'],
+          acquired_at: '2026-07-24T12:01:00.000Z'
+        },
+        collector_note: 'Reference-only landmark.'
+      }
+    ]
+  };
+}
+
+export function validIntakeReportFixture() {
+  const manifest = validSourceBatchManifestFixture();
+  return {
+    source: 'residential-intake-report-v1',
+    schema_version: 1,
+    operation: 'batch_intake',
+    batch_id: manifest.batch_id,
+    source_project: manifest.source_project,
+    manifest_sha256: 'd'.repeat(64),
+    summary: {
+      candidate_count: 2,
+      quarantined_count: 2,
+      parsed_count: 1,
+      deferred_count: 1,
+      rejected_count: 0,
+      duplicate_count: 0,
+      source_profile_count: 1
+    },
+    candidates: [
+      {
+        observation_id: 'observation-house-001',
+        submitted: manifest.candidates[0],
+        case_id: 'case-' + 'a'.repeat(24),
+        artifact_sha256: 'a'.repeat(64),
+        source_profile_file: 'sources/case-' + 'a'.repeat(24) + '.json',
+        outcome: 'parsed',
+        reason: 'residential_candidate_requires_review'
+      },
+      {
+        observation_id: 'observation-tower-001',
+        submitted: manifest.candidates[1],
+        case_id: 'case-' + 'b'.repeat(24),
+        artifact_sha256: 'b'.repeat(64),
+        source_profile_file: null,
+        outcome: 'deferred',
+        reason: 'occupied_bounds_exceed_64'
+      }
+    ]
+  };
+}
+
+export function validLegacyAuditReportFixture() {
+  return {
+    source: 'residential-legacy-audit-v1',
+    schema_version: 1,
+    root: 'mc_templates',
+    inventory_sha256: 'e'.repeat(64),
+    summary: {
+      candidate_count: 1,
+      house_hint_count: 1,
+      other_hint_count: 0,
+      parsed_count: 0,
+      deferred_count: 1,
+      rejected_count: 0,
+      duplicate_count: 0,
+      missing_provenance_count: 1
+    },
+    candidates: [
+      {
+        relative_path: 'House/Fixture House.schematic',
+        title: 'Fixture House',
+        folder_hint: 'House',
+        lane_hint: 'houses',
+        source_url: null,
+        artifact_sha256: 'f'.repeat(64),
+        occupied_extent: [12, 8, 10],
+        duplicate_of: null,
+        outcome: 'deferred',
+        reason: 'missing_provenance'
+      }
+    ]
+  };
+}
+
 export function validHouseSceneFixture() {
   return {
     source: 'residential-housescene-v1',

@@ -13,9 +13,13 @@ import {
 import {
   HOUSE_SPEC_SOURCE,
   HOUSE_SCENE_SOURCE,
+  INTAKE_REPORT_SOURCE,
+  LEGACY_AUDIT_REPORT_SOURCE,
   MATERIAL_ROLES,
   OBJECT_ROLES,
   RESIDENTIAL_RESOLUTION,
+  SOURCE_BATCH_SOURCE,
+  SOURCE_LANES,
   SOURCE_PROFILE_SOURCE,
   STRUCTURE_ROLES,
   SURVIVAL_BASELINE
@@ -25,7 +29,11 @@ test('residential vocabularies expose the frozen v1 contract', () => {
   assert.equal(HOUSE_SPEC_SOURCE, 'residential-housespec-v1');
   assert.equal(HOUSE_SCENE_SOURCE, 'residential-housescene-v1');
   assert.equal(SOURCE_PROFILE_SOURCE, 'residential-source-profile-v1');
+  assert.equal(SOURCE_BATCH_SOURCE, 'residential-source-batch-v1');
+  assert.equal(INTAKE_REPORT_SOURCE, 'residential-intake-report-v1');
+  assert.equal(LEGACY_AUDIT_REPORT_SOURCE, 'residential-legacy-audit-v1');
   assert.deepEqual(RESIDENTIAL_RESOLUTION, [64, 64, 64]);
+  assert.deepEqual(SOURCE_LANES, ['houses', 'other-architecture']);
   assert.ok(STRUCTURE_ROLES.includes('wall'));
   assert.ok(MATERIAL_ROLES.includes('wall_primary'));
   assert.ok(OBJECT_ROLES.includes('painting'));
@@ -45,6 +53,7 @@ test('residential vocabularies expose the frozen v1 contract', () => {
   );
   assert.ok(Object.isFrozen(STRUCTURE_ROLES));
   assert.ok(Object.isFrozen(RESIDENTIAL_RESOLUTION));
+  assert.ok(Object.isFrozen(SOURCE_LANES));
 });
 
 test('shared validation clones and deeply freezes caller data', () => {
