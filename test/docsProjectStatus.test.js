@@ -81,7 +81,12 @@ test('current-doc guard detects positive residential artifact claims without rej
     'The residential dataset has been released.',
     'The residential checkpoint is present.',
     'The dataset for the residential renderer is complete.',
-    'The checkpoint for the residential renderer is now available.'
+    'The checkpoint for the residential renderer is now available.',
+    'The residential checkpoint: available.',
+    'The dataset for the residential renderer — complete.',
+    'RESIDENTIAL DATASET, READY.',
+    'The Residential Checkpoint - AVAILABLE.',
+    'The checkpoint for the residential renderer – present.'
   ];
   const negativeClaims = [
     'No residential checkpoint exists.',
@@ -100,10 +105,12 @@ test('current-doc guard detects positive residential artifact claims without rej
 
 function hasPositiveResidentialArtifactClaim(text) {
   const subject = /\b(?:residential (?:dataset|checkpoint)|(?:dataset|checkpoint) for (?:the )?residential renderer)\b/giu;
-  const positiveCompletion = /^(?:exists|is\s+(?:now\s+)?(?:usable|ready|available|present|complete)|has been\s+(?:built|created|trained|released|produced)|was\s+(?:built|created|trained|released|produced))\b/iu;
+  const positiveCompletion = /^(?:exists|(?:usable|ready|available|present|complete)|is\s+(?:now\s+)?(?:usable|ready|available|present|complete)|has been\s+(?:built|created|trained|released|produced)|was\s+(?:built|created|trained|released|produced))\b/iu;
   for (const match of text.matchAll(subject)) {
     const before = text.slice(0, match.index);
-    const after = text.slice(match.index + match[0].length).trimStart();
+    const after = text
+      .slice(match.index + match[0].length)
+      .replace(/^[\s,:—–-]+/u, '');
     if (/\b(?:no|not)\s*$/iu.test(before)) continue;
     if (positiveCompletion.test(after)) return true;
   }
