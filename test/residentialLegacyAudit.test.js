@@ -219,6 +219,84 @@ test('legacy audit ignores metadata behind a symlinked analysis ancestor', async
   );
 });
 
+test('legacy audit ignores custom metadata behind a symlinked nested ancestor', async (t) => {
+  const local = await fixture(t);
+  const external = await fs.mkdtemp(path.join(os.tmpdir(), 'r2-legacy-nested-'));
+  t.after(() => removeFixture(external));
+  await fs.writeFile(
+    path.join(external, 'labels.jsonl'),
+    JSON.stringify({
+      file: 'House/House.schematic',
+      title: 'Nested external provenance must not be read',
+      source_url: 'https://example.invalid/nested-external'
+    }) + '\n'
+  );
+  await fs.symlink(external, path.join(local.legacyRoot, 'analysis', 'nested'));
+  const report = await auditLegacyTemplates({
+    ...local,
+    metadataFile: path.join(local.legacyRoot, 'analysis', 'nested', 'labels.jsonl')
+  });
+  const house = report.candidates.find(
+    (item) => item.relative_path === 'House/House.schematic'
+  );
+  assert.deepEqual(
+    [house.title, house.source_url, house.outcome, house.reason],
+    ['House', null, 'deferred', 'missing_provenance']
+  );
+});
+
+test('legacy audit reads confined custom metadata through regular nested directories', async (t) => {
+  const local = await fixture(t);
+  const nested = path.join(local.legacyRoot, 'analysis', 'nested');
+  const metadata = path.join(nested, 'labels.jsonl');
+  await fs.mkdir(nested);
+  await fs.writeFile(
+    metadata,
+    JSON.stringify({
+      file: 'House/House.schematic',
+      title: 'Pinned house metadata',
+      source_url: 'https://example.invalid/pinned-house'
+    }) + '\n'
+  );
+  const report = await auditLegacyTemplates({ ...local, metadataFile: metadata });
+  const house = report.candidates.find(
+    (item) => item.relative_path === 'House/House.schematic'
+  );
+  assert.deepEqual(
+    [house.title, house.source_url, house.outcome, house.reason],
+    [
+      'Pinned house metadata',
+      'https://example.invalid/pinned-house',
+      'parsed',
+      'residential_candidate_requires_review'
+    ]
+  );
+});
+
+test('legacy audit ignores a symlinked final metadata file', async (t) => {
+  const local = await fixture(t);
+  const external = path.join(local.projectRoot, 'external-labels.jsonl');
+  await fs.writeFile(
+    external,
+    JSON.stringify({
+      file: 'House/House.schematic',
+      title: 'Final symlink provenance must not be read',
+      source_url: 'https://example.invalid/final-symlink'
+    }) + '\n'
+  );
+  const metadata = path.join(local.legacyRoot, 'analysis', 'labels.generated.jsonl');
+  await fs.rm(metadata);
+  await fs.symlink(external, metadata);
+  const report = await auditLegacyTemplates(local);
+  const house = report.candidates.find(
+    (item) => item.relative_path === 'House/House.schematic'
+  );
+  assert.deepEqual(
+    [house.title, house.source_url, house.outcome, house.reason],
+    ['House', null, 'deferred', 'missing_provenance']
+  );
+});
+
 test('legacy audit fails closed on a writable quarantine lookalike', async (t) => {
   const local = await fixture(t);
   const houseBytes = await fs.readFile(

@@ -237,11 +237,11 @@ function candidateOutcome(base, outcome) {
 }
 
 async function readMetadata(metadataPath, legacyRoot) {
-  if (!await metadataPathIsSafe(legacyRoot, metadataPath)) return new Map();
-  const bytes = await readOptionalRegularFile(metadataPath);
-  if (bytes === null || !await metadataPathIsSafe(legacyRoot, metadataPath)) {
-    return new Map();
-  }
+  const relativeParts = metadataRelativeParts(legacyRoot, metadataPath);
+  const bytes = relativeParts === null
+    ? null
+    : await readPinnedMetadataFile(legacyRoot, relativeParts);
+  if (bytes === null) return new Map();
   const records = new Map();
   for (const line of bytes.toString('utf8').split(/\r?\n/u)) {
     if (line.trim() === '') continue;
@@ -273,48 +273,93 @@ async function readQuarantineHashes(root, projectRoot) {
   return hashes;
 }
 
-async function metadataPathIsSafe(legacyRoot, metadataPath) {
+function metadataRelativeParts(legacyRoot, metadataPath) {
   const relative = path.relative(legacyRoot, metadataPath);
-  const parts = relative.split(path.sep).filter(Boolean);
-  if (parts[0] !== 'analysis' || parts.length < 2) return false;
-  let current = legacyRoot;
-  const rootEntry = await safeLstat(current);
-  if (!rootEntry?.isDirectory() || rootEntry.isSymbolicLink()) return false;
-  for (const part of parts.slice(0, -1)) {
-    current = path.join(current, part);
-    const entry = await safeLstat(current);
-    if (!entry?.isDirectory() || entry.isSymbolicLink()) return false;
-  }
-  const finalEntry = await safeLstat(metadataPath);
-  return finalEntry === null || (
-    finalEntry.isFile() && !finalEntry.isSymbolicLink()
-  );
+  const normalized = path.normalize(relative);
+  if (
+    normalized === '.'
+    || normalized === '..'
+    || normalized.startsWith(`..${path.sep}`)
+    || path.isAbsolute(normalized)
+  ) return null;
+  const parts = normalized.split(path.sep);
+  if (
+    parts[0] !== 'analysis'
+    || parts.length < 2
+    || parts.some((part) => part === '' || part === '.' || part === '..')
+  ) return null;
+  return parts;
 }
 
-async function readOptionalRegularFile(filePath) {
-  let handle;
+async function readPinnedMetadataFile(legacyRoot, relativeParts) {
+  const handles = [];
+  let file;
   try {
-    handle = await fs.open(filePath, FS_CONSTANTS.O_RDONLY | FS_CONSTANTS.O_NOFOLLOW);
-    const before = await handle.stat();
+    let parent = await openPinnedMetadataDirectory(legacyRoot);
+    handles.push(parent);
+    for (const part of relativeParts.slice(0, -1)) {
+      parent = await openPinnedMetadataDirectory(part, parent);
+      handles.push(parent);
+    }
+    const descriptorRoot = await metadataDescriptorRoot(parent);
+    file = await fs.open(
+      path.join(descriptorRoot, relativeParts.at(-1)),
+      FS_CONSTANTS.O_RDONLY | FS_CONSTANTS.O_NOFOLLOW
+    );
+    const before = await file.stat();
     if (!before.isFile() || before.size > RESIDENTIAL_INTAKE_LIMITS.maxRawBytes) {
       return null;
     }
     const bytes = Buffer.alloc(before.size);
     let offset = 0;
     while (offset < bytes.length) {
-      const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, offset);
+      const { bytesRead } = await file.read(bytes, offset, bytes.length - offset, offset);
       if (bytesRead === 0) return null;
       offset += bytesRead;
     }
-    const after = await handle.stat();
-    if (after.size !== before.size) return null;
+    const after = await file.stat();
+    if (after.size !== before.size || !after.isFile()) return null;
     return bytes;
-  } catch (error) {
-    if (error?.code === 'ENOENT' || error?.code === 'ELOOP') return null;
-    throw error;
+  } catch {
+    return null;
   } finally {
-    await handle?.close();
+    await file?.close();
+    await Promise.all(handles.reverse().map((handle) => handle.close()));
   }
+}
+
+async function openPinnedMetadataDirectory(directory, parent) {
+  const directoryPath = parent === undefined
+    ? directory
+    : path.join(await metadataDescriptorRoot(parent), directory);
+  const handle = await fs.open(
+    directoryPath,
+    FS_CONSTANTS.O_RDONLY |
+      FS_CONSTANTS.O_DIRECTORY |
+      FS_CONSTANTS.O_NOFOLLOW
+  );
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isDirectory()) throw new Error('METADATA_DIRECTORY_INVALID');
+    await metadataDescriptorRoot(handle, metadata);
+    return handle;
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+}
+
+async function metadataDescriptorRoot(handle, metadata = undefined) {
+  const expected = metadata ?? await handle.stat();
+  if (!expected.isDirectory()) throw new Error('METADATA_DIRECTORY_INVALID');
+  const descriptorRoot = `/proc/self/fd/${handle.fd}`;
+  const observed = await fs.stat(descriptorRoot);
+  if (
+    !observed.isDirectory()
+    || observed.dev !== expected.dev
+    || observed.ino !== expected.ino
+  ) throw new Error('METADATA_DESCRIPTOR_INVALID');
+  return descriptorRoot;
 }
 
 function titleFor(relativePath, title) {
