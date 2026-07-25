@@ -53,3 +53,28 @@ test('residential adapter rejects bad palette data and over-budget volume', () =
     /SCHEMATIC_PALETTE_INVALID/u
   );
 });
+
+test('residential adapter rejects legacy command blocks before exposing an artifact', () => {
+  for (const blockId of [137, 210, 211]) {
+    assert.throws(
+      () => decodeResidentialSchematic(classicSchematic({ blockId }), {
+        sourceId: `legacy-command-${blockId}`,
+        format: 'schematic'
+      }),
+      /SECURITY_REVIEW_REQUIRED/u
+    );
+  }
+});
+
+test('one-region dimensions above a signed short remain valid below the volume budget', () => {
+  const volume = decodeResidentialSchematic(regionSchematic({
+    size: [32_768, 1, 1],
+    states: Array(32_768).fill(0)
+  }), {
+    sourceId: 'large-region',
+    format: 'schem'
+  });
+  assert.deepEqual(volume.declared_size, { x: 32_768, y: 1, z: 1 });
+  assert.equal(volume.block_count, 32_768);
+  assert.equal(volume.blockAtIndex(0).canonical_state, 'minecraft:stone');
+});

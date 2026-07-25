@@ -34,6 +34,7 @@ const COMMAND = new Set([
   'minecraft:chain_command_block',
   'minecraft:repeating_command_block'
 ]);
+const LEGACY_COMMAND_IDS = new Set([137, 210, 211]);
 
 export function decodeResidentialSchematic(bytes, {
   sourceId,
@@ -84,6 +85,11 @@ function legacyArtifact(root, format, sourceId, limits) {
       declared_block_count: blockCount,
       block_count: root.Blocks.length
     });
+  }
+  for (const blockId of root.Blocks) {
+    if (LEGACY_COMMAND_IDS.has(blockId)) {
+      fail('SECURITY_REVIEW_REQUIRED', sourceId, { block_id: blockId });
+    }
   }
   const records = new Map();
   const recordFor = (id) => {
@@ -169,7 +175,8 @@ function dimensions(value, sourceId, limits, lowercase = false) {
   const fields = lowercase
     ? [value.x ?? value.X ?? value.Width, value.y ?? value.Y ?? value.Height, value.z ?? value.Z ?? value.Length]
     : [value.Width, value.Height, value.Length];
-  if (!fields.every((item) => Number.isSafeInteger(item) && item > 0 && item <= 32_767)) {
+  const maxAxis = lowercase ? Number.MAX_SAFE_INTEGER : 32_767;
+  if (!fields.every((item) => Number.isSafeInteger(item) && item > 0 && item <= maxAxis)) {
     fail('SCHEMATIC_DIMENSIONS_INVALID', sourceId);
   }
   const [x, y, z] = fields;
