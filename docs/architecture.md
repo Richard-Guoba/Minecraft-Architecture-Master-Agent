@@ -63,7 +63,7 @@ The optional coarse semantic shadow interface remains the integration boundary. 
 
 ## Residential renderer foundation
 
-The approved residential renderer program will eventually learn whole-house structure and room-aware decoration from paired HouseSpec/HouseScene data. R1 establishes only versioned contracts and an ignored local workspace. It does not change production generation, activate a model, process real sources, or alter the current Stage 7 completion baseline.
+The approved residential renderer program will eventually learn whole-house structure and room-aware decoration from paired HouseSpec/HouseScene data. R1 contracts/workspace and R2 local source intake are implemented. R2 is local-only: it validates and preserves source candidates/provenance below ignored `.local/` storage, without creating a residential dataset, checkpoint, trained model, or production provider. R3 canonical extraction, annotation, datasets, models, training, and production integration are not implemented. The residential work does not change production generation, activate a model, or alter the current Stage 7 completion baseline.
 
 ## Ownership boundaries
 
