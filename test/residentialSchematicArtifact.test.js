@@ -37,6 +37,75 @@ test('residential adapter decodes a bounded one-region packed-state schematic', 
   assert.equal(Object.isFrozen(region.blockAtIndex(0)), true);
 });
 
+test('one-region signed size reverses the affected axis into normalized coordinates', () => {
+  const region = decodeResidentialSchematic(regionSchematic({
+    size: [-3, 1, 1],
+    palette: [
+      'minecraft:stone',
+      'minecraft:oak_planks',
+      'minecraft:glass'
+    ],
+    states: [0, 1, 2]
+  }), {
+    sourceId: 'negative-x-region',
+    format: 'schem'
+  });
+  assert.deepEqual(region.declared_size, { x: 3, y: 1, z: 1 });
+  assert.deepEqual(
+    Array.from(
+      { length: region.block_count },
+      (_, index) => region.blockAtIndex(index).canonical_state
+    ),
+    [
+      'minecraft:glass',
+      'minecraft:oak_planks',
+      'minecraft:stone'
+    ]
+  );
+});
+
+test('one-region signed size reverses multiple asymmetric axes', () => {
+  const palette = [
+    'minecraft:stone',
+    'minecraft:oak_planks',
+    'minecraft:glass',
+    'minecraft:dirt',
+    'minecraft:torch',
+    'minecraft:oak_stairs',
+    'minecraft:water',
+    'minecraft:chest'
+  ];
+  const region = decodeResidentialSchematic(regionSchematic({
+    size: [-2, -2, -2],
+    palette,
+    states: [0, 1, 2, 3, 4, 5, 6, 7]
+  }), {
+    sourceId: 'negative-xyz-region',
+    format: 'schem'
+  });
+  assert.deepEqual(region.declared_size, { x: 2, y: 2, z: 2 });
+  assert.deepEqual(
+    Array.from(
+      { length: region.block_count },
+      (_, index) => region.blockAtIndex(index).canonical_state
+    ),
+    [...palette].reverse()
+  );
+});
+
+test('one-region signed size still rejects a zero axis', () => {
+  assert.throws(
+    () => decodeResidentialSchematic(regionSchematic({
+      size: [2, 0, -1],
+      states: [0, 1]
+    }), {
+      sourceId: 'zero-axis-region',
+      format: 'schem'
+    }),
+    /SCHEMATIC_DIMENSIONS_INVALID/u
+  );
+});
+
 test('residential adapter rejects bad palette data and over-budget volume', () => {
   assert.throws(
     () => decodeResidentialSchematic(

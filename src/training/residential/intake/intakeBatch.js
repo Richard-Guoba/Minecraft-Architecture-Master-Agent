@@ -40,13 +40,7 @@ export async function intakeResidentialBatch({
   );
   const completed = await readIntakeReport(reportPath);
   if (completed) {
-    if (completed.manifest_sha256 !== inventory.manifest_sha256) {
-      failContract(
-        'INTAKE_BATCH_ALREADY_RECORDED',
-        'IntakeReport.manifest_sha256',
-        inventory.manifest.batch_id
-      );
-    }
+    validateRecordedReportInventory(completed, inventory);
     return completed;
   }
 
@@ -54,6 +48,7 @@ export async function intakeResidentialBatch({
     root,
     reportPath
   });
+  const currentRunHashes = new Set();
   const candidates = [];
   for (const candidate of inventory.candidates) {
     const outcome = await intakeCandidate({
@@ -63,11 +58,13 @@ export async function intakeResidentialBatch({
       candidate,
       actor,
       clock,
-      observedHashes
+      observedHashes,
+      currentRunHashes
     });
     candidates.push(outcome);
     if (outcome.artifact_sha256 !== null) {
       observedHashes.add(outcome.artifact_sha256);
+      currentRunHashes.add(outcome.artifact_sha256);
     }
   }
   const report = validateIntakeReport({
@@ -91,7 +88,8 @@ async function intakeCandidate({
   candidate,
   actor,
   clock,
-  observedHashes
+  observedHashes,
+  currentRunHashes
 }) {
   const base = {
     observation_id: observationId(manifest.batch_id, candidate.relative_path),
@@ -106,8 +104,8 @@ async function intakeCandidate({
       case_id: null,
       artifact_sha256: null,
       source_profile_file: null,
-      outcome: 'rejected',
-      reason: 'malformed_or_unsafe_source'
+      outcome: parserOutcome(error),
+      reason: parserReason(error)
     });
   }
   const sha256 = createHash('sha256').update(bytes).digest('hex');
@@ -182,6 +180,14 @@ async function intakeCandidate({
         'SourceProfile.case_id',
         quarantine.case_id
       );
+    }
+    if (currentRunHashes.has(sha256)) {
+      return candidateOutcome(base, {
+        ...common,
+        source_profile_file: profileFile,
+        outcome: 'duplicate',
+        reason: 'exact_duplicate'
+      });
     }
     if (existing.batch_id === manifest.batch_id) {
       return recoverSameBatchProfile({
@@ -299,6 +305,38 @@ function observationId(batchId, relativePath) {
     .update(`${batchId}\0${relativePath}`)
     .digest('hex')
     .slice(0, 24)}`;
+}
+
+function validateRecordedReportInventory(report, inventory) {
+  if (
+    report.manifest_sha256 !== inventory.manifest_sha256
+    || report.batch_id !== inventory.manifest.batch_id
+    || report.source_project !== inventory.manifest.source_project
+    || report.candidates.length !== inventory.candidates.length
+  ) {
+    failRecordedReport(inventory.manifest.batch_id);
+  }
+  for (let index = 0; index < inventory.candidates.length; index += 1) {
+    const expected = inventory.candidates[index];
+    const observed = report.candidates[index];
+    if (
+      observed.observation_id !== observationId(
+        inventory.manifest.batch_id,
+        expected.relative_path
+      )
+      || canonicalJson(observed.submitted) !== canonicalJson(expected.submitted)
+    ) {
+      failRecordedReport(inventory.manifest.batch_id);
+    }
+  }
+}
+
+function failRecordedReport(batchId) {
+  failContract(
+    'INTAKE_BATCH_ALREADY_RECORDED',
+    'IntakeReport.inventory',
+    batchId
+  );
 }
 
 async function readIntakeReport(reportPath) {

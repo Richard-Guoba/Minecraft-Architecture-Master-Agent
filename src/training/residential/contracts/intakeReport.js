@@ -18,6 +18,15 @@ import {
 } from './vocabularies.js';
 
 const OUTCOMES = ['parsed', 'deferred', 'rejected', 'duplicate'];
+const OUTCOME_BY_REASON = Object.freeze({
+  residential_candidate_requires_review: 'parsed',
+  non_residential_reference_only: 'deferred',
+  unsupported_format: 'deferred',
+  occupied_bounds_exceed_64: 'deferred',
+  parser_limit: 'deferred',
+  malformed_or_unsafe_source: 'rejected',
+  exact_duplicate: 'duplicate'
+});
 
 export function validateIntakeReport(value) {
   const document = cloneDocument(value, 'IntakeReport');
@@ -43,6 +52,7 @@ export function validateIntakeReport(value) {
     maximum: 10_000
   });
   const observations = new Set();
+  const submittedPaths = new Set();
   document.candidates.forEach((candidate, index) => {
     const itemPath = `IntakeReport.candidates[${index}]`;
     assertExactObject(candidate, itemPath, [
@@ -59,6 +69,14 @@ export function validateIntakeReport(value) {
     }
     observations.add(candidate.observation_id);
     validateSourceCandidate(candidate.submitted, `${itemPath}.submitted`);
+    if (submittedPaths.has(candidate.submitted.relative_path)) {
+      failContract(
+        'INTAKE_REPORT_SUBMITTED_PATH_DUPLICATE',
+        `${itemPath}.submitted.relative_path`,
+        candidate.submitted.relative_path
+      );
+    }
+    submittedPaths.add(candidate.submitted.relative_path);
     assertNullable(candidate.case_id, (item) => assertId(item, `${itemPath}.case_id`));
     assertNullable(
       candidate.artifact_sha256,
@@ -66,19 +84,90 @@ export function validateIntakeReport(value) {
     );
     assertNullable(candidate.source_profile_file, (item) => {
       assertArtifactPath(item, `${itemPath}.source_profile_file`);
-      if (!item.startsWith('sources/')) {
-        failContract(
-          'INTAKE_REPORT_PROFILE_PATH_INVALID',
-          `${itemPath}.source_profile_file`,
-          item
-        );
-      }
     });
     assertEnum(candidate.outcome, `${itemPath}.outcome`, OUTCOMES);
     assertId(candidate.reason, `${itemPath}.reason`);
+    if (OUTCOME_BY_REASON[candidate.reason] !== candidate.outcome) {
+      failContract(
+        'INTAKE_REPORT_OUTCOME_REASON_INVALID',
+        `${itemPath}.reason`,
+        `${candidate.outcome}/${candidate.reason}`
+      );
+    }
+    validateCandidateRelationships(candidate, itemPath);
   });
   validateSummary(document.summary, document.candidates);
   return deepFreeze(document);
+}
+
+function validateCandidateRelationships(candidate, itemPath) {
+  const hasCase = candidate.case_id !== null;
+  const hasHash = candidate.artifact_sha256 !== null;
+  const hasProfile = candidate.source_profile_file !== null;
+  if (hasCase !== hasHash) {
+    failIdentity(itemPath, 'case and exact hash must appear together');
+  }
+  if (
+    hasCase
+    && candidate.case_id !== `case-${candidate.artifact_sha256.slice(0, 24)}`
+  ) {
+    failContract(
+      'INTAKE_REPORT_CASE_ID_MISMATCH',
+      `${itemPath}.case_id`,
+      candidate.case_id
+    );
+  }
+  if (
+    hasProfile
+    && (
+      !hasCase
+      || candidate.source_profile_file !== `sources/${candidate.case_id}.json`
+    )
+  ) {
+    failContract(
+      'INTAKE_REPORT_PROFILE_PATH_INVALID',
+      `${itemPath}.source_profile_file`,
+      candidate.source_profile_file
+    );
+  }
+
+  if ([
+    'residential_candidate_requires_review',
+    'non_residential_reference_only'
+  ].includes(candidate.reason)) {
+    if (!hasCase || !hasProfile) {
+      failIdentity(itemPath, 'parsed outcomes require identity and profile');
+    }
+    return;
+  }
+  if (['unsupported_format', 'occupied_bounds_exceed_64'].includes(
+    candidate.reason
+  )) {
+    if (!hasCase || hasProfile) {
+      failIdentity(itemPath, 'post-quarantine deferral requires identity only');
+    }
+    return;
+  }
+  if ([
+    'parser_limit',
+    'malformed_or_unsafe_source'
+  ].includes(candidate.reason)) {
+    if (hasProfile) {
+      failIdentity(itemPath, 'parser/read failures cannot reference a profile');
+    }
+    return;
+  }
+  if (candidate.reason === 'exact_duplicate' && !hasCase) {
+    failIdentity(itemPath, 'exact duplicates require an identity');
+  }
+}
+
+function failIdentity(itemPath, detail) {
+  failContract(
+    'INTAKE_REPORT_IDENTITY_INVALID',
+    itemPath,
+    detail
+  );
 }
 
 function validateSummary(summary, candidates) {

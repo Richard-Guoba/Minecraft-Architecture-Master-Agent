@@ -81,6 +81,7 @@ After `batch-init`, replace the empty candidate array with the actual files and 
 
 - Intake validates the complete batch inventory before writing quarantine files, profiles, or reports.
 - Supported inputs are `.schem`, `.schematic`, and vanilla structure `.nbt`; unsupported or oversized structures remain deferred and are not cropped or fabricated.
+- The declared syntax-volume limit remains 16,777,216 cells. Occupied analysis and fingerprinting are separately capped at 262,144 entries—the full useful `64 x 64 x 64` R2 envelope—so denser sources are deferred as `parser_limit` before unsafe object growth.
 - A successfully parsed house has status `parsed`, not `eligible`. Every residential evidence field remains `unknown` pending R3/R4 extraction, annotation, and review.
 - Other architecture is preserved as `deferred/non_residential_reference_only`; it is not residential training data.
 - Content duplicates reuse their immutable local identity; provenance is retained without inventing a new identity.

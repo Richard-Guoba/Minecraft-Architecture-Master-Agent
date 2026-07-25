@@ -135,7 +135,8 @@ function regionArtifact(root, format, sourceId, limits) {
   if (!plain(region.Size) || !Array.isArray(region.BlockStatePalette) || !Array.isArray(region.BlockStates)) {
     fail('SCHEMATIC_REGION_INVALID', sourceId);
   }
-  const declaredSize = dimensions(region.Size, sourceId, limits, true);
+  const regionDimensions = signedRegionDimensions(region.Size, sourceId, limits);
+  const declaredSize = regionDimensions.declaredSize;
   const blockCount = declaredSize.x * declaredSize.y * declaredSize.z;
   const palette = regionPalette(region.BlockStatePalette, sourceId, limits);
   const indexes = decodePackedStates(region.BlockStates, palette.length, blockCount, sourceId);
@@ -150,7 +151,9 @@ function regionArtifact(root, format, sourceId, limits) {
     blockCount,
     blockEntityCount: collectionCount(region.TileEntities, 'SCHEMATIC_BLOCK_ENTITIES_INVALID', sourceId, limits.maxBlockEntities),
     entityCount: collectionCount(region.Entities, 'SCHEMATIC_ENTITIES_INVALID', sourceId, limits.maxEntities),
-    blockAtIndex: (index) => palette[indexes[index]]
+    blockAtIndex: (index) => palette[indexes[
+      packedRegionIndex(index, declaredSize, regionDimensions.reversed)
+    ]]
   });
 }
 
@@ -171,21 +174,60 @@ function artifact({
   });
 }
 
-function dimensions(value, sourceId, limits, lowercase = false) {
-  const fields = lowercase
-    ? [value.x ?? value.X ?? value.Width, value.y ?? value.Y ?? value.Height, value.z ?? value.Z ?? value.Length]
-    : [value.Width, value.Height, value.Length];
-  const maxAxis = lowercase ? Number.MAX_SAFE_INTEGER : 32_767;
+function dimensions(value, sourceId, limits) {
+  const fields = [value.Width, value.Height, value.Length];
+  const maxAxis = 32_767;
   if (!fields.every((item) => Number.isSafeInteger(item) && item > 0 && item <= maxAxis)) {
     fail('SCHEMATIC_DIMENSIONS_INVALID', sourceId);
   }
   const [x, y, z] = fields;
+  validateVolume({ x, y, z }, sourceId, limits);
+  return { x, y, z };
+}
+
+function signedRegionDimensions(value, sourceId, limits) {
+  const fields = [
+    value.x ?? value.X ?? value.Width,
+    value.y ?? value.Y ?? value.Height,
+    value.z ?? value.Z ?? value.Length
+  ];
+  if (!fields.every((item) => Number.isSafeInteger(item) && item !== 0)) {
+    fail('SCHEMATIC_DIMENSIONS_INVALID', sourceId);
+  }
+  const [rawX, rawY, rawZ] = fields;
+  const declaredSize = {
+    x: Math.abs(rawX),
+    y: Math.abs(rawY),
+    z: Math.abs(rawZ)
+  };
+  validateVolume(declaredSize, sourceId, limits);
+  return {
+    declaredSize,
+    reversed: {
+      x: rawX < 0,
+      y: rawY < 0,
+      z: rawZ < 0
+    }
+  };
+}
+
+function validateVolume({ x, y, z }, sourceId, limits) {
   const volume = x * y * z;
   if (!Number.isSafeInteger(volume)) fail('SCHEMATIC_DIMENSIONS_INVALID', sourceId);
   if (volume > limits.maxBlocks) {
     fail('SCHEMATIC_VOLUME_LIMIT', sourceId, { block_count: volume });
   }
-  return { x, y, z };
+}
+
+function packedRegionIndex(index, size, reversed) {
+  const layerSize = size.x * size.z;
+  const x = index % size.x;
+  const y = Math.floor(index / layerSize);
+  const z = Math.floor(index / size.x) % size.z;
+  const packedX = reversed.x ? size.x - 1 - x : x;
+  const packedY = reversed.y ? size.y - 1 - y : y;
+  const packedZ = reversed.z ? size.z - 1 - z : z;
+  return packedX + packedZ * size.x + packedY * layerSize;
 }
 
 function spongePalette(value, sourceId, limits) {

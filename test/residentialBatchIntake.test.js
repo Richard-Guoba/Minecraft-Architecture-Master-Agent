@@ -12,6 +12,7 @@ import {
 } from '../src/training/residential/intake/index.js';
 import {
   classicSchematic,
+  vanillaStructure,
   writeBatchFixture
 } from './fixtures/residentialIntakeFixtures.js';
 
@@ -113,6 +114,57 @@ test('unchanged intake rerun returns byte-identical report and no new decisions'
   assert.deepEqual(after, before);
 });
 
+test('same-batch identical supported candidates reuse one exact identity and profile', async (t) => {
+  const local = await fixture(t);
+  const bytes = classicSchematic();
+  await writeBatchFixture({
+    ...local,
+    batchId: '2026-07-24-fixture-001',
+    houseBytes: bytes,
+    otherBytes: bytes
+  });
+  const first = await intakeResidentialBatch({
+    ...local,
+    batchId: '2026-07-24-fixture-001',
+    clock: () => new Date('2026-07-24T14:00:00.000Z')
+  });
+  assert.deepEqual(
+    first.candidates.map((item) => [item.outcome, item.reason]),
+    [
+      ['parsed', 'residential_candidate_requires_review'],
+      ['duplicate', 'exact_duplicate']
+    ]
+  );
+  assert.equal(first.candidates[1].case_id, first.candidates[0].case_id);
+  assert.equal(
+    first.candidates[1].source_profile_file,
+    first.candidates[0].source_profile_file
+  );
+  assert.deepEqual(first.summary, {
+    candidate_count: 2,
+    quarantined_count: 2,
+    parsed_count: 1,
+    deferred_count: 0,
+    rejected_count: 0,
+    duplicate_count: 1,
+    source_profile_count: 2
+  });
+
+  const reportPath = path.join(
+    local.root,
+    'reports',
+    'intake-2026-07-24-fixture-001.json'
+  );
+  const before = await fs.readFile(reportPath);
+  const rerun = await intakeResidentialBatch({
+    ...local,
+    batchId: '2026-07-24-fixture-001',
+    clock: () => { throw new Error('clock must not run for a recorded report'); }
+  });
+  assert.deepEqual(rerun, first);
+  assert.deepEqual(await fs.readFile(reportPath), before);
+});
+
 test('unsupported and oversized candidates are preserved without fabricated profiles', async (t) => {
   const local = await fixture(t);
   await writeBatchFixture({
@@ -167,6 +219,70 @@ test('a completed batch ID cannot be reused with changed manifest content', asyn
     }),
     /INTAKE_BATCH_ALREADY_RECORDED/u
   );
+});
+
+test('recorded intake reports must exactly match the current sorted inventory', async (t) => {
+  const mutations = [
+    {
+      name: 'batch identity',
+      apply(report) {
+        report.batch_id = 'fabricated-batch';
+      }
+    },
+    {
+      name: 'source project identity',
+      apply(report) {
+        report.source_project = 'fabricated-project';
+      }
+    },
+    {
+      name: 'derived observation identifier',
+      apply(report) {
+        report.candidates[0].observation_id = 'observation-fabricated-001';
+      }
+    },
+    {
+      name: 'submitted candidate content',
+      apply(report) {
+        report.candidates[0].submitted.collector_note =
+          'fabricated report-only note';
+      }
+    },
+    {
+      name: 'ordered candidate observations',
+      apply(report) {
+        report.candidates.reverse();
+      }
+    }
+  ];
+  for (const mutation of mutations) {
+    const local = await fixture(t);
+    await writeBatchFixture({
+      ...local,
+      batchId: '2026-07-24-fixture-001'
+    });
+    await intakeResidentialBatch({
+      ...local,
+      batchId: '2026-07-24-fixture-001'
+    });
+    const reportPath = path.join(
+      local.root,
+      'reports',
+      'intake-2026-07-24-fixture-001.json'
+    );
+    const report = JSON.parse(await fs.readFile(reportPath, 'utf8'));
+    mutation.apply(report);
+    await fs.chmod(reportPath, 0o600);
+    await fs.writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+    await assert.rejects(
+      intakeResidentialBatch({
+        ...local,
+        batchId: '2026-07-24-fixture-001'
+      }),
+      /INTAKE_BATCH_ALREADY_RECORDED/u,
+      mutation.name
+    );
+  }
 });
 
 test('same-batch interruption recovers the immutable profile outcome without a new clock call', async (t) => {
@@ -315,4 +431,68 @@ test('parser bounds limits defer a quarantined artifact and malformed input is r
   );
   assert.equal(report.summary.quarantined_count, 2);
   assert.equal(report.summary.source_profile_count, 0);
+});
+
+test('vanilla entity overflow is quarantined then deferred as a parser limit', async (t) => {
+  const local = await fixture(t);
+  await writeBatchFixture({
+    ...local,
+    batchId: '2026-07-24-fixture-001',
+    houseFilename: 'entity-overflow.nbt',
+    houseBytes: vanillaStructure({
+      entities: Array.from({ length: 16_385 }, () => ({}))
+    })
+  });
+  const report = await intakeResidentialBatch({
+    ...local,
+    batchId: '2026-07-24-fixture-001'
+  });
+  const overflow = report.candidates.find(
+    (item) => item.submitted.relative_path === 'houses/entity-overflow.nbt'
+  );
+  assert.deepEqual(
+    [
+      overflow.outcome,
+      overflow.reason,
+      overflow.case_id !== null,
+      overflow.artifact_sha256 !== null,
+      overflow.source_profile_file
+    ],
+    ['deferred', 'parser_limit', true, true, null]
+  );
+});
+
+test('raw byte overflow is deferred before quarantine with a null identity', async (t) => {
+  const local = await fixture(t);
+  await writeBatchFixture({
+    ...local,
+    batchId: '2026-07-24-fixture-001'
+  });
+  await fs.truncate(
+    path.join(
+      local.root,
+      'inbox',
+      '2026-07-24-fixture-001',
+      'houses',
+      'Fixture House.schematic'
+    ),
+    64 * 1024 * 1024 + 1
+  );
+  const report = await intakeResidentialBatch({
+    ...local,
+    batchId: '2026-07-24-fixture-001'
+  });
+  const overflow = report.candidates.find(
+    (item) => item.submitted.lane === 'houses'
+  );
+  assert.deepEqual(
+    [
+      overflow.outcome,
+      overflow.reason,
+      overflow.case_id,
+      overflow.artifact_sha256,
+      overflow.source_profile_file
+    ],
+    ['deferred', 'parser_limit', null, null, null]
+  );
 });

@@ -81,12 +81,12 @@ function fromSchematic(bytes, sourceId, format, limits) {
     const block = artifact.blockAtIndex(index);
     const token = mapTrainingToken(block);
     if (token === 0) continue;
-    entries.push({
+    appendOccupiedEntry(entries, {
       x: index % artifact.declared_size.x,
       y: Math.floor(index / layerSize),
       z: Math.floor(index / artifact.declared_size.x) % artifact.declared_size.z,
       token
-    });
+    }, sourceId, limits);
   }
   return {
     declared_size: artifact.declared_size,
@@ -97,18 +97,39 @@ function fromSchematic(bytes, sourceId, format, limits) {
 }
 
 function fromVanilla(bytes, sourceId, limits) {
+  const decoded = decodeBoundedNbt(bytes, {
+    sourceId,
+    limits,
+    materializeArrays: true
+  });
+  const entities = decoded.value?.entities;
+  if (entities !== undefined && !Array.isArray(entities)) {
+    throw new TrainingDataError(
+      'STRUCTURE_ENTITIES_INVALID',
+      `structure:${sourceId}`,
+      { stage: 'structure', source_id: sourceId }
+    );
+  }
+  if (entities?.length > limits.maxEntities) {
+    throw new TrainingDataError(
+      'STRUCTURE_ENTITY_LIMIT',
+      `structure:${sourceId}`,
+      {
+        stage: 'structure',
+        source_id: sourceId,
+        entity_count: entities.length
+      }
+    );
+  }
   const artifact = validateVanillaStructureNbt(
-    decodeBoundedNbt(bytes, {
-      sourceId,
-      limits,
-      materializeArrays: true
-    }),
+    decoded,
     { sourceId, limits }
   );
-  const entries = artifact.blocks.flatMap((block) => {
+  const entries = [];
+  for (const block of artifact.blocks) {
     const state = artifact.palette[block.palette_index];
-    if (isAirIdentifier(state.name)) return [];
-    return [{
+    if (isAirIdentifier(state.name)) continue;
+    appendOccupiedEntry(entries, {
       x: block.x,
       y: block.y,
       z: block.z,
@@ -116,14 +137,31 @@ function fromVanilla(bytes, sourceId, limits) {
         air: false,
         category: categoryFor(canonicalName(state.canonical_state))
       })
-    }];
-  });
+    }, sourceId, limits);
+  }
   return {
     declared_size: artifact.declared_size,
     block_entity_count: artifact.block_entity_count,
     entity_count: artifact.entity_count,
     entries
   };
+}
+
+function appendOccupiedEntry(entries, entry, sourceId, limits) {
+  const entryCount = entries.length + 1;
+  if (entryCount > limits.maxOccupiedAnalysisEntries) {
+    throw new TrainingDataError(
+      'SOURCE_OCCUPIED_ENTRY_LIMIT',
+      `artifact:${sourceId}`,
+      {
+        stage: 'measurement',
+        source_id: sourceId,
+        entry_count: entryCount,
+        max_entries: limits.maxOccupiedAnalysisEntries
+      }
+    );
+  }
+  entries.push(entry);
 }
 
 function canonicalName(canonicalState) {
