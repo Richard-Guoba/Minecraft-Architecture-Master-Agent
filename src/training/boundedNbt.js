@@ -10,6 +10,9 @@ export const BOUNDED_NBT_LIMITS = Object.freeze({
   maxCompressionRatio: 200,
   maxDepth: 32,
   maxEntries: 1_500_000,
+  // Dense 64-cube lists, the full palette, and bounded auxiliary collections.
+  maxMaterializedEntries: 4 * (64 ** 3) + 4096 + 2 * 16_384 + 16,
+  maxMaterializedBytes: 48 * 1024 * 1024,
   maxStringBytes: 32 * 1024,
   maxBlocks: 64 ** 3,
   maxPaletteEntries: 4096,
@@ -33,10 +36,19 @@ const TAG = Object.freeze({
 });
 const VALID_TYPES = new Set(Object.values(TAG));
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
+const COLLECTION_SLOT_BYTES = 8;
+const BIGINT_BYTES = 16;
+const OBJECT_BYTES = 32;
+const PROPERTY_SLOT_BYTES = 8;
+const STRING_BYTES_PER_INPUT_BYTE = 2;
+const STRING_OVERHEAD_BYTES = 16;
+// Stable conservative charge for each materialized Node Buffer wrapper.
+const BUFFER_WRAPPER_BYTES = 128;
 
 export function decodeBoundedNbt(buffer, {
   sourceId,
-  limits = BOUNDED_NBT_LIMITS
+  limits = BOUNDED_NBT_LIMITS,
+  materializeArrays = false
 } = {}) {
   const id = assertSourceId(sourceId);
   if (!Buffer.isBuffer(buffer)) fail('NBT_INPUT_INVALID', id);
@@ -52,7 +64,7 @@ export function decodeBoundedNbt(buffer, {
       inflated_byte_count: inflated.bytes.length
     });
   }
-  const reader = new Reader(inflated.bytes, limits, id);
+  const reader = new Reader(inflated.bytes, limits, id, materializeArrays);
   const type = reader.u8();
   if (type !== TAG.COMPOUND) fail('NBT_ROOT_INVALID', id, { tag_type: type });
   const rootName = reader.string();
@@ -110,12 +122,15 @@ function isZlib(buffer) {
 }
 
 class Reader {
-  constructor(buffer, limits, sourceId) {
+  constructor(buffer, limits, sourceId, materializeArrays) {
     this.buffer = buffer;
     this.limits = limits;
     this.sourceId = sourceId;
+    this.materializeArrays = materializeArrays;
     this.offset = 0;
     this.entries = 0;
+    this.materializedEntries = 0;
+    this.materializedBytes = 0;
   }
 
   payload(type, depth, charge = true) {
@@ -129,13 +144,16 @@ class Reader {
     if (type === TAG.BYTE) return this.i8();
     if (type === TAG.SHORT) return this.i16();
     if (type === TAG.INT) return this.i32();
-    if (type === TAG.LONG) return this.i64();
+    if (type === TAG.LONG) {
+      this.chargeMaterialization(0, BIGINT_BYTES);
+      return this.i64();
+    }
     if (type === TAG.FLOAT) return this.f32();
     if (type === TAG.DOUBLE) return this.f64();
     if (type === TAG.STRING) return this.string();
-    if (type === TAG.BYTE_ARRAY) return this.arrayDescriptor('byte', 1);
-    if (type === TAG.INT_ARRAY) return this.arrayDescriptor('int', 4);
-    if (type === TAG.LONG_ARRAY) return this.arrayDescriptor('long', 8);
+    if (type === TAG.BYTE_ARRAY) return this.arrayValue('byte', 1);
+    if (type === TAG.INT_ARRAY) return this.arrayValue('int', 4);
+    if (type === TAG.LONG_ARRAY) return this.arrayValue('long', 8);
     if (type === TAG.LIST) return this.list(depth);
     if (type === TAG.COMPOUND) return this.compound(depth);
     fail('NBT_TAG_INVALID', this.sourceId, { tag_type: type });
@@ -148,6 +166,7 @@ class Reader {
       fail('NBT_TAG_INVALID', this.sourceId, { tag_type: childType });
     }
     this.charge(length);
+    this.chargeMaterialization(length, length * COLLECTION_SLOT_BYTES);
     const output = [];
     for (let index = 0; index < length; index += 1) {
       output.push(this.payload(childType, depth + 1, false));
@@ -156,6 +175,7 @@ class Reader {
   }
 
   compound(depth) {
+    this.chargeMaterialization(0, OBJECT_BYTES);
     const output = {};
     while (true) {
       const type = this.u8();
@@ -165,11 +185,12 @@ class Reader {
       }
       const name = this.string();
       if (Object.hasOwn(output, name)) fail('NBT_DUPLICATE_NAME', this.sourceId);
+      this.chargeMaterialization(0, PROPERTY_SLOT_BYTES);
       output[name] = this.payload(type, depth + 1);
     }
   }
 
-  arrayDescriptor(kind, width) {
+  arrayValue(kind, width) {
     const length = this.length('NBT_ARRAY_LENGTH_INVALID');
     this.charge(length);
     const byteLength = length * width;
@@ -179,13 +200,31 @@ class Reader {
     this.ensure(byteLength);
     const start = this.offset;
     this.offset += byteLength;
-    return Object.freeze({
-      nbt_array: kind,
+    const bytes = this.buffer.subarray(start, this.offset);
+    if (!this.materializeArrays) {
+      return Object.freeze({
+        nbt_array: kind,
+        length,
+        sha256: createHash('sha256').update(bytes).digest('hex')
+      });
+    }
+    if (kind === 'byte') {
+      this.chargeMaterialization(0, BUFFER_WRAPPER_BYTES + byteLength);
+      return Buffer.from(bytes);
+    }
+    this.chargeMaterialization(
       length,
-      sha256: createHash('sha256')
-        .update(this.buffer.subarray(start, this.offset))
-        .digest('hex')
-    });
+      length * (COLLECTION_SLOT_BYTES + (kind === 'long' ? BIGINT_BYTES : 0))
+    );
+    const output = [];
+    for (let offset = 0; offset < bytes.length; offset += width) {
+      output.push(
+        kind === 'int'
+          ? bytes.readInt32BE(offset)
+          : bytes.readBigInt64BE(offset)
+      );
+    }
+    return Object.freeze(output);
   }
 
   string() {
@@ -196,6 +235,10 @@ class Reader {
     this.ensure(length);
     const bytes = this.buffer.subarray(this.offset, this.offset + length);
     this.offset += length;
+    this.chargeMaterialization(
+      0,
+      length * STRING_BYTES_PER_INPUT_BYTE + STRING_OVERHEAD_BYTES
+    );
     try {
       return UTF8.decode(bytes);
     } catch {
@@ -220,6 +263,30 @@ class Reader {
       });
     }
     this.entries += count;
+  }
+
+  chargeMaterialization(count, byteCount) {
+    const entryLimit = this.limits.maxMaterializedEntries
+      ?? BOUNDED_NBT_LIMITS.maxMaterializedEntries;
+    const byteLimit = this.limits.maxMaterializedBytes
+      ?? BOUNDED_NBT_LIMITS.maxMaterializedBytes;
+    if (
+      !Number.isSafeInteger(count)
+      || count < 0
+      || !Number.isSafeInteger(byteCount)
+      || byteCount < 0
+      || this.materializedEntries + count > entryLimit
+      || this.materializedBytes + byteCount > byteLimit
+    ) {
+      fail('NBT_MATERIALIZATION_LIMIT', this.sourceId, {
+        materialized_entry_count: this.materializedEntries + count,
+        max_materialized_entries: entryLimit,
+        materialized_byte_count: this.materializedBytes + byteCount,
+        max_materialized_bytes: byteLimit
+      });
+    }
+    this.materializedEntries += count;
+    this.materializedBytes += byteCount;
   }
 
   ensure(length) {

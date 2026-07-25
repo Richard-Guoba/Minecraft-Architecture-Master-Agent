@@ -33,7 +33,7 @@ The LLM does not need to emit exact block coordinates. The Node.js runtime turns
 
 ## Residential learned renderer
 
-The approved next-generation direction is a residential `HouseSpec -> HouseScene` learned renderer with separate structure and room-decoration stages. Its current implementation scope is contracts and local workspace only; it is not trained or connected to production. See [the residential renderer design](docs/residential-model/design.md).
+The approved next-generation direction is a residential `HouseSpec -> HouseScene` learned renderer with separate structure and room-decoration stages. R1 contracts/workspace and R2 local source intake are implemented. R2 intake is local-only: it preserves source provenance and candidates below ignored `.local/` storage without creating a residential dataset, checkpoint, trained model, or production provider. R3 canonical extraction, annotation, datasets, models, training, and production integration are not implemented. See [the residential renderer design](docs/residential-model/design.md) and [the R2 curator workflow](docs/residential-model/README.md).
 
 ## Quick start
 
