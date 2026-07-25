@@ -8,6 +8,12 @@ export {
 } from './batch.js';
 export { RESIDENTIAL_INTAKE_LIMITS } from './limits.js';
 export {
+  caseIdFromSha256,
+  quarantineArtifact,
+  readCandidateBytes,
+  writeJsonOnceOrVerify
+} from './storage.js';
+export {
   parseResidentialArtifact,
   supportedResidentialFormat
 } from './artifactParser.js';
