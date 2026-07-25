@@ -40,7 +40,7 @@ export async function intakeResidentialBatch({
   );
   const completed = await readIntakeReport(reportPath);
   if (completed) {
-    validateRecordedReportInventory(completed, inventory);
+    await validateRecordedReportInventory(completed, inventory);
     return completed;
   }
 
@@ -48,7 +48,7 @@ export async function intakeResidentialBatch({
     root,
     reportPath
   });
-  const currentRunHashes = new Set();
+  const currentRunObservations = new Map();
   const candidates = [];
   for (const candidate of inventory.candidates) {
     const outcome = await intakeCandidate({
@@ -59,12 +59,17 @@ export async function intakeResidentialBatch({
       actor,
       clock,
       observedHashes,
-      currentRunHashes
+      currentRunObservations
     });
     candidates.push(outcome);
-    if (outcome.artifact_sha256 !== null) {
-      observedHashes.add(outcome.artifact_sha256);
-      currentRunHashes.add(outcome.artifact_sha256);
+    if (
+      outcome.artifact_sha256 !== null
+      && !currentRunObservations.has(outcome.artifact_sha256)
+    ) {
+      currentRunObservations.set(outcome.artifact_sha256, Object.freeze({
+        case_id: outcome.case_id,
+        source_profile_file: outcome.source_profile_file
+      }));
     }
   }
   const report = validateIntakeReport({
@@ -89,7 +94,7 @@ async function intakeCandidate({
   actor,
   clock,
   observedHashes,
-  currentRunHashes
+  currentRunObservations
 }) {
   const base = {
     observation_id: observationId(manifest.batch_id, candidate.relative_path),
@@ -119,6 +124,15 @@ async function intakeCandidate({
     case_id: quarantine.case_id,
     artifact_sha256: sha256
   };
+  const currentObservation = currentRunObservations.get(sha256);
+  if (currentObservation) {
+    return candidateOutcome(base, {
+      ...common,
+      source_profile_file: currentObservation.source_profile_file,
+      outcome: 'duplicate',
+      reason: 'exact_duplicate'
+    });
+  }
   if (!supportedResidentialFormat(candidate.relative_path)) {
     if (observedHashes.has(sha256)) {
       return candidateOutcome(base, {
@@ -180,14 +194,6 @@ async function intakeCandidate({
         'SourceProfile.case_id',
         quarantine.case_id
       );
-    }
-    if (currentRunHashes.has(sha256)) {
-      return candidateOutcome(base, {
-        ...common,
-        source_profile_file: profileFile,
-        outcome: 'duplicate',
-        reason: 'exact_duplicate'
-      });
     }
     if (existing.batch_id === manifest.batch_id) {
       return recoverSameBatchProfile({
@@ -307,7 +313,7 @@ function observationId(batchId, relativePath) {
     .slice(0, 24)}`;
 }
 
-function validateRecordedReportInventory(report, inventory) {
+async function validateRecordedReportInventory(report, inventory) {
   if (
     report.manifest_sha256 !== inventory.manifest_sha256
     || report.batch_id !== inventory.manifest.batch_id
@@ -327,6 +333,28 @@ function validateRecordedReportInventory(report, inventory) {
       || canonicalJson(observed.submitted) !== canonicalJson(expected.submitted)
     ) {
       failRecordedReport(inventory.manifest.batch_id);
+    }
+    await validateRecordedCandidatePayload(
+      observed,
+      expected,
+      inventory.manifest.batch_id
+    );
+  }
+}
+
+async function validateRecordedCandidatePayload(observed, expected, batchId) {
+  try {
+    const bytes = await readCandidateBytes(expected.absolute_path);
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    if (observed.artifact_sha256 !== sha256) failRecordedReport(batchId);
+  } catch (error) {
+    if (
+      !(error instanceof TrainingDataError)
+      || observed.artifact_sha256 !== null
+      || observed.outcome !== parserOutcome(error)
+      || observed.reason !== parserReason(error)
+    ) {
+      failRecordedReport(batchId);
     }
   }
 }

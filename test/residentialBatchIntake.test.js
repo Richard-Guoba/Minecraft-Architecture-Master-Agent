@@ -165,6 +165,94 @@ test('same-batch identical supported candidates reuse one exact identity and pro
   assert.deepEqual(await fs.readFile(reportPath), before);
 });
 
+test('same-batch pre-profile outcomes deduplicate before parsing again', async (t) => {
+  const local = await fixture(t);
+  const bytes = classicSchematic({
+    width: 65,
+    height: 1,
+    length: 1,
+    blocks: [1, ...Array(63).fill(0), 1]
+  });
+  await writeBatchFixture({
+    ...local,
+    batchId: '2026-07-24-fixture-001',
+    houseBytes: bytes,
+    otherBytes: bytes
+  });
+  const report = await intakeResidentialBatch({
+    ...local,
+    batchId: '2026-07-24-fixture-001'
+  });
+  assert.deepEqual(
+    report.candidates.map((item) => [
+      item.outcome,
+      item.reason,
+      item.source_profile_file
+    ]),
+    [
+      ['deferred', 'occupied_bounds_exceed_64', null],
+      ['duplicate', 'exact_duplicate', null]
+    ]
+  );
+  assert.equal(report.candidates[1].case_id, report.candidates[0].case_id);
+});
+
+test('same-batch malformed payloads deduplicate before parsing again', async (t) => {
+  const local = await fixture(t);
+  const bytes = Buffer.from('malformed nbt');
+  await writeBatchFixture({
+    ...local,
+    batchId: '2026-07-24-fixture-001',
+    houseBytes: bytes,
+    otherBytes: bytes
+  });
+  const report = await intakeResidentialBatch({
+    ...local,
+    batchId: '2026-07-24-fixture-001'
+  });
+  assert.deepEqual(
+    report.candidates.map((item) => [
+      item.outcome,
+      item.reason,
+      item.source_profile_file
+    ]),
+    [
+      ['rejected', 'malformed_or_unsafe_source', null],
+      ['duplicate', 'exact_duplicate', null]
+    ]
+  );
+  assert.equal(report.candidates[1].case_id, report.candidates[0].case_id);
+});
+
+test('same-batch unsupported payloads deduplicate before format dispatch', async (t) => {
+  const local = await fixture(t);
+  const bytes = Buffer.from('unsupported litematic payload');
+  await writeBatchFixture({
+    ...local,
+    batchId: '2026-07-24-fixture-001',
+    houseFilename: 'Fixture House.litematic',
+    otherFilename: 'Fixture Tower.litematic',
+    houseBytes: bytes,
+    otherBytes: bytes
+  });
+  const report = await intakeResidentialBatch({
+    ...local,
+    batchId: '2026-07-24-fixture-001'
+  });
+  assert.deepEqual(
+    report.candidates.map((item) => [
+      item.outcome,
+      item.reason,
+      item.source_profile_file
+    ]),
+    [
+      ['deferred', 'unsupported_format', null],
+      ['duplicate', 'exact_duplicate', null]
+    ]
+  );
+  assert.equal(report.candidates[1].case_id, report.candidates[0].case_id);
+});
+
 test('unsupported and oversized candidates are preserved without fabricated profiles', async (t) => {
   const local = await fixture(t);
   await writeBatchFixture({
@@ -219,6 +307,63 @@ test('a completed batch ID cannot be reused with changed manifest content', asyn
     }),
     /INTAKE_BATCH_ALREADY_RECORDED/u
   );
+});
+
+test('completed reports reject changed readable payloads without changing recorded outputs', async (t) => {
+  const local = await fixture(t);
+  const batchId = '2026-07-24-fixture-001';
+  await writeBatchFixture({ ...local, batchId });
+  await intakeResidentialBatch({ ...local, batchId });
+  const reportPath = path.join(local.root, 'reports', `intake-${batchId}.json`);
+  const housePath = path.join(
+    local.root,
+    'inbox',
+    batchId,
+    'houses',
+    'Fixture House.schematic'
+  );
+  const reportBefore = await fs.readFile(reportPath);
+  const sourcesBefore = await fs.readdir(path.join(local.root, 'sources'));
+  const quarantineBefore = await fs.readdir(path.join(local.root, 'quarantine'));
+
+  await fs.writeFile(housePath, classicSchematic({ blockId: 4 }));
+  await assert.rejects(
+    intakeResidentialBatch({ ...local, batchId }),
+    /INTAKE_BATCH_ALREADY_RECORDED/u
+  );
+  assert.deepEqual(await fs.readFile(reportPath), reportBefore);
+  assert.deepEqual(await fs.readdir(path.join(local.root, 'sources')), sourcesBefore);
+  assert.deepEqual(
+    await fs.readdir(path.join(local.root, 'quarantine')),
+    quarantineBefore
+  );
+});
+
+test('completed null-identity observations reject replacement by readable payloads', async (t) => {
+  const local = await fixture(t);
+  const batchId = '2026-07-24-fixture-001';
+  await writeBatchFixture({ ...local, batchId });
+  const housePath = path.join(
+    local.root,
+    'inbox',
+    batchId,
+    'houses',
+    'Fixture House.schematic'
+  );
+  await fs.truncate(housePath, 64 * 1024 * 1024 + 1);
+  const first = await intakeResidentialBatch({ ...local, batchId });
+  const reportPath = path.join(local.root, 'reports', `intake-${batchId}.json`);
+  const reportBefore = await fs.readFile(reportPath);
+
+  assert.deepEqual(await intakeResidentialBatch({ ...local, batchId }), first);
+  assert.deepEqual(await fs.readFile(reportPath), reportBefore);
+
+  await fs.writeFile(housePath, classicSchematic({ blockId: 4 }));
+  await assert.rejects(
+    intakeResidentialBatch({ ...local, batchId }),
+    /INTAKE_BATCH_ALREADY_RECORDED/u
+  );
+  assert.deepEqual(await fs.readFile(reportPath), reportBefore);
 });
 
 test('recorded intake reports must exactly match the current sorted inventory', async (t) => {
