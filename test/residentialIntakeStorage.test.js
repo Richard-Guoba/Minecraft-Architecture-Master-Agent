@@ -5,6 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  initializeResidentialWorkspace
+} from '../src/training/residential/workspace/index.js';
+import {
   caseIdFromSha256,
   quarantineArtifact,
   readCandidateBytes,
@@ -12,10 +15,12 @@ import {
 } from '../src/training/residential/intake/index.js';
 
 async function fixture(t) {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'r2-storage-'));
-  t.after(() => removeFixture(root));
-  await fs.mkdir(path.join(root, 'quarantine'));
-  return root;
+  const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'r2-storage-'));
+  const root = path.join(projectRoot, '.local', 'residential-model');
+  t.after(() => removeFixture(projectRoot));
+  await fs.mkdir(path.join(projectRoot, '.local'));
+  await initializeResidentialWorkspace({ root, projectRoot });
+  return { projectRoot, root };
 }
 
 async function removeFixture(root) {
@@ -33,11 +38,11 @@ function sha256(bytes) {
 }
 
 test('quarantine creates one immutable content identity and verifies reruns', async (t) => {
-  const root = await fixture(t);
+  const { root, projectRoot } = await fixture(t);
   const bytes = Buffer.from('immutable fixture');
   const exactSha256 = sha256(bytes);
-  const first = await quarantineArtifact({ root, bytes, sha256: exactSha256 });
-  const second = await quarantineArtifact({ root, bytes, sha256: exactSha256 });
+  const first = await quarantineArtifact({ root, projectRoot, bytes, sha256: exactSha256 });
+  const second = await quarantineArtifact({ root, projectRoot, bytes, sha256: exactSha256 });
   assert.equal(first.case_id, caseIdFromSha256(exactSha256));
   assert.equal(first.created, true);
   assert.equal(second.created, false);
@@ -50,7 +55,7 @@ test('quarantine creates one immutable content identity and verifies reruns', as
 });
 
 test('quarantine rejects an existing conflicting identity', async (t) => {
-  const root = await fixture(t);
+  const { root, projectRoot } = await fixture(t);
   const bytes = Buffer.from('expected');
   const exactSha256 = sha256(bytes);
   const caseId = caseIdFromSha256(exactSha256);
@@ -60,24 +65,31 @@ test('quarantine rejects an existing conflicting identity', async (t) => {
     'conflict'
   );
   await assert.rejects(
-    quarantineArtifact({ root, bytes, sha256: exactSha256 }),
+    quarantineArtifact({ root, projectRoot, bytes, sha256: exactSha256 }),
     /QUARANTINE_CONFLICT/u
   );
 });
 
 test('quarantine validates the supplied exact hash before publication', async (t) => {
-  const root = await fixture(t);
+  const { root, projectRoot } = await fixture(t);
   const bytes = Buffer.from('expected');
   const incorrect = sha256(Buffer.from('different'));
   await assert.rejects(
-    quarantineArtifact({ root, bytes, sha256: incorrect }),
+    quarantineArtifact({ root, projectRoot, bytes, sha256: incorrect }),
     /SOURCE_HASH_MISMATCH/u
   );
   assert.deepEqual(await fs.readdir(path.join(root, 'quarantine')), []);
 });
 
+test('quarantine infers the project root from a ready local workspace', async (t) => {
+  const { root } = await fixture(t);
+  const bytes = Buffer.from('inferred workspace root');
+  const result = await quarantineArtifact({ root, bytes, sha256: sha256(bytes) });
+  assert.equal(result.created, true);
+});
+
 test('quarantine rejects a symlinked existing artifact directory', async (t) => {
-  const root = await fixture(t);
+  const { root, projectRoot } = await fixture(t);
   const bytes = Buffer.from('expected');
   const exactSha256 = sha256(bytes);
   const caseId = caseIdFromSha256(exactSha256);
@@ -85,18 +97,19 @@ test('quarantine rejects a symlinked existing artifact directory', async (t) => 
   t.after(() => removeFixture(outside));
   await fs.symlink(outside, path.join(root, 'quarantine', caseId));
   await assert.rejects(
-    quarantineArtifact({ root, bytes, sha256: exactSha256 }),
+    quarantineArtifact({ root, projectRoot, bytes, sha256: exactSha256 }),
     /QUARANTINE_CONFLICT/u
   );
 });
 
 test('concurrent quarantine publication leaves one verified identity', async (t) => {
-  const root = await fixture(t);
+  const { root, projectRoot } = await fixture(t);
   const bytes = Buffer.from('same concurrent payload');
   const exactSha256 = sha256(bytes);
   const results = await Promise.all(
     Array.from({ length: 8 }, () => quarantineArtifact({
       root,
+      projectRoot,
       bytes,
       sha256: exactSha256
     }))
@@ -109,7 +122,7 @@ test('concurrent quarantine publication leaves one verified identity', async (t)
 });
 
 test('candidate reads reject symlinks and raw-byte overflow', async (t) => {
-  const root = await fixture(t);
+  const { root } = await fixture(t);
   const source = path.join(root, 'source.schem');
   const link = path.join(root, 'link.schem');
   await fs.writeFile(source, '1234');
@@ -122,7 +135,7 @@ test('candidate reads reject symlinks and raw-byte overflow', async (t) => {
 });
 
 test('candidate reads reject empty and non-regular files', async (t) => {
-  const root = await fixture(t);
+  const { root } = await fixture(t);
   const empty = path.join(root, 'empty.schem');
   const directory = path.join(root, 'directory.schem');
   await fs.writeFile(empty, '');
@@ -137,7 +150,7 @@ test('case IDs require a lowercase exact SHA-256 value', () => {
 });
 
 test('write-once JSON accepts identical canonical content and rejects changes', async (t) => {
-  const root = await fixture(t);
+  const { root } = await fixture(t);
   const file = path.join(root, 'report.json');
   assert.equal(await writeJsonOnceOrVerify(file, { b: 2, a: 1 }), 'created');
   assert.equal(await writeJsonOnceOrVerify(file, { a: 1, b: 2 }), 'verified');
@@ -148,7 +161,7 @@ test('write-once JSON accepts identical canonical content and rejects changes', 
 });
 
 test('write-once JSON rejects symlink and malformed existing content', async (t) => {
-  const root = await fixture(t);
+  const { root } = await fixture(t);
   const target = path.join(root, 'target.json');
   const symlink = path.join(root, 'link.json');
   const malformed = path.join(root, 'malformed.json');
@@ -162,5 +175,16 @@ test('write-once JSON rejects symlink and malformed existing content', async (t)
   await assert.rejects(
     writeJsonOnceOrVerify(malformed, { a: 1 }),
     /IMMUTABLE_JSON_CONFLICT/u
+  );
+});
+
+test('quarantine rejects a non-workspace temporary directory even with quarantine', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'r2-storage-unready-'));
+  t.after(() => removeFixture(root));
+  await fs.mkdir(path.join(root, 'quarantine'));
+  const bytes = Buffer.from('unready root');
+  await assert.rejects(
+    quarantineArtifact({ root, bytes, sha256: sha256(bytes) }),
+    /WORKSPACE_ROOT_OUTSIDE_RESIDENTIAL/u
   );
 });

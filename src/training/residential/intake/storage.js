@@ -3,6 +3,11 @@ import { constants as FS_CONSTANTS } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { TrainingDataError } from '../../trainingError.js';
+import { failContract } from '../contracts/contractError.js';
+import {
+  readResidentialWorkspaceStatus,
+  validateResidentialWorkspaceRoot
+} from '../workspace/index.js';
 import { canonicalJson } from './canonicalJson.js';
 import { RESIDENTIAL_INTAKE_LIMITS } from './limits.js';
 
@@ -22,7 +27,7 @@ export async function readCandidateBytes(
   filePath,
   { maxBytes = RESIDENTIAL_INTAKE_LIMITS.maxRawBytes } = {}
 ) {
-  return readRegularBytes(filePath, {
+  const file = await readRegularFile(filePath, {
     emptyCode: 'SOURCE_FILE_EMPTY',
     nonRegularCode: 'SOURCE_FILE_NOT_REGULAR',
     overflowCode: 'RAW_BYTES_LIMIT',
@@ -30,9 +35,10 @@ export async function readCandidateBytes(
     maxBytes,
     rejectEmpty: true
   });
+  return file.bytes;
 }
 
-export async function quarantineArtifact({ root, bytes, sha256 }) {
+export async function quarantineArtifact({ root, projectRoot, bytes, sha256 }) {
   const artifact = Buffer.from(bytes);
   const caseId = caseIdFromSha256(sha256);
   const actualSha256 = hashBytes(artifact);
@@ -43,29 +49,50 @@ export async function quarantineArtifact({ root, bytes, sha256 }) {
     });
   }
 
-  const quarantineRoot = await safeQuarantineRoot(root);
-  const target = path.join(quarantineRoot, caseId);
+  const context = await readyQuarantineRoot({ root, projectRoot });
+  const target = path.join(context.quarantine.path, caseId);
   if (await safeLstat(target)) {
-    await verifyQuarantineArtifact({ target, caseId, bytes: artifact, sha256 });
+    await verifyQuarantineArtifact({ context, target, caseId, bytes: artifact, sha256 });
     return Object.freeze({ case_id: caseId, directory: target, created: false });
   }
 
+  await assertContext(context);
   const temporary = await fs.mkdtemp(
-    path.join(quarantineRoot, `.${caseId}.tmp-`)
+    path.join(context.quarantine.path, `.${caseId}.tmp-`)
   );
+  const temporaryDirectory = await snapshotDirectory(temporary, target);
   let removeTemporary = true;
   try {
     const identity = quarantineIdentity({ caseId, sha256, byteSize: artifact.length });
-    await writeReadOnly(path.join(temporary, 'payload'), artifact);
-    await writeReadOnly(path.join(temporary, 'identity.json'), canonicalFileJson(identity));
-    await fs.chmod(temporary, QUARANTINE_DIRECTORY_MODE);
+    await writeReadOnly({
+      context,
+      parent: temporaryDirectory,
+      filePath: path.join(temporary, 'payload'),
+      bytes: artifact
+    });
+    await writeReadOnly({
+      context,
+      parent: temporaryDirectory,
+      filePath: path.join(temporary, 'identity.json'),
+      bytes: canonicalFileJson(identity)
+    });
+    await chmodPinnedDirectory(context, temporaryDirectory, QUARANTINE_DIRECTORY_MODE);
+    await assertContext(context);
+    await assertSameDirectory(temporaryDirectory, target);
+    if (await safeLstat(target)) {
+      await verifyQuarantineArtifact({ context, target, caseId, bytes: artifact, sha256 });
+      return Object.freeze({ case_id: caseId, directory: target, created: false });
+    }
     try {
       await fs.rename(temporary, target);
       removeTemporary = false;
+      await assertContext(context);
+      await verifyQuarantineArtifact({ context, target, caseId, bytes: artifact, sha256 });
       return Object.freeze({ case_id: caseId, directory: target, created: true });
     } catch (error) {
       if (!['EEXIST', 'ENOTEMPTY'].includes(error?.code)) throw error;
-      await verifyQuarantineArtifact({ target, caseId, bytes: artifact, sha256 });
+      await assertContext(context);
+      await verifyQuarantineArtifact({ context, target, caseId, bytes: artifact, sha256 });
       return Object.freeze({ case_id: caseId, directory: target, created: false });
     }
   } catch (error) {
@@ -73,8 +100,7 @@ export async function quarantineArtifact({ root, bytes, sha256 }) {
     throw quarantineConflict(target, error);
   } finally {
     if (removeTemporary) {
-      await fs.chmod(temporary, 0o700).catch(() => undefined);
-      await fs.rm(temporary, { recursive: true, force: true });
+      await cleanupTemporaryDirectory(context, temporaryDirectory);
     }
   }
 }
@@ -100,11 +126,11 @@ export async function writeJsonOnceOrVerify(filePath, value) {
   try {
     const current = await safeLstat(filePath);
     if (!current?.isFile() || current.isSymbolicLink()) throw immutableJsonConflict(filePath);
-    const existingText = await readRegularBytes(filePath, {
+    const existingFile = await readRegularFile(filePath, {
       nonRegularCode: 'IMMUTABLE_JSON_CONFLICT',
       symlinkCode: 'IMMUTABLE_JSON_CONFLICT'
     });
-    const existingCanonical = canonicalJson(JSON.parse(existingText.toString('utf8')));
+    const existingCanonical = canonicalJson(JSON.parse(existingFile.bytes.toString('utf8')));
     if (existingCanonical !== desired) throw immutableJsonConflict(filePath);
     return 'verified';
   } catch (error) {
@@ -115,30 +141,39 @@ export async function writeJsonOnceOrVerify(filePath, value) {
   }
 }
 
-async function safeQuarantineRoot(root) {
-  const workspaceRoot = path.resolve(String(root));
-  const rootEntry = await safeLstat(workspaceRoot);
-  const quarantineRoot = path.join(workspaceRoot, 'quarantine');
-  const quarantineEntry = await safeLstat(quarantineRoot);
-  if (
-    !rootEntry?.isDirectory() || rootEntry.isSymbolicLink() ||
-    !quarantineEntry?.isDirectory() || quarantineEntry.isSymbolicLink()
-  ) {
-    throw quarantineConflict(quarantineRoot);
+async function readyQuarantineRoot({ root, projectRoot }) {
+  const resolvedRoot = path.resolve(String(root));
+  const resolvedProjectRoot = projectRoot ?? path.dirname(path.dirname(resolvedRoot));
+  const workspaceRoot = await validateResidentialWorkspaceRoot(resolvedRoot, {
+    projectRoot: resolvedProjectRoot
+  });
+  const status = await readResidentialWorkspaceStatus({
+    root: workspaceRoot,
+    projectRoot: resolvedProjectRoot
+  });
+  if (status.state !== 'ready') {
+    failContract('WORKSPACE_NOT_READY', 'workspace.root', workspaceRoot);
   }
-  return quarantineRoot;
+  const context = Object.freeze({
+    root: await snapshotDirectory(workspaceRoot, workspaceRoot),
+    quarantine: await snapshotDirectory(path.join(workspaceRoot, 'quarantine'), workspaceRoot)
+  });
+  await assertContext(context);
+  return context;
 }
 
-async function verifyQuarantineArtifact({ target, caseId, bytes, sha256 }) {
+async function verifyQuarantineArtifact({ context, target, caseId, bytes, sha256 }) {
   try {
-    const directory = await fs.lstat(target);
-    if (!directory.isDirectory() || directory.isSymbolicLink()) {
-      throw quarantineConflict(target);
-    }
+    await assertContext(context);
+    const directory = await snapshotDirectory(target, target);
     if ((directory.mode & 0o777) !== QUARANTINE_DIRECTORY_MODE) {
       throw quarantineConflict(target);
     }
+    await assertContext(context);
+    await assertSameDirectory(directory, target);
     const entries = await fs.readdir(target, { withFileTypes: true });
+    await assertContext(context);
+    await assertSameDirectory(directory, target);
     if (
       entries.length !== 2 ||
       !entries.some((entry) => entry.name === 'identity.json' && entry.isFile() && !entry.isSymbolicLink()) ||
@@ -151,8 +186,12 @@ async function verifyQuarantineArtifact({ target, caseId, bytes, sha256 }) {
     const expectedIdentity = canonicalFileJson(
       quarantineIdentity({ caseId, sha256, byteSize: bytes.length })
     );
-    const identity = await readSecureQuarantineFile(identityPath, target);
-    const payload = await readSecureQuarantineFile(payloadPath, target);
+    const identity = await readSecureQuarantineFile({
+      context, directory, filePath: identityPath, target
+    });
+    const payload = await readSecureQuarantineFile({
+      context, directory, filePath: payloadPath, target
+    });
     if (
       !identity.equals(expectedIdentity) ||
       !payload.equals(bytes) ||
@@ -168,17 +207,21 @@ async function verifyQuarantineArtifact({ target, caseId, bytes, sha256 }) {
   }
 }
 
-async function readSecureQuarantineFile(filePath, target) {
-  const bytes = await readRegularBytes(filePath, {
+async function readSecureQuarantineFile({ context, directory, filePath, target }) {
+  await assertContext(context);
+  await assertSameDirectory(directory, target);
+  const file = await readRegularFile(filePath, {
     nonRegularCode: 'QUARANTINE_CONFLICT',
     symlinkCode: 'QUARANTINE_CONFLICT'
   });
-  const metadata = await fs.lstat(filePath);
-  if ((metadata.mode & 0o777) !== READ_ONLY_MODE) throw quarantineConflict(target);
-  return bytes;
+  if ((file.metadata.mode & 0o777) !== READ_ONLY_MODE) throw quarantineConflict(target);
+  await assertContext(context);
+  await assertSameDirectory(directory, target);
+  await assertSameFile(filePath, file.metadata, target);
+  return file.bytes;
 }
 
-async function readRegularBytes(filePath, {
+async function readRegularFile(filePath, {
   emptyCode,
   nonRegularCode,
   overflowCode,
@@ -215,7 +258,7 @@ async function readRegularBytes(filePath, {
       }
       throw new TrainingDataError(nonRegularCode, String(filePath));
     }
-    return bytes;
+    return Object.freeze({ bytes, metadata: after });
   } catch (error) {
     if (error instanceof TrainingDataError) throw error;
     if (error?.code === 'ELOOP') {
@@ -227,11 +270,28 @@ async function readRegularBytes(filePath, {
   }
 }
 
-async function writeReadOnly(filePath, bytes) {
-  const handle = await fs.open(filePath, 'wx', READ_ONLY_MODE);
+async function writeReadOnly({ context, parent, filePath, bytes }) {
+  await assertContext(context);
+  await assertSameDirectory(parent, parent.path);
+  const handle = await fs.open(
+    filePath,
+    FS_CONSTANTS.O_WRONLY |
+      FS_CONSTANTS.O_CREAT |
+      FS_CONSTANTS.O_EXCL |
+      FS_CONSTANTS.O_NOFOLLOW,
+    READ_ONLY_MODE
+  );
   try {
     await handle.writeFile(bytes);
     await handle.sync();
+    const metadata = await handle.stat();
+    if (!metadata.isFile() || (metadata.mode & 0o777) !== READ_ONLY_MODE) {
+      throw quarantineConflict(parent.path);
+    }
+    await assertContext(context);
+    await assertSameDirectory(parent, parent.path);
+    await assertSameFile(filePath, metadata, parent.path);
+    return Object.freeze({ path: filePath, dev: metadata.dev, ino: metadata.ino });
   } finally {
     await handle.close();
   }
@@ -253,6 +313,87 @@ function canonicalFileJson(value) {
 
 function hashBytes(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
+}
+
+async function snapshotDirectory(directoryPath, conflictTarget) {
+  const entry = await safeLstat(directoryPath);
+  if (!entry?.isDirectory() || entry.isSymbolicLink()) {
+    throw quarantineConflict(conflictTarget);
+  }
+  return Object.freeze({
+    path: directoryPath,
+    dev: entry.dev,
+    ino: entry.ino,
+    mode: entry.mode
+  });
+}
+
+async function assertContext(context) {
+  await assertSameDirectory(context.root, context.root.path);
+  await assertSameDirectory(context.quarantine, context.quarantine.path);
+}
+
+async function assertSameDirectory(snapshot, conflictTarget) {
+  const entry = await safeLstat(snapshot.path);
+  if (
+    !entry?.isDirectory() || entry.isSymbolicLink() ||
+    entry.dev !== snapshot.dev || entry.ino !== snapshot.ino
+  ) {
+    throw quarantineConflict(conflictTarget);
+  }
+  return entry;
+}
+
+async function assertSameFile(filePath, metadata, conflictTarget) {
+  const entry = await safeLstat(filePath);
+  if (
+    !entry?.isFile() || entry.isSymbolicLink() ||
+    entry.dev !== metadata.dev || entry.ino !== metadata.ino
+  ) {
+    throw quarantineConflict(conflictTarget);
+  }
+}
+
+async function chmodPinnedDirectory(context, directory, mode) {
+  await assertContext(context);
+  await assertSameDirectory(directory, directory.path);
+  await fs.chmod(directory.path, mode);
+  await assertContext(context);
+  const entry = await assertSameDirectory(directory, directory.path);
+  if ((entry.mode & 0o777) !== mode) throw quarantineConflict(directory.path);
+}
+
+async function cleanupTemporaryDirectory(context, temporary) {
+  try {
+    await assertContext(context);
+    await assertSameDirectory(temporary, temporary.path);
+    await chmodPinnedDirectory(context, temporary, 0o700);
+    const entries = await fs.readdir(temporary.path, { withFileTypes: true });
+    await assertContext(context);
+    await assertSameDirectory(temporary, temporary.path);
+    const allowed = new Set(['identity.json', 'payload']);
+    if (entries.some((entry) => !allowed.has(entry.name) || !entry.isFile() || entry.isSymbolicLink())) {
+      return;
+    }
+    for (const name of ['identity.json', 'payload']) {
+      const filePath = path.join(temporary.path, name);
+      const entry = await safeLstat(filePath);
+      if (!entry) continue;
+      if (!entry.isFile() || entry.isSymbolicLink()) return;
+      await assertContext(context);
+      await assertSameDirectory(temporary, temporary.path);
+      await assertSameFile(filePath, entry, temporary.path);
+      await fs.unlink(filePath);
+      await assertContext(context);
+      await assertSameDirectory(temporary, temporary.path);
+    }
+    await assertContext(context);
+    await assertSameDirectory(temporary, temporary.path);
+    await fs.rmdir(temporary.path);
+    await assertContext(context);
+  } catch {
+    // A swapped path or unexpected entry is intentionally left untouched.
+  }
 }
 
 async function safeLstat(filePath) {
