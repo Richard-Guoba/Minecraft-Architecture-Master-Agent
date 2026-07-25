@@ -42,6 +42,8 @@ const OBJECT_BYTES = 32;
 const PROPERTY_SLOT_BYTES = 8;
 const STRING_BYTES_PER_INPUT_BYTE = 2;
 const STRING_OVERHEAD_BYTES = 16;
+// Stable conservative charge for each materialized Node Buffer wrapper.
+const BUFFER_WRAPPER_BYTES = 128;
 
 export function decodeBoundedNbt(buffer, {
   sourceId,
@@ -206,7 +208,10 @@ class Reader {
         sha256: createHash('sha256').update(bytes).digest('hex')
       });
     }
-    if (kind === 'byte') return Buffer.from(bytes);
+    if (kind === 'byte') {
+      this.chargeMaterialization(0, BUFFER_WRAPPER_BYTES + byteLength);
+      return Buffer.from(bytes);
+    }
     this.chargeMaterialization(
       length,
       length * (COLLECTION_SLOT_BYTES + (kind === 'long' ? BIGINT_BYTES : 0))

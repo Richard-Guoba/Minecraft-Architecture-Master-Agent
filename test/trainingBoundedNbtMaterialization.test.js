@@ -47,6 +47,76 @@ test('materialization entry accounting is cumulative across collections', () => 
   );
 });
 
+test('materialized byte arrays preserve their Buffer payload', () => {
+  const decoded = decodeBoundedNbt(Buffer.from([
+    10, 0, 0,
+    7, 0, 5, 0x62, 0x79, 0x74, 0x65, 0x73,
+    0, 0, 0, 4, 0, 0x7f, 0x80, 0xff,
+    0
+  ]), {
+    sourceId: 'materialized-byte-array-payload',
+    limits: RESIDENTIAL_INTAKE_LIMITS,
+    materializeArrays: true
+  });
+
+  assert.ok(Buffer.isBuffer(decoded.value.bytes));
+  assert.deepEqual([...decoded.value.bytes], [0, 0x7f, 0x80, 0xff]);
+});
+
+test('empty byte-array lists fail with a controlled materialization limit under a capped heap', async () => {
+  const worker = new Worker(`
+    const { parentPort, workerData } = require('node:worker_threads');
+    Promise.all([
+      import(workerData.decoderUrl),
+      import(workerData.limitsUrl)
+    ]).then(([{ decodeBoundedNbt }, { RESIDENTIAL_INTAKE_LIMITS }]) => {
+      const length = 1_499_999;
+      const payloadOffset = 12;
+      const bytes = Buffer.alloc(payloadOffset + length * 4 + 1);
+      bytes[0] = 10;
+      bytes[3] = 9;
+      bytes.writeUInt16BE(1, 4);
+      bytes[6] = 0x78;
+      bytes[7] = 7;
+      bytes.writeInt32BE(length, 8);
+      try {
+        decodeBoundedNbt(bytes, {
+          sourceId: 'empty-byte-array-worker',
+          limits: {
+            ...RESIDENTIAL_INTAKE_LIMITS,
+            maxMaterializedEntries: 1_500_000
+          },
+          materializeArrays: true
+        });
+        parentPort.postMessage({ kind: 'accepted' });
+      } catch (error) {
+        parentPort.postMessage({
+          kind: 'training_error',
+          name: error.name,
+          code: error.code,
+          stage: error.metadata?.stage
+        });
+      }
+    });
+  `, {
+    eval: true,
+    resourceLimits: { maxOldGenerationSizeMb: 64 },
+    workerData: { decoderUrl, limitsUrl }
+  });
+  let result;
+  try {
+    result = await settledWorkerResult(worker);
+  } finally {
+    await worker.terminate();
+  }
+  assert.deepEqual(result, {
+    kind: 'training_error',
+    name: 'TrainingDataError',
+    code: 'NBT_MATERIALIZATION_LIMIT',
+    stage: 'nbt'
+  });
+});
+
 test('boxed NBT collections fail with a controlled limit under a capped heap', async (t) => {
   const cases = [
     { name: 'int array', tagType: 11, childType: null, width: 4, length: 6_000_000 },
