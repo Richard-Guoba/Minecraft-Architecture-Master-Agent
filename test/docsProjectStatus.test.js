@@ -65,12 +65,50 @@ test('project docs describe the exact local-only R2 residential boundary', () =>
     manifest.candidates.map((candidate) => candidate.lane),
     ['houses', 'other-architecture']
   );
-  assert.doesNotMatch(
-    currentResidentialDocs,
-    /\bresidential (?:dataset|checkpoint)\s+(?:exists|is (?:available|present|ready)|has been (?:created|produced|trained))\b/iu
-  );
+  assert.equal(hasPositiveResidentialArtifactClaim(currentResidentialDocs), false);
   assert.equal(fs.existsSync('docs/superpowers'), false);
 });
+
+test('current-doc guard detects positive residential artifact claims without rejecting negatives', () => {
+  const positiveClaims = [
+    'The residential checkpoint is usable.',
+    'A residential checkpoint has been built.',
+    'The dataset for the residential renderer exists.',
+    'The residential dataset is ready.',
+    'The residential checkpoint is available.',
+    'The residential dataset has been created.',
+    'The residential checkpoint has been trained.',
+    'The residential dataset has been released.',
+    'The residential checkpoint is present.',
+    'The dataset for the residential renderer is complete.',
+    'The checkpoint for the residential renderer is now available.'
+  ];
+  const negativeClaims = [
+    'No residential checkpoint exists.',
+    'The residential dataset does not exist.',
+    'The residential renderer checkpoint is not implemented.',
+    'A residential checkpoint has not been built.',
+    'R3 canonical extraction, annotation, datasets, models, training, and production integration are not implemented.'
+  ];
+  for (const claim of positiveClaims) {
+    assert.equal(hasPositiveResidentialArtifactClaim(claim), true, claim);
+  }
+  for (const claim of negativeClaims) {
+    assert.equal(hasPositiveResidentialArtifactClaim(claim), false, claim);
+  }
+});
+
+function hasPositiveResidentialArtifactClaim(text) {
+  const subject = /\b(?:residential (?:dataset|checkpoint)|(?:dataset|checkpoint) for (?:the )?residential renderer)\b/giu;
+  const positiveCompletion = /^(?:exists|is\s+(?:now\s+)?(?:usable|ready|available|present|complete)|has been\s+(?:built|created|trained|released|produced)|was\s+(?:built|created|trained|released|produced))\b/iu;
+  for (const match of text.matchAll(subject)) {
+    const before = text.slice(0, match.index);
+    const after = text.slice(match.index + match[0].length).trimStart();
+    if (/\b(?:no|not)\s*$/iu.test(before)) continue;
+    if (positiveCompletion.test(after)) return true;
+  }
+  return false;
+}
 
 function readManifestExample(markdown) {
   const match = markdown.match(/```json\n(\{[\s\S]*?\})\n```/u);
