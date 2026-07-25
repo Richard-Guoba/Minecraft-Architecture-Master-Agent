@@ -14,7 +14,7 @@ import { RESIDENTIAL_INTAKE_LIMITS } from './limits.js';
 const QUARANTINE_IDENTITY_SOURCE = 'residential-quarantine-identity-v1';
 const QUARANTINE_IDENTITY_SCHEMA_VERSION = 1;
 const READ_ONLY_MODE = 0o400;
-const QUARANTINE_DIRECTORY_MODES = new Set([0o500, 0o700]);
+const QUARANTINE_DIRECTORY_MODE = 0o500;
 
 export function caseIdFromSha256(value) {
   if (!/^[a-f0-9]{64}$/u.test(value || '')) {
@@ -63,6 +63,7 @@ export async function quarantineArtifact({ root, projectRoot, bytes, sha256 }) {
     path.join(context.quarantine.path, `.${caseId}.tmp-`)
   );
   const temporaryDirectory = await snapshotDirectory(temporary, target);
+  const temporaryHandle = await openPinnedDirectory(temporaryDirectory, target);
   try {
     const identity = quarantineIdentity({ caseId, sha256, byteSize: artifact.length });
     await writeReadOnly({
@@ -77,6 +78,13 @@ export async function quarantineArtifact({ root, projectRoot, bytes, sha256 }) {
       filePath: path.join(temporary, 'identity.json'),
       bytes: canonicalFileJson(identity)
     });
+    await temporaryHandle.chmod(QUARANTINE_DIRECTORY_MODE);
+    await assertPinnedDirectoryHandle(
+      temporaryHandle,
+      temporaryDirectory,
+      QUARANTINE_DIRECTORY_MODE,
+      target
+    );
     await assertContext(context);
     await assertSameDirectory(temporaryDirectory, target);
     if (await safeLstat(target)) {
@@ -85,6 +93,12 @@ export async function quarantineArtifact({ root, projectRoot, bytes, sha256 }) {
     }
     try {
       await fs.rename(temporary, target);
+      await assertPinnedDirectoryHandle(
+        temporaryHandle,
+        temporaryDirectory,
+        QUARANTINE_DIRECTORY_MODE,
+        target
+      );
       await assertContext(context);
       await verifyQuarantineArtifact({ context, target, caseId, bytes: artifact, sha256 });
       return Object.freeze({ case_id: caseId, directory: target, created: true });
@@ -97,6 +111,8 @@ export async function quarantineArtifact({ root, projectRoot, bytes, sha256 }) {
   } catch (error) {
     if (error instanceof TrainingDataError) throw error;
     throw quarantineConflict(target, error);
+  } finally {
+    await temporaryHandle.close();
   }
 }
 
@@ -159,7 +175,7 @@ async function verifyQuarantineArtifact({ context, target, caseId, bytes, sha256
   try {
     await assertContext(context);
     const directory = await snapshotDirectory(target, target);
-    if (!QUARANTINE_DIRECTORY_MODES.has(directory.mode & 0o777)) {
+    if ((directory.mode & 0o777) !== QUARANTINE_DIRECTORY_MODE) {
       throw quarantineConflict(target);
     }
     await assertContext(context);
@@ -345,6 +361,37 @@ async function assertSameFile(filePath, metadata, conflictTarget) {
   ) {
     throw quarantineConflict(conflictTarget);
   }
+}
+
+async function openPinnedDirectory(snapshot, conflictTarget) {
+  let handle;
+  try {
+    handle = await fs.open(
+      snapshot.path,
+      FS_CONSTANTS.O_RDONLY |
+        FS_CONSTANTS.O_DIRECTORY |
+        FS_CONSTANTS.O_NOFOLLOW
+    );
+    await assertPinnedDirectoryHandle(handle, snapshot, undefined, conflictTarget);
+    return handle;
+  } catch (error) {
+    await handle?.close();
+    if (error instanceof TrainingDataError) throw error;
+    if (error?.code === 'ELOOP') throw quarantineConflict(conflictTarget, error);
+    throw error;
+  }
+}
+
+async function assertPinnedDirectoryHandle(handle, snapshot, expectedMode, conflictTarget) {
+  const metadata = await handle.stat();
+  if (
+    !metadata.isDirectory() ||
+    metadata.dev !== snapshot.dev || metadata.ino !== snapshot.ino ||
+    (expectedMode !== undefined && (metadata.mode & 0o777) !== expectedMode)
+  ) {
+    throw quarantineConflict(conflictTarget);
+  }
+  return metadata;
 }
 
 async function safeLstat(filePath) {

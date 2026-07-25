@@ -50,8 +50,21 @@ test('quarantine creates one immutable content identity and verifies reruns', as
     await fs.readFile(path.join(first.directory, 'payload')),
     bytes
   );
+  assert.equal((await fs.stat(first.directory)).mode & 0o777, 0o500);
   assert.equal((await fs.stat(path.join(first.directory, 'payload'))).mode & 0o777, 0o400);
   assert.equal((await fs.stat(path.join(first.directory, 'identity.json'))).mode & 0o777, 0o400);
+});
+
+test('quarantine rejects an existing writable case directory', async (t) => {
+  const { root, projectRoot } = await fixture(t);
+  const bytes = Buffer.from('directory mode is immutable');
+  const exactSha256 = sha256(bytes);
+  const first = await quarantineArtifact({ root, projectRoot, bytes, sha256: exactSha256 });
+  await fs.chmod(first.directory, 0o700);
+  await assert.rejects(
+    quarantineArtifact({ root, projectRoot, bytes, sha256: exactSha256 }),
+    /QUARANTINE_CONFLICT/u
+  );
 });
 
 test('quarantine rejects an existing conflicting identity', async (t) => {
