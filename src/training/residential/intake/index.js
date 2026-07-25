@@ -11,6 +11,7 @@ export {
   caseIdFromSha256,
   quarantineArtifact,
   readCandidateBytes,
+  readVerifiedQuarantineArtifacts,
   writeJsonOnceOrVerify,
   writeQuarantineFingerprint
 } from './storage.js';

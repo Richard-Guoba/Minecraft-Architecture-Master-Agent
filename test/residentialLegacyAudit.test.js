@@ -192,6 +192,47 @@ test('legacy audit normalizes metadata and applies exact outcome precedence', as
   assert.equal(named.title, 'Named');
 });
 
+test('legacy audit ignores metadata behind a symlinked analysis ancestor', async (t) => {
+  const local = await fixture(t);
+  const external = await fs.mkdtemp(path.join(os.tmpdir(), 'r2-legacy-metadata-'));
+  t.after(() => removeFixture(external));
+  await fs.writeFile(
+    path.join(external, 'labels.generated.jsonl'),
+    JSON.stringify({
+      file: 'House/House.schematic',
+      title: 'External provenance must not be read',
+      source_url: 'https://example.invalid/external'
+    }) + '\n'
+  );
+  await fs.rm(path.join(local.legacyRoot, 'analysis'), {
+    recursive: true,
+    force: true
+  });
+  await fs.symlink(external, path.join(local.legacyRoot, 'analysis'));
+  const report = await auditLegacyTemplates(local);
+  const house = report.candidates.find(
+    (item) => item.relative_path === 'House/House.schematic'
+  );
+  assert.deepEqual(
+    [house.title, house.source_url, house.outcome, house.reason],
+    ['House', null, 'deferred', 'missing_provenance']
+  );
+});
+
+test('legacy audit fails closed on a writable quarantine lookalike', async (t) => {
+  const local = await fixture(t);
+  const houseBytes = await fs.readFile(
+    path.join(local.legacyRoot, 'House', 'House.schematic')
+  );
+  const caseId = `case-${createHash('sha256').update(houseBytes).digest('hex').slice(0, 24)}`;
+  const forged = path.join(local.root, 'quarantine', caseId);
+  await fs.mkdir(forged, { mode: 0o700 });
+  await fs.writeFile(path.join(forged, 'payload'), houseBytes, { mode: 0o600 });
+  const before = await snapshot(path.join(local.root, 'quarantine'));
+  await assert.rejects(auditLegacyTemplates(local), /QUARANTINE_CONFLICT/u);
+  assert.deepEqual(await snapshot(path.join(local.root, 'quarantine')), before);
+});
+
 test('legacy parser limits defer before provenance and reports are immutable', async (t) => {
   const local = await fixture(t);
   await fs.writeFile(

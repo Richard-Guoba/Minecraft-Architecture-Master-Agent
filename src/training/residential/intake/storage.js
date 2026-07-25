@@ -38,6 +38,26 @@ export async function readCandidateBytes(
   return file.bytes;
 }
 
+export async function readVerifiedQuarantineArtifacts({ root, projectRoot }) {
+  const context = await readyQuarantineRoot({ root, projectRoot });
+  const entries = await fs.readdir(context.quarantine.path, { withFileTypes: true });
+  const artifacts = [];
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (!/^case-[a-f0-9]{24}$/u.test(entry.name)) continue;
+    const target = path.join(context.quarantine.path, entry.name);
+    const verified = await readVerifiedQuarantineArtifact({
+      context,
+      target,
+      caseId: entry.name
+    });
+    artifacts.push(Object.freeze({
+      case_id: entry.name,
+      sha256: verified.sha256
+    }));
+  }
+  return Object.freeze(artifacts);
+}
+
 export async function quarantineArtifact({ root, projectRoot, bytes, sha256 }) {
   const artifact = Buffer.from(bytes);
   const caseId = caseIdFromSha256(sha256);
@@ -301,6 +321,33 @@ async function verifyQuarantineArtifact({ context, target, caseId, bytes, sha256
   }
 }
 
+async function readVerifiedQuarantineArtifact({ context, target, caseId }) {
+  let handle;
+  try {
+    await assertContext(context);
+    const directory = await snapshotDirectory(target, target);
+    handle = await openPinnedDirectory(directory, target);
+    const descriptorRoot = await pinnedDescriptorRoot(handle, directory, target);
+    const verified = await verifyPinnedQuarantineCase({
+      context,
+      handle,
+      directory,
+      descriptorRoot,
+      target,
+      caseId,
+      expectedMode: QUARANTINE_DIRECTORY_MODE
+    });
+    return Object.freeze({ sha256: verified.sha256 });
+  } catch (error) {
+    if (error instanceof TrainingDataError && error.code === 'QUARANTINE_CONFLICT') {
+      throw error;
+    }
+    throw quarantineConflict(target, error);
+  } finally {
+    await handle?.close();
+  }
+}
+
 async function verifyPinnedQuarantineCase({
   context,
   handle,
@@ -374,7 +421,7 @@ async function verifyPinnedQuarantineCase({
       throw quarantineConflict(target);
     }
   }
-  return Object.freeze({ fingerprint });
+  return Object.freeze({ fingerprint, sha256: identitySha256 });
 }
 
 async function pinnedDescriptorRoot(handle, directory, target) {

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { constants as FS_CONSTANTS } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -16,7 +15,11 @@ import {
 import { parseResidentialArtifact, supportedResidentialFormat } from './artifactParser.js';
 import { canonicalSha256 } from './canonicalJson.js';
 import { RESIDENTIAL_INTAKE_LIMITS } from './limits.js';
-import { readCandidateBytes, writeJsonOnceOrVerify } from './storage.js';
+import {
+  readCandidateBytes,
+  readVerifiedQuarantineArtifacts,
+  writeJsonOnceOrVerify
+} from './storage.js';
 
 const DEFAULT_METADATA_RELATIVE = 'analysis/labels.generated.jsonl';
 const IGNORED_DIRECTORIES = new Set(['analysis', 'curation']);
@@ -31,8 +34,8 @@ export async function auditLegacyTemplates(options) {
     options.metadataFile,
     legacyRoot
   );
-  const metadata = await readMetadata(metadataPath);
-  const quarantineHashes = await readQuarantineHashes(root);
+  const metadata = await readMetadata(metadataPath, legacyRoot);
+  const quarantineHashes = await readQuarantineHashes(root, projectRoot);
   const entries = await discoverLegacySources(legacyRoot);
   const seenLegacy = new Map();
   const candidates = [];
@@ -233,9 +236,12 @@ function candidateOutcome(base, outcome) {
   return { ...base, ...outcome };
 }
 
-async function readMetadata(metadataPath) {
+async function readMetadata(metadataPath, legacyRoot) {
+  if (!await metadataPathIsSafe(legacyRoot, metadataPath)) return new Map();
   const bytes = await readOptionalRegularFile(metadataPath);
-  if (bytes === null) return new Map();
+  if (bytes === null || !await metadataPathIsSafe(legacyRoot, metadataPath)) {
+    return new Map();
+  }
   const records = new Map();
   for (const line of bytes.toString('utf8').split(/\r?\n/u)) {
     if (line.trim() === '') continue;
@@ -258,22 +264,31 @@ async function readMetadata(metadataPath) {
   return records;
 }
 
-async function readQuarantineHashes(root) {
-  const directory = path.join(root, 'quarantine');
-  const entries = await fs.readdir(directory, { withFileTypes: true });
+async function readQuarantineHashes(root, projectRoot) {
+  const artifacts = await readVerifiedQuarantineArtifacts({ root, projectRoot });
   const hashes = new Map();
-  for (const entry of entries.sort((left, right) => compareText(left.name, right.name))) {
-    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-    if (!/^case-[a-f0-9]{24}$/u.test(entry.name)) continue;
-    try {
-      const bytes = await readCandidateBytes(path.join(directory, entry.name, 'payload'));
-      const hash = canonicalSha256Bytes(bytes);
-      if (`case-${hash.slice(0, 24)}` === entry.name) hashes.set(hash, entry.name);
-    } catch (error) {
-      if (!(error instanceof TrainingDataError)) throw error;
-    }
+  for (const artifact of artifacts) {
+    hashes.set(artifact.sha256, artifact.case_id);
   }
   return hashes;
+}
+
+async function metadataPathIsSafe(legacyRoot, metadataPath) {
+  const relative = path.relative(legacyRoot, metadataPath);
+  const parts = relative.split(path.sep).filter(Boolean);
+  if (parts[0] !== 'analysis' || parts.length < 2) return false;
+  let current = legacyRoot;
+  const rootEntry = await safeLstat(current);
+  if (!rootEntry?.isDirectory() || rootEntry.isSymbolicLink()) return false;
+  for (const part of parts.slice(0, -1)) {
+    current = path.join(current, part);
+    const entry = await safeLstat(current);
+    if (!entry?.isDirectory() || entry.isSymbolicLink()) return false;
+  }
+  const finalEntry = await safeLstat(metadataPath);
+  return finalEntry === null || (
+    finalEntry.isFile() && !finalEntry.isSymbolicLink()
+  );
 }
 
 async function readOptionalRegularFile(filePath) {
@@ -359,10 +374,6 @@ function summaryFor(candidates) {
       (item) => item.reason === 'missing_provenance'
     ).length
   };
-}
-
-function canonicalSha256Bytes(bytes) {
-  return createHash('sha256').update(bytes).digest('hex');
 }
 
 function isDescendant(parent, candidate) {

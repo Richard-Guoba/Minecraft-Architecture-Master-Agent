@@ -10,6 +10,7 @@ import {
 import {
   caseIdFromSha256,
   quarantineArtifact,
+  readVerifiedQuarantineArtifacts,
   readCandidateBytes,
   writeJsonOnceOrVerify,
   writeQuarantineFingerprint
@@ -54,6 +55,24 @@ test('quarantine creates one immutable content identity and verifies reruns', as
   assert.equal((await fs.stat(first.directory)).mode & 0o777, 0o500);
   assert.equal((await fs.stat(path.join(first.directory, 'payload'))).mode & 0o777, 0o400);
   assert.equal((await fs.stat(path.join(first.directory, 'identity.json'))).mode & 0o777, 0o400);
+});
+
+test('read-only quarantine inventory admits only a verified sealed case', async (t) => {
+  const { root, projectRoot } = await fixture(t);
+  const bytes = Buffer.from('sealed inventory fixture');
+  const exactSha256 = sha256(bytes);
+  const quarantined = await quarantineArtifact({
+    root,
+    projectRoot,
+    bytes,
+    sha256: exactSha256
+  });
+  const inventory = await readVerifiedQuarantineArtifacts({ root, projectRoot });
+  assert.deepEqual(inventory, [{
+    case_id: quarantined.case_id,
+    sha256: exactSha256
+  }]);
+  assert.equal((await fs.stat(quarantined.directory)).mode & 0o777, 0o500);
 });
 
 test('quarantine rejects an existing writable case directory', async (t) => {
