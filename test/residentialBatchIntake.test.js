@@ -198,6 +198,67 @@ test('same-batch interruption recovers the immutable profile outcome without a n
   assert.deepEqual(await fs.readFile(reportPath), before);
 });
 
+test('same-batch recovery rejects altered deterministic decision fields', async (t) => {
+  const mutations = [
+    {
+      name: 'decision identifier',
+      apply: (profile) => { profile.decisions[0].id = `decision-${'a'.repeat(24)}`; }
+    },
+    {
+      name: 'inconsistent valid actor',
+      apply: (profile) => { profile.decisions[1].actor = 'different-actor'; }
+    },
+    {
+      name: 'timestamp sequence',
+      apply: (profile) => { profile.decisions[1].at = '2026-07-24T14:00:00.002Z'; }
+    }
+  ];
+  for (const mutation of mutations) {
+    const local = await fixture(t);
+    await writeBatchFixture({
+      ...local,
+      batchId: '2026-07-24-fixture-001',
+      houseBytes: classicSchematic(),
+      otherBytes: classicSchematic({ blockId: 5 })
+    });
+    await intakeResidentialBatch({
+      ...local,
+      batchId: '2026-07-24-fixture-001',
+      clock: () => new Date('2026-07-24T14:00:00.000Z')
+    });
+    const sourceDirectory = path.join(local.root, 'sources');
+    const profileEntry = (await Promise.all((await fs.readdir(sourceDirectory)).map(
+      async (name) => ({
+        name,
+        value: JSON.parse(await fs.readFile(path.join(sourceDirectory, name), 'utf8'))
+      })
+    ))).find((entry) => entry.value.title === 'Fixture House');
+    const profilePath = path.join(sourceDirectory, profileEntry.name);
+    const profile = profileEntry.value;
+    mutation.apply(profile);
+    await fs.chmod(profilePath, 0o600);
+    await fs.writeFile(profilePath, `${JSON.stringify(profile, null, 2)}\n`);
+    await fs.rm(path.join(
+      local.root,
+      'reports',
+      'intake-2026-07-24-fixture-001.json'
+    ));
+    await assert.rejects(
+      intakeResidentialBatch({
+        ...local,
+        batchId: '2026-07-24-fixture-001',
+        clock: () => { throw new Error(`clock must not run for ${mutation.name}`); }
+      }),
+      /SOURCE_PROFILE_BATCH_RECOVERY_CONFLICT/u
+    );
+    await assert.rejects(fs.access(path.join(
+      local.root,
+      'reports',
+      'intake-2026-07-24-fixture-001.json'
+    )));
+  }
+});
+
 test('a prior unsupported observation prevents a later duplicate from fabricating a profile', async (t) => {
   const local = await fixture(t);
   await writeBatchFixture({
