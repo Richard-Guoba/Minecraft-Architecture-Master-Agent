@@ -116,6 +116,53 @@ export async function quarantineArtifact({ root, projectRoot, bytes, sha256 }) {
   }
 }
 
+export async function writeQuarantineFingerprint({
+  root,
+  projectRoot,
+  caseId,
+  fingerprint
+}) {
+  if (!/^case-[a-f0-9]{24}$/u.test(caseId || '')) {
+    throw new TrainingDataError('SOURCE_CASE_INVALID', String(caseId));
+  }
+  const context = await readyQuarantineRoot({ root, projectRoot });
+  const target = path.join(context.quarantine.path, caseId);
+  const directory = await snapshotDirectory(target, target);
+  if ((directory.mode & 0o777) !== QUARANTINE_DIRECTORY_MODE) {
+    throw quarantineConflict(target);
+  }
+  const filePath = path.join(target, 'fingerprint.json');
+  const existing = await safeLstat(filePath);
+  if (existing) {
+    if (!existing.isFile() || existing.isSymbolicLink()) throw quarantineConflict(target);
+    return writeJsonOnceOrVerify(filePath, fingerprint);
+  }
+
+  await assertContext(context);
+  await assertSameDirectory(directory, target);
+  await fs.chmod(target, 0o700);
+  try {
+    await assertContext(context);
+    await assertSameDirectory(directory, target);
+    return await writeJsonOnceOrVerify(filePath, fingerprint);
+  } catch (error) {
+    if (error instanceof TrainingDataError) throw error;
+    throw quarantineConflict(target, error);
+  } finally {
+    try {
+      await fs.chmod(target, QUARANTINE_DIRECTORY_MODE);
+      await assertContext(context);
+      const restored = await assertSameDirectory(directory, target);
+      if ((restored.mode & 0o777) !== QUARANTINE_DIRECTORY_MODE) {
+        throw quarantineConflict(target);
+      }
+    } catch (error) {
+      if (error instanceof TrainingDataError) throw error;
+      throw quarantineConflict(target, error);
+    }
+  }
+}
+
 export async function writeJsonOnceOrVerify(filePath, value) {
   const desired = canonicalJson(value);
   const contents = `${JSON.stringify(JSON.parse(desired), null, 2)}\n`;
@@ -183,10 +230,12 @@ async function verifyQuarantineArtifact({ context, target, caseId, bytes, sha256
     const entries = await fs.readdir(target, { withFileTypes: true });
     await assertContext(context);
     await assertSameDirectory(directory, target);
+    const allowed = new Set(['identity.json', 'payload', 'fingerprint.json']);
     if (
-      entries.length !== 2 ||
-      !entries.some((entry) => entry.name === 'identity.json' && entry.isFile() && !entry.isSymbolicLink()) ||
-      !entries.some((entry) => entry.name === 'payload' && entry.isFile() && !entry.isSymbolicLink())
+      entries.length < 2 || entries.length > 3 ||
+      entries.some((entry) => !allowed.has(entry.name) || !entry.isFile() || entry.isSymbolicLink()) ||
+      !entries.some((entry) => entry.name === 'identity.json') ||
+      !entries.some((entry) => entry.name === 'payload')
     ) {
       throw quarantineConflict(target);
     }
@@ -207,6 +256,15 @@ async function verifyQuarantineArtifact({ context, target, caseId, bytes, sha256
       hashBytes(payload) !== sha256
     ) {
       throw quarantineConflict(target);
+    }
+    const fingerprint = entries.find((entry) => entry.name === 'fingerprint.json');
+    if (fingerprint) {
+      await readSecureQuarantineFile({
+        context,
+        directory,
+        filePath: path.join(target, 'fingerprint.json'),
+        target
+      });
     }
   } catch (error) {
     if (error instanceof TrainingDataError && error.code === 'QUARANTINE_CONFLICT') {

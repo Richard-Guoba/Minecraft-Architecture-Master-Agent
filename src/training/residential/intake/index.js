@@ -11,9 +11,12 @@ export {
   caseIdFromSha256,
   quarantineArtifact,
   readCandidateBytes,
-  writeJsonOnceOrVerify
+  writeJsonOnceOrVerify,
+  writeQuarantineFingerprint
 } from './storage.js';
 export {
   parseResidentialArtifact,
   supportedResidentialFormat
 } from './artifactParser.js';
+export { buildSourceProfile } from './profileBuilder.js';
+export { intakeResidentialBatch } from './intakeBatch.js';
