@@ -110,6 +110,22 @@ test('bounded decoder rejects malformed, hostile, and over-expanded input', () =
   );
 });
 
+test('bounded decoder materializes arrays only when explicitly requested', () => {
+  const byteArray = Buffer.from([
+    10, 0, 0,
+    7, 0, 6, ...Buffer.from('Blocks'),
+    0, 0, 0, 3, 1, 2, 3,
+    0
+  ]);
+  const described = decodeBoundedNbt(byteArray, { sourceId: ID });
+  const materialized = decodeBoundedNbt(byteArray, {
+    sourceId: ID,
+    materializeArrays: true
+  });
+  assert.equal(described.value.Blocks.nbt_array, 'byte');
+  assert.deepEqual(materialized.value.Blocks, Buffer.from([1, 2, 3]));
+});
+
 function hasCode(code) {
   return (error) => error instanceof TrainingDataError && error.code === code;
 }

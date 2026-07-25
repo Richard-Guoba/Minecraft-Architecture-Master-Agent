@@ -36,7 +36,8 @@ const UTF8 = new TextDecoder('utf-8', { fatal: true });
 
 export function decodeBoundedNbt(buffer, {
   sourceId,
-  limits = BOUNDED_NBT_LIMITS
+  limits = BOUNDED_NBT_LIMITS,
+  materializeArrays = false
 } = {}) {
   const id = assertSourceId(sourceId);
   if (!Buffer.isBuffer(buffer)) fail('NBT_INPUT_INVALID', id);
@@ -52,7 +53,7 @@ export function decodeBoundedNbt(buffer, {
       inflated_byte_count: inflated.bytes.length
     });
   }
-  const reader = new Reader(inflated.bytes, limits, id);
+  const reader = new Reader(inflated.bytes, limits, id, materializeArrays);
   const type = reader.u8();
   if (type !== TAG.COMPOUND) fail('NBT_ROOT_INVALID', id, { tag_type: type });
   const rootName = reader.string();
@@ -110,10 +111,11 @@ function isZlib(buffer) {
 }
 
 class Reader {
-  constructor(buffer, limits, sourceId) {
+  constructor(buffer, limits, sourceId, materializeArrays) {
     this.buffer = buffer;
     this.limits = limits;
     this.sourceId = sourceId;
+    this.materializeArrays = materializeArrays;
     this.offset = 0;
     this.entries = 0;
   }
@@ -133,9 +135,9 @@ class Reader {
     if (type === TAG.FLOAT) return this.f32();
     if (type === TAG.DOUBLE) return this.f64();
     if (type === TAG.STRING) return this.string();
-    if (type === TAG.BYTE_ARRAY) return this.arrayDescriptor('byte', 1);
-    if (type === TAG.INT_ARRAY) return this.arrayDescriptor('int', 4);
-    if (type === TAG.LONG_ARRAY) return this.arrayDescriptor('long', 8);
+    if (type === TAG.BYTE_ARRAY) return this.arrayValue('byte', 1);
+    if (type === TAG.INT_ARRAY) return this.arrayValue('int', 4);
+    if (type === TAG.LONG_ARRAY) return this.arrayValue('long', 8);
     if (type === TAG.LIST) return this.list(depth);
     if (type === TAG.COMPOUND) return this.compound(depth);
     fail('NBT_TAG_INVALID', this.sourceId, { tag_type: type });
@@ -169,7 +171,7 @@ class Reader {
     }
   }
 
-  arrayDescriptor(kind, width) {
+  arrayValue(kind, width) {
     const length = this.length('NBT_ARRAY_LENGTH_INVALID');
     this.charge(length);
     const byteLength = length * width;
@@ -179,13 +181,24 @@ class Reader {
     this.ensure(byteLength);
     const start = this.offset;
     this.offset += byteLength;
-    return Object.freeze({
-      nbt_array: kind,
-      length,
-      sha256: createHash('sha256')
-        .update(this.buffer.subarray(start, this.offset))
-        .digest('hex')
-    });
+    const bytes = this.buffer.subarray(start, this.offset);
+    if (!this.materializeArrays) {
+      return Object.freeze({
+        nbt_array: kind,
+        length,
+        sha256: createHash('sha256').update(bytes).digest('hex')
+      });
+    }
+    if (kind === 'byte') return Buffer.from(bytes);
+    const output = [];
+    for (let offset = 0; offset < bytes.length; offset += width) {
+      output.push(
+        kind === 'int'
+          ? bytes.readInt32BE(offset)
+          : bytes.readBigInt64BE(offset)
+      );
+    }
+    return Object.freeze(output);
   }
 
   string() {
