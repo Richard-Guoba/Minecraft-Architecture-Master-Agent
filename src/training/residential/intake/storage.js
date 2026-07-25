@@ -14,7 +14,7 @@ import { RESIDENTIAL_INTAKE_LIMITS } from './limits.js';
 const QUARANTINE_IDENTITY_SOURCE = 'residential-quarantine-identity-v1';
 const QUARANTINE_IDENTITY_SCHEMA_VERSION = 1;
 const READ_ONLY_MODE = 0o400;
-const QUARANTINE_DIRECTORY_MODE = 0o500;
+const QUARANTINE_DIRECTORY_MODES = new Set([0o500, 0o700]);
 
 export function caseIdFromSha256(value) {
   if (!/^[a-f0-9]{64}$/u.test(value || '')) {
@@ -57,11 +57,12 @@ export async function quarantineArtifact({ root, projectRoot, bytes, sha256 }) {
   }
 
   await assertContext(context);
+  // A failed publication intentionally leaves only this private sibling behind.
+  // Removing it safely would require a directory-descriptor-relative unlink API.
   const temporary = await fs.mkdtemp(
     path.join(context.quarantine.path, `.${caseId}.tmp-`)
   );
   const temporaryDirectory = await snapshotDirectory(temporary, target);
-  let removeTemporary = true;
   try {
     const identity = quarantineIdentity({ caseId, sha256, byteSize: artifact.length });
     await writeReadOnly({
@@ -76,7 +77,6 @@ export async function quarantineArtifact({ root, projectRoot, bytes, sha256 }) {
       filePath: path.join(temporary, 'identity.json'),
       bytes: canonicalFileJson(identity)
     });
-    await chmodPinnedDirectory(context, temporaryDirectory, QUARANTINE_DIRECTORY_MODE);
     await assertContext(context);
     await assertSameDirectory(temporaryDirectory, target);
     if (await safeLstat(target)) {
@@ -85,7 +85,6 @@ export async function quarantineArtifact({ root, projectRoot, bytes, sha256 }) {
     }
     try {
       await fs.rename(temporary, target);
-      removeTemporary = false;
       await assertContext(context);
       await verifyQuarantineArtifact({ context, target, caseId, bytes: artifact, sha256 });
       return Object.freeze({ case_id: caseId, directory: target, created: true });
@@ -98,10 +97,6 @@ export async function quarantineArtifact({ root, projectRoot, bytes, sha256 }) {
   } catch (error) {
     if (error instanceof TrainingDataError) throw error;
     throw quarantineConflict(target, error);
-  } finally {
-    if (removeTemporary) {
-      await cleanupTemporaryDirectory(context, temporaryDirectory);
-    }
   }
 }
 
@@ -142,14 +137,12 @@ export async function writeJsonOnceOrVerify(filePath, value) {
 }
 
 async function readyQuarantineRoot({ root, projectRoot }) {
-  const resolvedRoot = path.resolve(String(root));
-  const resolvedProjectRoot = projectRoot ?? path.dirname(path.dirname(resolvedRoot));
-  const workspaceRoot = await validateResidentialWorkspaceRoot(resolvedRoot, {
-    projectRoot: resolvedProjectRoot
+  const workspaceRoot = await validateResidentialWorkspaceRoot(root, {
+    projectRoot
   });
   const status = await readResidentialWorkspaceStatus({
     root: workspaceRoot,
-    projectRoot: resolvedProjectRoot
+    projectRoot
   });
   if (status.state !== 'ready') {
     failContract('WORKSPACE_NOT_READY', 'workspace.root', workspaceRoot);
@@ -166,7 +159,7 @@ async function verifyQuarantineArtifact({ context, target, caseId, bytes, sha256
   try {
     await assertContext(context);
     const directory = await snapshotDirectory(target, target);
-    if ((directory.mode & 0o777) !== QUARANTINE_DIRECTORY_MODE) {
+    if (!QUARANTINE_DIRECTORY_MODES.has(directory.mode & 0o777)) {
       throw quarantineConflict(target);
     }
     await assertContext(context);
@@ -351,48 +344,6 @@ async function assertSameFile(filePath, metadata, conflictTarget) {
     entry.dev !== metadata.dev || entry.ino !== metadata.ino
   ) {
     throw quarantineConflict(conflictTarget);
-  }
-}
-
-async function chmodPinnedDirectory(context, directory, mode) {
-  await assertContext(context);
-  await assertSameDirectory(directory, directory.path);
-  await fs.chmod(directory.path, mode);
-  await assertContext(context);
-  const entry = await assertSameDirectory(directory, directory.path);
-  if ((entry.mode & 0o777) !== mode) throw quarantineConflict(directory.path);
-}
-
-async function cleanupTemporaryDirectory(context, temporary) {
-  try {
-    await assertContext(context);
-    await assertSameDirectory(temporary, temporary.path);
-    await chmodPinnedDirectory(context, temporary, 0o700);
-    const entries = await fs.readdir(temporary.path, { withFileTypes: true });
-    await assertContext(context);
-    await assertSameDirectory(temporary, temporary.path);
-    const allowed = new Set(['identity.json', 'payload']);
-    if (entries.some((entry) => !allowed.has(entry.name) || !entry.isFile() || entry.isSymbolicLink())) {
-      return;
-    }
-    for (const name of ['identity.json', 'payload']) {
-      const filePath = path.join(temporary.path, name);
-      const entry = await safeLstat(filePath);
-      if (!entry) continue;
-      if (!entry.isFile() || entry.isSymbolicLink()) return;
-      await assertContext(context);
-      await assertSameDirectory(temporary, temporary.path);
-      await assertSameFile(filePath, entry, temporary.path);
-      await fs.unlink(filePath);
-      await assertContext(context);
-      await assertSameDirectory(temporary, temporary.path);
-    }
-    await assertContext(context);
-    await assertSameDirectory(temporary, temporary.path);
-    await fs.rmdir(temporary.path);
-    await assertContext(context);
-  } catch {
-    // A swapped path or unexpected entry is intentionally left untouched.
   }
 }
 

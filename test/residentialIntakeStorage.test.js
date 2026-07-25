@@ -81,10 +81,19 @@ test('quarantine validates the supplied exact hash before publication', async (t
   assert.deepEqual(await fs.readdir(path.join(root, 'quarantine')), []);
 });
 
-test('quarantine infers the project root from a ready local workspace', async (t) => {
-  const { root } = await fixture(t);
+test('quarantine requires an explicit project root for an external workspace', async (t) => {
+  const { root, projectRoot } = await fixture(t);
   const bytes = Buffer.from('inferred workspace root');
-  const result = await quarantineArtifact({ root, bytes, sha256: sha256(bytes) });
+  await assert.rejects(
+    quarantineArtifact({ root, bytes, sha256: sha256(bytes) }),
+    /WORKSPACE_ROOT_OUTSIDE_RESIDENTIAL/u
+  );
+  const result = await quarantineArtifact({
+    root,
+    projectRoot,
+    bytes,
+    sha256: sha256(bytes)
+  });
   assert.equal(result.created, true);
 });
 
@@ -119,6 +128,16 @@ test('concurrent quarantine publication leaves one verified identity', async (t)
     await fs.readFile(path.join(results[0].directory, 'payload'), 'utf8'),
     'same concurrent payload'
   );
+});
+
+test('quarantine leaves an existing abandoned temporary sibling untouched', async (t) => {
+  const { root, projectRoot } = await fixture(t);
+  const bytes = Buffer.from('preserve temporary sibling');
+  const caseId = caseIdFromSha256(sha256(bytes));
+  const abandoned = path.join(root, 'quarantine', `.${caseId}.tmp-abandoned`);
+  await fs.mkdir(abandoned, { mode: 0o500 });
+  await quarantineArtifact({ root, projectRoot, bytes, sha256: sha256(bytes) });
+  assert.equal((await fs.lstat(abandoned)).isDirectory(), true);
 });
 
 test('candidate reads reject symlinks and raw-byte overflow', async (t) => {
