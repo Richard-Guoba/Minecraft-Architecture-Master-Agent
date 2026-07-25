@@ -12,6 +12,7 @@ import {
 } from '../src/training/residential/intake/index.js';
 import {
   classicSchematic,
+  regionSchematic,
   vanillaStructure,
   writeBatchFixture
 } from './fixtures/residentialIntakeFixtures.js';
@@ -195,6 +196,38 @@ test('same-batch pre-profile outcomes deduplicate before parsing again', async (
     ]
   );
   assert.equal(report.candidates[1].case_id, report.candidates[0].case_id);
+});
+
+test('long sparse regions defer before quarantine fingerprinting', async (t) => {
+  const local = await fixture(t);
+  const states = Array(65_536).fill(1);
+  states[0] = 0;
+  states[65_535] = 0;
+  await writeBatchFixture({
+    ...local,
+    batchId: '2026-07-24-fixture-001',
+    houseFilename: 'long-sparse.schem',
+    houseBytes: regionSchematic({
+      size: [65_536, 1, 1],
+      palette: ['minecraft:stone', 'minecraft:air'],
+      states
+    })
+  });
+  const report = await intakeResidentialBatch({
+    ...local,
+    batchId: '2026-07-24-fixture-001'
+  });
+  const candidate = report.candidates.find(
+    (item) => item.submitted.relative_path === 'houses/long-sparse.schem'
+  );
+  assert.deepEqual(
+    [candidate.outcome, candidate.reason, candidate.source_profile_file],
+    ['deferred', 'occupied_bounds_exceed_64', null]
+  );
+  const caseRoot = path.join(local.root, 'quarantine', candidate.case_id);
+  await assert.doesNotReject(fs.access(path.join(caseRoot, 'identity.json')));
+  await assert.doesNotReject(fs.access(path.join(caseRoot, 'payload')));
+  await assert.rejects(fs.access(path.join(caseRoot, 'fingerprint.json')));
 });
 
 test('same-batch malformed payloads deduplicate before parsing again', async (t) => {

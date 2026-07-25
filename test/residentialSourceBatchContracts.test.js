@@ -305,6 +305,13 @@ test('legacy report retains missing provenance without fabricating a profile', (
   assert.equal(Object.hasOwn(result.candidates[0], 'source_profile_file'), false);
 });
 
+test('legacy report retains a parser-measured occupied extent above 65,535', () => {
+  const report = validLegacyAuditReportFixture();
+  report.candidates[0].occupied_extent = [65_536, 1, 1];
+  const result = validateLegacyAuditReport(report);
+  assert.deepEqual(result.candidates[0].occupied_extent, [65_536, 1, 1]);
+});
+
 function refreshSummary(report) {
   report.summary = {
     candidate_count: report.candidates.length,

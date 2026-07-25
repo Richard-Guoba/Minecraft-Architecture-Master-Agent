@@ -84,8 +84,7 @@ export function validateLegacyAuditReport(value) {
       });
       extent.forEach((axis, axisIndex) => {
         assertInteger(axis, `${itemPath}.occupied_extent[${axisIndex}]`, {
-          minimum: 1,
-          maximum: 65_535
+          minimum: 1
         });
       });
     });

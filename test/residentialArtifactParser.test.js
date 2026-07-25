@@ -9,6 +9,7 @@ import {
 } from '../src/training/residential/intake/index.js';
 import {
   classicSchematic,
+  regionSchematic,
   vanillaStructure
 } from './fixtures/residentialIntakeFixtures.js';
 
@@ -156,6 +157,30 @@ test('occupied analysis is capped at the maximum useful 64-cube envelope', () =>
       && error.metadata.stage === 'measurement'
       && error.metadata.entry_count === 64 ** 3 + 1
       && error.metadata.max_entries === 64 ** 3
+    )
+  );
+});
+
+test('occupied extent is reported before the fingerprint extent contract', () => {
+  const states = Array(65_536).fill(1);
+  states[0] = 0;
+  states[65_535] = 0;
+  assert.throws(
+    () => parseResidentialArtifact({
+      bytes: regionSchematic({
+        size: [65_536, 1, 1],
+        palette: ['minecraft:stone', 'minecraft:air'],
+        states
+      }),
+      originalFilename: 'long-sparse.schem',
+      sourceId: 'long-sparse',
+      occupiedExtentLimit: 64
+    }),
+    (error) => (
+      error.code === 'SOURCE_OCCUPIED_BOUNDS_LIMIT'
+      && error.metadata.stage === 'measurement'
+      && error.metadata.occupied_extent[0] === 65_536
+      && /^[a-f0-9]{64}$/u.test(error.metadata.exact_sha256)
     )
   );
 });

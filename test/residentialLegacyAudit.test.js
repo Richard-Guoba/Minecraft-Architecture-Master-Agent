@@ -12,7 +12,8 @@ import {
   quarantineArtifact
 } from '../src/training/residential/intake/index.js';
 import {
-  classicSchematic
+  classicSchematic,
+  regionSchematic
 } from './fixtures/residentialIntakeFixtures.js';
 
 async function fixture(t) {
@@ -123,6 +124,68 @@ test('legacy audit detects duplicates within legacy and against new quarantine',
       (item) => item.relative_path === 'Tower/Tower.schematic'
     ).duplicate_of,
     /^case-[a-f0-9]{24}$/u
+  );
+});
+
+test('legacy oversized regions retain evidence and apply duplicate precedence', async (t) => {
+  const local = await fixture(t);
+  const states = Array(65_536).fill(1);
+  states[0] = 0;
+  states[65_535] = 0;
+  const legacyBytes = regionSchematic({
+    size: [65_536, 1, 1],
+    palette: ['minecraft:stone', 'minecraft:air'],
+    states
+  });
+  const quarantinedBytes = regionSchematic({
+    size: [65_536, 1, 1],
+    palette: ['minecraft:dirt', 'minecraft:air'],
+    states
+  });
+  await fs.writeFile(
+    path.join(local.legacyRoot, 'House', 'AA Long.schem'),
+    legacyBytes
+  );
+  await fs.writeFile(
+    path.join(local.legacyRoot, 'House', 'BB Long copy.schem'),
+    legacyBytes
+  );
+  await fs.writeFile(
+    path.join(local.legacyRoot, 'House', 'CC Long quarantined.schem'),
+    quarantinedBytes
+  );
+  const quarantined = await quarantineArtifact({
+    root: local.root,
+    projectRoot: local.projectRoot,
+    bytes: quarantinedBytes,
+    sha256: createHash('sha256').update(quarantinedBytes).digest('hex')
+  });
+  const report = await auditLegacyTemplates(local);
+  const first = report.candidates.find(
+    (item) => item.relative_path === 'House/AA Long.schem'
+  );
+  const legacyDuplicate = report.candidates.find(
+    (item) => item.relative_path === 'House/BB Long copy.schem'
+  );
+  const quarantineDuplicate = report.candidates.find(
+    (item) => item.relative_path === 'House/CC Long quarantined.schem'
+  );
+  assert.deepEqual(
+    [first.outcome, first.reason, first.artifact_sha256, first.occupied_extent],
+    [
+      'deferred',
+      'occupied_bounds_exceed_64',
+      createHash('sha256').update(legacyBytes).digest('hex'),
+      [65_536, 1, 1]
+    ]
+  );
+  assert.deepEqual(
+    [legacyDuplicate.outcome, legacyDuplicate.reason, legacyDuplicate.duplicate_of],
+    ['deferred', 'exact_duplicate', 'legacy:House/AA Long.schem']
+  );
+  assert.deepEqual(
+    [quarantineDuplicate.outcome, quarantineDuplicate.reason, quarantineDuplicate.duplicate_of],
+    ['deferred', 'exact_duplicate', quarantined.case_id]
   );
 });
 

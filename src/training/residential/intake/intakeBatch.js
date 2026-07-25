@@ -155,10 +155,19 @@ async function intakeCandidate({
     artifact = parseResidentialArtifact({
       bytes,
       originalFilename: candidate.relative_path,
-      sourceId: quarantine.case_id
+      sourceId: quarantine.case_id,
+      occupiedExtentLimit: 64
     });
   } catch (error) {
     if (!(error instanceof TrainingDataError)) throw error;
+    if (error.code === 'SOURCE_OCCUPIED_BOUNDS_LIMIT') {
+      return candidateOutcome(base, {
+        ...common,
+        source_profile_file: null,
+        outcome: 'deferred',
+        reason: 'occupied_bounds_exceed_64'
+      });
+    }
     return candidateOutcome(base, {
       ...common,
       source_profile_file: null,
@@ -172,14 +181,6 @@ async function intakeCandidate({
     caseId: quarantine.case_id,
     fingerprint: artifact.structural_fingerprint
   });
-  if (artifact.occupied_bounds.extent.some((axis) => axis > 64)) {
-    return candidateOutcome(base, {
-      ...common,
-      source_profile_file: null,
-      outcome: 'deferred',
-      reason: 'occupied_bounds_exceed_64'
-    });
-  }
 
   const profileFile = `sources/${quarantine.case_id}.json`;
   const profilePath = path.join(root, ...profileFile.split('/'));

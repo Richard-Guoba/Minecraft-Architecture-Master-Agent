@@ -27,7 +27,8 @@ export function parseResidentialArtifact({
   bytes,
   originalFilename,
   sourceId,
-  limits = RESIDENTIAL_INTAKE_LIMITS
+  limits = RESIDENTIAL_INTAKE_LIMITS,
+  occupiedExtentLimit = null
 }) {
   const format = supportedResidentialFormat(originalFilename);
   if (!format) {
@@ -42,6 +43,24 @@ export function parseResidentialArtifact({
     ? fromVanilla(bytes, sourceId, limits)
     : fromSchematic(bytes, sourceId, format, limits);
   const measured = measure(normalized, sourceId);
+  if (
+    occupiedExtentLimit !== null
+    && measured.occupied_bounds.extent.some(
+      (axis) => axis > occupiedExtentLimit
+    )
+  ) {
+    throw new TrainingDataError(
+      'SOURCE_OCCUPIED_BOUNDS_LIMIT',
+      `artifact:${sourceId}`,
+      {
+        stage: 'measurement',
+        source_id: sourceId,
+        occupied_extent: measured.occupied_bounds.extent,
+        max_extent: occupiedExtentLimit,
+        exact_sha256: exactSha256
+      }
+    );
+  }
   const fingerprint = fingerprintCategoricalEntries({
     sourceId,
     contentSha256: exactSha256,

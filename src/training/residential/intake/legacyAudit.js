@@ -152,30 +152,40 @@ async function auditEntry({ entry, metadata, seenLegacy, quarantineHashes }) {
   }
 
   let artifact;
+  let occupiedBoundsLimit = null;
   try {
     const bytes = await readCandidateBytes(entry.absolute_path);
     artifact = parseResidentialArtifact({
       bytes,
       originalFilename: entry.relative_path,
-      sourceId: legacySourceId(entry.relative_path)
+      sourceId: legacySourceId(entry.relative_path),
+      occupiedExtentLimit: 64
     });
   } catch (error) {
     if (!(error instanceof TrainingDataError)) throw error;
-    return candidateOutcome(base, {
-      artifact_sha256: null,
-      occupied_extent: null,
-      duplicate_of: null,
-      outcome: parserLimit(error) ? 'deferred' : 'rejected',
-      reason: parserLimit(error) ? 'parser_limit' : 'malformed_or_unsafe_source'
-    });
+    if (error.code === 'SOURCE_OCCUPIED_BOUNDS_LIMIT') {
+      occupiedBoundsLimit = {
+        artifact_sha256: error.metadata.exact_sha256,
+        occupied_extent: error.metadata.occupied_extent,
+        duplicate_of: null
+      };
+    } else {
+      return candidateOutcome(base, {
+        artifact_sha256: null,
+        occupied_extent: null,
+        duplicate_of: null,
+        outcome: parserLimit(error) ? 'deferred' : 'rejected',
+        reason: parserLimit(error) ? 'parser_limit' : 'malformed_or_unsafe_source'
+      });
+    }
   }
 
-  const common = {
+  const common = occupiedBoundsLimit ?? {
     artifact_sha256: artifact.exact_sha256,
     occupied_extent: artifact.occupied_bounds.extent,
     duplicate_of: null
   };
-  const priorLegacy = seenLegacy.get(artifact.exact_sha256);
+  const priorLegacy = seenLegacy.get(common.artifact_sha256);
   if (priorLegacy) {
     return candidateOutcome(base, {
       ...common,
@@ -184,7 +194,7 @@ async function auditEntry({ entry, metadata, seenLegacy, quarantineHashes }) {
       reason: 'exact_duplicate'
     });
   }
-  const quarantined = quarantineHashes.get(artifact.exact_sha256);
+  const quarantined = quarantineHashes.get(common.artifact_sha256);
   if (quarantined) {
     return candidateOutcome(base, {
       ...common,
@@ -193,7 +203,7 @@ async function auditEntry({ entry, metadata, seenLegacy, quarantineHashes }) {
       reason: 'exact_duplicate'
     });
   }
-  if (artifact.occupied_bounds.extent.some((axis) => axis > 64)) {
+  if (occupiedBoundsLimit !== null) {
     return candidateOutcome(base, {
       ...common,
       outcome: 'deferred',
