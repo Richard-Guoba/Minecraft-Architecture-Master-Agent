@@ -689,6 +689,59 @@ test('capability deny allows only literal static edges and shadowed local names'
     ]);
   });
 
+  await t.test('project dependency symlink cannot grant builtinModules trust', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.js';
+    const projectRoot = await dependencyFixture(t, {
+      'package.json': '{"type":"module"}\n',
+      [entryPath]: [
+        "import { builtinModules } from 'node:module';",
+        "export default builtinModules.includes('fs');",
+        ''
+      ].join('\n')
+    });
+    const resolverPath = path.join(
+      projectRoot,
+      'node_modules/import-meta-resolve/lib/resolve.js'
+    );
+    await fs.mkdir(path.dirname(resolverPath), { recursive: true });
+    await fs.symlink(path.join(projectRoot, entryPath), resolverPath);
+
+    assert.equal(await importDefault(path.join(projectRoot, entryPath)), true);
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.deepEqual(audit.unresolved_manual_dependencies, [
+      `${entryPath}:DYNAMIC_NODE_MODULE_CAPABILITY`
+    ]);
+  });
+
+  await t.test('pinned package path does not exempt bare module source', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.js';
+    const resolverPath = 'node_modules/import-meta-resolve/lib/resolve.js';
+    const projectRoot = await dependencyFixture(t, {
+      'package.json': '{"type":"module"}\n',
+      [entryPath]:
+        "export { default } from 'import-meta-resolve/lib/resolve.js';\n",
+      'node_modules/import-meta-resolve/package.json': JSON.stringify({
+        name: 'import-meta-resolve',
+        type: 'module'
+      }),
+      [resolverPath]: [
+        "import { builtinModules } from 'module';",
+        "export default builtinModules.includes('fs');",
+        ''
+      ].join('\n')
+    });
+
+    assert.equal(await importDefault(path.join(projectRoot, entryPath)), true);
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.deepEqual(audit.unresolved_manual_dependencies, [
+      `${resolverPath}:DYNAMIC_NODE_MODULE_CAPABILITY`
+    ]);
+  });
+
   await t.test('shadowed local capability names are safe', async (t) => {
     const entryPath = 'src/playbook/manual/entry.js';
     const projectRoot = await dependencyFixture(t, {

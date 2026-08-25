@@ -9,6 +9,9 @@ const MODULE_EXTENSIONS = Object.freeze(['.js', '.mjs', '.cjs']);
 const MODULE_EXTENSION_SET = new Set(MODULE_EXTENSIONS);
 const STATIC_EDGE_MODES = Object.freeze({ ESM: 'esm', CJS: 'cjs' });
 const AUDIT_IMPLEMENTATION_PATH = await fs.realpath(fileURLToPath(import.meta.url));
+const RESOLVER_IMPLEMENTATION_PATH = await fs.realpath(fileURLToPath(
+  import.meta.resolve('import-meta-resolve/lib/resolve.js')
+));
 
 export async function auditManualDependencyBoundary({ projectRoot }) {
   const root = path.resolve(projectRoot);
@@ -19,9 +22,7 @@ export async function auditManualDependencyBoundary({ projectRoot }) {
   const unresolved = new Set();
   const visitedModules = new Set();
   const queuedModules = [];
-  const trustedBuiltinModulesImportPath = await trustedResolverImplementationPath(
-    root
-  );
+  const trustedBuiltinModulesImportPath = RESOLVER_IMPLEMENTATION_PATH;
 
   try {
     constructionRoots.add(await fs.realpath(constructionRoot));
@@ -463,23 +464,10 @@ function isSafeNodeModuleImport(
   return name === 'isBuiltin'
     || (
       name === 'builtinModules'
+      && node.source?.value === 'node:module'
       && node.specifiers[0].local?.name === 'builtinModules'
       && modulePath === trustedBuiltinModulesImportPath
     );
-}
-
-async function trustedResolverImplementationPath(projectRoot) {
-  try {
-    const implementationPath = await fs.realpath(path.join(
-      projectRoot,
-      'node_modules/import-meta-resolve/lib/resolve.js'
-    ));
-    return isWithin(implementationPath, projectRoot)
-      ? implementationPath
-      : null;
-  } catch {
-    return null;
-  }
 }
 
 function isTrustedAuditModuleImport(
