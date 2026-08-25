@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { failPlaybookContract } from '../contracts/playbookContractError.js';
 
 const SCHOOL_ID = 'heihui-jileniao';
@@ -61,6 +62,17 @@ const COVERAGE_FIELDS = [
   'unknown_ids',
   'runtime_authority'
 ];
+
+// Fingerprints cover the complete named v0.1 sections after recursive object-key
+// sorting. Array order remains significant, so policy organization is frozen
+// without keeping a second copy of the human-edited policy in production code.
+const P3_POLICY_FINGERPRINTS = Object.freeze({
+  created_at: '2026-08-25T12:00:00.000Z',
+  chapters: '0935d74dace30bfc1a6146fb689d2cce77bc16ae2c2fdd57fd330ad476ac827a',
+  rule_admissions: 'ba49b0046d7c100416e1c3792082884e755c4d05a6c2df3da7fd70838542f3a3',
+  terminology: 'a51e2239dce4249e9c2a9a1965515c413ef274d80c1a89adc482b58dc3103ff1',
+  coverage: 'f173d112f483e84dbbe61009073a0f3e4b42346a3cbfc3ff9d6acc3537503ff3'
+});
 
 const EXPECTED_CHAPTER_IDS = Object.freeze([
   'method-and-boundaries',
@@ -150,7 +162,41 @@ export function validateP3AdmissionPolicy(value, context) {
   validateAdmissions(policy.rule_admissions, candidateRuleIds);
   validateTerminology(policy.terminology, candidateRuleIds);
   validateCoverage(policy.coverage, candidateRuleIds);
+  validateCanonicalPolicy(policy);
   return deepFreeze(policy);
+}
+
+function validateCanonicalPolicy(policy) {
+  assertEqual(
+    policy.created_at,
+    P3_POLICY_FINGERPRINTS.created_at,
+    'PLAYBOOK_P3_TIMESTAMP_INVALID',
+    'P3AdmissionPolicy.created_at'
+  );
+  assertFingerprint(
+    policy.chapters,
+    P3_POLICY_FINGERPRINTS.chapters,
+    'PLAYBOOK_P3_CHAPTER_CONTENT_DRIFT',
+    'P3AdmissionPolicy.chapters'
+  );
+  assertFingerprint(
+    policy.rule_admissions,
+    P3_POLICY_FINGERPRINTS.rule_admissions,
+    'PLAYBOOK_P3_ADMISSION_MAPPING_DRIFT',
+    'P3AdmissionPolicy.rule_admissions'
+  );
+  assertFingerprint(
+    policy.terminology,
+    P3_POLICY_FINGERPRINTS.terminology,
+    'PLAYBOOK_P3_TERMINOLOGY_DRIFT',
+    'P3AdmissionPolicy.terminology'
+  );
+  assertFingerprint(
+    policy.coverage,
+    P3_POLICY_FINGERPRINTS.coverage,
+    'PLAYBOOK_P3_COVERAGE_DRIFT',
+    'P3AdmissionPolicy.coverage'
+  );
 }
 
 function validateContext(context) {
@@ -348,7 +394,7 @@ function validateInvalidatedLayers(value, observableChecks, valuePath) {
     const layerIndex = P3_LAYER_ORDER.indexOf(layer);
     if (
       !COVERED_LAYER_SET.has(layer)
-      || layerIndex < checkLayerIndex
+      || layerIndex <= checkLayerIndex
       || layerIndex <= previousIndex
     ) {
       failPlaybookContract(
@@ -593,6 +639,27 @@ function assertEqual(value, expected, code, valuePath) {
   if (value !== expected) {
     failPlaybookContract(code, valuePath, `${value} != ${expected}`);
   }
+}
+
+function assertFingerprint(value, expected, code, valuePath) {
+  const actual = createHash('sha256')
+    .update(JSON.stringify(canonicalize(value)))
+    .digest('hex');
+  if (actual !== expected) {
+    failPlaybookContract(code, valuePath, `${actual} != ${expected}`);
+  }
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map((item) => canonicalize(item));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalize(value[key])])
+    );
+  }
+  return value;
 }
 
 function assertTimestamp(value, valuePath) {

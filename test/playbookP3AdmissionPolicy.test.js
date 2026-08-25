@@ -243,6 +243,97 @@ test('P3 admission rejects fourteen/seven teaching-role drift', () => {
   assert.throws(() => validateFixture(policy), /PLAYBOOK_P3_TEACHING_ROLE_COUNT_INVALID/u);
 });
 
+test('P3 admission rejects a valid but wrong chapter for a specific rule', () => {
+  const policy = policyFixture();
+  policy.rule_admissions[0].chapter_ids = ['complete-case'];
+  assert.throws(
+    () => validateFixture(policy),
+    /PLAYBOOK_P3_ADMISSION_MAPPING_DRIFT/u
+  );
+});
+
+test('P3 admission rejects per-rule role drift even when the fifteen/six totals remain', () => {
+  const policy = policyFixture();
+  policy.rule_admissions[0].teaching_role = 'case-pattern';
+  policy.rule_admissions[0].runtime_projection.coverage_status = 'manual-example-only';
+  policy.rule_admissions[15].teaching_role = 'core-procedure';
+  policy.rule_admissions[15].runtime_projection.coverage_status = 'advisory-partial';
+  assert.throws(
+    () => validateFixture(policy),
+    /PLAYBOOK_P3_ADMISSION_MAPPING_DRIFT/u
+  );
+});
+
+test('P3 admission rejects canonical projection drift for every admitted rule', () => {
+  const fixture = policyFixture();
+  for (const [index, admission] of fixture.rule_admissions.entries()) {
+    const policy = policyFixture();
+    const check = admission.runtime_projection.observable_checks[0];
+    policy.rule_admissions[index].runtime_projection.observable_checks = [
+      `${check}-drift`
+    ];
+    assert.throws(
+      () => validateFixture(policy),
+      /PLAYBOOK_P3_ADMISSION_MAPPING_DRIFT/u,
+      admission.rule_id
+    );
+  }
+});
+
+test('P3 admission rejects drift in every resolved and unresolved terminology entry', () => {
+  const fixture = policyFixture();
+  for (const [index, term] of fixture.terminology.resolved_terms.entries()) {
+    const policy = policyFixture();
+    policy.terminology.resolved_terms[index].display_name = `${term.display_name}改`;
+    assert.throws(
+      () => validateFixture(policy),
+      /PLAYBOOK_P3_TERMINOLOGY_DRIFT/u,
+      term.term_id
+    );
+  }
+  for (const [index, term] of fixture.terminology.unresolved_terms.entries()) {
+    const policy = policyFixture();
+    policy.terminology.unresolved_terms[index].impact = `${term.impact}改`;
+    assert.throws(
+      () => validateFixture(policy),
+      /PLAYBOOK_P3_TERMINOLOGY_DRIFT/u,
+      term.term_group_id
+    );
+  }
+});
+
+test('P3 admission rejects drift in every coverage row and swapped rule assignments', () => {
+  const fixture = policyFixture();
+  for (const [index, row] of fixture.coverage.entries()) {
+    const policy = policyFixture();
+    policy.coverage[index].unknown_ids.push(`unknown:policy-drift-${index}`);
+    assert.throws(
+      () => validateFixture(policy),
+      /PLAYBOOK_P3_COVERAGE_DRIFT/u,
+      row.layer
+    );
+  }
+
+  const swapped = policyFixture();
+  [swapped.coverage[0].rule_ids[0], swapped.coverage[1].rule_ids[0]] = [
+    swapped.coverage[1].rule_ids[0],
+    swapped.coverage[0].rule_ids[0]
+  ];
+  assert.throws(
+    () => validateFixture(swapped),
+    /PLAYBOOK_P3_COVERAGE_DRIFT/u
+  );
+});
+
+test('P3 admission rejects same-layer invalidation as not downstream', () => {
+  const policy = policyFixture();
+  policy.rule_admissions[0].runtime_projection.invalidates_layers.unshift('massing');
+  assert.throws(
+    () => validateFixture(policy),
+    /PLAYBOOK_P3_INVALIDATION_LAYER_INVALID/u
+  );
+});
+
 test('P3 admission rejects duplicate projections and invalid check/repair identifiers', () => {
   const duplicate = policyFixture();
   duplicate.rule_admissions[0].runtime_projection.input_signals.push('brief.prompt');
