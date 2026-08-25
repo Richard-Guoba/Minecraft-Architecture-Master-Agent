@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "probe_id": "mcblock-cinnamoroll-cafe-7583ff98",
+  "source_id": "mcblock",
+  "canonical_url": "https://mcblock.top/buildings/7583ff98-a659-487c-b71a-731075f99b0c",
+  "title": "玉桂狗咖啡厅",
+  "sample_role": "beginner-curved-color-case",
+  "selection_reason": "用于观察已知作者的新手曲面配色案例及列表卡片与站点能力声明的边界。",
+  "observed_at": "2026-08-25T00:00:00.000Z",
+  "observation_bases": [
+    "direct-page",
+    "site-claim",
+    "project-inference"
+  ],
+  "access_result": {
+    "status": "partial-js-render",
+    "http_status": 200,
+    "final_url": "https://mcblock.top/buildings/7583ff98-a659-487c-b71a-731075f99b0c",
+    "note": "列表卡片短元数据可见，详情能力依赖动态渲染。"
+  },
+  "content_revision": {
+    "status": "unknown",
+    "value": null,
+    "basis": "unverified"
+  },
+  "content_fingerprint": {
+    "status": "unknown",
+    "sha256": null,
+    "basis": "unverified"
+  },
+  "creator_observation": {
+    "status": "known",
+    "display_name": "MassiveSpeck",
+    "profile_url": null,
+    "bases": [
+      "direct-page"
+    ]
+  },
+  "observed_structure": [
+    "列表卡片观察：新手、约3.2K、32格高。",
+    "列表卡片观察：作者字段为 MassiveSpeck。",
+    "站点能力声明：提供三维预览、逐层学习、数量与导出格式入口；这些不是本案例的已核验详情事实。"
+  ],
+  "extractable_fields": [
+    "列表标题",
+    "列表作者",
+    "列表难度",
+    "列表近似方块量",
+    "列表高度"
+  ],
+  "knowledge_value": {
+    "principles": {
+      "value": 1,
+      "reason": "列表卡片只显示案例短元数据，未观察到曲面或配色的设计理由。"
+    },
+    "construction_sequence": {
+      "value": 3,
+      "reason": "站点声明支持逐层学习，但本探针未稳定直读咖啡厅的逐层内容。"
+    },
+    "reference_case": {
+      "value": 4,
+      "reason": "该新手案例为曲面和配色风格提供了清晰的案例索引。"
+    },
+    "materials": {
+      "value": 2,
+      "reason": "仅观察到约3.2K的列表量级，未读取材料清单。"
+    },
+    "survival_constraints": {
+      "value": "unknown",
+      "reason": "列表卡片没有提供生存模式成本或施工约束。"
+    },
+    "evaluation": {
+      "value": 2,
+      "reason": "新手难度、方块量和高度可供粗略比较，但没有系统评价。"
+    },
+    "provenance": {
+      "value": 3,
+      "reason": "列表卡片直接显示作者 MassiveSpeck，但未核验作者档案。"
+    },
+    "access_stability": {
+      "value": 2,
+      "reason": "列表卡片可见，详情和交互内容仍依赖动态渲染。"
+    },
+    "rights_clarity": {
+      "value": "unknown",
+      "reason": "免费或导出入口不能证明下载、训练或再发布权利。"
+    }
+  },
+  "rights_observations": {
+    "public_access": {
+      "status": "observed-allowed",
+      "evidence_url": "https://mcblock.top/buildings/7583ff98-a659-487c-b71a-731075f99b0c",
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "本次观察可读取公开页面和列表短元数据；不代表其他使用获许可。"
+    },
+    "local_analysis": {
+      "status": "not-reviewed",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "除本报告短事实与原创摘要外的本地分析权利未审查。"
+    },
+    "automated_retrieval": {
+      "status": "not-reviewed",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "自动检索条款、robots 与速率限制未审查。"
+    },
+    "artifact_download": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未核验下载条件，导出声明不构成下载许可。"
+    },
+    "model_training": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未发现可支持模型训练的明确许可。"
+    },
+    "external_redistribution": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未发现允许再发布页面内容或制品的明确许可。"
+    }
+  },
+  "blocking_conditions": [
+    "详情依赖 JavaScript，字段稳定性需要复核。",
+    "自动访问、下载、训练与再发布权利尚未审查。"
+  ],
+  "recommended_adapter_behavior": [
+    "获批后仅用站点专用只读适配器读取最小元数据或逐层查看入口。",
+    "分别审查速率、登录、权利和导出边界，不直接进入课程、规则或训练。"
+  ],
+  "summary": "玉桂狗咖啡厅探针仅保留列表卡片中的难度、近似方块量、高度与明确作者，并将动态站点能力单独标为声明。"
+}

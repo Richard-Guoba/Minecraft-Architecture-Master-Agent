@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "probe_id": "zh-wiki-tutorial-index",
+  "source_id": "zh-minecraft-wiki",
+  "canonical_url": "https://zh.minecraft.wiki/w/%E6%95%99%E7%A8%8B",
+  "title": "教程总入口",
+  "sample_role": "tutorial-navigation",
+  "selection_reason": "用于观察集体编辑教程入口的导航定位，同时保留索引证据不能核验内部分类树的边界。",
+  "observed_at": "2026-08-25T00:00:00.000Z",
+  "observation_bases": [
+    "search-index",
+    "unverified"
+  ],
+  "access_result": {
+    "status": "manual-or-api-review-required",
+    "http_status": 403,
+    "final_url": "https://zh.minecraft.wiki/w/%E6%95%99%E7%A8%8B",
+    "note": "自动直接访问返回 HTTP 403；观察依赖搜索索引，索引缓存于观察时约已有 1.2 年，需人工或经审查的 API 复核。"
+  },
+  "content_revision": {
+    "status": "unknown",
+    "value": null,
+    "basis": "unverified"
+  },
+  "content_fingerprint": {
+    "status": "unknown",
+    "sha256": null,
+    "basis": "unverified"
+  },
+  "creator_observation": {
+    "status": "not-applicable",
+    "display_name": null,
+    "profile_url": null,
+    "bases": [
+      "unverified"
+    ]
+  },
+  "observed_structure": [
+    "搜索索引可识别该页面为教程导航入口；页面内部分类树没有在本轮得到核验。"
+  ],
+  "extractable_fields": [
+    "规范 URL",
+    "页面标题",
+    "教程导航定位"
+  ],
+  "knowledge_value": {
+    "principles": {
+      "value": "unknown",
+      "reason": "索引只确认教程入口定位，不能核验正文中的设计原则。"
+    },
+    "construction_sequence": {
+      "value": "unknown",
+      "reason": "内部页面树与步骤内容未核验，不能评价施工顺序。"
+    },
+    "reference_case": {
+      "value": 2,
+      "reason": "导航入口可能指向做法参考，但本身不是结构化建筑案例。"
+    },
+    "materials": {
+      "value": 2,
+      "reason": "教程入口可能连接材料主题，但内部分类树尚未核验。"
+    },
+    "survival_constraints": {
+      "value": 3,
+      "reason": "教程导航面向游戏实践，具有组织生存条件主题的潜力。"
+    },
+    "evaluation": {
+      "value": 2,
+      "reason": "导航定位可辅助主题筛选，但不能证明完整评价框架。"
+    },
+    "provenance": {
+      "value": 2,
+      "reason": "集体编辑站点与页面身份可识别，修订和贡献谱系未取得。"
+    },
+    "access_stability": {
+      "value": 1,
+      "reason": "自动直接访问返回 403，当前仅有陈旧索引依据。"
+    },
+    "rights_clarity": {
+      "value": "unknown",
+      "reason": "本轮没有直接核验页面各类内容的具体许可证据。"
+    }
+  },
+  "rights_observations": {
+    "public_access": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "HTTP 403 只描述本轮自动访问结果，不能证明人类浏览器不可访问或公开访问获准。"
+    },
+    "local_analysis": {
+      "status": "not-reviewed",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "除短原创观察外，本地分析权利与许可证条件尚未审查。"
+    },
+    "automated_retrieval": {
+      "status": "not-reviewed",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "robots、MediaWiki API 条款、速率和返回结构尚未审查，不尝试绕过限制。"
+    },
+    "artifact_download": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未取得支持下载文章、图片、模板或其他制品的证据。"
+    },
+    "model_training": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未取得支持模型训练的具体许可证据。"
+    },
+    "external_redistribution": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未核验文本、图片、模板或结构化事实的外部再分发条件。"
+    }
+  },
+  "blocking_conditions": [
+    "内部分类树、修订和内容指纹未核验。",
+    "自动访问、API 与具体权利边界尚未审查。"
+  ],
+  "recommended_adapter_behavior": [
+    "获批后仅在 robots、API 与条款审查后使用修订绑定、保留署名的 MediaWiki 只读文章适配器。",
+    "文本、图片和结构化事实必须作为不同权利类别处理，不直接进入课程、规则或训练。"
+  ],
+  "summary": "该探针只确认集体编辑教程导航入口的索引身份，内部分类树、修订、正文和权利保持未核验。"
+}

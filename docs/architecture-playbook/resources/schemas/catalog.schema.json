@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minecraft-constructing-agents.local/schemas/resource-catalog-v1.json",
+  "title": "Architecture Playbook ResourceCatalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "catalog_id", "updated_at", "sources"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "catalog_id": { "const": "architecture-playbook-resource-catalog" },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:[0-9]{4}|[+-][0-9]{6})-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.\\d{3}Z$"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1024,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_id",
+          "title",
+          "lifecycle_status",
+          "profile_path",
+          "assessment_path"
+        ],
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "lifecycle_status": {
+            "enum": [
+              "registered",
+              "probing",
+              "assessed",
+              "approved-for-intake",
+              "deferred",
+              "rejected"
+            ]
+          },
+          "profile_path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^sources/[a-z0-9]+(?:-[a-z0-9]+)*/source\\.json$"
+          },
+          "assessment_path": {
+            "type": ["string", "null"],
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^sources/[a-z0-9]+(?:-[a-z0-9]+)*/assessment\\.md$"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "lifecycle_status": {
+                  "enum": ["registered", "probing"]
+                }
+              },
+              "required": ["lifecycle_status"]
+            },
+            "then": {
+              "properties": {
+                "assessment_path": { "const": null }
+              },
+              "required": ["assessment_path"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "lifecycle_status": {
+                  "enum": [
+                    "assessed",
+                    "approved-for-intake",
+                    "deferred",
+                    "rejected"
+                  ]
+                }
+              },
+              "required": ["lifecycle_status"]
+            },
+            "then": {
+              "properties": {
+                "assessment_path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "pattern": "^sources/[a-z0-9]+(?:-[a-z0-9]+)*/assessment\\.md$"
+                }
+              },
+              "required": ["assessment_path"]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "x-runtime-invariants": [
+    {
+      "id": "source-id-unique",
+      "enforcement": "runtime",
+      "keyword": "unique-by",
+      "array_path": "/sources",
+      "property": "source_id"
+    },
+    {
+      "id": "profile-path-unique",
+      "enforcement": "runtime",
+      "keyword": "unique-by",
+      "array_path": "/sources",
+      "property": "profile_path"
+    },
+    {
+      "id": "profile-path-source-binding",
+      "enforcement": "runtime",
+      "keyword": "template-equals",
+      "instance_path": "/sources/*/profile_path",
+      "template": "sources/{source_id}/source.json"
+    },
+    {
+      "id": "assessment-path-source-binding",
+      "enforcement": "runtime",
+      "keyword": "template-equals",
+      "instance_path": "/sources/*/assessment_path",
+      "lifecycle_statuses": [
+        "assessed",
+        "approved-for-intake",
+        "deferred",
+        "rejected"
+      ],
+      "template": "sources/{source_id}/assessment.md"
+    },
+    {
+      "id": "source-id-lexical-order",
+      "enforcement": "runtime",
+      "keyword": "strictly-increasing-by",
+      "array_path": "/sources",
+      "property": "source_id"
+    }
+  ]
+}

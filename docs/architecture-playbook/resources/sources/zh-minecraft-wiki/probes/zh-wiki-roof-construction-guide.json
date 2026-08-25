@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "probe_id": "zh-wiki-roof-construction-guide",
+  "source_id": "zh-minecraft-wiki",
+  "canonical_url": "https://zh.minecraft.wiki/w/Tutorial%3A%E5%B1%8B%E9%A1%B6%E5%BB%BA%E9%80%A0%E6%8C%87%E5%8D%97",
+  "title": "屋顶建造指南",
+  "sample_role": "roof-construction-sequence",
+  "selection_reason": "用于观察集体编辑屋顶指南的比例、坡度、连接主题及索引稳定链接所给修订值。",
+  "observed_at": "2026-08-25T00:00:00.000Z",
+  "observation_bases": [
+    "search-index",
+    "unverified"
+  ],
+  "access_result": {
+    "status": "manual-or-api-review-required",
+    "http_status": 403,
+    "final_url": "https://zh.minecraft.wiki/w/Tutorial%3A%E5%B1%8B%E9%A1%B6%E5%BB%BA%E9%80%A0%E6%8C%87%E5%8D%97",
+    "note": "自动直接访问返回 HTTP 403；观察依赖搜索索引，索引缓存于观察时约已有 1.2 年，需人工或经审查的 API 复核。"
+  },
+  "content_revision": {
+    "status": "known",
+    "value": "1050593",
+    "basis": "search-index"
+  },
+  "content_fingerprint": {
+    "status": "unknown",
+    "sha256": null,
+    "basis": "unverified"
+  },
+  "creator_observation": {
+    "status": "not-applicable",
+    "display_name": null,
+    "profile_url": null,
+    "bases": [
+      "unverified"
+    ]
+  },
+  "observed_structure": [
+    "搜索索引显露比例、坡度和连接主题，并给出稳定链接修订值 1050593；完整步骤顺序未核验。",
+    "索引中的 oldid 只作为修订值证据，不能当作页面字节的 SHA-256 指纹。"
+  ],
+  "extractable_fields": [
+    "规范 URL",
+    "页面标题",
+    "比例、坡度与连接主题的有界摘要",
+    "索引修订值"
+  ],
+  "knowledge_value": {
+    "principles": {
+      "value": 4,
+      "reason": "比例、坡度与连接主题直接关联可复用屋顶构造原则。"
+    },
+    "construction_sequence": {
+      "value": 4,
+      "reason": "页面定位为建造指南并具有步骤潜力，完整顺序仍需复核。"
+    },
+    "reference_case": {
+      "value": 3,
+      "reason": "构造做法可提供参考，但不是单体建筑案例库。"
+    },
+    "materials": {
+      "value": 2,
+      "reason": "已知主题侧重几何构造，具体材料内容未核验。"
+    },
+    "survival_constraints": {
+      "value": 2,
+      "reason": "构造主题与游戏建造相关，但生存资源限制没有直接证据。"
+    },
+    "evaluation": {
+      "value": 4,
+      "reason": "比例、坡度与连接为屋顶做法提供清晰的评价维度。"
+    },
+    "provenance": {
+      "value": 3,
+      "reason": "索引给出修订值 1050593，但贡献谱系和页面字节未取得。"
+    },
+    "access_stability": {
+      "value": 1,
+      "reason": "自动直接访问返回 403，当前正文依据来自陈旧索引。"
+    },
+    "rights_clarity": {
+      "value": "unknown",
+      "reason": "本轮没有直接核验页面各类内容的具体许可证据。"
+    }
+  },
+  "rights_observations": {
+    "public_access": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "HTTP 403 只描述本轮自动访问结果，不能证明人类浏览器不可访问或公开访问获准。"
+    },
+    "local_analysis": {
+      "status": "not-reviewed",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "除短原创观察外，本地分析权利与许可证条件尚未审查。"
+    },
+    "automated_retrieval": {
+      "status": "not-reviewed",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "robots、MediaWiki API 条款、速率和返回结构尚未审查，不尝试绕过限制。"
+    },
+    "artifact_download": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未取得支持下载文章、图片、模板或其他制品的证据。"
+    },
+    "model_training": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未取得支持模型训练的具体许可证据。"
+    },
+    "external_redistribution": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未核验文本、图片、模板或结构化事实的外部再分发条件。"
+    }
+  },
+  "blocking_conditions": [
+    "完整步骤、贡献谱系和页面字节指纹未核验。",
+    "自动访问、API 与具体权利边界尚未审查。"
+  ],
+  "recommended_adapter_behavior": [
+    "获批后仅在 robots、API 与条款审查后使用修订绑定、保留署名的 MediaWiki 只读文章适配器。",
+    "文本、图片和结构化事实必须作为不同权利类别处理，不直接进入课程、规则或训练。"
+  ],
+  "summary": "该探针只记录比例、坡度、连接主题和索引 oldid 1050593；完整步骤与内容指纹保持未核验。"
+}

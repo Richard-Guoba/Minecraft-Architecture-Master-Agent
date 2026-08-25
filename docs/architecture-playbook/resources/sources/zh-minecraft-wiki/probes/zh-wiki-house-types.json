@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "probe_id": "zh-wiki-house-types",
+  "source_id": "zh-minecraft-wiki",
+  "canonical_url": "https://zh.minecraft.wiki/w/Tutorial%3A%E6%88%BF%E5%B1%8B%E7%B1%BB%E5%9E%8B",
+  "title": "房屋类型",
+  "sample_role": "survival-house-typology",
+  "selection_reason": "用于观察带维护与翻译警告的集体编辑房屋类型参考及其生存导向层级。",
+  "observed_at": "2026-08-25T00:00:00.000Z",
+  "observation_bases": [
+    "search-index",
+    "unverified"
+  ],
+  "access_result": {
+    "status": "manual-or-api-review-required",
+    "http_status": 403,
+    "final_url": "https://zh.minecraft.wiki/w/Tutorial%3A%E6%88%BF%E5%B1%8B%E7%B1%BB%E5%9E%8B",
+    "note": "自动直接访问返回 HTTP 403；观察依赖搜索索引，索引缓存于观察时约已有 1.2 年，需人工或经审查的 API 复核。"
+  },
+  "content_revision": {
+    "status": "unknown",
+    "value": null,
+    "basis": "unverified"
+  },
+  "content_fingerprint": {
+    "status": "unknown",
+    "sha256": null,
+    "basis": "unverified"
+  },
+  "creator_observation": {
+    "status": "not-applicable",
+    "display_name": null,
+    "profile_url": null,
+    "bases": [
+      "unverified"
+    ]
+  },
+  "observed_structure": [
+    "搜索索引显示页面带有维护与翻译警告，并以生存玩法导向的层级组织房屋类型；具体类型清单与施工描述未核验。"
+  ],
+  "extractable_fields": [
+    "规范 URL",
+    "页面标题",
+    "维护与翻译警告",
+    "生存导向层级的有界摘要"
+  ],
+  "knowledge_value": {
+    "principles": {
+      "value": 2,
+      "reason": "房屋层级可能体现选择原则，但维护和翻译状态降低正文置信度。"
+    },
+    "construction_sequence": {
+      "value": 3,
+      "reason": "生存导向房屋层级具有施工推进潜力，具体步骤尚未核验。"
+    },
+    "reference_case": {
+      "value": 3,
+      "reason": "房屋类型参考可辅助案例选择，但不是结构化单体案例库。"
+    },
+    "materials": {
+      "value": 3,
+      "reason": "房屋层级可能关联资源选择，具体材料要求未直接核验。"
+    },
+    "survival_constraints": {
+      "value": 4,
+      "reason": "索引明确显露面向生存玩法的房屋层级。"
+    },
+    "evaluation": {
+      "value": 2,
+      "reason": "类型层级可供粗略比较，但不能从索引重建完整评价标准。"
+    },
+    "provenance": {
+      "value": 1,
+      "reason": "维护与翻译警告提示状态风险，修订和贡献谱系也未取得。"
+    },
+    "access_stability": {
+      "value": 1,
+      "reason": "自动直接访问返回 403，当前仅有陈旧索引依据。"
+    },
+    "rights_clarity": {
+      "value": "unknown",
+      "reason": "本轮没有直接核验页面各类内容的具体许可证据。"
+    }
+  },
+  "rights_observations": {
+    "public_access": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "HTTP 403 只描述本轮自动访问结果，不能证明人类浏览器不可访问或公开访问获准。"
+    },
+    "local_analysis": {
+      "status": "not-reviewed",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "除短原创观察外，本地分析权利与许可证条件尚未审查。"
+    },
+    "automated_retrieval": {
+      "status": "not-reviewed",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "robots、MediaWiki API 条款、速率和返回结构尚未审查，不尝试绕过限制。"
+    },
+    "artifact_download": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未取得支持下载文章、图片、模板或其他制品的证据。"
+    },
+    "model_training": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未取得支持模型训练的具体许可证据。"
+    },
+    "external_redistribution": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未核验文本、图片、模板或结构化事实的外部再分发条件。"
+    }
+  },
+  "blocking_conditions": [
+    "维护与翻译状态、具体类型内容、修订和指纹需复核。",
+    "自动访问、API 与具体权利边界尚未审查。"
+  ],
+  "recommended_adapter_behavior": [
+    "获批后仅在 robots、API 与条款审查后使用修订绑定、保留署名的 MediaWiki 只读文章适配器。",
+    "文本、图片和结构化事实必须作为不同权利类别处理，不直接进入课程、规则或训练。"
+  ],
+  "summary": "该探针保留房屋类型页的维护与翻译警告以及生存导向层级，具体类型和施工内容保持未核验。"
+}
