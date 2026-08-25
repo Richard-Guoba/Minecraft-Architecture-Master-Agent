@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minecraft-architecture-agent.local/schemas/evidence-note-v1.json",
+  "title": "Architecture Playbook EvidenceNote v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "evidence_id",
+    "school_id",
+    "episode_bvid",
+    "source_metadata_fingerprint_sha256",
+    "time_range_ms",
+    "statement_type",
+    "paraphrase",
+    "observed_demo",
+    "rule_candidate_ids",
+    "confidence",
+    "unresolved_terms",
+    "review_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "evidence_id": {
+      "type": "string",
+      "pattern": "^ev:[a-z0-9][a-z0-9_.:-]{0,127}$"
+    },
+    "school_id": {
+      "const": "heihui-jileniao"
+    },
+    "episode_bvid": {
+      "type": "string",
+      "pattern": "^BV[1-9A-Za-z]{10}$"
+    },
+    "source_metadata_fingerprint_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "time_range_ms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "statement_type": {
+      "enum": [
+        "fact",
+        "author_claim",
+        "inference",
+        "contrast"
+      ]
+    },
+    "paraphrase": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000,
+      "description": "原创转述；不得复制完整字幕。"
+    },
+    "observed_demo": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "maxLength": 2000,
+      "description": "仅描述画面可见变化；作者未明说时不能写成作者观点。"
+    },
+    "rule_candidate_ids": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^rule:[a-z0-9][a-z0-9_.:-]{0,127}$"
+      }
+    },
+    "confidence": {
+      "enum": ["unknown", "low", "medium", "high"]
+    },
+    "unresolved_terms": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      }
+    },
+    "review_status": {
+      "enum": ["draft", "unresolved", "reviewed"]
+    }
+  }
+}
