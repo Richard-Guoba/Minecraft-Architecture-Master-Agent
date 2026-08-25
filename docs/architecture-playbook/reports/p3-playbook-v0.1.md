@@ -115,9 +115,9 @@
 - 聚焦门禁：`node --test test/playbook*.test.js test/architecturePlaybookCourseCli.test.js test/architecturePlaybookEvidenceCli.test.js test/architecturePlaybookManualCli.test.js` 在允许嵌套 CLI 子进程和 Git 验证的执行环境中通过，211 个测试、0 失败。
 - 受管检查：`npm run playbook:manual -- check` 返回 `playbook_status=current`、`artifact_count=5`、`managed_artifact_drift_count=0`。
 - 完整回归：`npm test` 在同一允许子进程和 Git 验证的执行环境中通过，635 个测试、0 失败。
-- capability-deny/统一区间计划的验证范围为 `634c03e..HEAD`（以本报告提交为 `HEAD`）。最终 URI-component 修复的 TDD RED 在真实子进程环境运行 67 个测试，61 个通过、6 个失败；四个新增受保护快照分别把预期 `1/1/2/2` 计为 `0/0/1/1`。最小分类器修复后同一命令 67/67 通过；补齐 active-UNC raw/encoded 控制后的最终相关套件为 69/69。
-- 本计划最终聚焦门禁：`node --test --test-isolation=none test/playbookP3AdmissionPolicy.test.js test/playbookReviewedRuleCard.test.js test/playbookV01Compiler.test.js test/playbookP3Gate.test.js test/architecturePlaybookManualCli.test.js test/architecturePlaybookCourseCli.test.js test/architecturePlaybookEvidenceCli.test.js` 在允许真实嵌套 Node 和 Git 子进程的执行环境中通过，252 个测试、0 失败。
-- 本计划最终完整回归：`npm test` 在同一真实子进程环境中通过，774 个测试、0 失败。
+- capability-deny/统一区间计划的验证范围为 `634c03e..HEAD`（以本报告提交为 `HEAD`）。最终 URI-component 修复的 TDD RED 在真实子进程环境运行 67 个测试，61 个通过、6 个失败；四个新增受保护快照分别把预期 `1/1/2/2` 计为 `0/0/1/1`。最小分类器修复后同一命令 67/67 通过；补齐 active-UNC raw/encoded 控制后为 69/69。审查修复新增 query→fragment、file→UNC、UNC→file 和 active-file raw/encoded 控制时 RED 为 71/77，统一 file/UNC 高优先级 token 结束模型后为 77/77。
+- 本计划最终聚焦门禁：`node --test --test-isolation=none test/playbookP3AdmissionPolicy.test.js test/playbookReviewedRuleCard.test.js test/playbookV01Compiler.test.js test/playbookP3Gate.test.js test/architecturePlaybookManualCli.test.js test/architecturePlaybookCourseCli.test.js test/architecturePlaybookEvidenceCli.test.js` 在允许真实嵌套 Node 和 Git 子进程的执行环境中通过，260 个测试、0 失败。
+- 本计划最终完整回归：`npm test` 在同一真实子进程环境中通过，782 个测试、0 失败。
 - 架构结果：taint/固定点分析已移除；依赖结果：只接受字面静态模块边，不受支持的 loader 根稳定 fail closed；泄漏结果：file/UNC 与 HTTPS 区间共享一个有界规范化映射视图；运行时结果：没有 construction、运行时或资源注册表文件发生变化；产物结果：五个受管输出为 `current`，漂移数为 0。
 - `git diff --check`：退出码 0，无输出。
 - `git ls-files .local/architecture-playbook`：退出码 0，无输出，即没有私有秘籍路径被跟踪。

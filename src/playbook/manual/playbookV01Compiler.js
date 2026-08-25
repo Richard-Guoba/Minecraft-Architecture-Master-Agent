@@ -1044,7 +1044,7 @@ function normalizedMatchRanges(normalized, matcher) {
 function findPublicLeakRanges(value) {
   const normalized = normalizePublicText(value);
   const httpsRanges = findHttpsRanges(normalized);
-  const fileRanges = findFileUrlRanges(normalized);
+  const fileRanges = findFileUrlRanges(normalized, httpsRanges);
   const uncRanges = findUncRanges(normalized, httpsRanges, fileRanges);
   const highPriorityRanges = [...fileRanges, ...uncRanges];
   const ordinaryRanges = selectDistinctOrdinaryRanges(
@@ -1083,15 +1083,20 @@ function findHttpsRanges(normalized) {
   return ranges;
 }
 
-function findFileUrlRanges(normalized) {
+function findFileUrlRanges(normalized, httpsRanges) {
   const ranges = [];
   const matcher = /file:(?=[\\/])/gimu;
   for (const match of normalized.text.matchAll(matcher)) {
     if (isAsciiAlphaNumeric(normalized.text[match.index - 1])) continue;
-    const normalizedEnd = publicReferenceTokenEnd(
+    const uriComponentStart = classifyHttpsUriComponentStart(
+      normalized.text,
+      match.index,
+      httpsRanges
+    );
+    const normalizedEnd = highPriorityReferenceTokenEnd(
       normalized.text,
       match.index + match[0].length,
-      { stopAtNewScheme: true }
+      uriComponentStart
     );
     ranges.push({
       ...normalizedRange(normalized, match.index, normalizedEnd),
@@ -1124,7 +1129,7 @@ function findUncRanges(normalized, httpsRanges, fileRanges) {
       !hasIndependentBoundary
       && !isExplicitHttpsUncRun(normalized.text, candidateStart, httpsRanges)
     ) continue;
-    const normalizedEnd = uncReferenceTokenEnd(
+    const normalizedEnd = highPriorityReferenceTokenEnd(
       normalized.text,
       candidateStart + 2,
       uriComponentStart
@@ -1206,6 +1211,7 @@ function httpsUriComponentAt(text, index, range) {
   const fragmentIndex = boundedIndexOf(text, '#', contentStart, range.normalizedEnd);
   if (fragmentIndex !== -1 && fragmentIndex < index) {
     return {
+      kind: 'fragment',
       delimiterIndex: fragmentIndex,
       contentStart: fragmentIndex + 1
     };
@@ -1216,6 +1222,7 @@ function httpsUriComponentAt(text, index, range) {
     && (fragmentIndex === -1 || queryIndex < fragmentIndex)
   ) {
     return {
+      kind: 'query',
       delimiterIndex: queryIndex,
       contentStart: queryIndex + 1
     };
@@ -1228,15 +1235,24 @@ function boundedIndexOf(text, character, start, end) {
   return index !== -1 && index < end ? index : -1;
 }
 
-function uncReferenceTokenEnd(text, start, uriComponentStart) {
+function highPriorityReferenceTokenEnd(text, start, uriComponentStart) {
   const tokenEnd = publicReferenceTokenEnd(text, start, { stopAtNewScheme: true });
-  if (
-    uriComponentStart?.kind !== 'parameter-value'
-    && uriComponentStart?.kind !== 'parameter-separator'
-  ) return tokenEnd;
+  if (!uriComponentStart) return tokenEnd;
+  const component = httpsUriComponentAt(text, start, uriComponentStart.range);
+  if (!component) return tokenEnd;
   for (let index = start; index < tokenEnd; index += 1) {
-    if (text[index] !== '&') continue;
-    const nextStart = nextHttpsParameterUncStart(
+    const isNextParameter = text[index] === '&'
+      && uriComponentStart.kind !== 'component-root';
+    const isFragmentTransition = text[index] === '#'
+      && component.kind === 'query'
+      && index === boundedIndexOf(
+        text,
+        '#',
+        component.contentStart,
+        uriComponentStart.range.normalizedEnd
+      );
+    if (!isNextParameter && !isFragmentTransition) continue;
+    const nextStart = nextHttpsHighPriorityStart(
       text,
       index,
       uriComponentStart.range
@@ -1246,9 +1262,9 @@ function uncReferenceTokenEnd(text, start, uriComponentStart) {
   return tokenEnd;
 }
 
-function nextHttpsParameterUncStart(text, ampersandIndex, range) {
-  let candidateStart = ampersandIndex + 1;
-  if (!isSeparatorRunStart(text, candidateStart)) {
+function nextHttpsHighPriorityStart(text, delimiterIndex, range) {
+  let candidateStart = delimiterIndex + 1;
+  if (!isHighPriorityReferenceStart(text, candidateStart)) {
     const equalsIndex = text.indexOf('=', candidateStart);
     if (
       equalsIndex === -1
@@ -1257,13 +1273,19 @@ function nextHttpsParameterUncStart(text, ampersandIndex, range) {
     ) return null;
     candidateStart = equalsIndex + 1;
   }
-  if (!isSeparatorRunStart(text, candidateStart)) return null;
+  if (!isHighPriorityReferenceStart(text, candidateStart)) return null;
+  return classifyHttpsUriComponentStart(text, candidateStart, [range])
+    ? candidateStart
+    : null;
+}
+
+function isHighPriorityReferenceStart(text, candidateStart) {
+  if (/^file:(?=[\\/])/iu.test(text.slice(candidateStart))) return true;
+  if (!isSeparatorRunStart(text, candidateStart)) return false;
   const candidateEnd = publicReferenceTokenEnd(text, candidateStart + 2, {
     stopAtNewScheme: true
   });
-  return isUncReference(text.slice(candidateStart, candidateEnd))
-    ? candidateStart
-    : null;
+  return isUncReference(text.slice(candidateStart, candidateEnd));
 }
 
 function isExplicitHttpsUncRun(text, index, httpsRanges) {

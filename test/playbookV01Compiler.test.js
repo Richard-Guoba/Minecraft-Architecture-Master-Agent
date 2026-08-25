@@ -533,7 +533,23 @@ test('pure public leak audit exempts only the HTTPS scheme delimiter', async () 
     ['parameter-like delimiters inside an active fragment UNC stay one token',
       'https://example.test/#//server/share&b=//folder/file', 1],
     ['encoded parameter-like delimiters inside an active fragment UNC stay one token',
-      'https://example.test/#%2F%2Fserver%2Fshare%26b%3D%2F%2Ffolder%2Ffile', 1]
+      'https://example.test/#%2F%2Fserver%2Fshare%26b%3D%2F%2Ffolder%2Ffile', 1],
+    ['query UNC and fragment UNC remain distinct',
+      'https://example.test/?a=//one/share#b=//two/share', 2],
+    ['encoded query UNC and fragment UNC remain distinct',
+      'https:%2F%2Fexample.test%2F%3Fa%3D%2F%2Fone%2Fshare%23b%3D%2F%2Ftwo%2Fshare', 2],
+    ['file URL followed by query UNC remains distinct',
+      'https://example.test/?a=file:/one&b=//two/share', 2],
+    ['encoded file URL followed by query UNC remains distinct',
+      'https:%2F%2Fexample.test%2F%3Fa%3Dfile%3A%2Fone%26b%3D%2F%2Ftwo%2Fshare', 2],
+    ['query UNC followed by file URL remains distinct',
+      'https://example.test/?a=//one/share&b=file:/two', 2],
+    ['encoded query UNC followed by file URL remains distinct',
+      'https:%2F%2Fexample.test%2F%3Fa%3D%2F%2Fone%2Fshare%26b%3Dfile%3A%2Ftwo', 2],
+    ['parameter-like delimiters inside an active fragment file URL stay one token',
+      'https://example.test/#file:/one&b=//folder/file', 1],
+    ['encoded delimiters inside an active fragment file URL stay one token',
+      'https:%2F%2Fexample.test%2F%23file%3A%2Fone%26b%3D%2F%2Ffolder%2Ffile', 1]
   ]) {
     const compilation = structuredClone(base);
     compilation.artifacts[MANUAL_PATH] += `${reference}\n`;
