@@ -441,6 +441,7 @@ test('managed check returns sorted missing and drifted paths without writing', a
 
 test('manual CLI builds, checks, and reports drift with safe fixed summaries', async (t) => {
   const projectRoot = await checkedInputFixture(t);
+  await assertManagedArtifactsAbsent(projectRoot);
   const build = await runCli(projectRoot, 'build');
 
   assert.equal(build.code, 0);
@@ -838,15 +839,21 @@ async function checkedInputFixture(t) {
     ),
     { recursive: true }
   );
+  for (const artifactPath of P3_MANAGED_ARTIFACT_PATHS) {
+    await fs.rm(path.join(projectRoot, artifactPath), { force: true });
+  }
   return projectRoot;
 }
 
 async function runCli(projectRoot, command) {
+  const childEnvironment = { ...process.env };
+  delete childEnvironment.NODE_TEST_CONTEXT;
+  delete childEnvironment.NODE_TEST_WORKER_ID;
   try {
     const result = await execFileAsync(process.execPath, [CLI_PATH, command], {
       cwd: projectRoot,
       env: {
-        ...process.env,
+        ...childEnvironment,
         PLAYBOOK_PROJECT_ROOT: projectRoot
       },
       encoding: 'utf8'
@@ -858,6 +865,15 @@ async function runCli(projectRoot, command) {
       stdout: error.stdout ?? '',
       stderr: error.stderr ?? ''
     };
+  }
+}
+
+async function assertManagedArtifactsAbsent(projectRoot) {
+  for (const artifactPath of P3_MANAGED_ARTIFACT_PATHS) {
+    await assert.rejects(
+      fs.access(path.join(projectRoot, artifactPath)),
+      (error) => error?.code === 'ENOENT'
+    );
   }
 }
 
