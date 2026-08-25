@@ -306,6 +306,45 @@ test('pure audit blocks generic absolute and private frame source references', a
   assert.equal(auditPlaybookV01(safe).public_leak_count, 0);
 });
 
+test('pure audit distinguishes dot-relative Markdown targets from absolute paths', async () => {
+  const base = compilePlaybookV01(await checkedInCompilerFixture());
+  const safeTargets = [
+    './guide.md',
+    '../guide.md',
+    '[本地指南](./guide.md)',
+    '[上级指南](../guide.md)'
+  ];
+
+  for (const target of safeTargets) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${target}\n`;
+    const audit = auditPlaybookV01(compilation);
+
+    assert.equal(audit.public_leak_count, 0, target);
+    assert.equal(audit.gate.status, 'passed', target);
+    assert.equal(audit.gate.next_phase, 'P4', target);
+  }
+
+  const absolutePaths = [
+    '/guide.md',
+    '/tmp/private/guide.md',
+    'C:\\private\\guide.md'
+  ];
+  for (const absolutePath of absolutePaths) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${absolutePath}\n`;
+    const audit = auditPlaybookV01(compilation);
+
+    assert.equal(audit.public_leak_count, 1, absolutePath);
+    assert.equal(audit.gate.status, 'blocked', absolutePath);
+    assert.deepEqual(audit.gate.blocker_codes, ['PUBLIC_SOURCE_LEAK'], absolutePath);
+  }
+
+  const mixed = structuredClone(base);
+  mixed.artifacts[MANUAL_PATH] += './guide.md /tmp/private/frame.png\n';
+  assert.equal(auditPlaybookV01(mixed).public_leak_count, 1);
+});
+
 test('pure audit ignores a stale P2 summary and rederives status from source gate evidence', async () => {
   const compilation = structuredClone(
     compilePlaybookV01(await checkedInCompilerFixture())

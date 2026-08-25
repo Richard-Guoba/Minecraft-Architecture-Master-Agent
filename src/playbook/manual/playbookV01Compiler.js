@@ -14,7 +14,7 @@ const SPECIAL_CHAPTER_IDS = new Set([
   'unknowns-and-coverage'
 ]);
 const PUBLIC_LEAK_PATTERN = new RegExp([
-  String.raw`(?<![A-Za-z0-9:/])/(?!/)[A-Za-z0-9._~@+-]+(?:/[A-Za-z0-9._~@+()-]+)*`,
+  String.raw`(?<![A-Za-z0-9:/.])/(?!/)[A-Za-z0-9._~@+-]+(?:/[A-Za-z0-9._~@+()-]+)*`,
   String.raw`(?<![A-Za-z0-9])[A-Za-z]:[\\/](?:[^\\/\s\x60"'<>|]+[\\/])*[^\\/\s\x60"'<>|]+`,
   String.raw`(?:^|(?<=[\s("'\x60=:\[]))(?:frames?|screenshots?|source-frames?|private-source)(?:[\\/][^\s\x60"'<>|)]+)+`,
   String.raw`\.local/`,
