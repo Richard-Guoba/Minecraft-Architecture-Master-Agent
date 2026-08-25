@@ -1107,25 +1107,29 @@ function findUncRanges(normalized, httpsRanges, fileRanges) {
   const ranges = [];
   for (let index = 0; index < normalized.text.length - 1; index += 1) {
     if (!isSeparatorRunStart(normalized.text, index)) continue;
-    const hasLexicalBoundary = !isAsciiAlphaNumeric(normalized.text[index - 1]);
+    const candidateStart = uncCandidateStart(index, normalized.text, httpsRanges);
+    if (candidateStart === null) continue;
+    const hasIndependentBoundary = candidateStart !== index
+      || isIndependentReferenceStart(normalized.text, candidateStart);
     if (
-      !hasLexicalBoundary
-      && !isExplicitHttpsUncRun(normalized.text, index, httpsRanges)
+      !hasIndependentBoundary
+      && !isExplicitHttpsUncRun(normalized.text, candidateStart, httpsRanges)
     ) continue;
-    const normalizedEnd = publicReferenceTokenEnd(normalized.text, index + 2, {
+    const normalizedEnd = publicReferenceTokenEnd(normalized.text, candidateStart + 2, {
       stopAtNewScheme: true
     });
     const normalizedCandidate = {
-      normalizedStart: index,
+      normalizedStart: candidateStart,
       normalizedEnd,
-      ...normalizedRange(normalized, index, normalizedEnd)
+      ...normalizedRange(normalized, candidateStart, normalizedEnd)
     };
-    if (!isUncReference(normalized.text.slice(index, normalizedEnd))) continue;
-    if (!hasLexicalBoundary && overlapsAny(normalizedCandidate, ranges)) continue;
-    if (overlapsAny(normalizedCandidate, fileRanges)) continue;
-    if (isHttpsSchemeDelimiter(normalizedCandidate, httpsRanges, normalized.text)) {
+    if (!isUncReference(normalized.text.slice(candidateStart, normalizedEnd))) {
       continue;
     }
+    if (!hasIndependentBoundary && overlapsAny(normalizedCandidate, ranges)) {
+      continue;
+    }
+    if (overlapsAny(normalizedCandidate, fileRanges)) continue;
     ranges.push({ ...normalizedCandidate, kind: 'UNC_REFERENCE' });
   }
   return ranges;
@@ -1135,6 +1139,28 @@ function isSeparatorRunStart(text, index) {
   return isSlash(text[index])
     && isSlash(text[index + 1])
     && !isSlash(text[index - 1]);
+}
+
+function uncCandidateStart(runStart, text, httpsRanges) {
+  if (!isHttpsSchemeRunStart(runStart, httpsRanges)) return runStart;
+  const residualStart = runStart + 2;
+  return isSlash(text[residualStart]) && isSlash(text[residualStart + 1])
+    ? residualStart
+    : null;
+}
+
+function isHttpsSchemeRunStart(runStart, httpsRanges) {
+  return httpsRanges.some((range) =>
+    runStart === range.normalizedStart + 'https:'.length);
+}
+
+function isIndependentReferenceStart(text, index) {
+  if (index === 0) return true;
+  const previous = text[index - 1];
+  return isPublicReferenceTerminator(previous)
+    || previous === ','
+    || previous === '='
+    || /[A-Za-z][A-Za-z0-9+.-]*:$/u.test(text.slice(0, index));
 }
 
 function isExplicitHttpsUncRun(text, index, httpsRanges) {
@@ -1152,15 +1178,6 @@ function isUncReference(candidate) {
     String.raw`^[\\/]{2,}(?:\?[\\/]UNC[\\/]${segment}[\\/]${segment}|${segment}[\\/]${segment})`,
     'iu'
   ).test(candidate);
-}
-
-function isHttpsSchemeDelimiter(candidate, httpsRanges, text) {
-  if (
-    text[candidate.normalizedStart] !== '/'
-    || text[candidate.normalizedStart + 1] !== '/'
-  ) return false;
-  return httpsRanges.some((range) =>
-    candidate.normalizedStart === range.normalizedStart + 'https:'.length);
 }
 
 function publicReferenceTokenEnd(text, start, { stopAtNewScheme = false } = {}) {

@@ -503,6 +503,12 @@ test('pure public leak audit exempts only the HTTPS scheme delimiter', async () 
   const base = compilePlaybookV01(await checkedInCompilerFixture());
   for (const [name, reference, expectedCount] of [
     ['ordinary HTTPS path', 'https://example.test/path/file.txt', 0],
+    ['forward UNC left in the HTTPS scheme run', 'https:////server/share/a.txt', 1],
+    ['backslash UNC left in the HTTPS scheme run', String.raw`https://\\server\share\a.txt`, 1],
+    ['encoded forward UNC left in the HTTPS scheme run',
+      'https:%2F%2F%2F%2Fserver%2Fshare%2Fa.txt', 1],
+    ['encoded backslash UNC left in the HTTPS scheme run',
+      'https:%2F%2F%5C%5Cserver%5Cshare%5Ca.txt', 1],
     ['forward UNC in HTTPS path', 'https://example.test/path=//server/share/a.txt', 1],
     ['forward UNC in HTTPS query', 'https://example.test/?next=//server/share/a.txt', 1],
     ['forward UNC in HTTPS fragment', 'https://example.test/#next=//server/share/a.txt', 1]
@@ -550,6 +556,10 @@ test('pure public leak audit starts one UNC candidate per separator run', async 
     ['encoded triple separator prefix', '%2F%2F%2Fserver%2Fshare%2Fa.txt', 1],
     ['HTTPS path triple separator prefix', 'https://example.test/path=///server/share/a.txt', 1],
     ['separator run inside one UNC path', String.raw`\\server\share///folder/file`, 1],
+    ['separator run after punctuation inside one UNC path',
+      String.raw`\\server\share.//folder/file`, 1],
+    ['encoded separator run after punctuation inside one UNC path',
+      '%5C%5Cserver%5Cshare.%2F%2Ffolder%2Ffile', 1],
     ['mixed triple separator prefix', String.raw`/\\server\share\a.txt`, 1],
     ['two whitespace-separated UNC references', String.raw`\\one\share \\two\share`, 2],
     ['UNC followed by a new file scheme', String.raw`\\one\share,file:/two`, 2],
