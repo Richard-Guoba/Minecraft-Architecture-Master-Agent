@@ -51,7 +51,7 @@ export async function auditManualDependencyBoundary({ projectRoot }) {
       continue;
     }
     if (isConstructionPath(realPath, constructionRoots)) {
-      violations.add(safeRelative(root, realPath));
+      violations.add(constructionEdgeFact(root, logicalPath, realPath));
       continue;
     }
     if (!isWithin(realPath, root)) {
@@ -101,7 +101,7 @@ export async function auditManualDependencyBoundary({ projectRoot }) {
         continue;
       }
       if (isConstructionPath(resolvedReal, constructionRoots)) {
-        violations.add(safeRelative(root, resolvedReal));
+        violations.add(constructionEdgeFact(root, realPath, resolvedReal));
         continue;
       }
       if (!isWithin(resolvedReal, root)) {
@@ -110,9 +110,13 @@ export async function auditManualDependencyBoundary({ projectRoot }) {
         );
         continue;
       }
-      if (MODULE_EXTENSION_SET.has(path.extname(resolvedReal))) {
-        queuedModules.push(resolvedReal);
+      if (!MODULE_EXTENSION_SET.has(path.extname(resolvedReal))) {
+        unresolved.add(
+          `${safeRelative(root, logicalPath)}:DEPENDENCY_UNSUPPORTED_FORMAT`
+        );
+        continue;
       }
+      queuedModules.push(resolvedReal);
     }
   }
 
@@ -383,6 +387,20 @@ function collectDeniedCapability({
   }
 
   if (
+    (lexical.isUnboundGlobal(node, 'globalThis')
+      || lexical.isUnboundGlobal(node, 'global'))
+    && isIdentifierReference(node, parent)
+  ) {
+    unresolvedCodes.add('GLOBAL_OBJECT_CAPABILITY');
+  }
+
+  if (
+    isDynamicFunctionConstructorSource(node, parent, lexical)
+  ) {
+    unresolvedCodes.add('DYNAMIC_FUNCTION_CAPABILITY');
+  }
+
+  if (
     node.type === 'MemberExpression'
     && lexical.isUnboundGlobal(node.object, 'module')
     && node.computed
@@ -506,6 +524,7 @@ function isTrustedResolverCall(
 ) {
   return context.modulePath === context.auditImplementationPath
     && node?.type === 'CallExpression'
+    && !node.optional
     && isNamedImportBinding(
       node.callee,
       'createRequire',
@@ -516,10 +535,14 @@ function isTrustedResolverCall(
     && parent?.type === 'MemberExpression'
     && parent.object === node
     && !parent.computed
+    && !parent.optional
     && parent.property?.type === 'Identifier'
     && parent.property.name === 'resolve'
     && context.parentMap.get(parent)?.type === 'CallExpression'
     && context.parentMap.get(parent).callee === parent
+    && !context.parentMap.get(parent).optional
+    && context.parentMap.get(context.parentMap.get(parent))?.type
+      !== 'ChainExpression'
     && isDependencySpecifierArgument(
       context.parentMap.get(parent).arguments
     );
@@ -533,6 +556,7 @@ function isPathToFileUrlImporterArgument(args, lexical) {
   if (args.length !== 1) return false;
   const urlCall = args[0];
   return urlCall?.type === 'CallExpression'
+    && !urlCall.optional
     && isNamedImportBinding(
       urlCall.callee,
       'pathToFileURL',
@@ -548,6 +572,7 @@ function isDependencySpecifierArgument(args) {
   return args.length === 1
     && args[0]?.type === 'MemberExpression'
     && !args[0].computed
+    && !args[0].optional
     && args[0].object?.type === 'Identifier'
     && args[0].object.name === 'dependency'
     && args[0].property?.type === 'Identifier'
@@ -614,6 +639,63 @@ function isIdentifierReference(node, parent) {
   return true;
 }
 
+function isDynamicFunctionConstructorSource(node, parent, lexical) {
+  if (node?.type !== 'MemberExpression') return false;
+  if (isDynamicReflectGet(node, lexical)) return true;
+  if (lexical.isUnboundGlobal(node.object, 'module')) return false;
+  const propertyName = memberPropertyName(node);
+  if (propertyName === 'constructor') {
+    return !isProvablyOrdinaryOwnConstructor(node)
+      && !isPassiveConstructorInspection(node, parent);
+  }
+  return node.computed
+    && propertyName === null
+    && isSyntacticFunctionValue(node.object);
+}
+
+function isDynamicReflectGet(node, lexical) {
+  if (!lexical.isUnboundGlobal(node.object, 'Reflect')) return false;
+  const propertyName = memberPropertyName(node);
+  return propertyName === 'get'
+    || (node.computed && propertyName === null);
+}
+
+function isProvablyOrdinaryOwnConstructor(node) {
+  if (node.object?.type !== 'ObjectExpression') return false;
+  if (node.object.properties.length !== 1) return false;
+  const [property] = node.object.properties;
+  return property?.type === 'Property'
+    && property.kind === 'init'
+    && !property.method
+    && !property.computed
+    && memberDefinitionName(property.key) === 'constructor'
+    && property.value?.type === 'Literal';
+}
+
+function memberDefinitionName(node) {
+  if (node?.type === 'Identifier') return node.name;
+  if (node?.type === 'Literal') return node.value;
+  return null;
+}
+
+function isPassiveConstructorInspection(node, parent) {
+  if (
+    parent?.type === 'MemberExpression'
+    && parent.object === node
+    && !parent.computed
+    && ['name', 'length'].includes(memberPropertyName(parent))
+  ) return true;
+  return parent?.type === 'LogicalExpression'
+    && parent.operator === '&&'
+    && parent.left === node;
+}
+
+function isSyntacticFunctionValue(node) {
+  return node?.type === 'FunctionExpression'
+    || node?.type === 'ArrowFunctionExpression'
+    || node?.type === 'ClassExpression';
+}
+
 function buildLexicalBindings(program) {
   const nodeScopes = new WeakMap();
 
@@ -625,7 +707,10 @@ function buildLexicalBindings(program) {
 
   function nearestVarScope(scope) {
     let candidate = scope;
-    while (candidate.parent && !['function', 'program'].includes(candidate.kind)) {
+    while (
+      candidate.parent
+      && !['function', 'program', 'static-block'].includes(candidate.kind)
+    ) {
       candidate = candidate.parent;
     }
     return candidate;
@@ -739,6 +824,12 @@ function buildLexicalBindings(program) {
       const blockScope = createScope(scope, 'block');
       nodeScopes.set(node, blockScope);
       for (const statement of node.body) visit(statement, blockScope);
+      return;
+    }
+    if (node.type === 'StaticBlock') {
+      const staticBlockScope = createScope(scope, 'static-block');
+      nodeScopes.set(node, staticBlockScope);
+      for (const statement of node.body) visit(statement, staticBlockScope);
       return;
     }
     if (node.type === 'CatchClause') {
@@ -899,6 +990,11 @@ function isWithin(candidate, root) {
 function safeRelative(projectRoot, candidate) {
   if (!isWithin(candidate, projectRoot)) return 'outside-project';
   return path.relative(projectRoot, candidate).split(path.sep).join('/');
+}
+
+function constructionEdgeFact(projectRoot, importerPath, targetPath) {
+  return `${safeRelative(projectRoot, importerPath)} -> `
+    + safeRelative(projectRoot, targetPath);
 }
 
 function freezeAudit(value) {

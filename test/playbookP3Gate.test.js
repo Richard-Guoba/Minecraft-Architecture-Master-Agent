@@ -360,6 +360,14 @@ test('protected checked snapshot blocks file URL and UNC leakage', async (t) => 
       'https://example.test/#a=//one/share&b=//two/share', 2],
     ['encoded two forward UNC parameter values in one HTTPS fragment',
       'https://example.test/#a%3D%2F%2Fone%2Fshare%26b%3D%2F%2Ftwo%2Fshare', 2],
+    ['empty-name query parameter starts a second UNC reference',
+      'https://example.test/?a=//one/share&=//two/share', 2],
+    ['encoded empty-name query parameter starts a second UNC reference',
+      'https:%2F%2Fexample.test%2F%3Fa%3D%2F%2Fone%2Fshare%26%3D%2F%2Ftwo%2Fshare', 2],
+    ['empty-name fragment parameter starts a second UNC reference',
+      'https://example.test/#a=//one/share&=//two/share', 2],
+    ['encoded empty-name fragment parameter starts a second UNC reference',
+      'https:%2F%2Fexample.test%2F%23a%3D%2F%2Fone%2Fshare%26%3D%2F%2Ftwo%2Fshare', 2],
     ['parameter-like delimiters inside an active fragment UNC stay one token',
       'https://example.test/#//server/share&b=//folder/file'],
     ['encoded parameter-like delimiters inside an active fragment UNC stay one token',
@@ -441,7 +449,17 @@ test('protected checked snapshot blocks file URL and UNC leakage', async (t) => 
     ['overlapping file URL and absolute path matchers',
       'file:///home/alice/artifact.bin'],
     ['ninth percent round exhausts the budget',
-      '%252525252525252541']
+      '%252525252525252541'],
+    ['encoded tab exhausts after the ninth percent round',
+      '%252525252525252509'],
+    ['encoded DEL exhausts after the ninth percent round',
+      '%25252525252525257F'],
+    ['encoded tab separates two UNC references',
+      '%5C%5Cone%5Cshare%09%5C%5Ctwo%5Cshare', 2],
+    ['scheme-token suffix exposes its Unix path',
+      'x-https://example.test/home/alice/private.txt'],
+    ['normalized scheme-token suffix exposes its Unix path',
+      'x-https:%2F%2Fexample.test%2Fhome%2Falice%2Fprivate.txt']
   ]) {
     await t.test(name, async (t) => {
       const projectRoot = await checkedInAuditFixture(t);
@@ -572,9 +590,7 @@ test('manual dependency graph resolves every supported construction edge', async
   }
 });
 
-test('audit resolver exception is physical-file and AST-shape bound', {
-  concurrency: false
-}, async (t) => {
+test('audit resolver exception is physical-file and AST-shape bound', async (t) => {
   const auditPath = path.join(
     ROOT,
     'src/playbook/manual/manualDependencyBoundary.js'
@@ -615,28 +631,18 @@ test('audit resolver exception is physical-file and AST-shape bound', {
         'src/playbook/manual/resolver-path-spoof/manualDependencyBoundary.js'
     }
   ]) {
-    await t.test(fixture.name, async () => {
-      await withTemporaryProjectFile(
-        fixture.relativePath,
-        originalSource,
-        async () => {
-          const audit = await playbookCompiler.auditManualDependencyBoundary({
-            projectRoot: ROOT
-          });
+    await t.test(fixture.name, async (t) => {
+      const audit = await auditIsolatedAuditorSource(t, {
+        source: originalSource,
+        manualFiles: { [fixture.relativePath]: originalSource }
+      });
 
-          assert.deepEqual(audit.unresolved_manual_dependencies, [
-            `${fixture.relativePath}:DYNAMIC_NODE_MODULE_CAPABILITY`
-          ]);
-          assert.equal(Object.isFrozen(audit), true);
-          assert.equal(
-            Object.isFrozen(audit.unresolved_manual_dependencies),
-            true
-          );
-          assert.doesNotMatch(
-            JSON.stringify(audit.unresolved_manual_dependencies),
-            new RegExp(escapeRegExp(ROOT), 'u')
-          );
-        }
+      assert.deepEqual(audit.unresolved_manual_dependencies, [
+        `${fixture.relativePath}:DYNAMIC_NODE_MODULE_CAPABILITY`
+      ]);
+      assert.doesNotMatch(
+        JSON.stringify(audit.unresolved_manual_dependencies),
+        new RegExp(escapeRegExp(ROOT), 'u')
       );
     });
   }
@@ -644,11 +650,9 @@ test('audit resolver exception is physical-file and AST-shape bound', {
   const mutations = [
     {
       name: 'direct loader call',
-      source: replaceExactlyOnce(originalSource, trustedResolver, [
-        '      const resolved = createRequire(import.meta.url)(',
-        "        '../../construction/target.cjs'",
-        '      );'
-      ].join('\n'))
+      source: `${originalSource}\nfunction forbiddenLoader() {\n`
+        + "  return createRequire(import.meta.url)('../../construction/target.cjs');\n"
+        + '}\n'
     },
     {
       name: 'exported loader value',
@@ -664,33 +668,424 @@ test('audit resolver exception is physical-file and AST-shape bound', {
     },
     {
       name: 'shadowed pathToFileURL binding',
-      source: replaceExactlyOnce(
-        originalSource,
-        'async function resolveDependency({ importerPath, dependency }) {',
-        [
-          'async function resolveDependency({ importerPath, dependency }) {',
-          '  const pathToFileURL = () => new URL(import.meta.url);'
-        ].join('\n')
-      )
+      source: `${originalSource}\nfunction forbiddenShadowedResolver(`
+        + 'importerPath, dependency) {\n'
+        + '  const pathToFileURL = () => new URL(import.meta.url);\n'
+        + '  return createRequire(pathToFileURL(importerPath))\n'
+        + '    .resolve(dependency.specifier);\n'
+        + '}\n'
+    },
+    {
+      name: 'optional createRequire call',
+      source: replaceExactlyOnce(originalSource, trustedResolver, [
+        '      const resolved = createRequire?.(pathToFileURL(importerPath))',
+        '        .resolve(dependency.specifier);'
+      ].join('\n'))
+    },
+    {
+      name: 'optional pathToFileURL call',
+      source: replaceExactlyOnce(originalSource, trustedResolver, [
+        '      const resolved = createRequire(pathToFileURL?.(importerPath))',
+        '        .resolve(dependency.specifier);'
+      ].join('\n'))
+    },
+    {
+      name: 'optional resolve member',
+      source: replaceExactlyOnce(originalSource, trustedResolver, [
+        '      const resolved = createRequire(pathToFileURL(importerPath))',
+        '        ?.resolve(dependency.specifier);'
+      ].join('\n'))
+    },
+    {
+      name: 'optional resolve call',
+      source: replaceExactlyOnce(originalSource, trustedResolver, [
+        '      const resolved = createRequire(pathToFileURL(importerPath))',
+        '        .resolve?.(dependency.specifier);'
+      ].join('\n'))
+    },
+    {
+      name: 'optional dependency member',
+      source: replaceExactlyOnce(originalSource, trustedResolver, [
+        '      const resolved = createRequire(pathToFileURL(importerPath))',
+        '        .resolve(dependency?.specifier);'
+      ].join('\n'))
     }
   ];
 
   for (const mutation of mutations) {
-    await t.test(mutation.name, async () => {
-      await withTemporaryFileContents(auditPath, mutation.source, async () => {
-        const audit = await playbookCompiler.auditManualDependencyBoundary({
-          projectRoot: ROOT
-        });
-
-        assert.deepEqual(audit.unresolved_manual_dependencies, [
-          'src/playbook/manual/manualDependencyBoundary.js:'
-            + 'DYNAMIC_NODE_MODULE_CAPABILITY'
-        ]);
-        assert.equal(audit.import_boundary_violation_count, 0);
-        assert.equal(audit.import_boundary_unresolved_count, 1);
+    await t.test(mutation.name, async (t) => {
+      const audit = await auditIsolatedAuditorSource(t, {
+        source: mutation.source
       });
+
+      assert.deepEqual(audit.unresolved_manual_dependencies, [
+        'src/playbook/manual/manualDependencyBoundary.js:'
+          + 'DYNAMIC_NODE_MODULE_CAPABILITY'
+      ]);
+      assert.equal(audit.import_boundary_violation_count, 0);
+      assert.equal(audit.import_boundary_unresolved_count, 1);
     });
   }
+});
+
+test('StaticBlock bindings stay inside each static initialization scope', async (t) => {
+  const capabilities = [
+    {
+      name: 'require',
+      localValue: "() => 'inside-safe'",
+      localExpression: "require('safe')",
+      outside: "module.exports = require('../../construction/target.cjs');",
+      violationCount: 1,
+      unresolvedCount: 0
+    },
+    {
+      name: 'module',
+      localValue: "{ require: () => 'inside-safe' }",
+      localExpression: "module.require('safe')",
+      outside:
+        "module.exports = module.require('../../construction/target.cjs');",
+      violationCount: 1,
+      unresolvedCount: 0
+    },
+    {
+      name: 'process',
+      localValue:
+        "{ getBuiltinModule: () => ({ marker: 'inside-safe' }) }",
+      localExpression: 'process.getBuiltinModule().marker',
+      outside: [
+        "module.exports = process.getBuiltinModule('node:module')",
+        "  .createRequire(__filename)('../../construction/target.cjs');"
+      ].join('\n'),
+      violationCount: 0,
+      unresolvedCount: 1
+    },
+    {
+      name: 'eval',
+      localValue: "() => 'inside-safe'",
+      localExpression: "eval('safe')",
+      outside:
+        "module.exports = eval(\"require('../../construction/target.cjs')\");",
+      violationCount: 0,
+      unresolvedCount: 1
+    },
+    {
+      name: 'Function',
+      localValue: "() => () => 'inside-safe'",
+      localExpression: 'Function()()',
+      outside: String.raw`module.exports = Function('filename', "return process.getBuiltinModule('node:module').createRequire(filename)('../../construction/target.cjs')")(__filename);`,
+      violationCount: 0,
+      unresolvedCount: 1
+    }
+  ];
+
+  for (const declarationKind of ['var', 'let', 'const']) {
+    for (const capability of capabilities) {
+      await t.test(`${declarationKind} ${capability.name}`, async (t) => {
+        // Class static blocks are strict code, where `eval` is forbidden as a
+        // binding identifier. Exercise that capability in the equivalent
+        // legal function scope while the other four names exercise StaticBlock.
+        const staticBlock = capability.name === 'eval'
+          ? [
+            'function localCapability() {',
+            `  ${declarationKind} eval = ${capability.localValue};`,
+            `  return ${capability.localExpression};`,
+            '}',
+            "if (localCapability() !== 'inside-safe') {",
+            "  throw new Error('function-shadow-failed');",
+            '}',
+            ''
+          ]
+          : [
+            'class LocalCapability {',
+            '  static {',
+            `    ${declarationKind} ${capability.name} = ${capability.localValue};`,
+            `    if (${capability.localExpression} !== 'inside-safe') {`,
+            "      throw new Error('static-block-shadow-failed');",
+            '    }',
+            '  }',
+            '}',
+            ''
+          ];
+        const safeRoot = await dependencyFixture(t, {
+          'src/playbook/manual/entry.cjs': [
+            ...staticBlock,
+            "module.exports = 'inside-safe';",
+            ''
+          ].join('\n')
+        });
+        assert.equal(
+          requireDefault(path.join(safeRoot, 'src/playbook/manual/entry.cjs')),
+          'inside-safe'
+        );
+        const safeAudit = await playbookCompiler.auditManualDependencyBoundary({
+          projectRoot: safeRoot
+        });
+        assert.equal(safeAudit.import_boundary_violation_count, 0);
+        assert.equal(safeAudit.import_boundary_unresolved_count, 0);
+
+        const attackRoot = await dependencyFixture(t, {
+          'src/playbook/manual/entry.cjs': [
+            ...staticBlock,
+            capability.outside,
+            ''
+          ].join('\n'),
+          'src/construction/target.cjs':
+            "module.exports = 'construction-executed';\n"
+        });
+        assert.equal(
+          requireDefault(path.join(attackRoot, 'src/playbook/manual/entry.cjs')),
+          'construction-executed'
+        );
+        const attackAudit =
+          await playbookCompiler.auditManualDependencyBoundary({
+            projectRoot: attackRoot
+          });
+        assert.equal(
+          attackAudit.import_boundary_violation_count,
+          capability.violationCount
+        );
+        assert.equal(
+          attackAudit.import_boundary_unresolved_count,
+          capability.unresolvedCount
+        );
+      });
+    }
+  }
+});
+
+test('global object dynamic capability roots execute but fail audit closed', async (t) => {
+  const functionBody =
+    "return process.getBuiltinModule('node:module').createRequire(filename)"
+      + "('../../construction/target.cjs')";
+  const cases = [
+    [
+      'globalThis process direct members',
+      "module.exports = globalThis.process.getBuiltinModule('node:module').createRequire(__filename)('../../construction/target.cjs');"
+    ],
+    [
+      'global process computed members',
+      "module.exports = global['process']['getBuiltinModule']('node:module')['createRequire'](__filename)('../../construction/target.cjs');"
+    ],
+    [
+      'globalThis eval direct member',
+      "module.exports = globalThis.eval(\"process.getBuiltinModule('node:module').createRequire(\" + JSON.stringify(__filename) + \")('../../construction/target.cjs')\");"
+    ],
+    [
+      'global eval computed member',
+      "module.exports = global['eval'](\"process.getBuiltinModule('node:module').createRequire(\" + JSON.stringify(__filename) + \")('../../construction/target.cjs')\");"
+    ],
+    [
+      'globalThis Function direct member',
+      `module.exports = globalThis.Function('filename', ${JSON.stringify(functionBody)})(__filename);`
+    ],
+    [
+      'global Function computed member',
+      `module.exports = global['Function']('filename', ${JSON.stringify(functionBody)})(__filename);`
+    ]
+  ];
+
+  for (const [name, source] of cases) {
+    await t.test(name, async (t) => {
+      const entryPath = 'src/playbook/manual/entry.cjs';
+      const projectRoot = await dependencyFixture(t, {
+        [entryPath]: `${source}\n`,
+        'src/construction/target.cjs':
+          "module.exports = 'construction-executed';\n"
+      });
+
+      assert.equal(
+        requireDefault(path.join(projectRoot, entryPath)),
+        'construction-executed'
+      );
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.deepEqual(audit.unresolved_manual_dependencies, [
+        `${entryPath}:GLOBAL_OBJECT_CAPABILITY`
+      ]);
+    });
+  }
+
+  await t.test('local global-object names retain ordinary semantics', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.cjs';
+    const projectRoot = await dependencyFixture(t, {
+      [entryPath]: [
+        'function local(globalThis, global) {',
+        '  return [',
+        '    globalThis.process.getBuiltinModule(),',
+        "    global['eval'](),",
+        '    globalThis.Function()()',
+        '  ];',
+        '}',
+        'module.exports = local(',
+        "  { process: { getBuiltinModule: () => 'process-safe' }, Function: () => () => 'function-safe' },",
+        "  { eval: () => 'eval-safe' }",
+        ');',
+        ''
+      ].join('\n')
+    });
+
+    assert.deepEqual(requireDefault(path.join(projectRoot, entryPath)), [
+      'process-safe', 'eval-safe', 'function-safe'
+    ]);
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+  });
+});
+
+test('equivalent Function constructors execute but reflection fails closed', async (t) => {
+  const body =
+    "return process.getBuiltinModule('node:module').createRequire(filename)"
+      + "('../../construction/target.cjs')";
+  for (const [name, constructorExpression] of [
+    ['direct arrow constructor', '(() => {}).constructor'],
+    ['literal-computed arrow constructor', "(() => {})['constructor']"],
+    ['template-computed arrow constructor', '(() => {})[`constructor`]'],
+    ['dynamic-computed arrow constructor', "(() => {})['con' + 'structor']"],
+    ['nested Object-to-Function constructor', '({}).constructor.constructor'],
+    ['Reflect.get arrow constructor',
+      "Reflect.get(() => {}, 'constructor')"],
+    ['dynamic-computed Reflect.get arrow constructor',
+      "Reflect['g' + 'et'](() => {}, 'constructor')"]
+  ]) {
+    await t.test(name, async (t) => {
+      const entryPath = 'src/playbook/manual/entry.cjs';
+      const projectRoot = await dependencyFixture(t, {
+        [entryPath]: [
+          `const body = ${JSON.stringify(body)};`,
+          `module.exports = ${constructorExpression}('filename', body)(__filename);`,
+          ''
+        ].join('\n'),
+        'src/construction/target.cjs':
+          "module.exports = 'construction-executed';\n"
+      });
+
+      assert.equal(
+        requireDefault(path.join(projectRoot, entryPath)),
+        'construction-executed'
+      );
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.deepEqual(audit.unresolved_manual_dependencies, [
+        `${entryPath}:DYNAMIC_FUNCTION_CAPABILITY`
+      ]);
+    });
+  }
+
+  await t.test('provable own constructor data stays ordinary', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.cjs';
+    const projectRoot = await dependencyFixture(t, {
+      [entryPath]:
+        "module.exports = ({ constructor: 'ordinary-safe' }).constructor;\n"
+    });
+
+    assert.equal(
+      requireDefault(path.join(projectRoot, entryPath)),
+      'ordinary-safe'
+    );
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+  });
+
+  await t.test('local Reflect binding stays ordinary', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.cjs';
+    const projectRoot = await dependencyFixture(t, {
+      [entryPath]: [
+        'function local(Reflect) {',
+        "  return Reflect.get({ value: 'reflect-safe' }, 'value');",
+        '}',
+        'module.exports = local({ get: (value, key) => value[key] });',
+        ''
+      ].join('\n')
+    });
+
+    assert.equal(
+      requireDefault(path.join(projectRoot, entryPath)),
+      'reflect-safe'
+    );
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+  });
+});
+
+test('resolved targets use a supported format or fail closed once', async (t) => {
+  for (const fixture of [
+    {
+      name: 'extensionless CommonJS bridge into construction',
+      entrySource: "module.exports = require('../bridge');\n",
+      files: {
+        'src/playbook/bridge':
+          "module.exports = require('../construction/target.cjs');\n",
+        'src/construction/target.cjs':
+          "module.exports = 'construction-executed';\n"
+      },
+      expected: 'construction-executed'
+    },
+    {
+      name: 'non-JavaScript JSON target',
+      entrySource: "module.exports = require('../data.json').value;\n",
+      files: {
+        'src/playbook/data.json': '{"value":"json-executed"}\n'
+      },
+      expected: 'json-executed'
+    }
+  ]) {
+    await t.test(fixture.name, async (t) => {
+      const entryPath = 'src/playbook/manual/entry.cjs';
+      const projectRoot = await dependencyFixture(t, {
+        [entryPath]: fixture.entrySource,
+        ...fixture.files
+      });
+
+      assert.equal(
+        requireDefault(path.join(projectRoot, entryPath)),
+        fixture.expected
+      );
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.deepEqual(audit.unresolved_manual_dependencies, [
+        `${entryPath}:DEPENDENCY_UNSUPPORTED_FORMAT`
+      ]);
+      assert.equal(audit.import_boundary_violation_count, 0);
+    });
+  }
+});
+
+test('construction facts preserve distinct importer-to-target edges', async (t) => {
+  const projectRoot = await dependencyFixture(t, {
+    'src/playbook/manual/one.cjs':
+      "module.exports = require('../../construction/target.cjs');\n",
+    'src/playbook/manual/two.cjs':
+      "module.exports = require('../../construction/target.cjs');\n",
+    'src/construction/target.cjs':
+      "module.exports = 'construction-executed';\n"
+  });
+  for (const importer of ['one.cjs', 'two.cjs']) {
+    assert.equal(
+      requireDefault(path.join(projectRoot, 'src/playbook/manual', importer)),
+      'construction-executed'
+    );
+  }
+
+  const audit = await playbookCompiler.auditManualDependencyBoundary({
+    projectRoot
+  });
+  assert.equal(audit.import_boundary_violation_count, 2);
+  assert.deepEqual(audit.manual_construction_imports, [
+    'src/playbook/manual/one.cjs -> src/construction/target.cjs',
+    'src/playbook/manual/two.cjs -> src/construction/target.cjs'
+  ]);
 });
 
 test('module.require construction edge executes and is audited', async (t) => {
@@ -709,6 +1104,9 @@ test('module.require construction edge executes and is audited', async (t) => {
   });
   assert.equal(audit.import_boundary_violation_count, 1);
   assert.equal(audit.import_boundary_unresolved_count, 0);
+  assert.deepEqual(audit.manual_construction_imports, [
+    'src/playbook/manual/entry.cjs -> src/construction/target.cjs'
+  ]);
 });
 
 test('capability deny rejects unsupported loader roots before value propagation', async (t) => {
@@ -2016,8 +2414,12 @@ test('manual dependency graph follows a symlink into construction', async (t) =>
     projectRoot
   });
 
-  assert.equal(audit.import_boundary_violation_count, 1);
+  assert.equal(audit.import_boundary_violation_count, 2);
   assert.equal(audit.import_boundary_unresolved_count, 0);
+  assert.deepEqual(audit.manual_construction_imports, [
+    'src/playbook/manual/alias.js -> src/construction/target.js',
+    'src/playbook/manual/entry.js -> src/construction/target.js'
+  ]);
 });
 
 test('manual dependency graph fails computed imports closed but ignores prose', async (t) => {
@@ -2177,30 +2579,49 @@ async function writeFixtureFiles(projectRoot, files) {
   }
 }
 
-async function withTemporaryProjectFile(relativePath, contents, callback) {
-  const absolutePath = path.join(ROOT, relativePath);
-  await assert.rejects(fs.access(absolutePath));
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, contents, 'utf8');
-  try {
-    return await callback();
-  } finally {
-    await fs.rm(absolutePath, { force: true });
-    const parentPath = path.dirname(absolutePath);
-    if (parentPath !== path.join(ROOT, 'src/playbook/manual')) {
-      await fs.rmdir(parentPath);
+async function auditIsolatedAuditorSource(t, { source, manualFiles = {} }) {
+  const projectRoot = await temporaryRoot(t, 'playbook-auditor-copy-');
+  await writeFixtureFiles(projectRoot, {
+    'package.json': '{"type":"module"}\n',
+    'src/playbook/manual/manualDependencyBoundary.js': source,
+    ...manualFiles
+  });
+  await fs.mkdir(path.join(projectRoot, 'node_modules'), { recursive: true });
+  for (const dependency of ['acorn', 'import-meta-resolve']) {
+    await fs.cp(
+      path.join(ROOT, 'node_modules', dependency),
+      path.join(projectRoot, 'node_modules', dependency),
+      { recursive: true }
+    );
+  }
+  const childSource = [
+    "import { pathToFileURL } from 'node:url';",
+    'const imported = await import(pathToFileURL(',
+    '  process.env.PLAYBOOK_AUDITOR_MODULE_PATH',
+    ').href);',
+    'const audit = await imported.auditManualDependencyBoundary({',
+    '  projectRoot: process.env.PLAYBOOK_AUDITOR_PROJECT_ROOT',
+    '});',
+    'process.stdout.write(JSON.stringify(audit));'
+  ].join('\n');
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    ['--input-type=module', '--eval', childSource],
+    {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PLAYBOOK_AUDITOR_MODULE_PATH: path.join(
+          projectRoot,
+          'src/playbook/manual/manualDependencyBoundary.js'
+        ),
+        PLAYBOOK_AUDITOR_PROJECT_ROOT: projectRoot
+      }
     }
-  }
-}
-
-async function withTemporaryFileContents(filePath, contents, callback) {
-  const original = await fs.readFile(filePath, 'utf8');
-  await fs.writeFile(filePath, contents, 'utf8');
-  try {
-    return await callback();
-  } finally {
-    await fs.writeFile(filePath, original, 'utf8');
-  }
+  );
+  assert.notEqual(stdout, '');
+  return JSON.parse(stdout);
 }
 
 function replaceExactlyOnce(source, search, replacement) {

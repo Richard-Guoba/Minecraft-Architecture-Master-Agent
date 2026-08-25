@@ -1028,7 +1028,7 @@ function decodedAsciiPercentUnit(units, index) {
     `${units[index + 1].character}${units[index + 2].character}`,
     16
   );
-  if (code < 0x20 || code > 0x7e) return null;
+  if (code > 0x7f) return null;
   return {
     character: String.fromCharCode(code),
     rawStart: units[index].rawStart,
@@ -1068,7 +1068,7 @@ function findHttpsRanges(normalized) {
   const ranges = [];
   const matcher = /https:\/\//gimu;
   for (const match of normalized.text.matchAll(matcher)) {
-    if (isAsciiAlphaNumeric(normalized.text[match.index - 1])) continue;
+    if (isUriSchemeCharacter(normalized.text[match.index - 1])) continue;
     const normalizedEnd = publicReferenceTokenEnd(
       normalized.text,
       match.index + match[0].length
@@ -1198,7 +1198,7 @@ function classifyHttpsUriComponentStart(text, index, httpsRanges) {
     const parameterStart = text.lastIndexOf('&', index - 2) + 1;
     const boundedParameterStart = Math.max(parameterStart, component.contentStart);
     const parameterName = text.slice(boundedParameterStart, index - 1);
-    if (/^[A-Za-z0-9._~-]+$/u.test(parameterName)) {
+    if (isHttpsParameterName(text, boundedParameterStart, parameterName)) {
       return { kind: 'parameter-value', range };
     }
   }
@@ -1269,7 +1269,11 @@ function nextHttpsHighPriorityStart(text, delimiterIndex, range) {
     if (
       equalsIndex === -1
       || equalsIndex >= range.normalizedEnd
-      || !/^[A-Za-z0-9._~-]+$/u.test(text.slice(candidateStart, equalsIndex))
+      || !isHttpsParameterName(
+        text,
+        candidateStart,
+        text.slice(candidateStart, equalsIndex)
+      )
     ) return null;
     candidateStart = equalsIndex + 1;
   }
@@ -1333,6 +1337,15 @@ function isAsciiAlphaNumeric(character) {
   return character !== undefined && /[A-Za-z0-9]/u.test(character);
 }
 
+function isUriSchemeCharacter(character) {
+  return character !== undefined && /[A-Za-z0-9+.-]/u.test(character);
+}
+
+function isHttpsParameterName(text, start, name) {
+  return /^[A-Za-z0-9._~-]+$/u.test(name)
+    || (name === '' && text[start - 1] === '&');
+}
+
 function normalizedRange(normalized, normalizedStart, normalizedEnd) {
   return {
     start: normalized.rawRanges[normalizedStart].start,
@@ -1356,7 +1369,7 @@ function findDecodableAsciiPercentIndex(text) {
       continue;
     }
     const code = Number.parseInt(text.slice(index + 1, index + 3), 16);
-    if (code >= 0x20 && code <= 0x7e) return index;
+    if (code <= 0x7f) return index;
   }
   return -1;
 }
