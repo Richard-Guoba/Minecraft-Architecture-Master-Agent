@@ -542,6 +542,31 @@ test('pure public leak audit preserves UNC segment punctuation and distinct star
   }
 });
 
+test('pure public leak audit starts one UNC candidate per separator run', async () => {
+  const base = compilePlaybookV01(await checkedInCompilerFixture());
+  for (const [name, reference, expectedCount] of [
+    ['triple forward separator prefix', '///server/share/a.txt', 1],
+    ['quadruple forward separator prefix', '////server/share/a.txt', 1],
+    ['encoded triple separator prefix', '%2F%2F%2Fserver%2Fshare%2Fa.txt', 1],
+    ['HTTPS path triple separator prefix', 'https://example.test/path=///server/share/a.txt', 1],
+    ['separator run inside one UNC path', String.raw`\\server\share///folder/file`, 1],
+    ['mixed triple separator prefix', String.raw`/\\server\share\a.txt`, 1],
+    ['two whitespace-separated UNC references', String.raw`\\one\share \\two\share`, 2],
+    ['UNC followed by a new file scheme', String.raw`\\one\share,file:/two`, 2],
+    ['two UNC query starts', String.raw`https://example.test/?a=\\one\share&a=\\two\share`, 2],
+    ['two comma-separated UNC starts', String.raw`\\one\share,\\two\share`, 2]
+  ]) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${reference}\n`;
+
+    assert.equal(
+      auditPlaybookV01(compilation).public_leak_count,
+      expectedCount,
+      name
+    );
+  }
+});
+
 test('pure audit ignores a stale P2 summary and rederives status from source gate evidence', async () => {
   const compilation = structuredClone(
     compilePlaybookV01(await checkedInCompilerFixture())
