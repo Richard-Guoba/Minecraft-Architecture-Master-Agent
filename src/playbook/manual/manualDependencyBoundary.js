@@ -19,6 +19,9 @@ export async function auditManualDependencyBoundary({ projectRoot }) {
   const unresolved = new Set();
   const visitedModules = new Set();
   const queuedModules = [];
+  const trustedBuiltinModulesImportPath = await trustedResolverImplementationPath(
+    root
+  );
 
   try {
     constructionRoots.add(await fs.realpath(constructionRoot));
@@ -68,7 +71,8 @@ export async function auditManualDependencyBoundary({ projectRoot }) {
       source,
       extension: path.extname(realPath),
       modulePath: realPath,
-      auditImplementationPath: AUDIT_IMPLEMENTATION_PATH
+      auditImplementationPath: AUDIT_IMPLEMENTATION_PATH,
+      trustedBuiltinModulesImportPath
     });
     for (const code of scanned.unresolvedCodes) {
       unresolved.add(`${safeRelative(root, logicalPath)}:${code}`);
@@ -193,7 +197,8 @@ function scanModuleDependencies({
   source,
   extension,
   modulePath,
-  auditImplementationPath
+  auditImplementationPath,
+  trustedBuiltinModulesImportPath
 }) {
   const program = parseModule(source, extension);
   if (!program) {
@@ -225,6 +230,7 @@ function scanModuleDependencies({
       extension,
       modulePath,
       auditImplementationPath,
+      trustedBuiltinModulesImportPath,
       trustedAuditImport,
       unresolvedCodes
     });
@@ -330,13 +336,18 @@ function collectDeniedCapability({
   extension,
   modulePath,
   auditImplementationPath,
+  trustedBuiltinModulesImportPath,
   trustedAuditImport,
   unresolvedCodes
 }) {
   if (
     isModuleSourceNode(node)
     && isNodeModuleSpecifier(literalSpecifier(node.source))
-    && !isSafeNodeModuleImport(node, modulePath)
+    && !isSafeNodeModuleImport(
+      node,
+      modulePath,
+      trustedBuiltinModulesImportPath
+    )
     && !isTrustedAuditModuleImport(
       node,
       modulePath,
@@ -438,7 +449,11 @@ function isModuleSourceNode(node) {
     || node.type === 'ExportAllDeclaration';
 }
 
-function isSafeNodeModuleImport(node, modulePath) {
+function isSafeNodeModuleImport(
+  node,
+  modulePath,
+  trustedBuiltinModulesImportPath
+) {
   if (
     node.type !== 'ImportDeclaration'
     || node.specifiers.length !== 1
@@ -446,11 +461,25 @@ function isSafeNodeModuleImport(node, modulePath) {
   ) return false;
   const name = importedName(node.specifiers[0]);
   return name === 'isBuiltin'
-    || (name === 'builtinModules' && isNodeModulesPath(modulePath));
+    || (
+      name === 'builtinModules'
+      && node.specifiers[0].local?.name === 'builtinModules'
+      && modulePath === trustedBuiltinModulesImportPath
+    );
 }
 
-function isNodeModulesPath(modulePath) {
-  return modulePath.split(path.sep).includes('node_modules');
+async function trustedResolverImplementationPath(projectRoot) {
+  try {
+    const implementationPath = await fs.realpath(path.join(
+      projectRoot,
+      'node_modules/import-meta-resolve/lib/resolve.js'
+    ));
+    return isWithin(implementationPath, projectRoot)
+      ? implementationPath
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function isTrustedAuditModuleImport(

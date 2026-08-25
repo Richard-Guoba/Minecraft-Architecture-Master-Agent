@@ -662,6 +662,33 @@ test('capability deny allows only literal static edges and shadowed local names'
     ]);
   });
 
+  await t.test('user package builtinModules import remains denied', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.js';
+    const packagePath = 'node_modules/user-capability-package/index.js';
+    const projectRoot = await dependencyFixture(t, {
+      'package.json': '{"type":"module"}\n',
+      [entryPath]: "export { default } from 'user-capability-package';\n",
+      'node_modules/user-capability-package/package.json': JSON.stringify({
+        name: 'user-capability-package',
+        type: 'module',
+        exports: './index.js'
+      }),
+      [packagePath]: [
+        "import { builtinModules } from 'node:module';",
+        "export default builtinModules.includes('fs');",
+        ''
+      ].join('\n')
+    });
+
+    assert.equal(await importDefault(path.join(projectRoot, entryPath)), true);
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.deepEqual(audit.unresolved_manual_dependencies, [
+      `${packagePath}:DYNAMIC_NODE_MODULE_CAPABILITY`
+    ]);
+  });
+
   await t.test('shadowed local capability names are safe', async (t) => {
     const entryPath = 'src/playbook/manual/entry.js';
     const projectRoot = await dependencyFixture(t, {
