@@ -1,7 +1,7 @@
 # Architecture Playbook P3 — Capability-Deny Audit Design
 
 日期：2026-08-25  
-状态：待用户审阅  
+状态：用户已批准
 上游：`docs/superpowers/specs/2026-08-25-architecture-playbook-v0-1-design.md`  
 替代范围：P3 的 JavaScript 依赖边界扫描策略与公开路径泄漏匹配策略
 
@@ -165,7 +165,7 @@ HTTPS token 也从规范化 view 计算。普通 HTTPS URL 中的路径片段不
 安全控制包括：
 
 - 静态 ESM/CJS 字面量依赖；
-- `Module.isBuiltin`；
+- 从 `node:module` 命名导入后直接调用 `isBuiltin`；默认 namespace 仍因同时暴露 loader 能力而被拒绝；
 - 局部同名变量和参数遮蔽；
 - 审计器唯一 resolver 例外；
 - marker 证明 audit 未执行 construction target。
