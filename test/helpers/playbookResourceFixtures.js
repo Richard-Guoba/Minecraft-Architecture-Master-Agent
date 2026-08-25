@@ -1,3 +1,15 @@
+import { createHash } from 'node:crypto';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+
 export function resourceCatalogFixture() {
   return {
     schema_version: 1,
@@ -165,6 +177,128 @@ export function resourcePromotionDecisionFixture(overrides = {}) {
     reason: 'Rights remain unclear, so intake is deferred pending owner review.',
     ...overrides
   };
+}
+
+export async function resourceRegistryProjectFixture(t, options = {}) {
+  const {
+    sources = ['fixture-source'],
+    probeCount = 3
+  } = options;
+  const projectRoot = await mkdtemp(join(tmpdir(), 'playbook-resource-registry-'));
+  t.after(async () => rm(projectRoot, { recursive: true, force: true }));
+  const resourceRoot = join(projectRoot, 'docs', 'architecture-playbook', 'resources');
+  await mkdir(resourceRoot, { recursive: true });
+  await writeFile(
+    join(resourceRoot, 'README.md'),
+    '# Resource registry\n\nPrivate working artifacts belong under `.local/architecture-playbook/resources/`.\n',
+    'utf8'
+  );
+
+  const catalogSources = [];
+  for (const sourceId of [...sources].sort()) {
+    const sourceRoot = join(resourceRoot, 'sources', sourceId);
+    const probesRoot = join(sourceRoot, 'probes');
+    await mkdir(probesRoot, { recursive: true });
+    const title = `${sourceId} title`;
+    const assessmentText = `# ${title} assessment\n\nBounded fixture assessment.\n`;
+    const assessmentSha256 = createHash('sha256').update(assessmentText).digest('hex');
+    const probeIds = Array.from(
+      { length: probeCount },
+      (_, index) => `${sourceId}-probe-${index + 1}`
+    );
+    const canonicalUrl = `https://${sourceId}.example.com/resources`;
+    const profile = resourceSourceProfileFixture({
+      source_id: sourceId,
+      title,
+      canonical_url: canonicalUrl,
+      alternate_urls: [`https://www.${sourceId}.example.com/resources`],
+      assessment: {
+        ...resourceSourceProfileFixture().assessment,
+        path: `sources/${sourceId}/assessment.md`,
+        sha256: assessmentSha256,
+        probe_ids: probeIds
+      },
+      decision_history: []
+    });
+    await writeFile(join(sourceRoot, 'source.json'), `${JSON.stringify(profile, null, 2)}\n`, 'utf8');
+    await writeFile(join(sourceRoot, 'assessment.md'), assessmentText, 'utf8');
+    for (const [index, probeId] of probeIds.entries()) {
+      const probe = resourceProbeReportFixture({
+        probe_id: probeId,
+        source_id: sourceId,
+        canonical_url: `${canonicalUrl}/probe-${index + 1}`,
+        title: `${title} probe ${index + 1}`
+      });
+      await writeFile(
+        join(probesRoot, `${probeId}.json`),
+        `${JSON.stringify(probe, null, 2)}\n`,
+        'utf8'
+      );
+    }
+    catalogSources.push({
+      source_id: sourceId,
+      title,
+      lifecycle_status: 'assessed',
+      profile_path: `sources/${sourceId}/source.json`,
+      assessment_path: `sources/${sourceId}/assessment.md`
+    });
+  }
+  const catalog = {
+    ...resourceCatalogFixture(),
+    sources: catalogSources
+  };
+  await writeFile(join(resourceRoot, 'catalog.json'), `${JSON.stringify(catalog, null, 2)}\n`, 'utf8');
+  return projectRoot;
+}
+
+export async function writeMalformedProtectedSentinels(projectRoot) {
+  const sentinels = [
+    ['course', 'course-manifest.json'],
+    ['rules', 'rules.json'],
+    ['.local', 'architecture-playbook', 'sources', 'private-source.json']
+  ];
+  for (const parts of sentinels) {
+    const sentinelPath = join(projectRoot, ...parts);
+    await mkdir(dirname(sentinelPath), { recursive: true });
+    await writeFile(sentinelPath, '{malformed protected sentinel', 'utf8');
+  }
+}
+
+export async function replaceAssessmentText(projectRoot, text) {
+  await writeFile(
+    join(
+      projectRoot,
+      'docs',
+      'architecture-playbook',
+      'resources',
+      'sources',
+      'fixture-source',
+      'assessment.md'
+    ),
+    text,
+    'utf8'
+  );
+}
+
+export async function escapedResourceRegistryFixture(t) {
+  const projectRoot = await resourceRegistryProjectFixture(t);
+  const probePath = join(
+    projectRoot,
+    'docs',
+    'architecture-playbook',
+    'resources',
+    'sources',
+    'fixture-source',
+    'probes',
+    'fixture-source-probe-1.json'
+  );
+  const escapedPath = join(projectRoot, 'escaped-probe.json');
+  const probe = JSON.parse(await readFile(probePath, 'utf8'));
+  probe.source_id = 'other-source';
+  await writeFile(escapedPath, `${JSON.stringify(probe, null, 2)}\n`, 'utf8');
+  await rm(probePath);
+  await symlink(escapedPath, probePath);
+  return projectRoot;
 }
 
 function accessObservationFixture() {
