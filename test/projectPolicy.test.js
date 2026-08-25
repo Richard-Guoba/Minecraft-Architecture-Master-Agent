@@ -45,8 +45,20 @@ test('current project documents use the training-first policy', () => {
   assert.match(training, /external release/iu);
 });
 
-test('working tree has no process-document archive', () => {
-  assert.equal(fs.existsSync(path.join(ROOT, 'docs/superpowers')), false);
+test('process documents are limited to the active architecture playbook program', () => {
+  const tracked = execFileSync(
+    'git',
+    ['ls-files', 'docs/superpowers'],
+    { cwd: ROOT, encoding: 'utf8' }
+  ).trim().split('\n').filter(Boolean);
+  assert.ok(tracked.length >= 1);
+  for (const relative of tracked) {
+    assert.match(
+      relative,
+      /^docs\/superpowers\/(?:plans|specs)\/\d{4}-\d{2}-\d{2}-architecture-playbook-[a-z0-9-]+\.md$/u,
+      relative
+    );
+  }
 });
 
 test('exactly four training commands are supported', () => {
