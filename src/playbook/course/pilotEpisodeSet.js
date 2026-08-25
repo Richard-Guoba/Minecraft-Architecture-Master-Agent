@@ -200,6 +200,18 @@ export function validatePilotEpisodeSet(value) {
   return deepFreeze(pilot);
 }
 
+export function getPilotEpisodeIdentity(bvid) {
+  const expected = PILOT_EPISODES.find((episode) => episode.bvid === bvid);
+  if (!expected) {
+    failPlaybookContract(
+      'PLAYBOOK_PILOT_BVID_INVALID',
+      'bvid',
+      String(bvid)
+    );
+  }
+  return deepFreeze(structuredClone(expected));
+}
+
 function matchesExpectedSource(source, expected) {
   return [
     'course_order',

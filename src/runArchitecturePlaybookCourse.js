@@ -6,8 +6,11 @@ import {
   buildCourseManifestFromBilibiliSnapshot
 } from './playbook/course/bilibiliCourseSnapshot.js';
 import { failPlaybookContract } from './playbook/contracts/playbookContractError.js';
+import {
+  assertPrivatePlaybookStorage,
+  resolvePrivatePlaybookPath
+} from './playbook/storage/privatePlaybookPath.js';
 
-const PRIVATE_ROOT = '.local/architecture-playbook';
 const MANIFEST_PATH = 'docs/architecture-playbook/course/course-manifest.json';
 const COURSE_BVID = 'BV1HhEuzZEyZ';
 const EXPECTED_EPISODE_COUNT = 50;
@@ -241,19 +244,10 @@ function assertOnlyOptions(values, allowedValues) {
 }
 
 function assertPrivateSnapshotPath(value, projectRoot) {
-  const resolved = path.resolve(projectRoot, value);
-  const privateRoot = path.resolve(projectRoot, PRIVATE_ROOT);
-  if (
-    resolved === privateRoot
-    || !resolved.startsWith(`${privateRoot}${path.sep}`)
-  ) {
-    failPlaybookContract(
-      'PLAYBOOK_SNAPSHOT_PATH_INVALID',
-      'snapshotPath',
-      resolved
-    );
-  }
-  return resolved;
+  return resolvePrivatePlaybookPath(value, {
+    projectRoot,
+    invalidCode: 'PLAYBOOK_SNAPSHOT_PATH_INVALID'
+  });
 }
 
 function assertManifestPath(value, projectRoot) {
@@ -274,75 +268,11 @@ async function assertPrivateSnapshotStorage(
   projectRoot,
   { createParent }
 ) {
-  const privateRoot = path.resolve(projectRoot, PRIVATE_ROOT);
-  const projectReal = await fs.realpath(projectRoot);
-  const nearest = await nearestExistingAncestor(path.dirname(target));
-  const nearestReal = await fs.realpath(nearest);
-  if (!isWithin(nearestReal, projectReal)) {
-    failPlaybookContract(
-      'PLAYBOOK_SNAPSHOT_SYMLINK_ESCAPE',
-      'snapshotPath',
-      nearestReal
-    );
-  }
-
-  let privateReal = null;
-  try {
-    privateReal = await fs.realpath(privateRoot);
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
-  }
-  if (privateReal && !isWithin(privateReal, projectReal)) {
-    failPlaybookContract(
-      'PLAYBOOK_SNAPSHOT_SYMLINK_ESCAPE',
-      'snapshotPath',
-      privateReal
-    );
-  }
-  if (
-    privateReal
-    && nearest.startsWith(`${privateRoot}${path.sep}`)
-    && !isWithin(nearestReal, privateReal)
-  ) {
-    failPlaybookContract(
-      'PLAYBOOK_SNAPSHOT_SYMLINK_ESCAPE',
-      'snapshotPath',
-      nearestReal
-    );
-  }
-
-  if (createParent) await fs.mkdir(path.dirname(target), { recursive: true });
-  const parentReal = await fs.realpath(path.dirname(target));
-  const finalPrivateReal = await fs.realpath(privateRoot);
-  if (
-    !isWithin(finalPrivateReal, projectReal)
-    || !isWithin(parentReal, finalPrivateReal)
-  ) {
-    failPlaybookContract(
-      'PLAYBOOK_SNAPSHOT_SYMLINK_ESCAPE',
-      'snapshotPath',
-      parentReal
-    );
-  }
-}
-
-async function nearestExistingAncestor(start) {
-  let current = path.resolve(start);
-  while (true) {
-    try {
-      await fs.lstat(current);
-      return current;
-    } catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) throw new Error(`no existing ancestor for ${start}`);
-    current = parent;
-  }
-}
-
-function isWithin(candidate, root) {
-  return candidate === root || candidate.startsWith(`${root}${path.sep}`);
+  await assertPrivatePlaybookStorage(target, {
+    projectRoot,
+    createParent,
+    escapeCode: 'PLAYBOOK_SNAPSHOT_SYMLINK_ESCAPE'
+  });
 }
 
 function assertTimestamp(value, valuePath) {
