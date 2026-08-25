@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "source_id": "zh-minecraft-wiki",
+  "title": "中文 Minecraft Wiki 建筑教程",
+  "canonical_url": "https://zh.minecraft.wiki/w/%E6%95%99%E7%A8%8B",
+  "alternate_urls": [],
+  "registered_at": "2026-08-25T00:00:00.000Z",
+  "last_checked_at": "2026-08-25T00:00:00.000Z",
+  "source_type": "collective-reference",
+  "operator": {
+    "name": "中文 Minecraft Wiki",
+    "url": "https://zh.minecraft.wiki/",
+    "basis": "search-index"
+  },
+  "publisher": {
+    "name": "中文 Minecraft Wiki 集体编辑社区",
+    "url": "https://zh.minecraft.wiki/",
+    "basis": "search-index"
+  },
+  "creator_model": "collective-editorial",
+  "platform_is_school": false,
+  "content_hierarchy": [
+    "教程导航入口",
+    "集体编辑的参考与教程页面"
+  ],
+  "content_unit_types": [
+    "集体编辑参考页面",
+    "集体编辑教程页面"
+  ],
+  "representation_modes": [
+    "搜索索引中的页面标题与有限主题摘要"
+  ],
+  "access_methods": [
+    "搜索索引观察",
+    "后续人工或经审查的 MediaWiki API 复核"
+  ],
+  "requires_login": "unknown",
+  "client_rendered": "unknown",
+  "robots_observation": {
+    "status": "not-reviewed",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "自动直接访问返回 HTTP 403，但本轮没有把该结果扩张解释为已完成 robots 规则审查，也未尝试绕过。"
+  },
+  "api_access": {
+    "status": "not-reviewed",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "MediaWiki API 的可用性、条款、速率、返回结构和修订绑定行为均未核验。"
+  },
+  "artifact_access": {
+    "status": "not-applicable",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "本轮只评估参考文章，不主张页面正文、图片、模板、表格或其他制品的下载入口。"
+  },
+  "availability_status": "manual-or-api-review-required",
+  "access_notes": [
+    "五个自动直接访问均返回 HTTP 403，观察基础限制为 search-index 与 unverified。",
+    "观察时搜索索引缓存约已有 1.2 年，降低本轮证据置信度。",
+    "访问限制不表示资源已被拒绝，也不表示人类浏览器一定无法访问。"
+  ],
+  "styles": [
+    "未核验"
+  ],
+  "building_types": [
+    "房屋",
+    "屋顶"
+  ],
+  "difficulty_levels": [
+    "未核验"
+  ],
+  "scale_range": [
+    "未核验"
+  ],
+  "game_editions": [
+    "未核验"
+  ],
+  "game_versions": [
+    "未核验"
+  ],
+  "game_modes": [
+    "生存导向主题（索引观察）"
+  ],
+  "design_layers": [
+    "材料选择",
+    "房屋类型",
+    "屋顶构造与分类"
+  ],
+  "knowledge_modes": [
+    "design-principles",
+    "construction-sequence",
+    "reference-case",
+    "materials",
+    "survival-constraints",
+    "visual-evaluation"
+  ],
+  "public_access": {
+    "status": "unknown",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "自动访问的 HTTP 403 不能证明人类浏览器不可访问，也不能证明任何使用权限。"
+  },
+  "local_analysis": {
+    "status": "not-reviewed",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "除规范 URL、短事实与原创摘要外，本地分析的具体许可证和署名条件尚未审查。"
+  },
+  "automated_retrieval": {
+    "status": "not-reviewed",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "自动检索须等待 robots、MediaWiki API、条款与速率审查，不得绕过当前限制。"
+  },
+  "artifact_download": {
+    "status": "unknown",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "未取得允许下载正文、图片、模板、表格或其他页面制品的证据。"
+  },
+  "model_training": {
+    "status": "unknown",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "未取得适用于模型训练的具体许可证据。"
+  },
+  "external_redistribution": {
+    "status": "unknown",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "页面文本、图片和结构化事实的外部再分发条件均未直接核验。"
+  },
+  "extractable_fields": [
+    "规范 URL",
+    "页面标题",
+    "有界原创主题摘要",
+    "经索引观察的修订值"
+  ],
+  "suitable_ai_operations": [
+    "只读比较规范 URL、标题和有界原创摘要",
+    "人工复核访问、修订与权利证据"
+  ],
+  "prohibited_operations": [
+    "绕过 robots 或反自动化限制",
+    "复制正文、图片、模板、表格或缓存段落",
+    "未经审查的 API 导入或批量下载",
+    "直接生成课程、学校、规则或训练数据",
+    "外部再发布"
+  ],
+  "adapter_requirements": [
+    "获批后仅在 robots、API 与条款审查后使用 MediaWiki-aware、revision-pinned、attribution-preserving 的只读文章适配器。",
+    "文本、图片和结构化事实必须作为独立权利类别审查与返回。",
+    "只返回获批的修订绑定元数据与原创摘要，不直接供给课程、规则或训练。"
+  ],
+  "risk_flags": [
+    "rights-unknown",
+    "automatic-access-restricted",
+    "revision-provenance-partial"
+  ],
+  "lifecycle_status": "assessed",
+  "assessment": {
+    "path": "sources/zh-minecraft-wiki/assessment.md",
+    "sha256": "7ea9b6d643b544170feed431ef04426663d7376273687a5b6f863f6eb87a8fcb",
+    "completed_at": "2026-08-25T00:00:00.000Z",
+    "probe_ids": [
+      "zh-wiki-best-building-materials",
+      "zh-wiki-house-types",
+      "zh-wiki-roof-construction-guide",
+      "zh-wiki-roof-types",
+      "zh-wiki-tutorial-index"
+    ],
+    "recommendation": "recommend-defer",
+    "ratings": {
+      "principles": {
+        "value": 3,
+        "reason": "主题覆盖材料选择、房屋类型和屋顶构造，但本轮只能有限核验正文论证。"
+      },
+      "construction_sequence": {
+        "value": 3,
+        "reason": "屋顶建造指南具有流程潜力，当前访问依据不足以确认全部步骤细节。"
+      },
+      "reference_case": {
+        "value": 2,
+        "reason": "页面提供类型与做法参考，但不是结构化单体建筑案例库。"
+      },
+      "materials": {
+        "value": 4,
+        "reason": "最佳建筑材料页面直接对应材料选择与比较这一核心知识模式。"
+      },
+      "survival_constraints": {
+        "value": 3,
+        "reason": "综合教程与材料主题可能覆盖游戏条件，具体版本和限制仍需人工或 API 复核。"
+      },
+      "evaluation": {
+        "value": 3,
+        "reason": "材料和构件分类适合形成比较维度，但不能从索引摘要重建完整评价标准。"
+      },
+      "provenance": {
+        "value": 2,
+        "reason": "集体编辑来源可识别，但本轮未稳定取得每页修订与贡献谱系。"
+      },
+      "access_stability": {
+        "value": 1,
+        "reason": "自动直接访问受限，当前主要依赖搜索索引和后续人工或 API 核验。"
+      },
+      "rights_clarity": {
+        "value": "unknown",
+        "reason": "本轮没有直接核验适用于页面文本、图片和结构化再利用的具体许可证据。"
+      }
+    },
+    "risk_flags": [
+      "rights-unknown",
+      "automatic-access-restricted",
+      "revision-provenance-partial"
+    ]
+  },
+  "decision_history": []
+}
