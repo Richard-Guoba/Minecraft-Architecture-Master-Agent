@@ -281,3 +281,14 @@ test('source profile schema matches the strict runtime contract', async () => {
   );
   assert.equal(schema.properties.platform_is_school.const, false);
 });
+
+test('source profile schema HTTPS URLs mirror runtime scheme and credential rules', async () => {
+  const schema = JSON.parse(await readFile(
+    new URL('../docs/architecture-playbook/resources/schemas/source-profile.schema.json', import.meta.url),
+    'utf8'
+  ));
+  const httpsPattern = new RegExp(schema.$defs.httpsUrl.pattern, 'u');
+
+  assert.equal(httpsPattern.test('HTTPS://example.com/source'), true);
+  assert.equal(httpsPattern.test('https://user:pass@example.com/source'), false);
+});

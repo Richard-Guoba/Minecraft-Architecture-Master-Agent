@@ -155,7 +155,7 @@
     "httpsUrl": {
       "type": "string",
       "format": "uri",
-      "pattern": "^https://"
+      "pattern": "^(?![Hh][Tt][Tt][Pp][Ss]://[^/?#]*@)[Hh][Tt][Tt][Pp][Ss]://"
     },
     "nullableHttpsUrl": {
       "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/httpsUrl" }]
