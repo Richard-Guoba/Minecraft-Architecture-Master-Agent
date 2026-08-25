@@ -35,7 +35,13 @@ test('Bilibili snapshot maps curriculum and published titles in source order', (
   assert.equal(manifest.episodes[1].published_at, '2025-05-11T06:27:45.000Z');
   assert.deepEqual(manifest.episodes[1].rights, {
     api_download_flag: true,
-    no_reprint_flag: true
+    no_reprint_flag: true,
+    observation_source: 'direct-view'
+  });
+  assert.deepEqual(manifest.episodes[0].rights, {
+    api_download_flag: null,
+    no_reprint_flag: null,
+    observation_source: 'season-summary-unverified'
   });
 });
 

@@ -142,8 +142,11 @@ function episodeFixture({
     canonical_url: `https://www.bilibili.com/video/${bvid}/`,
     source_status: 'public',
     rights: {
-      api_download_flag: true,
-      no_reprint_flag: true
+      api_download_flag: role === 'technical-probe' ? true : null,
+      no_reprint_flag: role === 'technical-probe' ? true : null,
+      observation_source: role === 'technical-probe'
+        ? 'direct-view'
+        : 'season-summary-unverified'
     },
     metadata_fingerprint_sha256: order === 1 ? 'b'.repeat(64) : 'c'.repeat(64),
     processing: {

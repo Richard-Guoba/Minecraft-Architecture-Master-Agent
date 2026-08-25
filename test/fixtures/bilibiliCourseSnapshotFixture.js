@@ -9,6 +9,10 @@ export function bilibiliCourseSnapshotFixture() {
         mid: 351448296,
         name: '黑辉极乐鸟'
       },
+      rights: {
+        download: 1,
+        no_reprint: 1
+      },
       ugc_season: {
         id: 4369851,
         title: '极乐鸟的建筑课堂',
@@ -41,7 +45,9 @@ export function bilibiliCourseSnapshotFixture() {
                 publishedTitle: '还在做这样的火柴盒？结构主次很重要！',
                 duration: 781,
                 pubdate: 1746944865,
-                view: 217767
+                view: 217767,
+                embeddedDownload: 0,
+                embeddedNoReprint: 0
               })
             ]
           }
@@ -60,7 +66,9 @@ function episodeFixture({
   publishedTitle,
   duration,
   pubdate,
-  view
+  view,
+  embeddedDownload = 1,
+  embeddedNoReprint = 1
 }) {
   return {
     season_id: 4369851,
@@ -76,8 +84,8 @@ function episodeFixture({
       duration,
       pubdate,
       rights: {
-        download: 1,
-        no_reprint: 1
+        download: embeddedDownload,
+        no_reprint: embeddedNoReprint
       },
       author: {
         mid: 351448296,

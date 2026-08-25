@@ -249,10 +249,26 @@ function validateEpisodes(episodes, declaredCount) {
 function validateEpisodeRights(rights, rightsPath) {
   assertExactObject(rights, rightsPath, [
     'api_download_flag',
-    'no_reprint_flag'
+    'no_reprint_flag',
+    'observation_source'
   ]);
-  assertBoolean(rights.api_download_flag, `${rightsPath}.api_download_flag`);
-  assertBoolean(rights.no_reprint_flag, `${rightsPath}.no_reprint_flag`);
+  assertEnum(
+    rights.observation_source,
+    ['direct-view', 'season-summary-unverified'],
+    `${rightsPath}.observation_source`
+  );
+  if (rights.observation_source === 'direct-view') {
+    assertBoolean(rights.api_download_flag, `${rightsPath}.api_download_flag`);
+    assertBoolean(rights.no_reprint_flag, `${rightsPath}.no_reprint_flag`);
+    return;
+  }
+  if (rights.api_download_flag !== null || rights.no_reprint_flag !== null) {
+    failPlaybookContract(
+      'PLAYBOOK_UNVERIFIED_RIGHTS_INVALID',
+      rightsPath,
+      'unverified season rights must remain null'
+    );
+  }
 }
 
 function validateProcessing(processing, processingPath) {

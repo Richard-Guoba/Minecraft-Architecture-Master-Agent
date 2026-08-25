@@ -44,7 +44,10 @@ export function buildCourseManifestFromBilibiliSnapshot(
   }
 
   const episodes = sourceEpisodes.map((episode, index) => (
-    mapEpisode(episode, index)
+    mapEpisode(episode, index, {
+      bvid: snapshot.data.bvid,
+      rights: snapshot.data.rights
+    })
   ));
   const manifest = {
     schema_version: 1,
@@ -114,7 +117,7 @@ function flattenEpisodes(sections) {
   return episodes;
 }
 
-function mapEpisode(episode, index) {
+function mapEpisode(episode, index, directView) {
   const episodePath = `snapshot.episodes[${index}]`;
   if (!episode || typeof episode !== 'object' || !episode.arc || !episode.page) {
     failPlaybookContract(
@@ -138,6 +141,17 @@ function mapEpisode(episode, index) {
     );
   }
 
+  const rights = episode.bvid === directView.bvid && directView.rights
+    ? {
+        api_download_flag: Boolean(directView.rights.download),
+        no_reprint_flag: Boolean(directView.rights.no_reprint),
+        observation_source: 'direct-view'
+      }
+    : {
+        api_download_flag: null,
+        no_reprint_flag: null,
+        observation_source: 'season-summary-unverified'
+      };
   const stableMetadata = {
     bvid: episode.bvid,
     aid: episode.aid,
@@ -147,10 +161,7 @@ function mapEpisode(episode, index) {
     published_title: episode.page.part,
     duration_seconds: episode.arc.duration,
     published_at: unixSecondsToIso(episode.arc.pubdate, `${episodePath}.arc.pubdate`),
-    rights: {
-      api_download_flag: Boolean(episode.arc.rights?.download),
-      no_reprint_flag: Boolean(episode.arc.rights?.no_reprint)
-    }
+    rights
   };
   const sourceStatus = episode.arc.state === 0 ? 'public' : 'source-unavailable';
   return {
