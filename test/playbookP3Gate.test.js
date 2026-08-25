@@ -289,9 +289,11 @@ test('protected managed snapshot drives both drift and public-leak counters', as
 });
 
 test('protected checked snapshot blocks file URL and UNC leakage', async (t) => {
-  for (const [name, reference] of [
+  for (const [name, reference, expectedCount = 1] of [
     ['single-slash file URL',
       'file:/home/user/artifact.bin'],
+    ['double-slash mixed-case file URL',
+      'FILE://server/share/artifact.bin'],
     ['partially encoded single-slash file URL',
       'f%69le:%2Fhome%2Falice%2Fsecret.txt'],
     ['encoded file URL',
@@ -307,7 +309,19 @@ test('protected checked snapshot blocks file URL and UNC leakage', async (t) => 
     ['partially encoded HTTPS with embedded file URL',
       'h%74tps://example.test/?next=f%69le:%2Fhome%2Falice%2Fsecret.txt'],
     ['partially encoded HTTPS with embedded UNC',
-      String.raw`h%74tps://example.test/?next=%5C\server\share\secret.txt`]
+      String.raw`h%74tps://example.test/?next=%5C\server\share\secret.txt`],
+    ['mixed slash UNC',
+      String.raw`/\server\share\artifact.bin`],
+    ['extended UNC',
+      String.raw`\\?\UNC\server\share\artifact.bin`],
+    ['HTTPS query with two independent file URLs',
+      'https://example.test/?a=file:/one&a=file:/two', 2],
+    ['two whitespace-separated file URLs',
+      'file:/one file:/two', 2],
+    ['overlapping file URL and absolute path matchers',
+      'file:///home/alice/artifact.bin'],
+    ['ninth percent round exhausts the budget',
+      '%252525252525252541']
   ]) {
     await t.test(name, async (t) => {
       const projectRoot = await checkedInAuditFixture(t);
@@ -319,7 +333,7 @@ test('protected checked snapshot blocks file URL and UNC leakage', async (t) => 
 
       const audit = await auditCheckedInPlaybookV01({ projectRoot });
 
-      assert.equal(audit.public_leak_count, 1);
+      assert.equal(audit.public_leak_count, expectedCount);
       assert.ok(audit.gate.blocker_codes.includes('PUBLIC_SOURCE_LEAK'));
       assert.equal(audit.gate.status, 'blocked');
     });
@@ -338,6 +352,27 @@ test('protected checked snapshot blocks file URL and UNC leakage', async (t) => 
     assert.equal(audit.public_leak_count, 0);
     assert.equal(audit.gate.blocker_codes.includes('PUBLIC_SOURCE_LEAK'), false);
   });
+
+  for (const [name, reference] of [
+    ['exactly eight percent rounds remain within budget',
+      '%2525252525252541'],
+    ['malformed percent text stays literal',
+      'plain % text %2 %GG %C3%A9']
+  ]) {
+    await t.test(name, async (t) => {
+      const projectRoot = await checkedInAuditFixture(t);
+      await fs.appendFile(
+        path.join(projectRoot, MANUAL_PATH),
+        `${reference}\n`,
+        'utf8'
+      );
+
+      const audit = await auditCheckedInPlaybookV01({ projectRoot });
+
+      assert.equal(audit.public_leak_count, 0);
+      assert.equal(audit.gate.blocker_codes.includes('PUBLIC_SOURCE_LEAK'), false);
+    });
+  }
 });
 
 test('manual dependency graph resolves every supported construction edge', async (t) => {

@@ -459,6 +459,40 @@ test('pure audit blocks file URLs and UNC references before HTTPS exceptions', a
   }
 });
 
+test('pure public leak audit uses bounded percent-normalized file, UNC, and HTTPS ranges', async () => {
+  const base = compilePlaybookV01(await checkedInCompilerFixture());
+  const leakCases = [
+    ['single-slash file URL', 'file:/home/alice/a.txt', 1],
+    ['double-slash file URL', 'FILE://server/share/a.txt', 1],
+    ['triple-slash encoded file URL', 'f%69le:%2F%2F%2Fhome%2Falice%2Fa.txt', 1],
+    ['mixed slash UNC', String.raw`/\server\share\a.txt`, 1],
+    ['mixed encoded slash UNC', String.raw`/%5Cserver%5Cshare%5Ca.txt`, 1],
+    ['extended UNC', String.raw`\\?\UNC\server\share\a.txt`, 1],
+    ['ordinary path in partial HTTPS', 'h%74tps://example.test/?next=/home/alice/public.txt', 0],
+    ['embedded file URL in HTTPS', 'https://example.test/?next=file:/home/alice/a.txt', 1],
+    ['embedded UNC in partial HTTPS', String.raw`h%74tps://example.test/?next=/\server\share\a.txt`, 1],
+    ['two file URLs in one HTTPS query', 'https://example.test/?a=file:/one&a=file:/two', 2],
+    ['two whitespace-separated file URLs', 'file:/one file:/two', 2],
+    ['overlapping file and absolute path matchers', 'file:///home/alice/a.txt', 1],
+    ['exactly eight percent rounds', '%2525252525252541', 0],
+    ['ninth percent round exhausts the budget', '%252525252525252541', 1],
+    ['malformed percent text stays literal', 'plain % text %2 %GG %C3%A9', 0]
+  ];
+
+  for (const [name, reference, expectedCount] of leakCases) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${reference}\n`;
+    const audit = auditPlaybookV01(compilation);
+
+    assert.equal(audit.public_leak_count, expectedCount, name);
+    assert.equal(
+      audit.gate.status,
+      expectedCount === 0 ? 'passed' : 'blocked',
+      name
+    );
+  }
+});
+
 test('pure audit ignores a stale P2 summary and rederives status from source gate evidence', async () => {
   const compilation = structuredClone(
     compilePlaybookV01(await checkedInCompilerFixture())

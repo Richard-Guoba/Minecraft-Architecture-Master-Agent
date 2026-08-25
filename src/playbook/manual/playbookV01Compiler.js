@@ -45,9 +45,6 @@ const SPECIAL_CHAPTER_IDS = new Set([
   'agent-workflow',
   'unknowns-and-coverage'
 ]);
-const PUBLIC_HTTPS_URL = /https:\/\/[^\s`"'<>|)]+/gimu;
-const FILE_URL_REFERENCE = /(?<![A-Za-z0-9])(?:file(?::|%3a)|%66%69%6c%65(?::|%3a))(?:(?:[\\/]|%2f|%5c)+)[^\s`"'<>|)]*/gimu;
-const UNC_REFERENCE = /(?<![A-Za-z0-9:])(?:(?:\\\\|\/\/)|(?:%5c%5c|%2f%2f))[A-Za-z0-9%._~@+-]+(?:(?:[\\/]|%2f|%5c)[^\s`"'<>|)]+)+/gimu;
 const UNIX_ABSOLUTE_PATH = /(?<![A-Za-z0-9:/.])\/(?!\/)[A-Za-z0-9._~@+-]+(?:\/[A-Za-z0-9._~@+()-]+)*/gimu;
 const WINDOWS_ABSOLUTE_PATH = /(?<![A-Za-z0-9])[A-Za-z]:[\\/](?:[^\\/\s`"'<>|]+[\\/])*[^\\/\s`"'<>|]+/gimu;
 const PRIVATE_SOURCE_DIRECTORY = /(?<![A-Za-z0-9._-])(?:\.{1,2}[\\/])*(?:frames?|screenshots?|source-frames?|private-source)(?:[\\/][^\s`"'<>|)]+)+/gimu;
@@ -63,10 +60,6 @@ const PUBLIC_LEAK_MATCHERS = Object.freeze([
   PRIVATE_SOURCE_FIELD,
   FRAME_IMAGE_REFERENCE,
   PRIVATE_SOURCE_MARKER
-]);
-const HIGH_PRIORITY_PUBLIC_LEAK_MATCHERS = Object.freeze([
-  FILE_URL_REFERENCE,
-  UNC_REFERENCE
 ]);
 const MAX_PERCENT_NORMALIZATION_ROUNDS = 8;
 
@@ -977,70 +970,52 @@ function countPublicLeaks(artifacts) {
 }
 
 function countDistinctLeakRanges(value) {
-  const normalized = normalizePercentForLeakScan(value);
-  const publicUrlRanges = normalizedMatchRanges(normalized, PUBLIC_HTTPS_URL);
-  const highPriorityRanges = HIGH_PRIORITY_PUBLIC_LEAK_MATCHERS.flatMap(
-    (matcher) => normalizedMatchRanges(normalized, matcher)
-  );
-  if (normalized.exhausted_range) {
-    highPriorityRanges.push(normalized.exhausted_range);
-  }
-  const ranges = [
-    ...highPriorityRanges,
-    ...PUBLIC_LEAK_MATCHERS.flatMap(
-      (matcher) => normalizedMatchRanges(normalized, matcher)
-    )
-      .filter((range) => !publicUrlRanges.some((publicUrlRange) =>
-        range.start >= publicUrlRange.start && range.end <= publicUrlRange.end))
-  ]
-    .sort((left, right) => left.start - right.start || right.end - left.end);
-  let count = 0;
-  let coveredUntil = -1;
-  for (const range of ranges) {
-    if (range.start < coveredUntil) {
-      coveredUntil = Math.max(coveredUntil, range.end);
-      continue;
-    }
-    count += 1;
-    coveredUntil = range.end;
-  }
-  return count;
+  return findPublicLeakRanges(value).length;
 }
 
-function normalizePercentForLeakScan(value) {
+function normalizePublicText(value) {
   let units = value.split('').map((character, index) => ({
     character,
-    start: index,
-    end: index + 1
+    rawStart: index,
+    rawEnd: index + 1
   }));
   for (let round = 0; round < MAX_PERCENT_NORMALIZATION_ROUNDS; round += 1) {
-    const next = [];
-    let changed = false;
-    for (let index = 0; index < units.length; index += 1) {
-      const decoded = decodedAsciiPercentUnit(units, index);
-      if (!decoded) {
-        next.push(units[index]);
-        continue;
-      }
-      next.push(decoded);
-      index += 2;
-      changed = true;
-    }
-    units = next;
-    if (!changed) break;
+    const decoded = decodeAsciiPercentUnits(units);
+    units = decoded.units;
+    if (!decoded.changed) return toNormalizationResult(units, false);
   }
-  const exhaustedIndex = units.findIndex((unit, index) =>
-    decodedAsciiPercentUnit(units, index) !== null);
+  return toNormalizationResult(units, containsDecodableAsciiPercent(units));
+}
+
+function decodeAsciiPercentUnits(units) {
+  const decodedUnits = [];
+  let changed = false;
+  for (let index = 0; index < units.length; index += 1) {
+    const decoded = decodedAsciiPercentUnit(units, index);
+    if (!decoded) {
+      decodedUnits.push(units[index]);
+      continue;
+    }
+    decodedUnits.push(decoded);
+    index += 2;
+    changed = true;
+  }
+  return { units: decodedUnits, changed };
+}
+
+function toNormalizationResult(units, exhausted) {
   return {
     text: units.map((unit) => unit.character).join(''),
-    units,
-    exhausted_range: exhaustedIndex === -1
-      ? null
-      : {
-          start: units[exhaustedIndex].start,
-          end: units[exhaustedIndex + 2].end
-        }
+    rawRanges: units.map((unit) => ({
+      start: unit.rawStart,
+      end: unit.rawEnd
+    })),
+    exhausted
   };
+}
+
+function containsDecodableAsciiPercent(units) {
+  return units.some((unit, index) => decodedAsciiPercentUnit(units, index) !== null);
 }
 
 function decodedAsciiPercentUnit(units, index) {
@@ -1056,16 +1031,216 @@ function decodedAsciiPercentUnit(units, index) {
   if (code < 0x20 || code > 0x7e) return null;
   return {
     character: String.fromCharCode(code),
-    start: units[index].start,
-    end: units[index + 2].end
+    rawStart: units[index].rawStart,
+    rawEnd: units[index + 2].rawEnd
   };
 }
 
 function normalizedMatchRanges(normalized, matcher) {
-  return [...normalized.text.matchAll(matcher)].map((match) => ({
-    start: normalized.units[match.index].start,
-    end: normalized.units[match.index + match[0].length - 1].end
-  }));
+  return [...normalized.text.matchAll(matcher)].map((match) =>
+    normalizedRange(normalized, match.index, match.index + match[0].length));
+}
+
+function findPublicLeakRanges(value) {
+  const normalized = normalizePublicText(value);
+  const httpsRanges = findHttpsRanges(normalized);
+  const fileRanges = findFileUrlRanges(normalized);
+  const uncRanges = findUncRanges(normalized, httpsRanges, fileRanges);
+  const highPriorityRanges = [...fileRanges, ...uncRanges];
+  const ordinaryRanges = selectDistinctOrdinaryRanges(
+    PUBLIC_LEAK_MATCHERS.flatMap((matcher) =>
+      normalizedMatchRanges(normalized, matcher)
+        .map((range) => ({ ...range, kind: 'PUBLIC_PATH' })))
+      .filter((range) => !isContainedByAny(range, httpsRanges))
+      .filter((range) => !overlapsAny(range, highPriorityRanges))
+  );
+  const exhaustedRanges = normalized.exhausted
+    ? [percentNormalizationExhaustedRange(normalized)]
+    : [];
+  return deduplicateIdenticalRanges([
+    ...highPriorityRanges,
+    ...ordinaryRanges,
+    ...exhaustedRanges
+  ]).map(({ start, end, kind }) => ({ start, end, kind }));
+}
+
+function findHttpsRanges(normalized) {
+  const ranges = [];
+  const matcher = /https:\/\//gimu;
+  for (const match of normalized.text.matchAll(matcher)) {
+    if (isAsciiAlphaNumeric(normalized.text[match.index - 1])) continue;
+    const normalizedEnd = publicReferenceTokenEnd(
+      normalized.text,
+      match.index + match[0].length
+    );
+    ranges.push({
+      ...normalizedRange(normalized, match.index, normalizedEnd),
+      normalizedStart: match.index,
+      normalizedEnd,
+      kind: 'HTTPS_PUBLIC'
+    });
+  }
+  return ranges;
+}
+
+function findFileUrlRanges(normalized) {
+  const ranges = [];
+  const matcher = /file:(?=[\\/])/gimu;
+  for (const match of normalized.text.matchAll(matcher)) {
+    if (isAsciiAlphaNumeric(normalized.text[match.index - 1])) continue;
+    const normalizedEnd = publicReferenceTokenEnd(
+      normalized.text,
+      match.index + match[0].length,
+      { stopAtNewScheme: true }
+    );
+    ranges.push({
+      ...normalizedRange(normalized, match.index, normalizedEnd),
+      normalizedStart: match.index,
+      normalizedEnd,
+      kind: 'FILE_URL'
+    });
+  }
+  return ranges;
+}
+
+function findUncRanges(normalized, httpsRanges, fileRanges) {
+  const ranges = [];
+  for (let index = 0; index < normalized.text.length - 1; index += 1) {
+    if (!isSlash(normalized.text[index]) || !isSlash(normalized.text[index + 1])) {
+      continue;
+    }
+    if (isAsciiAlphaNumeric(normalized.text[index - 1])) continue;
+    const normalizedEnd = publicReferenceTokenEnd(normalized.text, index + 2, {
+      stopAtNewScheme: true
+    });
+    const normalizedCandidate = {
+      normalizedStart: index,
+      normalizedEnd,
+      ...normalizedRange(normalized, index, normalizedEnd)
+    };
+    if (!isUncReference(normalized.text.slice(index, normalizedEnd))) continue;
+    if (overlapsAny(normalizedCandidate, fileRanges)) continue;
+    if (isHttpsPathSeparator(normalizedCandidate, httpsRanges, normalized.text)) {
+      continue;
+    }
+    ranges.push({ ...normalizedCandidate, kind: 'UNC_REFERENCE' });
+    index = normalizedEnd - 1;
+  }
+  return ranges;
+}
+
+function isUncReference(candidate) {
+  const segment = String.raw`[^\\/\s\x60"'<>|()[\]{}]+`;
+  return new RegExp(
+    String.raw`^[\\/]{2,}(?:\?[\\/]UNC[\\/]${segment}[\\/]${segment}|${segment}[\\/]${segment})`,
+    'iu'
+  ).test(candidate);
+}
+
+function isHttpsPathSeparator(candidate, httpsRanges, text) {
+  const httpsRange = httpsRanges.find((range) =>
+    candidate.normalizedStart >= range.normalizedStart
+      && candidate.normalizedStart < range.normalizedEnd);
+  if (!httpsRange) return false;
+  const queryIndex = text.slice(
+    httpsRange.normalizedStart,
+    httpsRange.normalizedEnd
+  ).search(/[?#]/u);
+  return queryIndex === -1
+    || candidate.normalizedStart < httpsRange.normalizedStart + queryIndex;
+}
+
+function publicReferenceTokenEnd(text, start, { stopAtNewScheme = false } = {}) {
+  let index = start;
+  while (index < text.length && !isPublicReferenceTerminator(text[index])) {
+    if (stopAtNewScheme && index > start && startsUriScheme(text, index)) break;
+    index += 1;
+  }
+  return index;
+}
+
+function isPublicReferenceTerminator(character) {
+  return character === undefined
+    || /[\s\x60"'<>|()[\]{}]/u.test(character);
+}
+
+function startsUriScheme(text, index) {
+  return /^[A-Za-z][A-Za-z0-9+.-]*:[\\/]/u.test(text.slice(index));
+}
+
+function isSlash(character) {
+  return character === '/' || character === '\\';
+}
+
+function isAsciiAlphaNumeric(character) {
+  return character !== undefined && /[A-Za-z0-9]/u.test(character);
+}
+
+function normalizedRange(normalized, normalizedStart, normalizedEnd) {
+  return {
+    start: normalized.rawRanges[normalizedStart].start,
+    end: normalized.rawRanges[normalizedEnd - 1].end,
+    normalizedStart,
+    normalizedEnd
+  };
+}
+
+function percentNormalizationExhaustedRange(normalized) {
+  const normalizedStart = findDecodableAsciiPercentIndex(normalized.text);
+  return {
+    ...normalizedRange(normalized, normalizedStart, normalizedStart + 3),
+    kind: 'PERCENT_NORMALIZATION_EXHAUSTED'
+  };
+}
+
+function findDecodableAsciiPercentIndex(text) {
+  for (let index = 0; index < text.length - 2; index += 1) {
+    if (text[index] !== '%' || !/^[0-9A-Fa-f]{2}$/u.test(text.slice(index + 1, index + 3))) {
+      continue;
+    }
+    const code = Number.parseInt(text.slice(index + 1, index + 3), 16);
+    if (code >= 0x20 && code <= 0x7e) return index;
+  }
+  return -1;
+}
+
+function isContainedByAny(range, containers) {
+  return containers.some((container) =>
+    range.normalizedStart >= container.normalizedStart
+      && range.normalizedEnd <= container.normalizedEnd);
+}
+
+function overlapsAny(range, others) {
+  return others.some((other) =>
+    range.normalizedStart < other.normalizedEnd
+      && other.normalizedStart < range.normalizedEnd);
+}
+
+function selectDistinctOrdinaryRanges(ranges) {
+  const sorted = ranges.sort((left, right) =>
+    left.normalizedStart - right.normalizedStart
+      || right.normalizedEnd - left.normalizedEnd);
+  const selected = [];
+  let coveredUntil = -1;
+  for (const range of sorted) {
+    if (range.normalizedStart < coveredUntil) {
+      coveredUntil = Math.max(coveredUntil, range.normalizedEnd);
+      continue;
+    }
+    selected.push(range);
+    coveredUntil = range.normalizedEnd;
+  }
+  return selected;
+}
+
+function deduplicateIdenticalRanges(ranges) {
+  const seen = new Set();
+  return ranges.filter((range) => {
+    const key = `${range.kind}:${range.start}:${range.end}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function renderJson(value) {
