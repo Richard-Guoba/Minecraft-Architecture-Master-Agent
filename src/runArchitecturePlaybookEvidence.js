@@ -7,6 +7,9 @@ import {
 } from './playbook/course/localEvidenceProcessor.js';
 import { getPilotEpisodeIdentity } from './playbook/course/pilotEpisodeSet.js';
 import { failPlaybookContract } from './playbook/contracts/playbookContractError.js';
+import {
+  compileLocalEvidencePack
+} from './playbook/knowledge/evidencePack.js';
 
 const VALUE_OPTIONS = new Set(['--bvid']);
 const BOOLEAN_OPTIONS = new Set(['--replace']);
@@ -16,7 +19,7 @@ export function parseArchitecturePlaybookEvidenceArgs(
   { projectRoot = path.resolve(import.meta.dirname, '..') } = {}
 ) {
   const command = argv[0];
-  if (!['media', 'transcribe', 'frames'].includes(command)) {
+  if (!['media', 'transcribe', 'frames', 'pack'].includes(command)) {
     failPlaybookContract(
       'PLAYBOOK_EVIDENCE_COMMAND_INVALID',
       'argv[0]',
@@ -102,6 +105,17 @@ export async function main(argv = process.argv.slice(2)) {
       `segment_count=${result.segment_count}`,
       `duration_ms=${result.duration_ms}`,
       `segment_index_sha256=${result.segment_index_sha256}`
+    ].join('\n') + '\n');
+    return;
+  }
+  if (options.command === 'pack') {
+    const result = await compileLocalEvidencePack(options);
+    process.stdout.write([
+      `pack_status=${result.status}`,
+      `bvid=${result.summary.bvid}`,
+      `note_count=${result.summary.note_count}`,
+      `accepted_for_public_candidates=${result.summary.accepted_for_public_candidates}`,
+      `index_sha256=${result.summary.index_sha256}`
     ].join('\n') + '\n');
     return;
   }

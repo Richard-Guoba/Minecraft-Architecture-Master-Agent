@@ -148,6 +148,7 @@ function transcriptFixture() {
   return {
     schema_version: 1,
     bvid: EPISODE.bvid,
+    segment_index_version: 2,
     segment_index_sha256: TRANSCRIPT_HASH,
     segments: [
       { id: 10, start_ms: 10000, end_ms: 15000, text: 'fixture text' },

@@ -311,6 +311,7 @@ function validateTranscriptIdentity(transcript, episode) {
     !transcript
     || transcript.schema_version !== 1
     || transcript.bvid !== episode.bvid
+    || transcript.segment_index_version !== 2
     || typeof transcript.segment_index_sha256 !== 'string'
     || !SHA256.test(transcript.segment_index_sha256)
     || !Array.isArray(transcript.segments)

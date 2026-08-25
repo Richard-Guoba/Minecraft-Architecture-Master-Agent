@@ -53,9 +53,15 @@ test('evidence CLI routes local processor commands without media replacement', (
     '--bvid',
     EPISODE.bvid
   ], { projectRoot: '/tmp/playbook-cli-fixture' });
+  const pack = parseArchitecturePlaybookEvidenceArgs([
+    'pack',
+    '--bvid',
+    EPISODE.bvid
+  ], { projectRoot: '/tmp/playbook-cli-fixture' });
 
   assert.equal(transcribe.command, 'transcribe');
   assert.equal(frames.command, 'frames');
+  assert.equal(pack.command, 'pack');
   assert.throws(
     () => parseArchitecturePlaybookEvidenceArgs([
       'transcribe',

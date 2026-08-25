@@ -118,8 +118,25 @@ def main():
 
     if not segments:
         raise SystemExit("ASR produced no transcript segments")
+    lineage_segments = [
+        {
+            "id": segment["id"],
+            "start_ms": segment["start_ms"],
+            "end_ms": segment["end_ms"],
+            "text": segment["text"],
+            "words": [
+                {
+                    "start_ms": word["start_ms"],
+                    "end_ms": word["end_ms"],
+                    "text": word["text"],
+                }
+                for word in segment["words"]
+            ],
+        }
+        for segment in segments
+    ]
     segment_bytes = json.dumps(
-        segments,
+        lineage_segments,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -145,6 +162,7 @@ def main():
         "duration_ms": round(info.duration * 1000),
         "duration_after_vad_ms": round(info.duration_after_vad * 1000),
         "segment_count": len(segments),
+        "segment_index_version": 2,
         "segment_index_sha256": hashlib.sha256(segment_bytes).hexdigest(),
         "segments": segments,
     }
