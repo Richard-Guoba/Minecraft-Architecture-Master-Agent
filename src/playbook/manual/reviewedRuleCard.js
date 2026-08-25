@@ -57,6 +57,31 @@ const CANDIDATE_FIELDS = [
   'confidence',
   'conflict_ids'
 ];
+const P2_CANDIDATE_FIELDS = [
+  'schema_version',
+  ...CANDIDATE_FIELDS.slice(0, 2),
+  'primary_school',
+  'source_episode_bvids',
+  'evidence_ids',
+  'claim_type',
+  'design_layer',
+  'intent',
+  'applicability',
+  'prerequisites',
+  'exclusions',
+  'action',
+  'parameters',
+  'implementation_hints',
+  'positive_signs',
+  'failure_modes',
+  'repairs',
+  'author_reason',
+  'confidence',
+  'maturity',
+  'review_status',
+  'conflict_ids',
+  'supersedes'
+];
 const POLICY_FIELDS = [
   'teaching_role',
   'chapter_ids',
@@ -66,16 +91,18 @@ const POLICY_FIELDS = [
 const ADMISSION_FIELDS = ['rule_id', 'decision', ...POLICY_FIELDS];
 
 export function deriveReviewedRuleCard(candidate, admission, { playbookVersion } = {}) {
-  validateDerivationContext(candidate, admission, playbookVersion);
-  return validateReviewedRuleCard(createReviewedRuleCard(candidate, admission), {
-    candidate,
+  const validatedCandidate = validateCandidateBoundary(candidate);
+  validateDerivationContext(validatedCandidate, admission, playbookVersion);
+  return validateReviewedRuleCard(createReviewedRuleCard(validatedCandidate, admission), {
+    candidate: validatedCandidate,
     admission
   });
 }
 
 export function validateReviewedRuleCard(value, { candidate, admission } = {}) {
   const card = cloneDocument(value, 'ReviewedRuleCard');
-  validateDerivationContext(candidate, admission, card.playbook_version);
+  const validatedCandidate = validateCandidateBoundary(candidate);
+  validateDerivationContext(validatedCandidate, admission, card.playbook_version);
   assertExactObject(card, 'ReviewedRuleCard', CARD_FIELDS, 'PLAYBOOK_P3_CARD_FIELDS_INVALID');
 
   if (card.schema_version !== 1 || card.playbook_version !== PLAYBOOK_VERSION) {
@@ -114,7 +141,7 @@ export function validateReviewedRuleCard(value, { candidate, admission } = {}) {
     );
   }
 
-  const expected = createReviewedRuleCard(candidate, admission);
+  const expected = createReviewedRuleCard(validatedCandidate, admission);
   const candidateFields = ['source_candidate_sha256', ...CANDIDATE_FIELDS];
   if (candidateFields.some((field) => !sameJson(card[field], expected[field]))) {
     failPlaybookContract(
@@ -238,6 +265,17 @@ function validateDerivationContext(candidate, admission, playbookVersion) {
       'P3 admits advisory cards only'
     );
   }
+}
+
+function validateCandidateBoundary(candidate) {
+  const validatedCandidate = cloneDocument(candidate, 'PlaybookRuleCandidate');
+  assertExactObject(
+    validatedCandidate,
+    'PlaybookRuleCandidate',
+    P2_CANDIDATE_FIELDS,
+    'PLAYBOOK_P3_CANDIDATE_FIELDS_INVALID'
+  );
+  return validatedCandidate;
 }
 
 function candidateHash(candidate) {

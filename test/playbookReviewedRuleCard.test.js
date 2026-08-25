@@ -95,6 +95,18 @@ test('reviewed card rejects executable authority and unknown fields', () => {
   );
 });
 
+test('reviewed card rejects unknown candidate fields before hashing', () => {
+  const candidate = candidateFixture();
+  candidate.unreviewed_extra = 'must not enter lineage';
+
+  assert.throws(
+    () => deriveReviewedRuleCard(candidate, admissionFixture(), {
+      playbookVersion: '0.1.0'
+    }),
+    /PLAYBOOK_P3_CANDIDATE_FIELDS_INVALID/u
+  );
+});
+
 test('batch cards retain exact candidate JSONL order and unique rule IDs', () => {
   const cards = buildReviewedRuleCards(CORPUS.candidates, POLICY);
 
