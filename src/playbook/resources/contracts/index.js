@@ -17,3 +17,7 @@ export {
   RESOURCE_CATALOG_RUNTIME_INVARIANTS,
   validateResourceCatalog
 } from './catalog.js';
+export {
+  SOURCE_PROFILE_FIELDS,
+  validateResourceSourceProfile
+} from './sourceProfile.js';

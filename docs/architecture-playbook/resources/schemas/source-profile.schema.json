@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minecraft-constructing-agents.local/schemas/source-profile-v1.json",
+  "title": "Architecture Playbook ResourceSourceProfile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "source_id", "title", "canonical_url", "alternate_urls",
+    "registered_at", "last_checked_at", "source_type", "operator", "publisher",
+    "creator_model", "platform_is_school", "content_hierarchy", "content_unit_types",
+    "representation_modes", "access_methods", "requires_login", "client_rendered",
+    "robots_observation", "api_access", "artifact_access", "availability_status",
+    "access_notes", "styles", "building_types", "difficulty_levels", "scale_range",
+    "game_editions", "game_versions", "game_modes", "design_layers", "knowledge_modes",
+    "public_access", "local_analysis", "automated_retrieval", "artifact_download",
+    "model_training", "external_redistribution", "extractable_fields",
+    "suitable_ai_operations", "prohibited_operations", "adapter_requirements", "risk_flags",
+    "lifecycle_status", "assessment", "decision_history"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "source_id": { "$ref": "#/$defs/sourceId" },
+    "title": { "$ref": "#/$defs/title" },
+    "canonical_url": { "$ref": "#/$defs/httpsUrl" },
+    "alternate_urls": { "$ref": "#/$defs/alternateUrls" },
+    "registered_at": { "$ref": "#/$defs/canonicalTimestamp" },
+    "last_checked_at": { "$ref": "#/$defs/canonicalTimestamp" },
+    "source_type": {
+      "enum": [
+        "case-catalog", "author-course", "collective-reference", "video-platform",
+        "mixed-resource-platform"
+      ]
+    },
+    "operator": { "$ref": "#/$defs/identityObservation" },
+    "publisher": { "$ref": "#/$defs/identityObservation" },
+    "creator_model": {
+      "enum": ["single-author", "multi-creator", "collective-editorial", "unknown"]
+    },
+    "platform_is_school": { "const": false },
+    "content_hierarchy": { "$ref": "#/$defs/requiredStringArray" },
+    "content_unit_types": { "$ref": "#/$defs/requiredStringArray" },
+    "representation_modes": { "$ref": "#/$defs/requiredStringArray" },
+    "access_methods": { "$ref": "#/$defs/requiredStringArray" },
+    "requires_login": { "$ref": "#/$defs/triState" },
+    "client_rendered": { "$ref": "#/$defs/triState" },
+    "robots_observation": { "$ref": "#/$defs/accessObservation" },
+    "api_access": { "$ref": "#/$defs/accessObservation" },
+    "artifact_access": { "$ref": "#/$defs/accessObservation" },
+    "availability_status": {
+      "enum": [
+        "reachable", "partial-js-render", "manual-or-api-review-required",
+        "source-unavailable", "unknown"
+      ]
+    },
+    "access_notes": { "$ref": "#/$defs/requiredStringArray" },
+    "styles": { "$ref": "#/$defs/requiredStringArray" },
+    "building_types": { "$ref": "#/$defs/requiredStringArray" },
+    "difficulty_levels": { "$ref": "#/$defs/requiredStringArray" },
+    "scale_range": { "$ref": "#/$defs/requiredStringArray" },
+    "game_editions": { "$ref": "#/$defs/requiredStringArray" },
+    "game_versions": { "$ref": "#/$defs/requiredStringArray" },
+    "game_modes": { "$ref": "#/$defs/requiredStringArray" },
+    "design_layers": { "$ref": "#/$defs/requiredStringArray" },
+    "knowledge_modes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "design-principles", "construction-sequence", "reference-case", "materials",
+          "survival-constraints", "visual-evaluation"
+        ]
+      }
+    },
+    "public_access": { "$ref": "#/$defs/rightsObservation" },
+    "local_analysis": { "$ref": "#/$defs/rightsObservation" },
+    "automated_retrieval": { "$ref": "#/$defs/rightsObservation" },
+    "artifact_download": { "$ref": "#/$defs/rightsObservation" },
+    "model_training": { "$ref": "#/$defs/rightsObservation" },
+    "external_redistribution": { "$ref": "#/$defs/rightsObservation" },
+    "extractable_fields": { "$ref": "#/$defs/requiredStringArray" },
+    "suitable_ai_operations": { "$ref": "#/$defs/requiredStringArray" },
+    "prohibited_operations": { "$ref": "#/$defs/optionalStringArray" },
+    "adapter_requirements": { "$ref": "#/$defs/optionalStringArray" },
+    "risk_flags": { "$ref": "#/$defs/optionalStringArray" },
+    "lifecycle_status": {
+      "enum": [
+        "registered", "probing", "assessed", "approved-for-intake", "deferred", "rejected"
+      ]
+    },
+    "assessment": {
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/assessment" }]
+    },
+    "decision_history": { "$ref": "#/$defs/decisionHistory" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "lifecycle_status": { "enum": ["registered", "probing"] } },
+        "required": ["lifecycle_status"]
+      },
+      "then": {
+        "properties": {
+          "assessment": { "const": null },
+          "decision_history": { "maxItems": 0 }
+        },
+        "required": ["assessment", "decision_history"]
+      }
+    },
+    {
+      "if": {
+        "properties": { "lifecycle_status": { "const": "assessed" } },
+        "required": ["lifecycle_status"]
+      },
+      "then": {
+        "properties": {
+          "assessment": { "$ref": "#/$defs/assessment" },
+          "decision_history": { "maxItems": 0 }
+        },
+        "required": ["assessment", "decision_history"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "lifecycle_status": {
+            "enum": ["approved-for-intake", "deferred", "rejected"]
+          }
+        },
+        "required": ["lifecycle_status"]
+      },
+      "then": {
+        "properties": {
+          "assessment": { "$ref": "#/$defs/assessment" },
+          "decision_history": { "minItems": 1 }
+        },
+        "required": ["assessment", "decision_history"]
+      }
+    }
+  ],
+  "$defs": {
+    "sourceId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "title": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "canonicalTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:[0-9]{4}|[+-][0-9]{6})-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.\\d{3}Z$"
+    },
+    "httpsUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    },
+    "nullableHttpsUrl": {
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/httpsUrl" }]
+    },
+    "stringItem": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "requiredStringArray": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/stringItem" }
+    },
+    "optionalStringArray": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/stringItem" }
+    },
+    "alternateUrls": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/httpsUrl" }
+    },
+    "triState": { "enum": [true, false, "unknown"] },
+    "identityObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "url", "basis"],
+      "properties": {
+        "name": { "$ref": "#/$defs/title" },
+        "url": { "$ref": "#/$defs/nullableHttpsUrl" },
+        "basis": {
+          "enum": [
+            "direct-page", "site-claim", "search-index", "project-inference", "unverified"
+          ]
+        }
+      }
+    },
+    "accessObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidence_url", "checked_at", "note"],
+      "properties": {
+        "status": {
+          "enum": [
+            "observed-available", "observed-unavailable", "requires-login", "restricted",
+            "not-reviewed", "unknown", "not-applicable"
+          ]
+        },
+        "evidence_url": { "$ref": "#/$defs/nullableHttpsUrl" },
+        "checked_at": { "$ref": "#/$defs/canonicalTimestamp" },
+        "note": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "allOf": [{
+        "if": {
+          "properties": { "status": { "enum": ["not-reviewed", "unknown"] } },
+          "required": ["status"]
+        },
+        "then": {
+          "properties": { "evidence_url": { "const": null } },
+          "required": ["evidence_url"]
+        }
+      }]
+    },
+    "rightsObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidence_url", "checked_at", "note"],
+      "properties": {
+        "status": {
+          "enum": [
+            "observed-allowed", "observed-prohibited", "not-reviewed", "unknown",
+            "not-applicable"
+          ]
+        },
+        "evidence_url": { "$ref": "#/$defs/nullableHttpsUrl" },
+        "checked_at": { "$ref": "#/$defs/canonicalTimestamp" },
+        "note": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "allOf": [{
+        "if": {
+          "properties": { "status": { "enum": ["not-reviewed", "unknown"] } },
+          "required": ["status"]
+        },
+        "then": {
+          "properties": { "evidence_url": { "const": null } },
+          "required": ["evidence_url"]
+        }
+      }]
+    },
+    "rating": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "reason"],
+      "properties": {
+        "value": { "anyOf": [{ "type": "integer", "minimum": 0, "maximum": 4 }, { "const": "unknown" }] },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 512 }
+      }
+    },
+    "ratings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principles", "construction_sequence", "reference_case", "materials",
+        "survival_constraints", "evaluation", "provenance", "access_stability", "rights_clarity"
+      ],
+      "properties": {
+        "principles": { "$ref": "#/$defs/rating" },
+        "construction_sequence": { "$ref": "#/$defs/rating" },
+        "reference_case": { "$ref": "#/$defs/rating" },
+        "materials": { "$ref": "#/$defs/rating" },
+        "survival_constraints": { "$ref": "#/$defs/rating" },
+        "evaluation": { "$ref": "#/$defs/rating" },
+        "provenance": { "$ref": "#/$defs/rating" },
+        "access_stability": { "$ref": "#/$defs/rating" },
+        "rights_clarity": { "$ref": "#/$defs/rating" }
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path", "sha256", "completed_at", "probe_ids", "recommendation", "ratings", "risk_flags"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^sources/[a-z0-9]+(?:-[a-z0-9]+)*/assessment\\.md$"
+        },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "completed_at": { "$ref": "#/$defs/canonicalTimestamp" },
+        "probe_ids": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/sourceId" }
+        },
+        "recommendation": {
+          "enum": ["recommend-approve", "recommend-defer", "recommend-reject"]
+        },
+        "ratings": { "$ref": "#/$defs/ratings" },
+        "risk_flags": { "$ref": "#/$defs/optionalStringArray" }
+      }
+    },
+    "decisionHistory": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512,
+        "pattern": "^sources/[a-z0-9]+(?:-[a-z0-9]+)*/decisions/[0-9]{4}-[0-9]{2}-[0-9]{2}-(?:approved-for-intake|deferred|rejected)\\.json$"
+      }
+    }
+  }
+}
