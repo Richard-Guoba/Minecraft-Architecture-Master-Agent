@@ -16,6 +16,49 @@ export const RESOURCE_CATALOG_FIELDS = Object.freeze([
 export const RESOURCE_CATALOG_SOURCE_FIELDS = Object.freeze([
   'source_id', 'title', 'lifecycle_status', 'profile_path', 'assessment_path'
 ]);
+export const RESOURCE_CATALOG_RUNTIME_INVARIANTS = Object.freeze([
+  Object.freeze({
+    id: 'source-id-unique',
+    enforcement: 'runtime',
+    keyword: 'unique-by',
+    array_path: '/sources',
+    property: 'source_id'
+  }),
+  Object.freeze({
+    id: 'profile-path-unique',
+    enforcement: 'runtime',
+    keyword: 'unique-by',
+    array_path: '/sources',
+    property: 'profile_path'
+  }),
+  Object.freeze({
+    id: 'profile-path-source-binding',
+    enforcement: 'runtime',
+    keyword: 'template-equals',
+    instance_path: '/sources/*/profile_path',
+    template: 'sources/{source_id}/source.json'
+  }),
+  Object.freeze({
+    id: 'assessment-path-source-binding',
+    enforcement: 'runtime',
+    keyword: 'template-equals',
+    instance_path: '/sources/*/assessment_path',
+    lifecycle_statuses: Object.freeze([
+      'assessed', 'approved-for-intake', 'deferred', 'rejected'
+    ]),
+    template: 'sources/{source_id}/assessment.md'
+  }),
+  Object.freeze({
+    id: 'source-id-lexical-order',
+    enforcement: 'runtime',
+    keyword: 'strictly-increasing-by',
+    array_path: '/sources',
+    property: 'source_id'
+  })
+]);
+
+const PROFILE_PATH_SOURCE_BINDING = RESOURCE_CATALOG_RUNTIME_INVARIANTS[2];
+const ASSESSMENT_PATH_SOURCE_BINDING = RESOURCE_CATALOG_RUNTIME_INVARIANTS[3];
 
 export function validateResourceCatalog(value) {
   const catalog = cloneResourceDocument(value, 'ResourceCatalog');
@@ -63,7 +106,10 @@ function validateSources(sources) {
       );
     }
     assertRelativeResourcePath(source.profile_path, `${sourcePath}.profile_path`);
-    if (source.profile_path !== `sources/${source.source_id}/source.json`) {
+    if (
+      source.profile_path
+      !== bindSourcePath(PROFILE_PATH_SOURCE_BINDING, source.source_id)
+    ) {
       failPlaybookContract(
         'PLAYBOOK_RESOURCE_PATH_INVALID',
         `${sourcePath}.profile_path`,
@@ -95,8 +141,9 @@ function validateSources(sources) {
 }
 
 function validateAssessmentPath(source, sourcePath) {
-  const isPreAssessment = ['registered', 'probing'].includes(source.lifecycle_status);
-  if (isPreAssessment) {
+  const requiresAssessment = ASSESSMENT_PATH_SOURCE_BINDING.lifecycle_statuses
+    .includes(source.lifecycle_status);
+  if (!requiresAssessment) {
     if (source.assessment_path !== null) {
       failPlaybookContract(
         'PLAYBOOK_RESOURCE_PATH_INVALID',
@@ -107,11 +154,18 @@ function validateAssessmentPath(source, sourcePath) {
     return;
   }
   assertRelativeResourcePath(source.assessment_path, `${sourcePath}.assessment_path`);
-  if (source.assessment_path !== `sources/${source.source_id}/assessment.md`) {
+  if (
+    source.assessment_path
+    !== bindSourcePath(ASSESSMENT_PATH_SOURCE_BINDING, source.source_id)
+  ) {
     failPlaybookContract(
       'PLAYBOOK_RESOURCE_PATH_INVALID',
       `${sourcePath}.assessment_path`,
       source.assessment_path
     );
   }
+}
+
+function bindSourcePath(invariant, sourceId) {
+  return invariant.template.replace('{source_id}', sourceId);
 }

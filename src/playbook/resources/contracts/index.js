@@ -14,5 +14,6 @@ export {
 export {
   RESOURCE_CATALOG_FIELDS,
   RESOURCE_CATALOG_SOURCE_FIELDS,
+  RESOURCE_CATALOG_RUNTIME_INVARIANTS,
   validateResourceCatalog
 } from './catalog.js';

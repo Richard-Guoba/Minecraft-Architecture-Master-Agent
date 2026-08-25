@@ -61,8 +61,95 @@
             "maxLength": 512,
             "pattern": "^sources/[a-z0-9]+(?:-[a-z0-9]+)*/assessment\\.md$"
           }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "lifecycle_status": {
+                  "enum": ["registered", "probing"]
+                }
+              },
+              "required": ["lifecycle_status"]
+            },
+            "then": {
+              "properties": {
+                "assessment_path": { "const": null }
+              },
+              "required": ["assessment_path"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "lifecycle_status": {
+                  "enum": [
+                    "assessed",
+                    "approved-for-intake",
+                    "deferred",
+                    "rejected"
+                  ]
+                }
+              },
+              "required": ["lifecycle_status"]
+            },
+            "then": {
+              "properties": {
+                "assessment_path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "pattern": "^sources/[a-z0-9]+(?:-[a-z0-9]+)*/assessment\\.md$"
+                }
+              },
+              "required": ["assessment_path"]
+            }
+          }
+        ]
       }
     }
-  }
+  },
+  "x-runtime-invariants": [
+    {
+      "id": "source-id-unique",
+      "enforcement": "runtime",
+      "keyword": "unique-by",
+      "array_path": "/sources",
+      "property": "source_id"
+    },
+    {
+      "id": "profile-path-unique",
+      "enforcement": "runtime",
+      "keyword": "unique-by",
+      "array_path": "/sources",
+      "property": "profile_path"
+    },
+    {
+      "id": "profile-path-source-binding",
+      "enforcement": "runtime",
+      "keyword": "template-equals",
+      "instance_path": "/sources/*/profile_path",
+      "template": "sources/{source_id}/source.json"
+    },
+    {
+      "id": "assessment-path-source-binding",
+      "enforcement": "runtime",
+      "keyword": "template-equals",
+      "instance_path": "/sources/*/assessment_path",
+      "lifecycle_statuses": [
+        "assessed",
+        "approved-for-intake",
+        "deferred",
+        "rejected"
+      ],
+      "template": "sources/{source_id}/assessment.md"
+    },
+    {
+      "id": "source-id-lexical-order",
+      "enforcement": "runtime",
+      "keyword": "strictly-increasing-by",
+      "array_path": "/sources",
+      "property": "source_id"
+    }
+  ]
 }
