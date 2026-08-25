@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { constants as fsConstants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +13,20 @@ import { compilePlaybookV01 } from './playbook/manual/playbookV01Compiler.js';
 const POLICY_PATH =
   'docs/architecture-playbook/rules/schools/heihui-jileniao/admission-v0.1.json';
 const MANAGED_PATH_SET = new Set(P3_MANAGED_ARTIFACT_PATHS);
+const MANAGED_PARENT_PATHS = Object.freeze([
+  ...new Set(P3_MANAGED_ARTIFACT_PATHS.map((artifactPath) =>
+    path.posix.dirname(artifactPath)))
+]);
 const SAFE_ERROR_CODE = /^PLAYBOOK_[A-Z0-9_]+$/u;
+const DESCRIPTOR_DIRECTORY = '/proc/self/fd';
+const DIRECTORY_OPEN_FLAGS = fsConstants.O_RDONLY
+  | fsConstants.O_DIRECTORY
+  | fsConstants.O_NOFOLLOW;
+const READ_OPEN_FLAGS = fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW;
+const EXCLUSIVE_WRITE_FLAGS = fsConstants.O_WRONLY
+  | fsConstants.O_CREAT
+  | fsConstants.O_EXCL
+  | fsConstants.O_NOFOLLOW;
 let temporarySequence = 0;
 
 export function parseArchitecturePlaybookManualArgs(argv) {
@@ -32,108 +46,122 @@ export async function writeManagedPlaybookArtifacts({
   fsImpl = fs
 }) {
   const artifactBytes = validateArtifactSet(artifacts);
-  const targets = await resolveManagedTargets({
+  const authority = await acquireManagedAuthority({
     projectRoot,
     fsImpl,
     createParents: true
   });
-  const originals = await readOriginals(targets, fsImpl);
-  const artifactHashes = buildArtifactHashes(artifactBytes);
-  const status = originals.every((original) => original === null)
-    ? 'created'
-    : originals.every((original, index) =>
-      original !== null
-      && original.equals(artifactBytes[P3_MANAGED_ARTIFACT_PATHS[index]]))
-      ? 'unchanged'
-      : 'updated';
-  const staged = [];
+  return withManagedAuthority(authority, async () => {
+    await assertAuthorityBindings(authority, fsImpl);
+    const originals = await readOriginals(authority.targets, fsImpl);
+    await assertAuthorityBindings(authority, fsImpl);
+    const artifactHashes = buildArtifactHashes(artifactBytes);
+    const status = originals.every((original) => original === null)
+      ? 'created'
+      : originals.every((original, index) =>
+        original !== null
+        && original.equals(artifactBytes[P3_MANAGED_ARTIFACT_PATHS[index]]))
+        ? 'unchanged'
+        : 'updated';
+    const staged = [];
 
-  try {
-    for (const [index, target] of targets.entries()) {
-      const temporary = temporarySibling(target.absolutePath, 'stage', index);
-      await stageBytes({
+    try {
+      for (const [index, target] of authority.targets.entries()) {
+        const temporary = temporaryRecord(target, 'stage', index);
+        staged.push(temporary);
+        await stageBytes({
+          fsImpl,
+          temporary,
+          bytes: artifactBytes[target.relativePath]
+        });
+        await assertAuthorityBindings(authority, fsImpl);
+      }
+    } catch (error) {
+      const cleanupFailures = await cleanupOwnedTemporaries(fsImpl, staged);
+      if (cleanupFailures.length > 0) {
+        throwManualError('PLAYBOOK_MANUAL_CLEANUP_FAILED', cleanupFailures);
+      }
+      if (isManualError(error)) throw error;
+      throwManualError('PLAYBOOK_MANUAL_STAGE_FAILED');
+    }
+
+    if (status === 'unchanged') {
+      const cleanupFailures = await cleanupOwnedTemporaries(fsImpl, staged);
+      if (cleanupFailures.length > 0) {
+        throwManualError('PLAYBOOK_MANUAL_CLEANUP_FAILED', cleanupFailures);
+      }
+      await assertAuthorityBindings(authority, fsImpl);
+      return writeSummary(status, artifactHashes);
+    }
+
+    let failedPath = null;
+    let installError = null;
+    try {
+      await assertAuthorityBindings(authority, fsImpl);
+      for (const temporary of staged) {
+        failedPath = temporary.target.relativePath;
+        await fsImpl.rename(
+          temporary.authorityPath,
+          temporary.target.authorityPath
+        );
+        temporary.owned = false;
+        await assertAuthorityBindings(authority, fsImpl);
+      }
+    } catch (error) {
+      installError = error;
+      const rollbackFailures = await rollbackOriginals({
         fsImpl,
-        temporary,
-        bytes: artifactBytes[target.relativePath]
+        targets: authority.targets,
+        originals
       });
-      staged.push({ temporary, target });
+      const cleanupFailures = await cleanupOwnedTemporaries(fsImpl, staged);
+      const inconsistentPaths = fixedManagedOrder(new Set([
+        ...rollbackFailures,
+        ...cleanupFailures
+      ]));
+      if (inconsistentPaths.length > 0) {
+        throwManualError('PLAYBOOK_MANUAL_ROLLBACK_FAILED', inconsistentPaths);
+      }
+      if (isManualError(installError)) throw installError;
+      throwManualError('PLAYBOOK_MANUAL_INSTALL_FAILED', [failedPath]);
     }
-  } catch (error) {
-    await cleanupTemporaries(fsImpl, staged.map((item) => item.temporary));
-    if (isManualError(error)) throw error;
-    throwManualError('PLAYBOOK_MANUAL_STAGE_FAILED');
-  }
 
-  if (status === 'unchanged') {
-    const cleanupFailures = await cleanupTemporaries(
-      fsImpl,
-      staged.map((item) => item.temporary)
-    );
-    if (cleanupFailures.length > 0) {
-      throwManualError('PLAYBOOK_MANUAL_STAGE_FAILED', cleanupFailures);
-    }
+    await assertAuthorityBindings(authority, fsImpl);
     return writeSummary(status, artifactHashes);
-  }
-
-  let failedPath = null;
-  try {
-    for (const item of staged) {
-      failedPath = item.target.relativePath;
-      await fsImpl.rename(item.temporary, item.target.absolutePath);
-    }
-  } catch {
-    const rollbackFailures = await rollbackOriginals({
-      fsImpl,
-      targets,
-      originals
-    });
-    const cleanupFailures = await cleanupTemporaries(
-      fsImpl,
-      staged.map((item) => item.temporary)
-    );
-    const inconsistentPaths = fixedManagedOrder(new Set([
-      ...rollbackFailures,
-      ...cleanupFailures
-    ]));
-    if (inconsistentPaths.length > 0) {
-      throwManualError('PLAYBOOK_MANUAL_ROLLBACK_FAILED', inconsistentPaths);
-    }
-    throwManualError('PLAYBOOK_MANUAL_INSTALL_FAILED', [failedPath]);
-  }
-
-  return writeSummary(status, artifactHashes);
+  });
 }
 
 export async function checkManagedPlaybookArtifacts({ projectRoot, artifacts }) {
   const artifactBytes = validateArtifactSet(artifacts);
-  const targets = await resolveManagedTargets({
+  const authority = await acquireManagedAuthority({
     projectRoot,
     fsImpl: fs,
     createParents: false
   });
-  const driftPaths = [];
-  for (const target of targets) {
-    let actual;
-    try {
-      actual = await fs.readFile(target.absolutePath);
-    } catch (error) {
-      if (error?.code === 'ENOENT' || error?.code === 'EISDIR') {
+  return withManagedAuthority(authority, async () => {
+    await assertAuthorityBindings(authority, fs);
+    const driftPaths = [];
+    for (const target of authority.targets) {
+      if (!target.parent) {
         driftPaths.push(target.relativePath);
         continue;
       }
-      throwManualError('PLAYBOOK_MANUAL_CHECK_FAILED', [target.relativePath]);
+      const actual = await readManagedTarget(target, fs, {
+        errorCode: 'PLAYBOOK_MANUAL_CHECK_FAILED'
+      });
+      if (actual === null || !actual.equals(artifactBytes[target.relativePath])) {
+        driftPaths.push(target.relativePath);
+      }
     }
-    if (!actual.equals(artifactBytes[target.relativePath])) {
-      driftPaths.push(target.relativePath);
-    }
-  }
-  driftPaths.sort();
-  return Object.freeze({
-    status: driftPaths.length === 0 ? 'current' : 'drift',
-    artifact_count: P3_MANAGED_ARTIFACT_PATHS.length,
-    managed_artifact_drift_count: driftPaths.length,
-    drift_paths: Object.freeze(driftPaths),
-    artifact_hashes: buildArtifactHashes(artifactBytes)
+    await assertAuthorityBindings(authority, fs);
+    driftPaths.sort();
+    return Object.freeze({
+      status: driftPaths.length === 0 ? 'current' : 'drift',
+      artifact_count: P3_MANAGED_ARTIFACT_PATHS.length,
+      managed_artifact_drift_count: driftPaths.length,
+      drift_paths: Object.freeze(driftPaths),
+      artifact_hashes: buildArtifactHashes(artifactBytes)
+    });
   });
 }
 
@@ -214,132 +242,290 @@ function validateArtifactSet(artifacts) {
   ]));
 }
 
-async function resolveManagedTargets({ projectRoot, fsImpl, createParents }) {
+async function acquireManagedAuthority({ projectRoot, fsImpl, createParents }) {
   let root;
   let rootReal;
+  let rootHandle;
+  const parents = new Map();
   try {
     root = path.resolve(projectRoot);
     rootReal = await fsImpl.realpath(root);
-  } catch {
+    rootHandle = await fsImpl.open(rootReal, DIRECTORY_OPEN_FLAGS);
+    await assertDescriptorIdentity(rootHandle, fsImpl);
+  } catch (error) {
+    if (rootHandle) {
+      try {
+        await rootHandle.close();
+      } catch {
+        // The stable authority or root error remains primary.
+      }
+    }
+    if (isManualError(error)) throw error;
     throwManualError('PLAYBOOK_MANUAL_PROJECT_ROOT_INVALID');
   }
-  const targets = P3_MANAGED_ARTIFACT_PATHS.map((relativePath) => {
-    const absolutePath = path.resolve(root, relativePath);
-    const normalizedRelative = path.relative(root, absolutePath)
-      .split(path.sep)
-      .join('/');
-    if (normalizedRelative !== relativePath || !isWithin(absolutePath, root)) {
-      throwManualError('PLAYBOOK_MANUAL_PATH_INVALID');
-    }
-    return Object.freeze({
-      relativePath,
-      absolutePath,
-      parentPath: path.dirname(absolutePath)
-    });
-  });
 
-  for (const target of targets) {
-    await assertExistingStorageWithinRoot({ target, rootReal, fsImpl });
+  try {
+    for (const parentRelativePath of MANAGED_PARENT_PATHS) {
+      const handle = await openDirectoryTree({
+        rootHandle,
+        parentRelativePath,
+        fsImpl,
+        create: createParents
+      });
+      if (!handle) {
+        parents.set(parentRelativePath, null);
+        continue;
+      }
+      const stat = await handle.stat();
+      parents.set(parentRelativePath, Object.freeze({
+        relativePath: parentRelativePath,
+        lexicalPath: path.join(rootReal, parentRelativePath),
+        handle,
+        descriptorPath: descriptorPath(handle),
+        identity: directoryIdentity(stat)
+      }));
+    }
+    const targets = P3_MANAGED_ARTIFACT_PATHS.map((relativePath) => {
+      const absolutePath = path.resolve(rootReal, relativePath);
+      const normalizedRelative = path.relative(rootReal, absolutePath)
+        .split(path.sep)
+        .join('/');
+      if (normalizedRelative !== relativePath || !isWithin(absolutePath, rootReal)) {
+        throwManualError('PLAYBOOK_MANUAL_PATH_INVALID');
+      }
+      const parentRelativePath = path.posix.dirname(relativePath);
+      const parent = parents.get(parentRelativePath);
+      const fileName = path.posix.basename(relativePath);
+      return Object.freeze({
+        relativePath,
+        fileName,
+        parent,
+        authorityPath: parent
+          ? path.join(parent.descriptorPath, fileName)
+          : null
+      });
+    });
+    const rootStat = await rootHandle.stat();
+    return {
+      root,
+      rootReal,
+      rootHandle,
+      rootIdentity: directoryIdentity(rootStat),
+      parents,
+      targets
+    };
+  } catch (error) {
+    await closeAuthorityHandles({ rootHandle, parents });
+    if (isManualError(error)) throw error;
+    throwManualError('PLAYBOOK_MANUAL_PATH_CHECK_FAILED');
   }
-  if (createParents) {
-    for (const target of targets) {
+}
+
+async function openDirectoryTree({
+  rootHandle,
+  parentRelativePath,
+  fsImpl,
+  create
+}) {
+  let currentHandle = rootHandle;
+  let ownsCurrent = false;
+  try {
+    for (const component of parentRelativePath.split('/')) {
+      const childPath = path.join(descriptorPath(currentHandle), component);
+      let childHandle;
       try {
-        await fsImpl.mkdir(target.parentPath, { recursive: true });
+        childHandle = await fsImpl.open(childPath, DIRECTORY_OPEN_FLAGS);
+      } catch (error) {
+        if (error?.code === 'ENOENT' && !create) {
+          if (ownsCurrent) await currentHandle.close();
+          return null;
+        }
+        if (error?.code === 'ENOENT' && create) {
+          try {
+            await fsImpl.mkdir(childPath);
+          } catch (mkdirError) {
+            if (mkdirError?.code !== 'EEXIST') throw mkdirError;
+          }
+          childHandle = await fsImpl.open(childPath, DIRECTORY_OPEN_FLAGS);
+        } else {
+          if (error?.code === 'ELOOP' || error?.code === 'ENOTDIR') {
+            throwManualError(
+              'PLAYBOOK_MANUAL_SYMLINK_ESCAPE',
+              managedPathsForParent(parentRelativePath)
+            );
+          }
+          throw error;
+        }
+      }
+      try {
+        await assertDescriptorIdentity(childHandle, fsImpl);
+      } catch (error) {
+        try {
+          await childHandle.close();
+        } catch {
+          // The stable descriptor error remains primary.
+        }
+        throw error;
+      }
+      if (ownsCurrent) await currentHandle.close();
+      currentHandle = childHandle;
+      ownsCurrent = true;
+    }
+    return currentHandle;
+  } catch (error) {
+    if (ownsCurrent) {
+      try {
+        await currentHandle.close();
       } catch {
-        throwManualError('PLAYBOOK_MANUAL_PATH_PREPARE_FAILED', [
-          target.relativePath
-        ]);
+        // The stable path or authority error remains primary.
+      }
+    }
+    throw error;
+  }
+}
+
+async function assertDescriptorIdentity(handle, fsImpl) {
+  try {
+    const [handleStat, descriptorStat] = await Promise.all([
+      handle.stat(),
+      fsImpl.stat(descriptorPath(handle))
+    ]);
+    if (
+      !handleStat.isDirectory()
+      || !descriptorStat.isDirectory()
+      || !sameIdentity(handleStat, descriptorStat)
+    ) {
+      throw new Error('descriptor identity mismatch');
+    }
+  } catch {
+    throwManualError('PLAYBOOK_MANUAL_AUTHORITY_UNAVAILABLE');
+  }
+}
+
+async function assertAuthorityBindings(authority, fsImpl) {
+  let rootStat;
+  try {
+    rootStat = await fsImpl.stat(authority.root);
+  } catch {
+    throwManualError(
+      'PLAYBOOK_MANUAL_SYMLINK_ESCAPE',
+      P3_MANAGED_ARTIFACT_PATHS
+    );
+  }
+  if (!sameIdentity(rootStat, authority.rootIdentity)) {
+    throwManualError(
+      'PLAYBOOK_MANUAL_SYMLINK_ESCAPE',
+      P3_MANAGED_ARTIFACT_PATHS
+    );
+  }
+
+  for (const [parentRelativePath, parent] of authority.parents) {
+    if (!parent) {
+      try {
+        const unexpected = await fsImpl.open(
+          path.join(authority.rootReal, parentRelativePath),
+          DIRECTORY_OPEN_FLAGS
+        );
+        await unexpected.close();
+        throwManualError(
+          'PLAYBOOK_MANUAL_SYMLINK_ESCAPE',
+          managedPathsForParent(parentRelativePath)
+        );
+      } catch (error) {
+        if (isManualError(error)) throw error;
+        if (error?.code === 'ENOENT') continue;
+        throwManualError(
+          'PLAYBOOK_MANUAL_SYMLINK_ESCAPE',
+          managedPathsForParent(parentRelativePath)
+        );
+      }
+    }
+    let lexicalHandle;
+    try {
+      lexicalHandle = await fsImpl.open(parent.lexicalPath, DIRECTORY_OPEN_FLAGS);
+      const lexicalStat = await lexicalHandle.stat();
+      if (!sameIdentity(lexicalStat, parent.identity)) {
+        throw new Error('managed parent identity changed');
+      }
+    } catch {
+      throwManualError(
+        'PLAYBOOK_MANUAL_SYMLINK_ESCAPE',
+        managedPathsForParent(parentRelativePath)
+      );
+    } finally {
+      if (lexicalHandle) {
+        try {
+          await lexicalHandle.close();
+        } catch {
+          // The binding decision has already been made.
+        }
       }
     }
   }
-  for (const target of targets) {
-    await assertFinalStorageWithinRoot({
-      target,
-      rootReal,
-      fsImpl,
-      parentMustExist: createParents
-    });
-  }
-  return targets;
 }
 
-async function assertExistingStorageWithinRoot({ target, rootReal, fsImpl }) {
-  let nearest;
-  let nearestReal;
+async function withManagedAuthority(authority, operation) {
+  let operationError = null;
   try {
-    nearest = await nearestExistingAncestor(target.parentPath, fsImpl);
-    nearestReal = await fsImpl.realpath(nearest);
-  } catch {
-    throwManualError('PLAYBOOK_MANUAL_PATH_CHECK_FAILED', [target.relativePath]);
-  }
-  if (!isWithin(nearestReal, rootReal)) {
-    throwManualError('PLAYBOOK_MANUAL_SYMLINK_ESCAPE', [target.relativePath]);
-  }
-}
-
-async function assertFinalStorageWithinRoot({
-  target,
-  rootReal,
-  fsImpl,
-  parentMustExist
-}) {
-  let parentReal;
-  try {
-    parentReal = await fsImpl.realpath(target.parentPath);
+    return await operation();
   } catch (error) {
-    if (error?.code === 'ENOENT' && !parentMustExist) return;
-    throwManualError('PLAYBOOK_MANUAL_PATH_CHECK_FAILED', [target.relativePath]);
-  }
-  if (!isWithin(parentReal, rootReal)) {
-    throwManualError('PLAYBOOK_MANUAL_SYMLINK_ESCAPE', [target.relativePath]);
-  }
-  try {
-    const targetStat = await fsImpl.lstat(target.absolutePath);
-    if (targetStat.isSymbolicLink()) {
-      throwManualError('PLAYBOOK_MANUAL_SYMLINK_ESCAPE', [target.relativePath]);
+    operationError = error;
+    throw error;
+  } finally {
+    const closeFailed = await closeAuthorityHandles(authority);
+    if (closeFailed && !operationError) {
+      throwManualError('PLAYBOOK_MANUAL_AUTHORITY_CLOSE_FAILED');
     }
-  } catch (error) {
-    if (error?.code === 'ENOENT') return;
-    if (isManualError(error)) throw error;
-    throwManualError('PLAYBOOK_MANUAL_PATH_CHECK_FAILED', [target.relativePath]);
-  }
-}
-
-async function nearestExistingAncestor(start, fsImpl) {
-  let current = path.resolve(start);
-  while (true) {
-    try {
-      await fsImpl.lstat(current);
-      return current;
-    } catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) throw new Error('no existing ancestor');
-    current = parent;
   }
 }
 
 async function readOriginals(targets, fsImpl) {
   const originals = [];
   for (const target of targets) {
-    try {
-      originals.push(await fsImpl.readFile(target.absolutePath));
-    } catch (error) {
-      if (error?.code === 'ENOENT') {
-        originals.push(null);
-        continue;
-      }
-      throwManualError('PLAYBOOK_MANUAL_READ_FAILED', [target.relativePath]);
+    if (!target.parent) {
+      originals.push(null);
+      continue;
     }
+    originals.push(await readManagedTarget(target, fsImpl, {
+      errorCode: 'PLAYBOOK_MANUAL_READ_FAILED'
+    }));
   }
   return originals;
+}
+
+async function readManagedTarget(target, fsImpl, { errorCode }) {
+  let handle;
+  try {
+    handle = await fsImpl.open(target.authorityPath, READ_OPEN_FLAGS);
+    const stat = await handle.stat();
+    if (!stat.isFile()) throw new Error('managed target is not a file');
+    return await handle.readFile();
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    if (error?.code === 'ELOOP') {
+      throwManualError('PLAYBOOK_MANUAL_SYMLINK_ESCAPE', [target.relativePath]);
+    }
+    throwManualError(errorCode, [target.relativePath]);
+  } finally {
+    if (handle) {
+      try {
+        await handle.close();
+      } catch {
+        // A stable read error is reported by the caller if needed.
+      }
+    }
+  }
 }
 
 async function stageBytes({ fsImpl, temporary, bytes }) {
   let handle = null;
   try {
-    handle = await fsImpl.open(temporary, 'wx');
+    handle = await fsImpl.open(
+      temporary.authorityPath,
+      EXCLUSIVE_WRITE_FLAGS,
+      0o666
+    );
+    temporary.owned = true;
     await handle.writeFile(bytes);
     await handle.sync();
     await handle.close();
@@ -349,13 +535,8 @@ async function stageBytes({ fsImpl, temporary, bytes }) {
       try {
         await handle.close();
       } catch {
-        // The caller reports the stable stage or rollback failure code.
+        // Central cleanup owns the stable error decision.
       }
-    }
-    try {
-      await fsImpl.rm(temporary, { force: true });
-    } catch {
-      // The caller reports the stable stage or rollback failure code.
     }
     throw error;
   }
@@ -364,48 +545,84 @@ async function stageBytes({ fsImpl, temporary, bytes }) {
 async function rollbackOriginals({ fsImpl, targets, originals }) {
   const failures = [];
   for (const [index, target] of targets.entries()) {
-    let temporary = null;
+    const temporary = temporaryRecord(target, 'rollback', index);
     try {
       if (originals[index] === null) {
-        await fsImpl.rm(target.absolutePath, { force: true });
+        await fsImpl.rm(target.authorityPath, { force: true });
         continue;
       }
-      temporary = temporarySibling(target.absolutePath, 'rollback', index);
       await stageBytes({ fsImpl, temporary, bytes: originals[index] });
-      await fsImpl.rename(temporary, target.absolutePath);
-      temporary = null;
+      await fsImpl.rename(temporary.authorityPath, target.authorityPath);
+      temporary.owned = false;
     } catch {
       failures.push(target.relativePath);
     } finally {
-      if (temporary) {
-        try {
-          await fsImpl.rm(temporary, { force: true });
-        } catch {
-          failures.push(target.relativePath);
-        }
-      }
+      const cleanupFailures = await cleanupOwnedTemporaries(
+        fsImpl,
+        [temporary]
+      );
+      failures.push(...cleanupFailures);
     }
   }
   return fixedManagedOrder(new Set(failures));
 }
 
-async function cleanupTemporaries(fsImpl, temporaries) {
+async function cleanupOwnedTemporaries(fsImpl, temporaries) {
   const failures = [];
   for (const temporary of temporaries) {
+    if (!temporary.owned) continue;
     try {
-      await fsImpl.rm(temporary, { force: true });
+      await fsImpl.rm(temporary.authorityPath, { force: true });
+      temporary.owned = false;
     } catch {
-      const target = P3_MANAGED_ARTIFACT_PATHS.find((artifactPath) =>
-        temporary.startsWith(`${path.resolve(path.dirname(temporary), path.basename(artifactPath))}.`));
-      if (target) failures.push(target);
+      failures.push(temporary.target.relativePath);
     }
   }
   return fixedManagedOrder(new Set(failures));
 }
 
-function temporarySibling(target, purpose, index) {
+function temporaryRecord(target, purpose, index) {
   temporarySequence += 1;
-  return `${target}.playbook-manual-${purpose}-${process.pid}-${temporarySequence}-${index}.tmp`;
+  const fileName = `${target.fileName}.playbook-manual-${purpose}-${process.pid}-${temporarySequence}-${index}.tmp`;
+  return {
+    target,
+    authorityPath: path.join(target.parent.descriptorPath, fileName),
+    owned: false
+  };
+}
+
+function descriptorPath(handle) {
+  return path.join(DESCRIPTOR_DIRECTORY, String(handle.fd));
+}
+
+function directoryIdentity(stat) {
+  return Object.freeze({ dev: stat.dev, ino: stat.ino });
+}
+
+function sameIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function managedPathsForParent(parentRelativePath) {
+  return P3_MANAGED_ARTIFACT_PATHS.filter((artifactPath) =>
+    path.posix.dirname(artifactPath) === parentRelativePath);
+}
+
+async function closeAuthorityHandles({ rootHandle, parents }) {
+  let failed = false;
+  const handles = [
+    ...[...parents.values()].filter(Boolean).map((parent) => parent.handle),
+    rootHandle
+  ];
+  for (const handle of handles) {
+    if (!handle) continue;
+    try {
+      await handle.close();
+    } catch {
+      failed = true;
+    }
+  }
+  return failed;
 }
 
 function buildArtifactHashes(artifactBytes) {

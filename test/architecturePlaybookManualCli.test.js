@@ -17,6 +17,11 @@ import {
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CLI_PATH = path.join(ROOT, 'src/runArchitecturePlaybookManual.js');
 const execFileAsync = promisify(execFile);
+const MANAGED_PARENT_PATHS = Object.freeze([
+  'docs/architecture-playbook/manual',
+  'docs/architecture-playbook/rules/schools/heihui-jileniao'
+]);
+const TRANSACTION_TEMP = /\.playbook-manual-(?:stage|rollback)-/u;
 
 test('manual CLI accepts build and check only', () => {
   assert.deepEqual(parseArchitecturePlaybookManualArgs(['build']), {
@@ -54,58 +59,112 @@ test('managed writer rejects every path outside the exact lexical allowlist', as
   )));
 });
 
-test('managed writer rejects a parent symlink that escapes the project', async (t) => {
-  const projectRoot = await temporaryRoot(t, 'playbook-manual-link-');
-  const outsideRoot = await temporaryRoot(t, 'playbook-manual-outside-');
-  const manualRoot = path.join(projectRoot, 'docs/architecture-playbook/manual');
-  await fs.mkdir(path.dirname(manualRoot), { recursive: true });
-  await fs.mkdir(path.join(
-    projectRoot,
-    'docs/architecture-playbook/rules/schools/heihui-jileniao'
-  ), { recursive: true });
-  await fs.symlink(outsideRoot, manualRoot, 'dir');
+test('managed writer rejects escaping symlink parents in both managed trees', async (t) => {
+  for (const [index, parentPath] of MANAGED_PARENT_PATHS.entries()) {
+    await t.test(parentPath, async (t) => {
+      const projectRoot = await temporaryRoot(t, `playbook-manual-link-${index}-`);
+      const outsideRoot = await temporaryRoot(t, `playbook-manual-outside-${index}-`);
+      const managedParent = path.join(projectRoot, parentPath);
+      await fs.mkdir(path.dirname(managedParent), { recursive: true });
+      for (const otherParent of MANAGED_PARENT_PATHS) {
+        if (otherParent !== parentPath) {
+          await fs.mkdir(path.join(projectRoot, otherParent), { recursive: true });
+        }
+      }
+      await fs.symlink(outsideRoot, managedParent, 'dir');
 
-  await assert.rejects(
-    writeManagedPlaybookArtifacts({
-      projectRoot,
-      artifacts: artifactFixture('escaped')
-    }),
-    (error) => {
-      assert.match(error.message, /PLAYBOOK_MANUAL_SYMLINK_ESCAPE/u);
-      assert.doesNotMatch(error.message, new RegExp(escapeRegExp(outsideRoot), 'u'));
-      assert.doesNotMatch(error.message, /\.local\/|\/home\//u);
-      return true;
-    }
-  );
-  assert.deepEqual(await fs.readdir(outsideRoot), []);
+      await assert.rejects(
+        writeManagedPlaybookArtifacts({
+          projectRoot,
+          artifacts: artifactFixture('escaped')
+        }),
+        (error) => {
+          assert.match(error.message, /PLAYBOOK_MANUAL_SYMLINK_ESCAPE/u);
+          assert.doesNotMatch(
+            error.message,
+            new RegExp(escapeRegExp(outsideRoot), 'u')
+          );
+          assert.doesNotMatch(error.message, /\.local\/|\/home\//u);
+          return true;
+        }
+      );
+      assert.deepEqual(await fs.readdir(outsideRoot), []);
+    });
+  }
 });
 
-test('managed writer stages and syncs every artifact before fixed-order installation', async (t) => {
+test('managed writer rejects target symlinks without touching their referents', async (t) => {
+  for (const [index, artifactPath] of [
+    P3_MANAGED_ARTIFACT_PATHS[0],
+    P3_MANAGED_ARTIFACT_PATHS[3]
+  ].entries()) {
+    await t.test(artifactPath, async (t) => {
+      const fixture = await managedWriteFixture(t, {
+        originals: P3_MANAGED_ARTIFACT_PATHS.map(() => null)
+      });
+      const outsideRoot = await temporaryRoot(t, `playbook-target-outside-${index}-`);
+      const outsideTarget = path.join(outsideRoot, 'referent');
+      await fs.writeFile(outsideTarget, 'outside-original\n', 'utf8');
+      await fs.symlink(
+        outsideTarget,
+        path.join(fixture.projectRoot, artifactPath),
+        'file'
+      );
+      const before = await fixture.readTree();
+
+      await assert.rejects(
+        writeManagedPlaybookArtifacts({
+          projectRoot: fixture.projectRoot,
+          artifacts: fixture.artifacts
+        }),
+        /PLAYBOOK_MANUAL_SYMLINK_ESCAPE/u
+      );
+
+      assert.equal(await fs.readFile(outsideTarget, 'utf8'), 'outside-original\n');
+      assert.deepEqual(await fixture.readTree(), before);
+      await assertNoTransactionTemps(fixture.projectRoot);
+    });
+  }
+});
+
+test('managed writer preserves an unowned wx collision and installs nothing', async (t) => {
   const fixture = await managedWriteFixture(t, {
     originals: P3_MANAGED_ARTIFACT_PATHS.map((_, index) => `old-${index}\n`)
   });
-  const events = [];
-  const fsImpl = tracingFs(fs, fixture.projectRoot, events);
+  const collisionPath = `${path.join(
+    fixture.projectRoot,
+    P3_MANAGED_ARTIFACT_PATHS[4]
+  )}.playbook-manual-stage-${process.pid}-5-4.tmp`;
+  await fs.writeFile(collisionPath, 'unowned-collision\n', 'utf8');
+  const before = await fixture.readTree();
+
+  await assert.rejects(
+    writeManagedPlaybookArtifacts({
+      projectRoot: fixture.projectRoot,
+      artifacts: fixture.artifacts
+    }),
+    /PLAYBOOK_MANUAL_STAGE_FAILED/u
+  );
+
+  assert.deepEqual(await fixture.readTree(), before);
+  assert.equal(await fs.readFile(collisionPath, 'utf8'), 'unowned-collision\n');
+});
+
+test('managed writer installs exact bytes without transaction residue', async (t) => {
+  const fixture = await managedWriteFixture(t, {
+    originals: P3_MANAGED_ARTIFACT_PATHS.map((_, index) => `old-${index}\n`)
+  });
 
   const summary = await writeManagedPlaybookArtifacts({
     projectRoot: fixture.projectRoot,
-    artifacts: fixture.artifacts,
-    fsImpl
+    artifacts: fixture.artifacts
   });
 
-  const firstInstall = events.findIndex((event) => event.startsWith('rename:'));
-  const beforeInstall = events.slice(0, firstInstall);
-  assert.equal(beforeInstall.filter((event) => event === 'open:wx').length, 5);
-  assert.equal(beforeInstall.filter((event) => event === 'sync').length, 5);
-  assert.equal(beforeInstall.filter((event) => event === 'close').length, 5);
-  assert.deepEqual(
-    events.filter((event) => event.startsWith('rename:')),
-    P3_MANAGED_ARTIFACT_PATHS.map((artifactPath) => `rename:${artifactPath}`)
-  );
   assert.equal(summary.status, 'updated');
   assert.equal(summary.artifact_count, 5);
   assert.deepEqual(Object.keys(summary.artifact_hashes), P3_MANAGED_ARTIFACT_PATHS);
   assert.deepEqual(await fixture.readAll(), fixture.wantedBytes);
+  await assertNoTransactionTemps(fixture.projectRoot);
 });
 
 test('managed writer restores installed files after a later rename failure', async (t) => {
@@ -121,12 +180,18 @@ test('managed writer restores installed files after a later rename failure', asy
     }),
     (error) => {
       assert.match(error.message, /PLAYBOOK_MANUAL_INSTALL_FAILED/u);
+      assert.match(error.message, new RegExp(
+        escapeRegExp(P3_MANAGED_ARTIFACT_PATHS[2]),
+        'u'
+      ));
       assert.doesNotMatch(error.message, new RegExp(escapeRegExp(fixture.projectRoot), 'u'));
       assert.doesNotMatch(error.message, /\.local\/|simulated private failure/u);
       return true;
     }
   );
   assert.deepEqual(await fixture.readAll(), fixture.originalBytes);
+  assert.deepEqual(await fixture.readTree(), fixture.originalTree);
+  await assertNoTransactionTemps(fixture.projectRoot);
 });
 
 test('managed writer reports rollback failure with managed relative paths only', async (t) => {
@@ -152,6 +217,102 @@ test('managed writer reports rollback failure with managed relative paths only',
       return true;
     }
   );
+  await assertNoTransactionTemps(fixture.projectRoot);
+  const state = await fixture.readAll();
+  assert.equal(state[P3_MANAGED_ARTIFACT_PATHS[1]], null);
+  assert.deepEqual(
+    state[P3_MANAGED_ARTIFACT_PATHS[2]],
+    fixture.originalBytes[P3_MANAGED_ARTIFACT_PATHS[2]]
+  );
+  assert.equal(state[P3_MANAGED_ARTIFACT_PATHS[3]], null);
+  assert.deepEqual(
+    state[P3_MANAGED_ARTIFACT_PATHS[4]],
+    fixture.originalBytes[P3_MANAGED_ARTIFACT_PATHS[4]]
+  );
+});
+
+test('managed writer surfaces a real cleanup failure with its owned residue', {
+  timeout: 10_000
+}, async (t) => {
+  const fixture = await managedWriteFixture(t, {
+    originals: P3_MANAGED_ARTIFACT_PATHS.map((_, index) => `old-${index}\n`),
+    wantedPrefix: 'x'.repeat(2 * 1024 * 1024)
+  });
+  const parent = path.join(fixture.projectRoot, MANAGED_PARENT_PATHS[0]);
+  const controller = new AbortController();
+  t.after(() => controller.abort());
+  const lockPromise = chmodParentOnFirstStage(parent, controller.signal);
+  const writePromise = writeManagedPlaybookArtifacts({
+    projectRoot: fixture.projectRoot,
+    artifacts: fixture.artifacts
+  });
+
+  await lockPromise;
+  try {
+    await assert.rejects(writePromise, /PLAYBOOK_MANUAL_CLEANUP_FAILED/u);
+  } finally {
+    await fs.chmod(parent, 0o700);
+  }
+  const residue = (await fs.readdir(parent)).filter((name) =>
+    TRANSACTION_TEMP.test(name));
+  assert.equal(residue.length > 0, true);
+  for (const name of residue) await fs.rm(path.join(parent, name));
+  assert.deepEqual(await fixture.readAll(), fixture.originalBytes);
+});
+
+test('managed writer fails closed when either managed parent is swapped mid-stage', {
+  timeout: 15_000
+}, async (t) => {
+  for (const [index, parentPath] of MANAGED_PARENT_PATHS.entries()) {
+    await t.test(parentPath, { timeout: 7_000 }, async (t) => {
+      const fixture = await managedWriteFixture(t, {
+        originals: P3_MANAGED_ARTIFACT_PATHS.map(() => null),
+        wantedPrefix: 'x'.repeat(2 * 1024 * 1024)
+      });
+      const outsideRoot = await temporaryRoot(t, `playbook-swap-outside-${index}-`);
+      const managedParent = path.join(fixture.projectRoot, parentPath);
+      const heldParent = `${managedParent}-held`;
+      const sentinelPath = P3_MANAGED_ARTIFACT_PATHS.find(
+        (artifactPath) => path.dirname(artifactPath) === parentPath
+      );
+      const outsideSentinel = path.join(outsideRoot, path.basename(sentinelPath));
+      await fs.writeFile(outsideSentinel, 'outside-original\n', 'utf8');
+      const outsideBefore = await filesystemContentSnapshot(outsideRoot);
+      const controller = new AbortController();
+      t.after(() => controller.abort());
+      const swapPromise = swapParentOnFirstStage({
+        managedParent,
+        heldParent,
+        outsideRoot,
+        signal: controller.signal
+      });
+      const writePromise = writeManagedPlaybookArtifacts({
+        projectRoot: fixture.projectRoot,
+        artifacts: fixture.artifacts
+      });
+
+      await swapPromise;
+      await assert.rejects(
+        writePromise,
+        (error) => {
+          assert.match(
+            error.message,
+            /PLAYBOOK_MANUAL_(?:SYMLINK_ESCAPE|INSTALL_FAILED)/u
+          );
+          assert.doesNotMatch(error.message, /\/proc\/|\/tmp\/|\/home\//u);
+          return true;
+        }
+      );
+
+      assert.deepEqual(
+        await filesystemContentSnapshot(outsideRoot),
+        outsideBefore
+      );
+      assert.deepEqual(await filesystemContentSnapshot(heldParent), []);
+      await assertDirectoryHasNoTransactionTemps(heldParent);
+      await assertDirectoryHasNoTransactionTemps(outsideRoot);
+    });
+  }
 });
 
 test('managed check returns sorted missing and drifted paths without writing', async (t) => {
@@ -244,7 +405,7 @@ async function managedWriteFixture(t, {
       await fs.writeFile(path.join(projectRoot, artifactPath), originals[index], 'utf8');
     }
   }
-  return {
+  const fixture = {
     projectRoot,
     artifacts,
     originalBytes: Object.fromEntries(P3_MANAGED_ARTIFACT_PATHS.map(
@@ -256,42 +417,11 @@ async function managedWriteFixture(t, {
     wantedBytes: Object.fromEntries(P3_MANAGED_ARTIFACT_PATHS.map(
       (artifactPath) => [artifactPath, Buffer.from(artifacts[artifactPath])]
     )),
-    readAll: () => readManagedState(projectRoot)
+    readAll: () => readManagedState(projectRoot),
+    readTree: () => managedFilesystemState(projectRoot)
   };
-}
-
-function tracingFs(fsImpl, projectRoot, events) {
-  return new Proxy(fsImpl, {
-    get(target, property) {
-      if (property === 'open') {
-        return async (temporary, flags, mode) => {
-          events.push(`open:${flags}`);
-          const handle = await target.open(temporary, flags, mode);
-          return {
-            writeFile: (...args) => handle.writeFile(...args),
-            sync: async () => {
-              events.push('sync');
-              await handle.sync();
-            },
-            close: async () => {
-              events.push('close');
-              await handle.close();
-            }
-          };
-        };
-      }
-      if (property === 'rename') {
-        return async (source, destination) => {
-          const relative = path.relative(projectRoot, destination);
-          if (P3_MANAGED_ARTIFACT_PATHS.includes(relative)) {
-            events.push(`rename:${relative}`);
-          }
-          await target.rename(source, destination);
-        };
-      }
-      return Reflect.get(target, property);
-    }
-  });
+  fixture.originalTree = await fixture.readTree();
+  return fixture;
 }
 
 function failOnThirdInstallFs(fsImpl, projectRoot) {
@@ -300,7 +430,7 @@ function failOnThirdInstallFs(fsImpl, projectRoot) {
     get(target, property) {
       if (property !== 'rename') return Reflect.get(target, property);
       return async (source, destination) => {
-        const relative = path.relative(projectRoot, destination);
+        const relative = managedDestinationPath(destination, projectRoot);
         if (P3_MANAGED_ARTIFACT_PATHS.includes(relative)) {
           installCount += 1;
           if (installCount === 3) {
@@ -324,7 +454,7 @@ function failInstallAndRollbackFs(fsImpl, projectRoot) {
     get(target, property) {
       if (property !== 'rename') return Reflect.get(target, property);
       return async (source, destination) => {
-        const relative = path.relative(projectRoot, destination);
+        const relative = managedDestinationPath(destination, projectRoot);
         if (P3_MANAGED_ARTIFACT_PATHS.includes(relative)) {
           if (!installFailed) {
             installCount += 1;
@@ -340,6 +470,13 @@ function failInstallAndRollbackFs(fsImpl, projectRoot) {
       };
     }
   });
+}
+
+function managedDestinationPath(destination, projectRoot) {
+  const lexical = path.relative(projectRoot, destination);
+  if (P3_MANAGED_ARTIFACT_PATHS.includes(lexical)) return lexical;
+  return P3_MANAGED_ARTIFACT_PATHS.find((artifactPath) =>
+    path.basename(artifactPath) === path.basename(destination));
 }
 
 async function readManagedState(projectRoot) {
@@ -374,6 +511,83 @@ async function filesystemSnapshot(root) {
   }
   await visit(root);
   return rows;
+}
+
+async function managedFilesystemState(projectRoot) {
+  return Promise.all(MANAGED_PARENT_PATHS.map(async (parentPath) => [
+    parentPath,
+    await filesystemContentSnapshot(path.join(projectRoot, parentPath))
+  ]));
+}
+
+async function filesystemContentSnapshot(root) {
+  const rows = [];
+  let entries;
+  try {
+    entries = await fs.readdir(root, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === 'ENOENT') return rows;
+    throw error;
+  }
+  entries.sort((left, right) => left.name.localeCompare(right.name));
+  for (const entry of entries) {
+    const absolute = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      rows.push([entry.name, 'directory']);
+    } else if (entry.isSymbolicLink()) {
+      rows.push([entry.name, 'symlink', await fs.readlink(absolute)]);
+    } else {
+      rows.push([entry.name, 'file', await fs.readFile(absolute)]);
+    }
+  }
+  return rows;
+}
+
+async function assertNoTransactionTemps(root) {
+  for (const parentPath of MANAGED_PARENT_PATHS) {
+    await assertDirectoryHasNoTransactionTemps(path.join(root, parentPath));
+  }
+}
+
+async function assertDirectoryHasNoTransactionTemps(directory) {
+  let entries;
+  try {
+    entries = await fs.readdir(directory);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return;
+    throw error;
+  }
+  assert.deepEqual(
+    entries.filter((name) => TRANSACTION_TEMP.test(name)),
+    [],
+    directory
+  );
+}
+
+async function chmodParentOnFirstStage(parent, signal) {
+  for await (const event of fs.watch(parent, { signal })) {
+    if (String(event.filename).includes('.playbook-manual-stage-')) {
+      await fs.chmod(parent, 0o500);
+      return;
+    }
+  }
+  throw new Error('stage event not observed');
+}
+
+async function swapParentOnFirstStage({
+  managedParent,
+  heldParent,
+  outsideRoot,
+  signal
+}) {
+  for await (const event of fs.watch(managedParent, { signal })) {
+    if (String(event.filename).includes('.playbook-manual-stage-')) {
+      await fs.rename(managedParent, heldParent);
+      await fs.symlink(outsideRoot, managedParent, 'dir');
+      return;
+    }
+  }
+  throw new Error('stage event not observed');
 }
 
 async function checkedInputFixture(t) {
