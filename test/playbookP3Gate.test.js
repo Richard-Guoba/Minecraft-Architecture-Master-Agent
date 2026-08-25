@@ -318,6 +318,12 @@ test('protected checked snapshot blocks file URL and UNC leakage', async (t) => 
       String.raw`https://example.test/?next=\\server\share\artifact.bin`],
     ['HTTPS fragment with embedded mixed UNC',
       String.raw`https://example.test/#next=/\server\share\artifact.bin`],
+    ['HTTPS path with embedded forward UNC',
+      'https://example.test/path=//server/share/artifact.bin'],
+    ['HTTPS query with embedded forward UNC',
+      'https://example.test/?next=//server/share/artifact.bin'],
+    ['HTTPS fragment with embedded forward UNC',
+      'https://example.test/#next=//server/share/artifact.bin'],
     ['mixed slash UNC',
       String.raw`/\server\share\artifact.bin`],
     ['extended UNC',
@@ -328,6 +334,20 @@ test('protected checked snapshot blocks file URL and UNC leakage', async (t) => 
       String.raw`https://example.test/?a=\\one\share&a=\\two\share`, 2],
     ['two comma-separated UNC references',
       String.raw`\\one\share,\\two\share`, 2],
+    ['ampersand inside one UNC segment',
+      String.raw`\\server\&share\artifact.bin`],
+    ['encoded ampersand inside one UNC segment',
+      '%5C%5Cserver%5C%26share%5Cartifact.bin'],
+    ['semicolon inside one UNC segment',
+      String.raw`\\server\;share\artifact.bin`],
+    ['question mark inside one UNC segment',
+      String.raw`\\server\?share\artifact.bin`],
+    ['hash inside one UNC segment',
+      String.raw`\\server\#share\artifact.bin`],
+    ['single UNC with nested share path',
+      String.raw`\\server\share\folder\artifact.bin`],
+    ['file URL punctuation keeps its local-looking suffix in one token',
+      'file:/server/a&/home/second.txt'],
     ['two whitespace-separated file URLs',
       'file:/one file:/two', 2],
     ['overlapping file URL and absolute path matchers',
@@ -356,6 +376,20 @@ test('protected checked snapshot blocks file URL and UNC leakage', async (t) => 
     await fs.appendFile(
       path.join(projectRoot, MANUAL_PATH),
       'h%74tps://example.test/?next=/home/alice/public.txt\n',
+      'utf8'
+    );
+
+    const audit = await auditCheckedInPlaybookV01({ projectRoot });
+
+    assert.equal(audit.public_leak_count, 0);
+    assert.equal(audit.gate.blocker_codes.includes('PUBLIC_SOURCE_LEAK'), false);
+  });
+
+  await t.test('ordinary public HTTPS path remains exempt', async (t) => {
+    const projectRoot = await checkedInAuditFixture(t);
+    await fs.appendFile(
+      path.join(projectRoot, MANUAL_PATH),
+      'https://example.test/path/file.txt\n',
       'utf8'
     );
 

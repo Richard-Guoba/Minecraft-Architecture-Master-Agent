@@ -1091,7 +1091,7 @@ function findFileUrlRanges(normalized) {
     const normalizedEnd = publicReferenceTokenEnd(
       normalized.text,
       match.index + match[0].length,
-      { stopAtNewScheme: true, stopAtReferenceBoundary: true }
+      { stopAtNewScheme: true }
     );
     ranges.push({
       ...normalizedRange(normalized, match.index, normalizedEnd),
@@ -1111,8 +1111,7 @@ function findUncRanges(normalized, httpsRanges, fileRanges) {
     }
     if (isAsciiAlphaNumeric(normalized.text[index - 1])) continue;
     const normalizedEnd = publicReferenceTokenEnd(normalized.text, index + 2, {
-      stopAtNewScheme: true,
-      stopAtReferenceBoundary: true
+      stopAtNewScheme: true
     });
     const normalizedCandidate = {
       normalizedStart: index,
@@ -1121,11 +1120,10 @@ function findUncRanges(normalized, httpsRanges, fileRanges) {
     };
     if (!isUncReference(normalized.text.slice(index, normalizedEnd))) continue;
     if (overlapsAny(normalizedCandidate, fileRanges)) continue;
-    if (isHttpsPathSeparator(normalizedCandidate, httpsRanges, normalized.text)) {
+    if (isHttpsSchemeDelimiter(normalizedCandidate, httpsRanges, normalized.text)) {
       continue;
     }
     ranges.push({ ...normalizedCandidate, kind: 'UNC_REFERENCE' });
-    index = normalizedEnd - 1;
   }
   return ranges;
 }
@@ -1138,34 +1136,18 @@ function isUncReference(candidate) {
   ).test(candidate);
 }
 
-function isHttpsPathSeparator(candidate, httpsRanges, text) {
+function isHttpsSchemeDelimiter(candidate, httpsRanges, text) {
   if (
     text[candidate.normalizedStart] !== '/'
     || text[candidate.normalizedStart + 1] !== '/'
   ) return false;
-  const httpsRange = httpsRanges.find((range) =>
-    candidate.normalizedStart >= range.normalizedStart
-      && candidate.normalizedStart < range.normalizedEnd);
-  if (!httpsRange) return false;
-  const queryIndex = text.slice(
-    httpsRange.normalizedStart,
-    httpsRange.normalizedEnd
-  ).search(/[?#]/u);
-  return queryIndex === -1
-    || candidate.normalizedStart < httpsRange.normalizedStart + queryIndex;
+  return httpsRanges.some((range) =>
+    candidate.normalizedStart === range.normalizedStart + 'https:'.length);
 }
 
-function publicReferenceTokenEnd(text, start, {
-  stopAtNewScheme = false,
-  stopAtReferenceBoundary = false
-} = {}) {
+function publicReferenceTokenEnd(text, start, { stopAtNewScheme = false } = {}) {
   let index = start;
   while (index < text.length && !isPublicReferenceTerminator(text[index])) {
-    if (
-      stopAtReferenceBoundary
-      && isPublicReferenceBoundary(text[index])
-      && !startsExtendedUncSuffix(text, start, index)
-    ) break;
     if (stopAtNewScheme && index > start && startsUriScheme(text, index)) break;
     index += 1;
   }
@@ -1175,14 +1157,6 @@ function publicReferenceTokenEnd(text, start, {
 function isPublicReferenceTerminator(character) {
   return character === undefined
     || /[\s\x60"'<>|()[\]{}]/u.test(character);
-}
-
-function isPublicReferenceBoundary(character) {
-  return /[?#&,;]/u.test(character);
-}
-
-function startsExtendedUncSuffix(text, tokenBodyStart, index) {
-  return index === tokenBodyStart && /^\?[\\/]UNC[\\/]/iu.test(text.slice(index));
 }
 
 function startsUriScheme(text, index) {

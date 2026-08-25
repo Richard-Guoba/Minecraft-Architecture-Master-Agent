@@ -499,6 +499,49 @@ test('pure public leak audit uses bounded percent-normalized file, UNC, and HTTP
   }
 });
 
+test('pure public leak audit exempts only the HTTPS scheme delimiter', async () => {
+  const base = compilePlaybookV01(await checkedInCompilerFixture());
+  for (const [name, reference, expectedCount] of [
+    ['ordinary HTTPS path', 'https://example.test/path/file.txt', 0],
+    ['forward UNC in HTTPS path', 'https://example.test/path=//server/share/a.txt', 1],
+    ['forward UNC in HTTPS query', 'https://example.test/?next=//server/share/a.txt', 1],
+    ['forward UNC in HTTPS fragment', 'https://example.test/#next=//server/share/a.txt', 1]
+  ]) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${reference}\n`;
+
+    assert.equal(
+      auditPlaybookV01(compilation).public_leak_count,
+      expectedCount,
+      name
+    );
+  }
+});
+
+test('pure public leak audit preserves UNC segment punctuation and distinct starts', async () => {
+  const base = compilePlaybookV01(await checkedInCompilerFixture());
+  for (const [name, reference, expectedCount] of [
+    ['ampersand UNC segment', String.raw`\\server\&share\a.txt`, 1],
+    ['encoded ampersand UNC segment', '%5C%5Cserver%5C%26share%5Ca.txt', 1],
+    ['semicolon UNC segment', String.raw`\\server\;share\a.txt`, 1],
+    ['question-mark UNC segment', String.raw`\\server\?share\a.txt`, 1],
+    ['hash UNC segment', String.raw`\\server\#share\a.txt`, 1],
+    ['single UNC with nested share path', String.raw`\\server\share\folder\a.txt`, 1],
+    ['file URL punctuation and local-looking suffix', 'file:/server/a&/home/second.txt', 1],
+    ['two UNC query starts', String.raw`https://example.test/?a=\\one\share&a=\\two\share`, 2],
+    ['two comma-separated UNC starts', String.raw`\\one\share,\\two\share`, 2]
+  ]) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${reference}\n`;
+
+    assert.equal(
+      auditPlaybookV01(compilation).public_leak_count,
+      expectedCount,
+      name
+    );
+  }
+});
+
 test('pure audit ignores a stale P2 summary and rederives status from source gate evidence', async () => {
   const compilation = structuredClone(
     compilePlaybookV01(await checkedInCompilerFixture())
