@@ -109,7 +109,7 @@ function validManifestFixture() {
         curriculumTitle: '1.2结构主次',
         publishedTitle: '还在做这样的火柴盒？结构主次很重要！',
         durationSeconds: 781,
-        publishedAt: '2025-05-11T08:27:45.000Z',
+        publishedAt: '2025-05-11T06:27:45.000Z',
         role: 'technical-probe'
       })
     ]
