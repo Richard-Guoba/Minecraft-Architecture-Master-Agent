@@ -148,6 +148,34 @@ export function assertNullable(value, validate) {
   return value;
 }
 
+export function assertObservationEvidenceUrl(
+  status,
+  evidenceUrl,
+  valuePath,
+  { requiredStatuses, requiredCode, forbiddenCode }
+) {
+  const evidencePath = `${valuePath}.evidence_url`;
+  if (requiredStatuses.includes(status) && evidenceUrl === null) {
+    failPlaybookContract(
+      requiredCode,
+      evidencePath,
+      `${status} observations require an HTTPS evidence_url`
+    );
+  }
+  if (
+    (status === 'unknown' || status === 'not-reviewed')
+    && evidenceUrl !== null
+  ) {
+    failPlaybookContract(
+      forbiddenCode,
+      evidencePath,
+      `${status} observations require null evidence_url`
+    );
+  }
+  assertNullable(evidenceUrl, (url) => assertHttpsUrl(url, evidencePath));
+  return evidenceUrl;
+}
+
 export function assertSha256(value, valuePath) {
   if (typeof value !== 'string' || !SHA256.test(value)) {
     failPlaybookContract(

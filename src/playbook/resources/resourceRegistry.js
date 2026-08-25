@@ -387,6 +387,14 @@ async function loadDecisions(reader, profile, assessment, probes, decisionPaths)
         'PLAYBOOK_RESOURCE_DECISION_ID_MISMATCH', decisionPath, decision.decision_id
       );
     }
+    const expectedDecisionId = `${decision.decided_at.slice(0, 10)}-${decision.decision}`;
+    if (decision.decision_id !== expectedDecisionId) {
+      failPlaybookContract(
+        'PLAYBOOK_RESOURCE_DECISION_ID_MISMATCH',
+        decisionPath,
+        `${decision.decision_id} does not match ${expectedDecisionId}`
+      );
+    }
     if (previousDecidedAt !== null && previousDecidedAt >= decision.decided_at) {
       failPlaybookContract(
         'PLAYBOOK_RESOURCE_DECISION_ORDER_INVALID', decisionPath, decision.decided_at

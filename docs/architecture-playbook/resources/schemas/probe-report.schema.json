@@ -120,7 +120,7 @@
           "then": {
             "properties": {
               "value": { "$ref": "#/$defs/prose" },
-              "basis": { "not": { "const": "project-inference" } }
+              "basis": { "enum": ["direct-page", "site-claim", "search-index"] }
             },
             "required": ["value", "basis"]
           }
@@ -160,7 +160,7 @@
           "then": {
             "properties": {
               "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-              "basis": { "not": { "const": "project-inference" } }
+              "basis": { "enum": ["direct-page", "site-claim", "search-index"] }
             },
             "required": ["sha256", "basis"]
           }
@@ -227,16 +227,30 @@
         "checked_at": { "$ref": "#/$defs/canonicalTimestamp" },
         "note": { "type": "string", "minLength": 1, "maxLength": 1024 }
       },
-      "allOf": [{
-        "if": {
-          "properties": { "status": { "enum": ["not-reviewed", "unknown"] } },
-          "required": ["status"]
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": { "enum": ["observed-allowed", "observed-prohibited"] }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": { "evidence_url": { "$ref": "#/$defs/httpsUrl" } },
+            "required": ["evidence_url"]
+          }
         },
-        "then": {
-          "properties": { "evidence_url": { "const": null } },
-          "required": ["evidence_url"]
+        {
+          "if": {
+            "properties": { "status": { "enum": ["not-reviewed", "unknown"] } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": { "evidence_url": { "const": null } },
+            "required": ["evidence_url"]
+          }
         }
-      }]
+      ]
     },
     "rightsObservations": {
       "type": "object",

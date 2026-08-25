@@ -10,6 +10,7 @@ import {
   assertHttpsUrl,
   assertLowercaseKebabId,
   assertNullable,
+  assertObservationEvidenceUrl,
   assertRatings,
   assertSha256,
   assertString,
@@ -40,7 +41,11 @@ const RIGHTS_DIMENSIONS = Object.freeze([
   'public_access', 'local_analysis', 'automated_retrieval', 'artifact_download',
   'model_training', 'external_redistribution'
 ]);
+const RIGHTS_EVIDENCE_REQUIRED_STATUSES = Object.freeze([
+  'observed-allowed', 'observed-prohibited'
+]);
 const CREATOR_STATUSES = Object.freeze(['known', 'unknown', 'conflicting', 'not-applicable']);
+const KNOWN_CONTENT_BASES = Object.freeze(['direct-page', 'site-claim', 'search-index']);
 
 export function validateResourceProbeReport(value) {
   const probe = cloneResourceDocument(value, 'ResourceProbeReport');
@@ -154,17 +159,16 @@ function validateRightsObservations(value) {
     assertExactObject(observation, observationPath, RIGHTS_OBSERVATION_FIELDS);
     assertEnum(observation.status, RIGHTS_STATUSES, 'PLAYBOOK_RESOURCE_RIGHTS_STATUS_INVALID',
       `${observationPath}.status`);
-    assertNullable(observation.evidence_url,
-      (url) => assertHttpsUrl(url, `${observationPath}.evidence_url`));
-    if (
-      (observation.status === 'unknown' || observation.status === 'not-reviewed')
-      && observation.evidence_url !== null
-    ) {
-      failPlaybookContract(
-        'PLAYBOOK_RESOURCE_EVIDENCE_URL_INVALID', `${observationPath}.evidence_url`,
-        'unknown or not-reviewed observations require null evidence_url'
-      );
-    }
+    assertObservationEvidenceUrl(
+      observation.status,
+      observation.evidence_url,
+      observationPath,
+      {
+        requiredStatuses: RIGHTS_EVIDENCE_REQUIRED_STATUSES,
+        requiredCode: 'PLAYBOOK_RESOURCE_RIGHTS_EVIDENCE_URL_REQUIRED',
+        forbiddenCode: 'PLAYBOOK_RESOURCE_RIGHTS_EVIDENCE_URL_FORBIDDEN'
+      }
+    );
     assertTimestamp(observation.checked_at, `${observationPath}.checked_at`);
     assertString(observation.note, `${observationPath}.note`, { maximum: 1024 });
   }
@@ -191,7 +195,7 @@ function assertKnownOrUnknown(value, valuePath) {
 }
 
 function assertObservedKnownValue(basis, valuePath, code) {
-  if (basis === 'project-inference') {
+  if (!KNOWN_CONTENT_BASES.includes(basis)) {
     failPlaybookContract(code, `${valuePath}.basis`, basis);
   }
 }

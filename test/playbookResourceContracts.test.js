@@ -17,6 +17,13 @@ import {
   resourceSourceProfileFixture
 } from './helpers/playbookResourceFixtures.js';
 
+const CANONICAL_TIMESTAMP_PATTERN =
+  '^(?:[0-9]{4}|[+-][0-9]{6})-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.\\d{3}Z$';
+const RIGHTS_DIMENSIONS = [
+  'public_access', 'local_analysis', 'automated_retrieval', 'artifact_download',
+  'model_training', 'external_redistribution'
+];
+
 test('validates and freezes the minimal resource catalog', () => {
   const input = resourceCatalogFixture();
   const catalog = validateResourceCatalog(input);
@@ -69,6 +76,34 @@ test('catalog rejects unsorted entries, duplicate source identities, and lifecyc
     () => validateResourceCatalog(driftedAssessment),
     /PLAYBOOK_RESOURCE_PATH_INVALID/u
   );
+});
+
+test('catalog runtime and schema accept only canonical millisecond UTC timestamps', async () => {
+  const schema = JSON.parse(await readFile(
+    new URL('../docs/architecture-playbook/resources/schemas/catalog.schema.json', import.meta.url),
+    'utf8'
+  ));
+  const schemaPattern = new RegExp(schema.properties.updated_at.pattern, 'u');
+  const cases = [
+    { value: '2026-08-25T00:00:00.000Z', accepted: true },
+    { value: '2026-08-25T01:00:00.000+01:00', accepted: false },
+    { value: '2026-08-25T00:00:00Z', accepted: false }
+  ];
+
+  assert.equal(schema.properties.updated_at.pattern, CANONICAL_TIMESTAMP_PATTERN);
+  for (const { value, accepted } of cases) {
+    const catalog = resourceCatalogFixture();
+    catalog.updated_at = value;
+    if (accepted) {
+      assert.equal(validateResourceCatalog(catalog).updated_at, value);
+    } else {
+      assert.throws(
+        () => validateResourceCatalog(catalog),
+        { name: 'PlaybookContractError', code: 'PLAYBOOK_RESOURCE_TIMESTAMP_INVALID' }
+      );
+    }
+    assert.equal(schemaPattern.test(value), accepted);
+  }
 });
 
 test('catalog schema matches the runtime top-level contract', async () => {
@@ -226,7 +261,7 @@ test('source profile keeps URL identities and unreviewed evidence honest', () =>
   inventedEvidence.artifact_access.evidence_url = 'https://example.com/evidence';
   assert.throws(
     () => validateResourceSourceProfile(inventedEvidence),
-    /PLAYBOOK_RESOURCE_EVIDENCE_URL_INVALID/u
+    /PLAYBOOK_RESOURCE_ACCESS_EVIDENCE_URL_FORBIDDEN/u
   );
 
   const unknownNestedField = resourceSourceProfileFixture();
@@ -242,6 +277,100 @@ test('source profile keeps URL identities and unreviewed evidence honest', () =>
     () => validateResourceSourceProfile(unknownTopLevelField),
     /PLAYBOOK_RESOURCE_FIELD_UNKNOWN/u
   );
+});
+
+test('source access evidence URLs follow access-status semantics', () => {
+  for (const status of [
+    'observed-available', 'observed-unavailable', 'requires-login', 'restricted'
+  ]) {
+    const missingEvidence = resourceSourceProfileFixture();
+    missingEvidence.robots_observation.status = status;
+    assert.throws(
+      () => validateResourceSourceProfile(missingEvidence),
+      {
+        name: 'PlaybookContractError',
+        code: 'PLAYBOOK_RESOURCE_ACCESS_EVIDENCE_URL_REQUIRED'
+      }
+    );
+
+    const evidenced = resourceSourceProfileFixture();
+    evidenced.robots_observation.status = status;
+    evidenced.robots_observation.evidence_url = 'https://example.com/access-evidence';
+    assert.doesNotThrow(() => validateResourceSourceProfile(evidenced));
+  }
+
+  for (const status of ['unknown', 'not-reviewed']) {
+    const inventedEvidence = resourceSourceProfileFixture();
+    inventedEvidence.robots_observation.status = status;
+    inventedEvidence.robots_observation.evidence_url = 'https://example.com/access-evidence';
+    assert.throws(
+      () => validateResourceSourceProfile(inventedEvidence),
+      {
+        name: 'PlaybookContractError',
+        code: 'PLAYBOOK_RESOURCE_ACCESS_EVIDENCE_URL_FORBIDDEN'
+      }
+    );
+  }
+
+  for (const evidenceUrl of [null, 'https://example.com/access-evidence']) {
+    const notApplicable = resourceSourceProfileFixture();
+    notApplicable.robots_observation.status = 'not-applicable';
+    notApplicable.robots_observation.evidence_url = evidenceUrl;
+    assert.doesNotThrow(() => validateResourceSourceProfile(notApplicable));
+  }
+});
+
+test('source rights evidence URLs follow rights-status semantics', () => {
+  for (const status of ['observed-allowed', 'observed-prohibited']) {
+    const missingEvidence = resourceSourceProfileFixture();
+    missingEvidence.model_training.status = status;
+    assert.throws(
+      () => validateResourceSourceProfile(missingEvidence),
+      {
+        name: 'PlaybookContractError',
+        code: 'PLAYBOOK_RESOURCE_RIGHTS_EVIDENCE_URL_REQUIRED'
+      }
+    );
+
+    const evidenced = resourceSourceProfileFixture();
+    evidenced.model_training.status = status;
+    evidenced.model_training.evidence_url = 'https://example.com/rights-evidence';
+    assert.doesNotThrow(() => validateResourceSourceProfile(evidenced));
+  }
+
+  for (const status of ['unknown', 'not-reviewed']) {
+    const inventedEvidence = resourceSourceProfileFixture();
+    inventedEvidence.model_training.status = status;
+    inventedEvidence.model_training.evidence_url = 'https://example.com/rights-evidence';
+    assert.throws(
+      () => validateResourceSourceProfile(inventedEvidence),
+      {
+        name: 'PlaybookContractError',
+        code: 'PLAYBOOK_RESOURCE_RIGHTS_EVIDENCE_URL_FORBIDDEN'
+      }
+    );
+  }
+
+  for (const evidenceUrl of [null, 'https://example.com/rights-evidence']) {
+    const notApplicable = resourceSourceProfileFixture();
+    notApplicable.model_training.status = 'not-applicable';
+    notApplicable.model_training.evidence_url = evidenceUrl;
+    assert.doesNotThrow(() => validateResourceSourceProfile(notApplicable));
+  }
+});
+
+test('source schema encodes distinct access and rights evidence URL rules', async () => {
+  const schema = JSON.parse(await readFile(
+    new URL('../docs/architecture-playbook/resources/schemas/source-profile.schema.json', import.meta.url),
+    'utf8'
+  ));
+
+  assert.deepEqual(schema.$defs.accessObservation.allOf, evidenceUrlRules([
+    'observed-available', 'observed-unavailable', 'requires-login', 'restricted'
+  ]));
+  assert.deepEqual(schema.$defs.rightsObservation.allOf, evidenceUrlRules([
+    'observed-allowed', 'observed-prohibited'
+  ]));
 });
 
 test('source profile enforces owner-decision lifecycle and assessment risk boundaries', () => {
@@ -365,6 +494,39 @@ test('probe report rejects synthetic revisions and copied-content fields', () =>
   );
 });
 
+test('known revisions and fingerprints accept only directly observed evidence bases', () => {
+  for (const basis of ['direct-page', 'site-claim', 'search-index']) {
+    const probe = resourceProbeReportFixture();
+    probe.content_revision = { status: 'known', value: 'revision-42', basis };
+    probe.content_fingerprint = { status: 'known', sha256: 'b'.repeat(64), basis };
+    assert.doesNotThrow(() => validateResourceProbeReport(probe));
+  }
+
+  for (const basis of ['project-inference', 'unverified']) {
+    const revision = resourceProbeReportFixture();
+    revision.content_revision = { status: 'known', value: 'revision-42', basis };
+    assert.throws(
+      () => validateResourceProbeReport(revision),
+      {
+        name: 'PlaybookContractError',
+        code: 'PLAYBOOK_RESOURCE_REVISION_SYNTHETIC_FORBIDDEN'
+      }
+    );
+
+    const fingerprint = resourceProbeReportFixture();
+    fingerprint.content_fingerprint = {
+      status: 'known', sha256: 'b'.repeat(64), basis
+    };
+    assert.throws(
+      () => validateResourceProbeReport(fingerprint),
+      {
+        name: 'PlaybookContractError',
+        code: 'PLAYBOOK_RESOURCE_FINGERPRINT_SYNTHETIC_FORBIDDEN'
+      }
+    );
+  }
+});
+
 test('probe report keeps access and rights observation shapes strict', () => {
   const wrongHttpStatus = resourceProbeReportFixture();
   wrongHttpStatus.access_result.http_status = 99;
@@ -378,8 +540,68 @@ test('probe report keeps access and rights observation shapes strict', () => {
     'https://example.com/rights';
   assert.throws(
     () => validateResourceProbeReport(inventedRightsEvidence),
-    /PLAYBOOK_RESOURCE_EVIDENCE_URL_INVALID/u
+    /PLAYBOOK_RESOURCE_RIGHTS_EVIDENCE_URL_FORBIDDEN/u
   );
+});
+
+test('all probe rights dimensions require and forbid evidence URLs by status', () => {
+  for (const status of ['observed-allowed', 'observed-prohibited']) {
+    const evidenced = resourceProbeReportFixture();
+    for (const dimension of RIGHTS_DIMENSIONS) {
+      evidenced.rights_observations[dimension].status = status;
+      evidenced.rights_observations[dimension].evidence_url =
+        `https://example.com/rights/${dimension}`;
+    }
+    assert.doesNotThrow(() => validateResourceProbeReport(evidenced));
+
+    for (const dimension of RIGHTS_DIMENSIONS) {
+      const missingEvidence = resourceProbeReportFixture();
+      missingEvidence.rights_observations[dimension].status = status;
+      assert.throws(
+        () => validateResourceProbeReport(missingEvidence),
+        {
+          name: 'PlaybookContractError',
+          code: 'PLAYBOOK_RESOURCE_RIGHTS_EVIDENCE_URL_REQUIRED'
+        }
+      );
+    }
+  }
+
+  for (const status of ['unknown', 'not-reviewed']) {
+    for (const dimension of RIGHTS_DIMENSIONS) {
+      const inventedEvidence = resourceProbeReportFixture();
+      inventedEvidence.rights_observations[dimension].status = status;
+      inventedEvidence.rights_observations[dimension].evidence_url =
+        `https://example.com/rights/${dimension}`;
+      assert.throws(
+        () => validateResourceProbeReport(inventedEvidence),
+        {
+          name: 'PlaybookContractError',
+          code: 'PLAYBOOK_RESOURCE_RIGHTS_EVIDENCE_URL_FORBIDDEN'
+        }
+      );
+    }
+  }
+
+  for (const evidenceUrl of [null, 'https://example.com/rights/not-applicable']) {
+    const notApplicable = resourceProbeReportFixture();
+    for (const dimension of RIGHTS_DIMENSIONS) {
+      notApplicable.rights_observations[dimension].status = 'not-applicable';
+      notApplicable.rights_observations[dimension].evidence_url = evidenceUrl;
+    }
+    assert.doesNotThrow(() => validateResourceProbeReport(notApplicable));
+  }
+});
+
+test('probe schema encodes the same rights evidence URL rules', async () => {
+  const schema = JSON.parse(await readFile(
+    new URL('../docs/architecture-playbook/resources/schemas/probe-report.schema.json', import.meta.url),
+    'utf8'
+  ));
+
+  assert.deepEqual(schema.$defs.rightsObservation.allOf, evidenceUrlRules([
+    'observed-allowed', 'observed-prohibited'
+  ]));
 });
 
 test('probe report schema matches the strict runtime contract', async () => {
@@ -412,6 +634,14 @@ test('probe report schema preserves known and unknown observation boundaries', a
 
   assert.equal(httpsPattern.test('HTTPS://example.com/probe'), true);
   assert.equal(httpsPattern.test('https://user:pass@example.com/probe'), false);
+  assert.deepEqual(
+    schema.$defs.contentRevision.allOf[0].then.properties.basis,
+    { enum: ['direct-page', 'site-claim', 'search-index'] }
+  );
+  assert.deepEqual(
+    schema.$defs.contentFingerprint.allOf[0].then.properties.basis,
+    { enum: ['direct-page', 'site-claim', 'search-index'] }
+  );
   assert.deepEqual(schema.$defs.contentRevision.allOf[1].then.properties.value, { const: null });
   assert.deepEqual(schema.$defs.contentFingerprint.allOf[1].then.properties.sha256, { const: null });
   assert.deepEqual(
@@ -449,6 +679,17 @@ test('validates and freezes a resource promotion decision', () => {
   assert.ok(Object.isFrozen(decision));
   assert.ok(Object.isFrozen(decision.probe_ids));
   assert.ok(Object.isFrozen(decision.conditions));
+});
+
+test('standalone promotion decision validation leaves lineage to the registry loader', () => {
+  const decision = validateResourcePromotionDecision(resourcePromotionDecisionFixture({
+    decision: 'rejected',
+    decided_at: '2026-08-26T00:00:00.000Z'
+  }));
+
+  assert.equal(decision.decision_id, '2026-08-25-deferred');
+  assert.equal(decision.decision, 'rejected');
+  assert.equal(decision.decided_at, '2026-08-26T00:00:00.000Z');
 });
 
 test('promotion decision keeps probe identities unique and conditions in their original order', () => {
@@ -512,3 +753,28 @@ test('promotion decision schema matches the strict runtime contract', async () =
   assert.equal(schema.properties.assessment_sha256.pattern, '^[a-f0-9]{64}$');
   assert.equal(schema.$defs.shortOriginalString.maxLength, 256);
 });
+
+function evidenceUrlRules(requiredStatuses) {
+  return [
+    {
+      if: {
+        properties: { status: { enum: requiredStatuses } },
+        required: ['status']
+      },
+      then: {
+        properties: { evidence_url: { $ref: '#/$defs/httpsUrl' } },
+        required: ['evidence_url']
+      }
+    },
+    {
+      if: {
+        properties: { status: { enum: ['not-reviewed', 'unknown'] } },
+        required: ['status']
+      },
+      then: {
+        properties: { evidence_url: { const: null } },
+        required: ['evidence_url']
+      }
+    }
+  ];
+}

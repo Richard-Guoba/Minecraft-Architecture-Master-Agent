@@ -15,6 +15,7 @@ import {
   assertHttpsUrl,
   assertLowercaseKebabId,
   assertNullable,
+  assertObservationEvidenceUrl,
   assertRatings,
   assertRelativeResourcePath,
   assertSha256,
@@ -51,6 +52,12 @@ const OPTIONAL_STRING_ARRAY_FIELDS = Object.freeze([
 ]);
 const ACCESS_OBSERVATION_FIELDS = Object.freeze([
   'status', 'evidence_url', 'checked_at', 'note'
+]);
+const ACCESS_EVIDENCE_REQUIRED_STATUSES = Object.freeze([
+  'observed-available', 'observed-unavailable', 'requires-login', 'restricted'
+]);
+const RIGHTS_EVIDENCE_REQUIRED_STATUSES = Object.freeze([
+  'observed-allowed', 'observed-prohibited'
 ]);
 const IDENTITY_OBSERVATION_FIELDS = Object.freeze(['name', 'url', 'basis']);
 const ASSESSMENT_FIELDS = Object.freeze([
@@ -157,28 +164,26 @@ function validateAccessObservation(value, valuePath) {
   assertExactObject(value, valuePath, ACCESS_OBSERVATION_FIELDS);
   assertEnum(value.status, ACCESS_OBSERVATION_STATUSES,
     'PLAYBOOK_RESOURCE_ACCESS_STATUS_INVALID', `${valuePath}.status`);
-  validateObservationEvidence(value, valuePath);
+  validateObservationEvidence(value, valuePath, {
+    requiredStatuses: ACCESS_EVIDENCE_REQUIRED_STATUSES,
+    requiredCode: 'PLAYBOOK_RESOURCE_ACCESS_EVIDENCE_URL_REQUIRED',
+    forbiddenCode: 'PLAYBOOK_RESOURCE_ACCESS_EVIDENCE_URL_FORBIDDEN'
+  });
 }
 
 function validateRightsObservation(value, valuePath) {
   assertExactObject(value, valuePath, ACCESS_OBSERVATION_FIELDS);
   assertEnum(value.status, RIGHTS_STATUSES,
     'PLAYBOOK_RESOURCE_RIGHTS_STATUS_INVALID', `${valuePath}.status`);
-  validateObservationEvidence(value, valuePath);
+  validateObservationEvidence(value, valuePath, {
+    requiredStatuses: RIGHTS_EVIDENCE_REQUIRED_STATUSES,
+    requiredCode: 'PLAYBOOK_RESOURCE_RIGHTS_EVIDENCE_URL_REQUIRED',
+    forbiddenCode: 'PLAYBOOK_RESOURCE_RIGHTS_EVIDENCE_URL_FORBIDDEN'
+  });
 }
 
-function validateObservationEvidence(value, valuePath) {
-  assertNullable(value.evidence_url, (url) => assertHttpsUrl(url, `${valuePath}.evidence_url`));
-  if (
-    (value.status === 'unknown' || value.status === 'not-reviewed')
-    && value.evidence_url !== null
-  ) {
-    failPlaybookContract(
-      'PLAYBOOK_RESOURCE_EVIDENCE_URL_INVALID',
-      `${valuePath}.evidence_url`,
-      'unknown or not-reviewed observations require null evidence_url'
-    );
-  }
+function validateObservationEvidence(value, valuePath, policy) {
+  assertObservationEvidenceUrl(value.status, value.evidence_url, valuePath, policy);
   assertTimestamp(value.checked_at, `${valuePath}.checked_at`);
   assertString(value.note, `${valuePath}.note`, { maximum: 1024 });
 }

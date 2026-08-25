@@ -224,6 +224,37 @@ test('rejects a final decision that disagrees with profile lifecycle', async (t)
   );
 });
 
+test('rejects a decision filename and ID suffix that disagree with decision', async (t) => {
+  const projectRoot = await resourceRegistryProjectFixture(t);
+  await configureDecisionLifecycle(projectRoot, 'rejected', {
+    decision: 'rejected'
+  });
+
+  await assert.rejects(
+    loadResourceRegistry({ projectRoot }),
+    {
+      name: 'PlaybookContractError',
+      code: 'PLAYBOOK_RESOURCE_DECISION_ID_MISMATCH'
+    }
+  );
+});
+
+test('rejects a decision filename and ID date that disagree with decided_at', async (t) => {
+  const projectRoot = await resourceRegistryProjectFixture(t);
+  await configureDecisionLifecycle(projectRoot, 'deferred', {
+    decision_id: '2026-08-24-deferred',
+    decided_at: '2026-08-25T00:00:00.000Z'
+  });
+
+  await assert.rejects(
+    loadResourceRegistry({ projectRoot }),
+    {
+      name: 'PlaybookContractError',
+      code: 'PLAYBOOK_RESOURCE_DECISION_ID_MISMATCH'
+    }
+  );
+});
+
 test('loads append-only decision history in decided-at order rather than filename order', async (t) => {
   const projectRoot = await resourceRegistryProjectFixture(t);
   await configureTwoDecisionHistory(projectRoot, {
@@ -318,7 +349,14 @@ async function writeDecision(projectRoot, decision) {
 }
 
 async function configureDecisionLifecycle(projectRoot, profileLifecycle, overrides = {}) {
-  const decisionPath = 'sources/fixture-source/decisions/2026-08-25-deferred.json';
+  const decision = resourcePromotionDecisionFixture({
+    source_id: 'fixture-source',
+    assessment_path: 'sources/fixture-source/assessment.md',
+    assessment_sha256: await assessmentHash(projectRoot),
+    probe_ids: fixtureProbeIds(),
+    ...overrides
+  });
+  const decisionPath = `sources/fixture-source/decisions/${decision.decision_id}.json`;
   await mutateJson(sourceProfilePath(projectRoot), (profile) => {
     profile.lifecycle_status = profileLifecycle;
     profile.decision_history = [decisionPath];
@@ -326,13 +364,7 @@ async function configureDecisionLifecycle(projectRoot, profileLifecycle, overrid
   await mutateJson(join(resourceRoot(projectRoot), 'catalog.json'), (catalog) => {
     catalog.sources[0].lifecycle_status = profileLifecycle;
   });
-  await writeDecision(projectRoot, resourcePromotionDecisionFixture({
-    source_id: 'fixture-source',
-    assessment_path: 'sources/fixture-source/assessment.md',
-    assessment_sha256: await assessmentHash(projectRoot),
-    probe_ids: fixtureProbeIds(),
-    ...overrides
-  }));
+  await writeDecision(projectRoot, decision);
 }
 
 async function configureTwoDecisionHistory(projectRoot, { deferredAt, approvedAt }) {
