@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "playbook_version": "0.1.0",
+  "school_id": "heihui-jileniao",
+  "layers": [
+    {
+      "layer": "brief",
+      "status": "advisory-partial",
+      "rule_ids": [
+        "rule:case.allocate-detail-by-viewpoint",
+        "rule:case.compose-context-depth"
+      ],
+      "known_capabilities": [
+        "主要视角优先级",
+        "细节预算意图",
+        "前中后景意图"
+      ],
+      "unknown_ids": [
+        "unknown:aesthetic-evaluator",
+        "unknown:cross-author-validity"
+      ],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "massing",
+      "status": "advisory-partial",
+      "rule_ids": [
+        "rule:structure.compose-three-volumes",
+        "rule:structure.layer-volumes-to-reduce-blankness",
+        "rule:structure.create-primary-secondary-hierarchy",
+        "rule:case.join-crossed-massing-with-tower"
+      ],
+      "known_capabilities": [
+        "体块组合",
+        "主次关系",
+        "连接关系",
+        "连续空白面观察"
+      ],
+      "unknown_ids": [
+        "unknown:massing-ratio-thresholds",
+        "unknown:blank-plane-threshold"
+      ],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "space",
+      "status": "not-covered",
+      "rule_ids": [],
+      "known_capabilities": [],
+      "unknown_ids": [],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "structure",
+      "status": "advisory-partial",
+      "rule_ids": [
+        "rule:structure.keep-support-volumes-subordinate",
+        "rule:medieval.extend-only-needed-facades",
+        "rule:medieval.show-load-path",
+        "rule:medieval.align-roof-with-overhang",
+        "rule:medieval.use-stone-base-for-height"
+      ],
+      "known_capabilities": [
+        "辅助体从属",
+        "外挑意图",
+        "可见承托路径",
+        "石质基座关系"
+      ],
+      "unknown_ids": [
+        "unknown:medieval-scale-generalization",
+        "unknown:cross-author-validity"
+      ],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "roof",
+      "status": "advisory-partial",
+      "rule_ids": [
+        "rule:roof.border-with-material-contrast",
+        "rule:roof.scale-slope-to-massing",
+        "rule:roof.break-large-flat-plane",
+        "rule:case.balance-warm-mass-with-dark-roof"
+      ],
+      "known_capabilities": [
+        "屋顶包边",
+        "坡度关系",
+        "大平面打断",
+        "屋顶方向和相对色彩观察"
+      ],
+      "unknown_ids": [
+        "unknown:roof-slope-table",
+        "unknown:blank-plane-threshold"
+      ],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "facade",
+      "status": "advisory-partial",
+      "rule_ids": [
+        "rule:facade.frame-before-openings",
+        "rule:facade.offset-frame-for-depth",
+        "rule:facade.partition-large-wall",
+        "rule:facade.break-repetitive-bays",
+        "rule:case.repeat-motif-for-unity",
+        "rule:case.use-greenery-as-composition"
+      ],
+      "known_capabilities": [
+        "框架与墙芯",
+        "立面进深",
+        "墙面分区",
+        "重复与母题关系",
+        "绿植路径观察"
+      ],
+      "unknown_ids": [
+        "unknown:blank-plane-threshold",
+        "unknown:repetition-limit"
+      ],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "materials",
+      "status": "not-covered",
+      "rule_ids": [],
+      "known_capabilities": [],
+      "unknown_ids": [
+        "unknown:cross-author-validity"
+      ],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "interior",
+      "status": "not-covered",
+      "rule_ids": [],
+      "known_capabilities": [],
+      "unknown_ids": [],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "scene",
+      "status": "not-covered",
+      "rule_ids": [],
+      "known_capabilities": [],
+      "unknown_ids": [
+        "unknown:aesthetic-evaluator"
+      ],
+      "runtime_authority": "none"
+    }
+  ]
+}
