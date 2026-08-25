@@ -13,6 +13,7 @@ const SPECIAL_CHAPTER_IDS = new Set([
   'agent-workflow',
   'unknowns-and-coverage'
 ]);
+const PUBLIC_HTTPS_URL = /https:\/\/[^\s`"'<>|)]+/gimu;
 const UNIX_ABSOLUTE_PATH = /(?<![A-Za-z0-9:/.])\/(?!\/)[A-Za-z0-9._~@+-]+(?:\/[A-Za-z0-9._~@+()-]+)*/gimu;
 const WINDOWS_ABSOLUTE_PATH = /(?<![A-Za-z0-9])[A-Za-z]:[\\/](?:[^\\/\s`"'<>|]+[\\/])*[^\\/\s`"'<>|]+/gimu;
 const PRIVATE_SOURCE_DIRECTORY = /(?<![A-Za-z0-9._-])(?:\.{1,2}[\\/])*(?:frames?|screenshots?|source-frames?|private-source)(?:[\\/][^\s`"'<>|)]+)+/gimu;
@@ -542,11 +543,11 @@ function countPublicLeaks(artifacts) {
 }
 
 function countDistinctLeakRanges(value) {
+  const publicUrlRanges = matchRanges(value, PUBLIC_HTTPS_URL);
   const ranges = PUBLIC_LEAK_MATCHERS.flatMap((matcher) =>
-    [...value.matchAll(matcher)].map((match) => ({
-      start: match.index,
-      end: match.index + match[0].length
-    })))
+    matchRanges(value, matcher))
+    .filter((range) => !publicUrlRanges.some((publicUrlRange) =>
+      range.start >= publicUrlRange.start && range.end <= publicUrlRange.end))
     .sort((left, right) => left.start - right.start || right.end - left.end);
   let count = 0;
   let coveredUntil = -1;
@@ -559,6 +560,13 @@ function countDistinctLeakRanges(value) {
     coveredUntil = range.end;
   }
   return count;
+}
+
+function matchRanges(value, matcher) {
+  return [...value.matchAll(matcher)].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length
+  }));
 }
 
 function renderJson(value) {

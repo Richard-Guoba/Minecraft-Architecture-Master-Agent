@@ -371,6 +371,44 @@ test('pure audit blocks private source directories through dot-relative notation
   }
 });
 
+test('pure audit excludes public HTTPS URL ranges without hiding local private sources', async () => {
+  const base = compilePlaybookV01(await checkedInCompilerFixture());
+  const publicUrls = [
+    'https://example.test/screenshots/overview.webp',
+    'https://example.test/private-source/capture.webp',
+    'https://example.test/frames/overview.webp',
+    'https://example.test/guide?asset=private-source/capture.webp',
+    'https://example.test/guide#screenshots/overview.webp'
+  ];
+
+  for (const url of publicUrls) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${url}\n`;
+    const audit = auditPlaybookV01(compilation);
+
+    assert.equal(audit.public_leak_count, 0, url);
+    assert.equal(audit.gate.status, 'passed', url);
+    assert.equal(audit.gate.next_phase, 'P4', url);
+  }
+
+  for (const target of [
+    './screenshots/overview.webp',
+    './private-source/capture.webp',
+    '../frames/overview.webp'
+  ]) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${target}\n`;
+    assert.equal(auditPlaybookV01(compilation).public_leak_count, 1, target);
+  }
+
+  const mixed = structuredClone(base);
+  mixed.artifacts[MANUAL_PATH] += [
+    'https://example.test/screenshots/overview.webp',
+    './private-source/capture.webp'
+  ].join(' ');
+  assert.equal(auditPlaybookV01(mixed).public_leak_count, 1);
+});
+
 test('pure audit ignores a stale P2 summary and rederives status from source gate evidence', async () => {
   const compilation = structuredClone(
     compilePlaybookV01(await checkedInCompilerFixture())
