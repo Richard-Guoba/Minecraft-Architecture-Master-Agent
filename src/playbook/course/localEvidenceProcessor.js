@@ -9,6 +9,7 @@ import {
 } from '../storage/privatePlaybookPath.js';
 
 const SHA256 = /^[a-f0-9]{64}$/u;
+const PRIVATE_TOOLCHAIN_PYTHON = 'python3.12';
 const SELECTION_REASONS = [
   'topic-transition',
   'comparison',
@@ -21,7 +22,7 @@ export function buildTranscriptionCommand({ bvid, projectRoot }) {
   getPilotEpisodeIdentity(bvid);
   const root = path.resolve(projectRoot);
   return Object.freeze({
-    command: 'python3',
+    command: PRIVATE_TOOLCHAIN_PYTHON,
     args: Object.freeze([
       path.join(root, 'scripts/architecture-playbook/transcribe_episode.py'),
       '--project-root', root,
@@ -44,7 +45,7 @@ export function buildFrameExtractionCommand({ bvid, projectRoot }) {
   getPilotEpisodeIdentity(bvid);
   const root = path.resolve(projectRoot);
   return Object.freeze({
-    command: 'python3',
+    command: PRIVATE_TOOLCHAIN_PYTHON,
     args: Object.freeze([
       path.join(root, 'scripts/architecture-playbook/extract_event_frames.py'),
       '--project-root', root,

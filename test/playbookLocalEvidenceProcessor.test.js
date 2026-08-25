@@ -15,13 +15,13 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 const EPISODE = getPilotEpisodeIdentity('BV1fNkgYBEyy');
 const TRANSCRIPT_HASH = 'a'.repeat(64);
 
-test('transcription command pins the proven private processor configuration', () => {
+test('transcription command pins the proven CPython ABI and processor configuration', () => {
   const command = buildTranscriptionCommand({
     bvid: EPISODE.bvid,
     projectRoot: ROOT
   });
 
-  assert.equal(command.command, 'python3');
+  assert.equal(command.command, 'python3.12');
   assert.deepEqual(command.args.slice(-12), [
     '--model', 'small',
     '--device', 'cpu',
@@ -43,7 +43,7 @@ test('frame command consumes reviewed teaching events rather than intervals', ()
     projectRoot: ROOT
   });
 
-  assert.equal(command.command, 'python3');
+  assert.equal(command.command, 'python3.12');
   assert.match(command.args.join(' '), /event-candidates\.json/u);
   assert.match(command.args.join(' '), /extract_event_frames\.py/u);
   assert.doesNotMatch(command.args.join(' '), /interval/u);
