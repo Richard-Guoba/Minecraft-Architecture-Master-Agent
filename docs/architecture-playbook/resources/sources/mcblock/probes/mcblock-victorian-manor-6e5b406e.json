@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "probe_id": "mcblock-victorian-manor-6e5b406e",
+  "source_id": "mcblock",
+  "canonical_url": "https://mcblock.top/buildings/6e5b406e-151d-492c-91c4-e8b22d1920b0",
+  "title": "维多利亚庄园",
+  "sample_role": "large-medieval-detail-case",
+  "selection_reason": "用于观察详情页可直读的大型中世纪复杂体量案例，同时检验作者推断边界。",
+  "observed_at": "2026-08-25T00:00:00.000Z",
+  "observation_bases": [
+    "direct-page",
+    "site-claim",
+    "project-inference"
+  ],
+  "access_result": {
+    "status": "partial-js-render",
+    "http_status": 200,
+    "final_url": "https://mcblock.top/buildings/6e5b406e-151d-492c-91c4-e8b22d1920b0",
+    "note": "详情页部分字段可直接观察，三维与逐层交互仍依赖动态渲染。"
+  },
+  "content_revision": {
+    "status": "unknown",
+    "value": null,
+    "basis": "unverified"
+  },
+  "content_fingerprint": {
+    "status": "unknown",
+    "sha256": null,
+    "basis": "unverified"
+  },
+  "creator_observation": {
+    "status": "unknown",
+    "display_name": null,
+    "profile_url": null,
+    "bases": [
+      "project-inference"
+    ]
+  },
+  "observed_structure": [
+    "详情页观察：标题为维多利亚庄园，难度高级，数量2.4万，尺寸35×85×47。",
+    "详情页观察：标签为中型、自然、庄园、中世纪，并显示逐层步骤摘要入口。",
+    "详情页出现“JPCore 的更多投影”但没有显式作者字段，因此不能据此认定作者。",
+    "站点能力声明：提供三维预览、逐层学习、数量与导出格式；未保存逐层数据或制品。"
+  ],
+  "extractable_fields": [
+    "详情标题",
+    "详情难度",
+    "详情数量",
+    "详情尺寸",
+    "详情标签",
+    "步骤摘要入口"
+  ],
+  "knowledge_value": {
+    "principles": {
+      "value": 1,
+      "reason": "详情页展示案例字段和操作入口，但未观察到设计理由。"
+    },
+    "construction_sequence": {
+      "value": 4,
+      "reason": "详情页显示逐层步骤摘要入口，站点也声明支持逐层学习。"
+    },
+    "reference_case": {
+      "value": 4,
+      "reason": "尺寸、难度和中世纪庄园标签使该复杂体量案例具有较强参考性。"
+    },
+    "materials": {
+      "value": 3,
+      "reason": "详情页提供2.4万的数量信息，但本探针未保存材料清单。"
+    },
+    "survival_constraints": {
+      "value": "unknown",
+      "reason": "详情观察不足以确认生存模式资源成本或施工约束。"
+    },
+    "evaluation": {
+      "value": 3,
+      "reason": "难度、数量、尺寸和标签支持多维比较，但不是系统设计评价。"
+    },
+    "provenance": {
+      "value": 2,
+      "reason": "页面身份可见，但没有直接观察到显式作者字段。"
+    },
+    "access_stability": {
+      "value": 3,
+      "reason": "本探针可直读多项详情字段，交互内容仍依赖动态渲染。"
+    },
+    "rights_clarity": {
+      "value": "unknown",
+      "reason": "公开详情和导出声明不能证明下载、训练或再发布权利。"
+    }
+  },
+  "rights_observations": {
+    "public_access": {
+      "status": "observed-allowed",
+      "evidence_url": "https://mcblock.top/buildings/6e5b406e-151d-492c-91c4-e8b22d1920b0",
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "本次观察可读取公开详情短元数据；不代表其他使用获许可。"
+    },
+    "local_analysis": {
+      "status": "not-reviewed",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "除本报告短事实与原创摘要外的本地分析权利未审查。"
+    },
+    "automated_retrieval": {
+      "status": "not-reviewed",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "自动检索条款、robots 与速率限制未审查。"
+    },
+    "artifact_download": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未核验下载条件，导出声明不构成下载许可。"
+    },
+    "model_training": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未发现可支持模型训练的明确许可。"
+    },
+    "external_redistribution": {
+      "status": "unknown",
+      "evidence_url": null,
+      "checked_at": "2026-08-25T00:00:00.000Z",
+      "note": "未发现允许再发布页面内容或制品的明确许可。"
+    }
+  },
+  "blocking_conditions": [
+    "作者缺少直接证据，不能从相关投影入口推断。",
+    "自动访问、下载、训练与再发布权利尚未审查。"
+  ],
+  "recommended_adapter_behavior": [
+    "获批后仅用站点专用只读适配器读取最小元数据或逐层查看入口。",
+    "分别审查速率、登录、权利和导出边界，不直接进入课程、规则或训练。"
+  ],
+  "summary": "维多利亚庄园探针记录详情页短元数据和步骤摘要入口，并因缺少显式字段而保持作者未知。"
+}
