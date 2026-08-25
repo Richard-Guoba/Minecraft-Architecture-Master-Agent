@@ -13,16 +13,22 @@ const SPECIAL_CHAPTER_IDS = new Set([
   'agent-workflow',
   'unknowns-and-coverage'
 ]);
-const PUBLIC_LEAK_PATTERN = new RegExp([
-  String.raw`(?<![A-Za-z0-9:/.])/(?!/)[A-Za-z0-9._~@+-]+(?:/[A-Za-z0-9._~@+()-]+)*`,
-  String.raw`(?<![A-Za-z0-9])[A-Za-z]:[\\/](?:[^\\/\s\x60"'<>|]+[\\/])*[^\\/\s\x60"'<>|]+`,
-  String.raw`(?:^|(?<=[\s("'\x60=:\[]))(?:frames?|screenshots?|source-frames?|private-source)(?:[\\/][^\s\x60"'<>|)]+)+`,
-  String.raw`\.local/`,
-  'draft-transcript',
-  String.raw`"(?:segments|words|frames|frame_path|frame_paths|screenshot_path|source_frame_path)"`,
-  String.raw`(?:frame|screenshot)-\d+\.(?:png|jpe?g|webp)`,
-  String.raw`(?:source-frame|private-source)(?=[:\s])`
-].join('|'), 'gimu');
+const UNIX_ABSOLUTE_PATH = /(?<![A-Za-z0-9:/.])\/(?!\/)[A-Za-z0-9._~@+-]+(?:\/[A-Za-z0-9._~@+()-]+)*/gimu;
+const WINDOWS_ABSOLUTE_PATH = /(?<![A-Za-z0-9])[A-Za-z]:[\\/](?:[^\\/\s`"'<>|]+[\\/])*[^\\/\s`"'<>|]+/gimu;
+const PRIVATE_SOURCE_DIRECTORY = /(?<![A-Za-z0-9._-])(?:\.{1,2}[\\/])*(?:frames?|screenshots?|source-frames?|private-source)(?:[\\/][^\s`"'<>|)]+)+/gimu;
+const LOCAL_PRIVATE_PATH = /(?<![A-Za-z0-9._-])(?:\.{1,2}[\\/])?\.local(?![A-Za-z0-9._-])(?:[\\/][^\s`"'<>|)]+)*/gimu;
+const PRIVATE_SOURCE_FIELD = /"(?:segments|words|frames|frame_path|frame_paths|screenshot_path|source_frame_path)"/gimu;
+const FRAME_IMAGE_REFERENCE = /(?:frame|screenshot)-\d+\.(?:png|jpe?g|webp)/gimu;
+const PRIVATE_SOURCE_MARKER = /draft-transcript|(?:source-frame|private-source)(?=[:\s])/gimu;
+const PUBLIC_LEAK_MATCHERS = Object.freeze([
+  UNIX_ABSOLUTE_PATH,
+  WINDOWS_ABSOLUTE_PATH,
+  PRIVATE_SOURCE_DIRECTORY,
+  LOCAL_PRIVATE_PATH,
+  PRIVATE_SOURCE_FIELD,
+  FRAME_IMAGE_REFERENCE,
+  PRIVATE_SOURCE_MARKER
+]);
 
 export function compilePlaybookV01({ corpus, policy }) {
   assertCompilerInput(corpus, policy);
@@ -530,7 +536,27 @@ function countPublicLeaks(artifacts) {
   let count = 0;
   for (const value of Object.values(artifacts)) {
     if (typeof value !== 'string') continue;
-    count += [...value.matchAll(PUBLIC_LEAK_PATTERN)].length;
+    count += countDistinctLeakRanges(value);
+  }
+  return count;
+}
+
+function countDistinctLeakRanges(value) {
+  const ranges = PUBLIC_LEAK_MATCHERS.flatMap((matcher) =>
+    [...value.matchAll(matcher)].map((match) => ({
+      start: match.index,
+      end: match.index + match[0].length
+    })))
+    .sort((left, right) => left.start - right.start || right.end - left.end);
+  let count = 0;
+  let coveredUntil = -1;
+  for (const range of ranges) {
+    if (range.start < coveredUntil) {
+      coveredUntil = Math.max(coveredUntil, range.end);
+      continue;
+    }
+    count += 1;
+    coveredUntil = range.end;
   }
   return count;
 }

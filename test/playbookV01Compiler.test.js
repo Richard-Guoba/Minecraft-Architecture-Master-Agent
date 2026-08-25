@@ -345,6 +345,32 @@ test('pure audit distinguishes dot-relative Markdown targets from absolute paths
   assert.equal(auditPlaybookV01(mixed).public_leak_count, 1);
 });
 
+test('pure audit blocks private source directories through dot-relative notation', async () => {
+  const base = compilePlaybookV01(await checkedInCompilerFixture());
+  const privateTargets = [
+    './private-source/captures/angle-01.webp',
+    '../private-source/captures/angle-01.webp',
+    './screenshots/overview.webp',
+    '../frames/overview.webp'
+  ];
+
+  for (const target of privateTargets) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${target}\n`;
+    const audit = auditPlaybookV01(compilation);
+
+    assert.equal(audit.public_leak_count, 1, target);
+    assert.equal(audit.gate.status, 'blocked', target);
+    assert.deepEqual(audit.gate.blocker_codes, ['PUBLIC_SOURCE_LEAK'], target);
+  }
+
+  for (const target of ['./guide.md', '../guide.md']) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${target}\n`;
+    assert.equal(auditPlaybookV01(compilation).public_leak_count, 0, target);
+  }
+});
+
 test('pure audit ignores a stale P2 summary and rederives status from source gate evidence', async () => {
   const compilation = structuredClone(
     compilePlaybookV01(await checkedInCompilerFixture())
@@ -402,7 +428,7 @@ test('pure audit reports tampered counters truthfully instead of trusting the su
   assert.equal(audit.authority_escalation_count, 1);
   assert.equal(audit.maturity_escalation_count, 1);
   assert.equal(audit.covered_runtime_layer_count, 1);
-  assert.equal(audit.public_leak_count, 2);
+  assert.equal(audit.public_leak_count, 1);
   assert.equal(audit.managed_artifact_drift_count, 2);
   assert.equal(audit.gate.status, 'blocked');
   assert.equal(audit.gate.next_phase, null);
