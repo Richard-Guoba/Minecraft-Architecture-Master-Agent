@@ -1,6 +1,10 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acquireEpisodeMedia } from './playbook/course/episodeMedia.js';
+import {
+  runFrameExtraction,
+  runTranscription
+} from './playbook/course/localEvidenceProcessor.js';
 import { getPilotEpisodeIdentity } from './playbook/course/pilotEpisodeSet.js';
 import { failPlaybookContract } from './playbook/contracts/playbookContractError.js';
 
@@ -12,7 +16,7 @@ export function parseArchitecturePlaybookEvidenceArgs(
   { projectRoot = path.resolve(import.meta.dirname, '..') } = {}
 ) {
   const command = argv[0];
-  if (command !== 'media') {
+  if (!['media', 'transcribe', 'frames'].includes(command)) {
     failPlaybookContract(
       'PLAYBOOK_EVIDENCE_COMMAND_INVALID',
       'argv[0]',
@@ -59,6 +63,13 @@ export function parseArchitecturePlaybookEvidenceArgs(
     );
   }
   const episode = getPilotEpisodeIdentity(values.get('--bvid'));
+  if (command !== 'media' && values.has('--replace')) {
+    failPlaybookContract(
+      'PLAYBOOK_EVIDENCE_ARGUMENT_INVALID_FOR_COMMAND',
+      '--replace',
+      `not supported by ${command}`
+    );
+  }
   return Object.freeze({
     command,
     bvid: episode.bvid,
@@ -73,12 +84,33 @@ export async function main(argv = process.argv.slice(2)) {
     ? path.resolve(process.env.PLAYBOOK_PROJECT_ROOT)
     : path.resolve(import.meta.dirname, '..');
   const options = parseArchitecturePlaybookEvidenceArgs(argv, { projectRoot });
-  const result = await acquireEpisodeMedia(options);
+  if (options.command === 'media') {
+    const result = await acquireEpisodeMedia(options);
+    process.stdout.write([
+      `media_status=${result.status}`,
+      `bvid=${result.media_index.bvid}`,
+      `byte_size=${result.media_index.byte_size}`,
+      `sha256=${result.media_index.sha256}`
+    ].join('\n') + '\n');
+    return;
+  }
+  if (options.command === 'transcribe') {
+    const result = await runTranscription(options);
+    process.stdout.write([
+      `transcript_status=${result.status}`,
+      `bvid=${result.bvid}`,
+      `segment_count=${result.segment_count}`,
+      `duration_ms=${result.duration_ms}`,
+      `segment_index_sha256=${result.segment_index_sha256}`
+    ].join('\n') + '\n');
+    return;
+  }
+  const result = await runFrameExtraction(options);
   process.stdout.write([
-    `media_status=${result.status}`,
-    `bvid=${result.media_index.bvid}`,
-    `byte_size=${result.media_index.byte_size}`,
-    `sha256=${result.media_index.sha256}`
+    `frames_status=${result.status}`,
+    `bvid=${result.bvid}`,
+    `frame_count=${result.frame_count}`,
+    `frame_index_sha256=${result.frame_index_sha256}`
   ].join('\n') + '\n');
 }
 

@@ -42,6 +42,31 @@ test('evidence CLI accepts media only for the approved pilot set', () => {
   );
 });
 
+test('evidence CLI routes local processor commands without media replacement', () => {
+  const transcribe = parseArchitecturePlaybookEvidenceArgs([
+    'transcribe',
+    '--bvid',
+    EPISODE.bvid
+  ], { projectRoot: '/tmp/playbook-cli-fixture' });
+  const frames = parseArchitecturePlaybookEvidenceArgs([
+    'frames',
+    '--bvid',
+    EPISODE.bvid
+  ], { projectRoot: '/tmp/playbook-cli-fixture' });
+
+  assert.equal(transcribe.command, 'transcribe');
+  assert.equal(frames.command, 'frames');
+  assert.throws(
+    () => parseArchitecturePlaybookEvidenceArgs([
+      'transcribe',
+      '--bvid',
+      EPISODE.bvid,
+      '--replace'
+    ], { projectRoot: '/tmp/playbook-cli-fixture' }),
+    /PLAYBOOK_EVIDENCE_ARGUMENT_INVALID_FOR_COMMAND/u
+  );
+});
+
 test('playback resolution rejects direct-view identity drift', async () => {
   const fetchImpl = playbackFetch({ directBvid: 'BV1HhEuzZEyZ' });
 

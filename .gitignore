@@ -29,3 +29,4 @@ training/stage7/runs/
 
 # Local-only architecture playbook media, transcripts, frames, and working evidence
 .local/architecture-playbook/
+scripts/architecture-playbook/**/__pycache__/
