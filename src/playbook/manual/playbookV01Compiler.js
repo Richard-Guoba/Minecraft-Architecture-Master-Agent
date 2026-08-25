@@ -68,6 +68,7 @@ const HIGH_PRIORITY_PUBLIC_LEAK_MATCHERS = Object.freeze([
   FILE_URL_REFERENCE,
   UNC_REFERENCE
 ]);
+const MAX_PERCENT_NORMALIZATION_ROUNDS = 8;
 
 export function compilePlaybookV01({ corpus, policy }) {
   assertCompilerInput(corpus, policy);
@@ -977,9 +978,13 @@ function countPublicLeaks(artifacts) {
 
 function countDistinctLeakRanges(value) {
   const publicUrlRanges = matchRanges(value, PUBLIC_HTTPS_URL);
+  const normalized = normalizePercentForLeakScan(value);
   const highPriorityRanges = HIGH_PRIORITY_PUBLIC_LEAK_MATCHERS.flatMap(
-    (matcher) => matchRanges(value, matcher)
+    (matcher) => normalizedMatchRanges(normalized, matcher)
   );
+  if (normalized.exhausted_range) {
+    highPriorityRanges.push(normalized.exhausted_range);
+  }
   const ranges = [
     ...highPriorityRanges,
     ...PUBLIC_LEAK_MATCHERS.flatMap((matcher) => matchRanges(value, matcher))
@@ -998,6 +1003,67 @@ function countDistinctLeakRanges(value) {
     coveredUntil = range.end;
   }
   return count;
+}
+
+function normalizePercentForLeakScan(value) {
+  let units = value.split('').map((character, index) => ({
+    character,
+    start: index,
+    end: index + 1
+  }));
+  for (let round = 0; round < MAX_PERCENT_NORMALIZATION_ROUNDS; round += 1) {
+    const next = [];
+    let changed = false;
+    for (let index = 0; index < units.length; index += 1) {
+      const decoded = decodedAsciiPercentUnit(units, index);
+      if (!decoded) {
+        next.push(units[index]);
+        continue;
+      }
+      next.push(decoded);
+      index += 2;
+      changed = true;
+    }
+    units = next;
+    if (!changed) break;
+  }
+  const exhaustedIndex = units.findIndex((unit, index) =>
+    decodedAsciiPercentUnit(units, index) !== null);
+  return {
+    text: units.map((unit) => unit.character).join(''),
+    units,
+    exhausted_range: exhaustedIndex === -1
+      ? null
+      : {
+          start: units[exhaustedIndex].start,
+          end: units[exhaustedIndex + 2].end
+        }
+  };
+}
+
+function decodedAsciiPercentUnit(units, index) {
+  if (
+    units[index]?.character !== '%'
+    || !/^[0-9A-Fa-f]$/u.test(units[index + 1]?.character ?? '')
+    || !/^[0-9A-Fa-f]$/u.test(units[index + 2]?.character ?? '')
+  ) return null;
+  const code = Number.parseInt(
+    `${units[index + 1].character}${units[index + 2].character}`,
+    16
+  );
+  if (code < 0x20 || code > 0x7e) return null;
+  return {
+    character: String.fromCharCode(code),
+    start: units[index].start,
+    end: units[index + 2].end
+  };
+}
+
+function normalizedMatchRanges(normalized, matcher) {
+  return [...normalized.text.matchAll(matcher)].map((match) => ({
+    start: normalized.units[match.index].start,
+    end: normalized.units[match.index + match[0].length - 1].end
+  }));
 }
 
 function matchRanges(value, matcher) {

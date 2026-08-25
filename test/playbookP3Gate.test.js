@@ -293,7 +293,13 @@ test('protected checked snapshot blocks file URL and UNC leakage', async (t) => 
     ['encoded file URL',
       'https://example.test/?next=file:%2F%2F%2Fhome%2Fuser%2Fartifact.bin'],
     ['encoded UNC',
-      'https://example.test/?next=%5C%5Cserver%5Cshare%5Cartifact.bin']
+      'https://example.test/?next=%5C%5Cserver%5Cshare%5Cartifact.bin'],
+    ['mixed encoded file URL',
+      'f%69le:%2F%2F%2Fhome%2Falice%2Fsecret.txt'],
+    ['mixed encoded UNC',
+      String.raw`%5C\server\share\secret.txt`],
+    ['repeated encoded file URL',
+      'f%2569le:%252F%252F%252Fhome%252Falice%252Fsecret.txt']
   ]) {
     await t.test(name, async (t) => {
       const projectRoot = await checkedInAuditFixture(t);
@@ -435,6 +441,46 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
       unresolvedCount: 0
     },
     {
+      name: 'default node module createRequire loader',
+      extension: 'js',
+      packageJson: '{"type":"module"}\n',
+      source: [
+        "import Module from 'node:module';",
+        'const load = Module.createRequire(import.meta.url);',
+        "export default load('../../construction/target.cjs');",
+        ''
+      ].join('\n'),
+      execute: importDefault,
+      violationCount: 1,
+      unresolvedCount: 0
+    },
+    {
+      name: 'CommonJS module-loader member factory',
+      extension: 'cjs',
+      source: [
+        "const makeLoader = require('node:module').createRequire;",
+        'const load = makeLoader(__filename);',
+        "module.exports = load('../../construction/target.cjs');",
+        ''
+      ].join('\n'),
+      execute: requireDefault,
+      violationCount: 1,
+      unresolvedCount: 0
+    },
+    {
+      name: 'indirect module-loader factory container',
+      extension: 'cjs',
+      source: [
+        "const factories = { make: require('node:module').createRequire };",
+        'const load = factories.make(__filename);',
+        "module.exports = load('../../construction/target.cjs');",
+        ''
+      ].join('\n'),
+      execute: requireDefault,
+      violationCount: 0,
+      unresolvedCount: 1
+    },
+    {
       name: 'require call',
       extension: 'cjs',
       source:
@@ -517,6 +563,76 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
       );
     });
   }
+});
+
+test('node module factory controls avoid execution and unrelated-member noise', async (t) => {
+  for (const fixture of [
+    {
+      name: 'default import unrelated member',
+      entryPath: 'src/playbook/manual/entry.js',
+      packageJson: '{"type":"module"}\n',
+      source: [
+        "import Module from 'node:module';",
+        "export default Module.isBuiltin('node:fs');",
+        ''
+      ].join('\n'),
+      execute: importDefault
+    },
+    {
+      name: 'CommonJS loader result unrelated member',
+      entryPath: 'src/playbook/manual/entry.cjs',
+      source: [
+        "const check = require('node:module').isBuiltin;",
+        "module.exports = check('node:fs');",
+        ''
+      ].join('\n'),
+      execute: requireDefault
+    }
+  ]) {
+    await t.test(fixture.name, async (t) => {
+      const projectRoot = await dependencyFixture(t, {
+        ...(fixture.packageJson
+          ? { 'package.json': fixture.packageJson }
+          : {}),
+        [fixture.entryPath]: fixture.source
+      });
+      const absoluteEntry = path.join(projectRoot, fixture.entryPath);
+
+      assert.equal(await fixture.execute(absoluteEntry), true);
+
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.equal(audit.import_boundary_violation_count, 0, fixture.name);
+      assert.equal(audit.import_boundary_unresolved_count, 0, fixture.name);
+    });
+  }
+
+  await t.test('construction target is resolved but never executed by audit', async (t) => {
+    const markerPath = 'src/construction/executed.marker';
+    const projectRoot = await dependencyFixture(t, {
+      'package.json': '{"type":"module"}\n',
+      'src/playbook/manual/entry.js':
+        "import '../../construction/target.js';\n",
+      'src/construction/target.js': [
+        "import fs from 'node:fs';",
+        "fs.writeFileSync(new URL('./executed.marker', import.meta.url), 'bad');",
+        'export default true;',
+        ''
+      ].join('\n')
+    });
+
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+
+    assert.equal(audit.import_boundary_violation_count, 1);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+    await assert.rejects(
+      fs.access(path.join(projectRoot, markerPath)),
+      (error) => error?.code === 'ENOENT'
+    );
+  });
 });
 
 test('package imports construction edge executes and is audited', async (t) => {

@@ -420,7 +420,11 @@ test('pure audit blocks file URLs and UNC references before HTTPS exceptions', a
     '%5C%5Cserver%5Cshare%5Cartifact.bin',
     '%2F%2Fserver%2Fshare%2Fartifact.bin',
     'https://example.test/?next=file:///home/user/artifact.bin',
-    'https://example.test/?next=%5C%5Cserver%5Cshare%5Cartifact.bin'
+    'https://example.test/?next=%5C%5Cserver%5Cshare%5Cartifact.bin',
+    'f%69le:%2F%2F%2Fhome%2Falice%2Fsecret.txt',
+    String.raw`%5C\server\share\secret.txt`,
+    'f%2569le:%252F%252F%252Fhome%252Falice%252Fsecret.txt',
+    '%66i%6Ce:%2f/%2Fhome/alice/secret.txt'
   ];
 
   for (const reference of privateReferences) {
@@ -431,6 +435,21 @@ test('pure audit blocks file URLs and UNC references before HTTPS exceptions', a
     assert.equal(audit.public_leak_count, 1, reference);
     assert.equal(audit.gate.status, 'blocked', reference);
     assert.deepEqual(audit.gate.blocker_codes, ['PUBLIC_SOURCE_LEAK'], reference);
+  }
+
+  for (const reference of [
+    'https://example.test/path/file.txt',
+    'ordinary file cabinet on a public server share',
+    'malformed f%6Zle:%2F%2 reference',
+    'https%3A%2F%2Fexample.test%2Fpublic',
+    'percent literals 100% and %GG stay ordinary'
+  ]) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${reference}\n`;
+    const audit = auditPlaybookV01(compilation);
+
+    assert.equal(audit.public_leak_count, 0, reference);
+    assert.equal(audit.gate.status, 'passed', reference);
   }
 });
 
