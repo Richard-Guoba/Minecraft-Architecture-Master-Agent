@@ -253,9 +253,8 @@ test('manual renderer is pure and matches the compiler artifact', async () => {
 });
 
 test('pure audit derives all passing gate counters from compiled content', async () => {
-  const audit = auditPlaybookV01(
-    compilePlaybookV01(await checkedInCompilerFixture())
-  );
+  const compilation = compilePlaybookV01(await checkedInCompilerFixture());
+  const audit = auditPlaybookV01(compilation);
 
   assert.deepEqual(audit, {
     p2_gate_status: 'passed',
@@ -271,8 +270,72 @@ test('pure audit derives all passing gate counters from compiled content', async
     managed_artifact_drift_count: 0,
     gate: { status: 'passed', next_phase: 'P4', blocker_codes: [] }
   });
+  assert.ok(compilation.p2_gate_evidence, 'compiler must retain P2 source gate evidence');
+  assert.equal(Object.isFrozen(compilation.p2_gate_evidence), true);
+  assert.equal(Object.isFrozen(compilation.p2_gate_evidence.episodes), true);
   assert.equal(Object.isFrozen(audit), true);
   assert.equal(Object.isFrozen(audit.gate), true);
+});
+
+test('pure audit blocks generic absolute and private frame source references', async () => {
+  const base = compilePlaybookV01(await checkedInCompilerFixture());
+  const leakMarkers = [
+    '/tmp/private/frames/frame-001.png',
+    'C:\\private\\frames\\frame-001.png',
+    'frames/frame-001.png',
+    'private-source/captures/angle-01.webp'
+  ];
+
+  for (const marker of leakMarkers) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${marker}\n`;
+    const audit = auditPlaybookV01(compilation);
+
+    assert.equal(audit.public_leak_count, 1, marker);
+    assert.equal(audit.gate.status, 'blocked', marker);
+    assert.equal(audit.gate.next_phase, null, marker);
+    assert.deepEqual(audit.gate.blocker_codes, ['PUBLIC_SOURCE_LEAK'], marker);
+  }
+
+  const safe = structuredClone(base);
+  safe.artifacts[MANUAL_PATH] += [
+    '[秘籍](docs/architecture-playbook/manual/v0.1.md)',
+    '`rule:structure.compose-three-volumes`',
+    '`BV1fNkgYBEyy`'
+  ].join('\n');
+  assert.equal(auditPlaybookV01(safe).public_leak_count, 0);
+});
+
+test('pure audit ignores a stale P2 summary and rederives status from source gate evidence', async () => {
+  const compilation = structuredClone(
+    compilePlaybookV01(await checkedInCompilerFixture())
+  );
+  compilation.summary.p2_gate_status = 'blocked';
+
+  const audit = auditPlaybookV01(compilation);
+
+  assert.equal(audit.p2_gate_status, 'passed');
+  assert.equal(audit.gate.status, 'passed');
+  assert.equal(audit.gate.next_phase, 'P4');
+});
+
+test('pure audit rejects a forged passing P2 summary when source gate evidence is blocked', async () => {
+  const compilation = structuredClone(
+    compilePlaybookV01(await checkedInCompilerFixture())
+  );
+  compilation.summary.p2_gate_status = 'passed';
+  assert.ok(
+    compilation.p2_gate_evidence,
+    'compiler must retain immutable P2 source gate evidence'
+  );
+  compilation.p2_gate_evidence.episodes[0].shape_claims_without_dual_evidence = 1;
+
+  const audit = auditPlaybookV01(compilation);
+
+  assert.equal(audit.p2_gate_status, 'blocked');
+  assert.equal(audit.gate.status, 'blocked');
+  assert.equal(audit.gate.next_phase, null);
+  assert.deepEqual(audit.gate.blocker_codes, ['P2_GATE_NOT_PASSED']);
 });
 
 test('pure audit reports tampered counters truthfully instead of trusting the summary', async () => {
@@ -282,6 +345,7 @@ test('pure audit reports tampered counters truthfully instead of trusting the su
   compilation.summary.reviewed_rule_count = 21;
   compilation.summary.core_procedure_count = 15;
   compilation.summary.case_pattern_count = 6;
+  compilation.summary.p2_gate_status = 'passed';
   compilation.cards[0].authority = 'executable';
   compilation.cards[1].maturity = 'validated';
   compilation.cards[2].evidence_ids = ['ev:missing:lineage'];

@@ -13,11 +13,26 @@ const SPECIAL_CHAPTER_IDS = new Set([
   'agent-workflow',
   'unknowns-and-coverage'
 ]);
-const PUBLIC_LEAK_PATTERN = /\.local\/|draft-transcript|"segments"|"words"|\/home\/|\/Users\/|[A-Za-z]:\\Users\\/gu;
+const PUBLIC_LEAK_PATTERN = new RegExp([
+  String.raw`(?<![A-Za-z0-9:/])/(?!/)[A-Za-z0-9._~@+-]+(?:/[A-Za-z0-9._~@+()-]+)*`,
+  String.raw`(?<![A-Za-z0-9])[A-Za-z]:[\\/](?:[^\\/\s\x60"'<>|]+[\\/])*[^\\/\s\x60"'<>|]+`,
+  String.raw`(?:^|(?<=[\s("'\x60=:\[]))(?:frames?|screenshots?|source-frames?|private-source)(?:[\\/][^\s\x60"'<>|)]+)+`,
+  String.raw`\.local/`,
+  'draft-transcript',
+  String.raw`"(?:segments|words|frames|frame_path|frame_paths|screenshot_path|source_frame_path)"`,
+  String.raw`(?:frame|screenshot)-\d+\.(?:png|jpe?g|webp)`,
+  String.raw`(?:source-frame|private-source)(?=[:\s])`
+].join('|'), 'gimu');
 
 export function compilePlaybookV01({ corpus, policy }) {
   assertCompilerInput(corpus, policy);
-  const p2GateStatus = deriveP2GateStatus(corpus);
+  const p2GateEvidence = compileP2GateEvidence(corpus);
+  const p2GateStatus = deriveP2GateStatus(p2GateEvidence, {
+    schoolId: policy.school_id,
+    candidateCount: corpus.candidates.length,
+    conflictCount: corpus.conflicts.length,
+    unknownCount: corpus.unknowns.length
+  });
   if (p2GateStatus !== 'passed') {
     throw new Error('PLAYBOOK_P3_P2_GATE_BLOCKED: validated P2 evidence is required');
   }
@@ -84,6 +99,7 @@ export function compilePlaybookV01({ corpus, policy }) {
     playbook_version: policy.playbook_version,
     school_id: policy.school_id,
     source_corpus_hash: sourceCorpusHash,
+    p2_gate_evidence: p2GateEvidence,
     cards,
     terminology,
     coverage,
@@ -160,9 +176,12 @@ export function auditPlaybookV01(
   const coverageRows = Array.isArray(compilation?.coverage?.layers)
     ? compilation.coverage.layers
     : [];
-  const p2GateStatus = compilation?.summary?.p2_gate_status === 'passed'
-    ? 'passed'
-    : 'blocked';
+  const p2GateStatus = deriveP2GateStatus(compilation?.p2_gate_evidence, {
+    schoolId: compilation?.school_id,
+    candidateCount: cards.length,
+    conflictCount: compilation?.rule_index?.conflicts?.length,
+    unknownCount: compilation?.rule_index?.unknowns?.length
+  });
   const counters = {
     p2_gate_status: p2GateStatus,
     reviewed_rule_count: cards.length,
@@ -216,16 +235,57 @@ function assertCompilerInput(corpus, policy) {
   }
 }
 
-function deriveP2GateStatus(corpus) {
-  const episodes = corpus?.evidence_index?.episodes;
-  const passed = corpus.school_id === 'heihui-jileniao'
+function compileP2GateEvidence(corpus) {
+  return {
+    school_id: corpus.school_id,
+    declared_episode_count: corpus.episode_count,
+    declared_evidence_note_count: corpus.evidence_note_count,
+    declared_candidate_rule_count: corpus.candidate_rule_count,
+    declared_conflict_count: corpus.conflict_count,
+    declared_unknown_count: corpus.unknown_count,
+    indexed_episode_count: corpus.evidence_index.episode_count,
+    indexed_note_count: corpus.evidence_index.note_count,
+    episodes: corpus.evidence_index.episodes.map((episode) => ({
+      bvid: episode.bvid,
+      accepted_for_public_candidates: episode.accepted_for_public_candidates,
+      shape_claims_without_dual_evidence: episode.shape_claims_without_dual_evidence,
+      evidence_ids: structuredClone(episode.evidence_ids)
+    }))
+  };
+}
+
+function deriveP2GateStatus(evidence, {
+  schoolId,
+  candidateCount,
+  conflictCount,
+  unknownCount
+}) {
+  const episodes = evidence?.episodes;
+  const evidenceIds = Array.isArray(episodes)
+    ? episodes.flatMap((episode) =>
+      Array.isArray(episode?.evidence_ids) ? episode.evidence_ids : [])
+    : [];
+  const bvids = Array.isArray(episodes)
+    ? episodes.map((episode) => episode?.bvid)
+    : [];
+  const passed = evidence?.school_id === schoolId
+    && evidence?.school_id === 'heihui-jileniao'
     && Array.isArray(episodes)
-    && episodes.length === corpus.episode_count
-    && corpus.candidate_rule_count === corpus.candidates.length
-    && corpus.conflict_count === corpus.conflicts.length
-    && corpus.unknown_count === corpus.unknowns.length
+    && evidence.declared_episode_count === episodes.length
+    && evidence.indexed_episode_count === episodes.length
+    && evidence.declared_evidence_note_count === evidenceIds.length
+    && evidence.indexed_note_count === evidenceIds.length
+    && evidence.declared_candidate_rule_count === candidateCount
+    && evidence.declared_conflict_count === conflictCount
+    && evidence.declared_unknown_count === unknownCount
+    && new Set(bvids).size === bvids.length
+    && new Set(evidenceIds).size === evidenceIds.length
     && episodes.every((episode) =>
-      episode.accepted_for_public_candidates === true
+      typeof episode?.bvid === 'string'
+      && episode.bvid.length > 0
+      && Array.isArray(episode.evidence_ids)
+      && episode.evidence_ids.length > 0
+      && episode.accepted_for_public_candidates === true
       && episode.shape_claims_without_dual_evidence === 0);
   return passed ? 'passed' : 'blocked';
 }
