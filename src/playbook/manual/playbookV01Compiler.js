@@ -1,12 +1,23 @@
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { P3_MANAGED_ARTIFACT_PATHS } from './p3AdmissionPolicy.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import { loadP2PublicCorpus } from '../knowledge/publicCandidateCorpus.js';
+import {
+  P3_MANAGED_ARTIFACT_PATHS,
+  validateP3AdmissionPolicy
+} from './p3AdmissionPolicy.js';
 import { buildReviewedRuleCards } from './reviewedRuleCard.js';
 
+const execFileAsync = promisify(execFile);
 const MANUAL_PATH = 'docs/architecture-playbook/manual/v0.1.md';
 const TERMINOLOGY_PATH = 'docs/architecture-playbook/manual/terminology-v0.1.json';
 const COVERAGE_PATH = 'docs/architecture-playbook/manual/coverage-v0.1.json';
 const CARDS_PATH = 'docs/architecture-playbook/rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl';
 const INDEX_PATH = 'docs/architecture-playbook/rules/schools/heihui-jileniao/rule-index-v0.1.json';
+const POLICY_PATH =
+  'docs/architecture-playbook/rules/schools/heihui-jileniao/admission-v0.1.json';
 const SPECIAL_CHAPTER_IDS = new Set([
   'method-and-boundaries',
   'failure-and-repair',
@@ -225,6 +236,121 @@ export function auditPlaybookV01(
       blocker_codes: blockerCodes
     }
   });
+}
+
+export async function auditCheckedInPlaybookV01({ projectRoot }) {
+  const root = path.resolve(projectRoot);
+  const corpus = await loadP2PublicCorpus({ projectRoot: root });
+  const policy = validateP3AdmissionPolicy(
+    JSON.parse(await fs.readFile(path.join(root, POLICY_PATH), 'utf8')),
+    {
+      candidateRuleIds: new Set(
+        corpus.candidates.map((candidate) => candidate.rule_id)
+      )
+    }
+  );
+  const compilation = compilePlaybookV01({ corpus, policy });
+  const { checkManagedPlaybookArtifacts } = await import(
+    '../../runArchitecturePlaybookManual.js'
+  );
+  const checked = await checkManagedPlaybookArtifacts({
+    projectRoot: root,
+    artifacts: compilation.artifacts
+  });
+  const checkedInArtifacts = await readCheckedInArtifacts(root);
+  const [trackedManagedArtifactPaths, manualConstructionImports] =
+    await Promise.all([
+      listTrackedManagedArtifactPaths(root),
+      findManualConstructionImports(root)
+    ]);
+  const checkedInCoverage = parseJsonOrNull(checkedInArtifacts[COVERAGE_PATH]);
+  const coverageNotCoveredLayers = Array.isArray(checkedInCoverage?.layers)
+    ? checkedInCoverage.layers
+      .filter((row) => row?.status === 'not-covered')
+      .map((row) => row.layer)
+    : [];
+  const checkedInManual = checkedInArtifacts[MANUAL_PATH];
+  const manualNotCoveredLayers = coverageNotCoveredLayers.filter((layer) =>
+    checkedInManual.includes(`- \`${layer}\`：状态 \`not-covered\``));
+  const audit = auditPlaybookV01(
+    { ...compilation, artifacts: checkedInArtifacts },
+    { managedArtifactDriftCount: checked.managed_artifact_drift_count }
+  );
+
+  return deepFreeze({
+    ...audit,
+    source_corpus_hash: compilation.source_corpus_hash,
+    tracked_managed_artifact_paths: trackedManagedArtifactPaths,
+    manual_construction_imports: manualConstructionImports,
+    coverage_not_covered_layers: coverageNotCoveredLayers,
+    manual_not_covered_layers: manualNotCoveredLayers
+  });
+}
+
+async function readCheckedInArtifacts(projectRoot) {
+  return Object.fromEntries(await Promise.all(
+    P3_MANAGED_ARTIFACT_PATHS.map(async (artifactPath) => {
+      try {
+        return [
+          artifactPath,
+          await fs.readFile(path.join(projectRoot, artifactPath), 'utf8')
+        ];
+      } catch (error) {
+        if (error?.code === 'ENOENT') return [artifactPath, ''];
+        throw error;
+      }
+    })
+  ));
+}
+
+async function listTrackedManagedArtifactPaths(projectRoot) {
+  const { stdout } = await execFileAsync(
+    'git',
+    ['ls-files', '--', ...P3_MANAGED_ARTIFACT_PATHS],
+    { cwd: projectRoot, encoding: 'utf8' }
+  );
+  const tracked = new Set(stdout.split(/\r?\n/u).filter(Boolean));
+  return P3_MANAGED_ARTIFACT_PATHS.filter((artifactPath) =>
+    tracked.has(artifactPath));
+}
+
+async function findManualConstructionImports(projectRoot) {
+  const sourceRoot = path.join(projectRoot, 'src/playbook/manual');
+  const sourcePaths = await listJavaScriptFiles(sourceRoot);
+  const matches = [];
+  const importPatterns = [
+    /\b(?:from|import)\s*['"]([^'"]+)['"]/gmu,
+    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/gmu
+  ];
+  for (const sourcePath of sourcePaths) {
+    const source = await fs.readFile(sourcePath, 'utf8');
+    for (const pattern of importPatterns) {
+      for (const match of source.matchAll(pattern)) {
+        if (/(?:^|\/)construction(?:\/|$)/u.test(match[1])) {
+          matches.push(`${path.relative(projectRoot, sourcePath)}:${match[1]}`);
+        }
+      }
+    }
+  }
+  return matches.sort();
+}
+
+async function listJavaScriptFiles(directoryPath) {
+  const entries = await fs.readdir(directoryPath, { withFileTypes: true });
+  const nestedPaths = await Promise.all(entries.map(async (entry) => {
+    const entryPath = path.join(directoryPath, entry.name);
+    if (entry.isDirectory()) return listJavaScriptFiles(entryPath);
+    return entry.isFile() && entry.name.endsWith('.js') ? [entryPath] : [];
+  }));
+  return nestedPaths.flat().sort();
+}
+
+function parseJsonOrNull(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 function assertCompilerInput(corpus, policy) {
