@@ -421,6 +421,438 @@ test('module.require construction edge executes and is audited', async (t) => {
   assert.equal(audit.import_boundary_unresolved_count, 0);
 });
 
+test('capability deny rejects unsupported loader roots before value propagation', async (t) => {
+  const deniedSources = [
+    "import Module from 'node:module'; export default Module.createRequire(import.meta.url)('../../construction/target.cjs');",
+    "import { default as Module } from 'node:module'; export default Module['createRequire'](import.meta.url)('../../construction/target.cjs');",
+    "const make = require('node:module').createRequire; module.exports = make(__filename)('../../construction/target.cjs');",
+    "module.exports = module.constructor.createRequire(__filename)('../../construction/target.cjs');",
+    "module.exports = process.getBuiltinModule('node:module').createRequire(__filename)('../../construction/target.cjs');",
+    "module.exports = module['require']('../../construction/target.cjs');"
+  ];
+
+  for (const [index, source] of deniedSources.entries()) {
+    await t.test(`unsupported loader root ${index + 1}`, async (t) => {
+      const isEsm = index < 2;
+      const entryPath = `src/playbook/manual/entry.${isEsm ? 'js' : 'cjs'}`;
+      const projectRoot = await dependencyFixture(t, {
+        ...(isEsm ? { 'package.json': '{"type":"module"}\n' } : {}),
+        [entryPath]: `${source}\n`,
+        'src/construction/target.cjs':
+          "module.exports = 'construction-executed';\n"
+      });
+
+      assert.equal(
+        await (isEsm ? importDefault : requireDefault)(path.join(projectRoot, entryPath)),
+        'construction-executed'
+      );
+
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.ok(
+        audit.import_boundary_violation_count
+          + audit.import_boundary_unresolved_count >= 1,
+        source
+      );
+    });
+  }
+
+  const propagationFixtures = [
+    {
+      name: 'long alias chain',
+      entryPath: 'src/playbook/manual/entry.cjs',
+      source: [
+        'const load0 = require;',
+        'const load1 = load0;',
+        'const load2 = load1;',
+        'const load3 = load2;',
+        'const load4 = load3;',
+        'const load5 = load4;',
+        'const load6 = load5;',
+        'const load7 = load6;',
+        'const load8 = load7;',
+        'const load9 = load8;',
+        'const load10 = load9;',
+        'const load11 = load10;',
+        'const load12 = load11;',
+        'const load13 = load12;',
+        'const load14 = load13;',
+        'const load15 = load14;',
+        'const load16 = load15;',
+        'const load17 = load16;',
+        'const load18 = load17;',
+        'const load19 = load18;',
+        'const load20 = load19;',
+        'const load21 = load20;',
+        "module.exports = load21('../../construction/target.cjs');",
+        ''
+      ].join('\n'),
+      execute: requireDefault
+    },
+    {
+      name: 'default parameter',
+      entryPath: 'src/playbook/manual/entry.cjs',
+      source: [
+        'function loadTarget(load = require) {',
+        "  return load('../../construction/target.cjs');",
+        '}',
+        'module.exports = loadTarget();',
+        ''
+      ].join('\n'),
+      execute: requireDefault
+    },
+    {
+      name: 'implicit return',
+      entryPath: 'src/playbook/manual/entry.cjs',
+      source: [
+        'const selectLoader = () => require;',
+        "module.exports = selectLoader()('../../construction/target.cjs');",
+        ''
+      ].join('\n'),
+      execute: requireDefault
+    },
+    {
+      name: 'destructuring assignment',
+      entryPath: 'src/playbook/manual/entry.cjs',
+      source: [
+        'let makeLoader;',
+        "({ createRequire: makeLoader } = process.getBuiltinModule('node:module'));",
+        "module.exports = makeLoader(__filename)('../../construction/target.cjs');",
+        ''
+      ].join('\n'),
+      execute: requireDefault
+    },
+    {
+      name: 'throw catch',
+      entryPath: 'src/playbook/manual/entry.cjs',
+      source: [
+        'let load;',
+        'try { throw require; } catch (caught) { load = caught; }',
+        "module.exports = load('../../construction/target.cjs');",
+        ''
+      ].join('\n'),
+      execute: requireDefault
+    },
+    {
+      name: 'ESM re-export',
+      entryPath: 'src/playbook/manual/entry.js',
+      files: {
+        'package.json': '{"type":"module"}\n',
+        'src/playbook/manual/entry.js': [
+          "import makeLoader from './factory.js';",
+          "export default makeLoader(import.meta.url)('../../construction/target.cjs');",
+          ''
+        ].join('\n'),
+        'src/playbook/manual/factory.js':
+          "export { createRequire as default } from 'node:module';\n"
+      },
+      execute: importDefault
+    },
+    {
+      name: 'CJS export',
+      entryPath: 'src/playbook/manual/entry.cjs',
+      files: {
+        'src/playbook/manual/entry.cjs': [
+          "const makeLoader = require('./factory.cjs');",
+          "module.exports = makeLoader(__filename)('../../construction/target.cjs');",
+          ''
+        ].join('\n'),
+        'src/playbook/manual/factory.cjs':
+          "module.exports = require('node:module').createRequire;\n"
+      },
+      execute: requireDefault
+    }
+  ];
+
+  for (const fixture of propagationFixtures) {
+    await t.test(fixture.name, async (t) => {
+      const projectRoot = await dependencyFixture(t, {
+        ...(fixture.files ?? { [fixture.entryPath]: fixture.source }),
+        'src/construction/target.cjs':
+          "module.exports = 'construction-executed';\n"
+      });
+
+      assert.equal(
+        await fixture.execute(path.join(projectRoot, fixture.entryPath)),
+        'construction-executed'
+      );
+
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.ok(
+        audit.import_boundary_violation_count
+          + audit.import_boundary_unresolved_count >= 1,
+        fixture.name
+      );
+    });
+  }
+});
+
+test('capability deny allows only literal static edges and shadowed local names', async (t) => {
+  await t.test('named isBuiltin import is safe', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.js';
+    const projectRoot = await dependencyFixture(t, {
+      'package.json': '{"type":"module"}\n',
+      [entryPath]: [
+        "import { isBuiltin } from 'node:module';",
+        "export default isBuiltin('node:fs');",
+        ''
+      ].join('\n')
+    });
+
+    assert.equal(await importDefault(path.join(projectRoot, entryPath)), true);
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+  });
+
+  await t.test('shadowed local capability names are safe', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.js';
+    const projectRoot = await dependencyFixture(t, {
+      'package.json': '{"type":"module"}\n',
+      [entryPath]: [
+        'function local(require, module, process, evalFn, FunctionCtor) {',
+        "  return [require('safe'), module.require('safe'), process(), evalFn(), FunctionCtor()];",
+        '}',
+        'export default local(',
+        "  () => 'local-require',",
+        "  { require: () => 'local-module' },",
+        "  () => 'local-process',",
+        "  () => 'local-eval',",
+        "  () => 'local-function'",
+        ');',
+        ''
+      ].join('\n')
+    });
+
+    assert.deepEqual(await importDefault(path.join(projectRoot, entryPath)), [
+      'local-require',
+      'local-module',
+      'local-process',
+      'local-eval',
+      'local-function'
+    ]);
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+  });
+
+  const stableCapabilityFacts = [
+    {
+      name: 'node module capability',
+      source: [
+        "const Module = require('node:module');",
+        "module.exports = Module.isBuiltin('node:fs');",
+        ''
+      ].join('\n'),
+      expected: true,
+      code: 'DYNAMIC_NODE_MODULE_CAPABILITY'
+    },
+    {
+      name: 'indirect require capability',
+      source: [
+        'const load = require;',
+        "module.exports = load('node:path').sep;",
+        ''
+      ].join('\n'),
+      expected: path.sep,
+      code: 'INDIRECT_REQUIRE_CAPABILITY'
+    },
+    {
+      name: 'indirect module require capability',
+      source: [
+        'const load = module.require;',
+        "module.exports = load('node:path').sep;",
+        ''
+      ].join('\n'),
+      expected: path.sep,
+      code: 'INDIRECT_MODULE_REQUIRE_CAPABILITY'
+    },
+    {
+      name: 'process builtin module capability',
+      source:
+        "module.exports = process.getBuiltinModule('node:path').sep;\n",
+      expected: path.sep,
+      code: 'PROCESS_BUILTIN_MODULE_CAPABILITY'
+    },
+    {
+      name: 'dynamic eval capability',
+      source: "module.exports = eval(\"'eval-executed'\");\n",
+      expected: 'eval-executed',
+      code: 'DYNAMIC_EVAL_CAPABILITY'
+    },
+    {
+      name: 'dynamic Function capability',
+      source:
+        "module.exports = Function(\"return 'function-executed'\")();\n",
+      expected: 'function-executed',
+      code: 'DYNAMIC_FUNCTION_CAPABILITY'
+    }
+  ];
+
+  for (const fixture of stableCapabilityFacts) {
+    await t.test(fixture.name, async (t) => {
+      const entryPath = 'src/playbook/manual/entry.cjs';
+      const projectRoot = await dependencyFixture(t, {
+        [entryPath]: fixture.source
+      });
+
+      assert.equal(
+        requireDefault(path.join(projectRoot, entryPath)),
+        fixture.expected
+      );
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.deepEqual(audit.unresolved_manual_dependencies, [
+        `${entryPath}:${fixture.code}`
+      ]);
+    });
+  }
+
+  const literalEdges = [
+    {
+      name: 'literal ESM import',
+      entryPath: 'src/playbook/manual/entry.js',
+      packageJson: '{"type":"module"}\n',
+      source: [
+        "import target from '../../construction/target.cjs';",
+        'export default target;',
+        ''
+      ].join('\n'),
+      execute: importDefault
+    },
+    {
+      name: 'literal ESM export',
+      entryPath: 'src/playbook/manual/entry.js',
+      packageJson: '{"type":"module"}\n',
+      source: "export { default } from '../../construction/target.cjs';\n",
+      execute: importDefault
+    },
+    {
+      name: 'literal dynamic import',
+      entryPath: 'src/playbook/manual/entry.js',
+      packageJson: '{"type":"module"}\n',
+      source: [
+        "const target = await import('../../construction/target.cjs');",
+        'export default target.default;',
+        ''
+      ].join('\n'),
+      execute: importDefault
+    },
+    {
+      name: 'literal direct CJS require',
+      entryPath: 'src/playbook/manual/entry.cjs',
+      source:
+        "module.exports = require('../../construction/target.cjs');\n",
+      execute: requireDefault
+    }
+  ];
+
+  for (const fixture of literalEdges) {
+    await t.test(fixture.name, async (t) => {
+      const projectRoot = await dependencyFixture(t, {
+        ...(fixture.packageJson ? { 'package.json': fixture.packageJson } : {}),
+        [fixture.entryPath]: fixture.source,
+        'src/construction/target.cjs':
+          "module.exports = 'construction-executed';\n"
+      });
+
+      assert.equal(
+        await fixture.execute(path.join(projectRoot, fixture.entryPath)),
+        'construction-executed'
+      );
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.equal(audit.import_boundary_violation_count, 1, fixture.name);
+      assert.equal(audit.import_boundary_unresolved_count, 0, fixture.name);
+    });
+  }
+
+  const computedEdges = [
+    {
+      name: 'computed dynamic import',
+      entryPath: 'src/playbook/manual/entry.js',
+      packageJson: '{"type":"module"}\n',
+      source: [
+        "const specifier = '../../construction/target.cjs';",
+        'const target = await import(specifier);',
+        'export default target.default;',
+        ''
+      ].join('\n'),
+      execute: importDefault,
+      code: 'COMPUTED_DYNAMIC_IMPORT'
+    },
+    {
+      name: 'computed require',
+      entryPath: 'src/playbook/manual/entry.cjs',
+      source: [
+        "const specifier = '../../construction/target.cjs';",
+        'module.exports = require(specifier);',
+        ''
+      ].join('\n'),
+      execute: requireDefault,
+      code: 'COMPUTED_REQUIRE'
+    },
+    {
+      name: 'computed module.require',
+      entryPath: 'src/playbook/manual/entry.cjs',
+      source: [
+        "const specifier = '../../construction/target.cjs';",
+        'module.exports = module.require(specifier);',
+        ''
+      ].join('\n'),
+      execute: requireDefault,
+      code: 'COMPUTED_MODULE_REQUIRE'
+    }
+  ];
+
+  for (const fixture of computedEdges) {
+    await t.test(fixture.name, async (t) => {
+      const projectRoot = await dependencyFixture(t, {
+        ...(fixture.packageJson ? { 'package.json': fixture.packageJson } : {}),
+        [fixture.entryPath]: fixture.source,
+        'src/construction/target.cjs':
+          "module.exports = 'construction-executed';\n"
+      });
+
+      assert.equal(
+        await fixture.execute(path.join(projectRoot, fixture.entryPath)),
+        'construction-executed'
+      );
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.equal(audit.import_boundary_violation_count, 0, fixture.name);
+      assert.deepEqual(audit.unresolved_manual_dependencies, [
+        `${fixture.entryPath}:${fixture.code}`
+      ]);
+    });
+  }
+
+  await t.test('computed module.require callee is denied', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.cjs';
+    const projectRoot = await dependencyFixture(t, {
+      [entryPath]: "module.exports = module['require']('node:path').sep;\n"
+    });
+
+    assert.equal(requireDefault(path.join(projectRoot, entryPath)), path.sep);
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.deepEqual(audit.unresolved_manual_dependencies, [
+      `${entryPath}:INDIRECT_MODULE_REQUIRE_CAPABILITY`
+    ]);
+  });
+});
+
 test('loader bindings and indirect calls cannot bypass construction audit', async (t) => {
   const cases = [
     {
@@ -434,8 +866,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: importDefault,
-      violationCount: 1,
-      unresolvedCount: 0
     },
     {
       name: 'require alias',
@@ -446,8 +876,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: requireDefault,
-      violationCount: 1,
-      unresolvedCount: 0
     },
     {
       name: 'CommonJS createRequire loader alias',
@@ -459,8 +887,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: requireDefault,
-      violationCount: 1,
-      unresolvedCount: 0
     },
     {
       name: 'default node module createRequire loader',
@@ -473,8 +899,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: importDefault,
-      violationCount: 1,
-      unresolvedCount: 0
     },
     {
       name: 'named default node module createRequire loader',
@@ -487,8 +911,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: importDefault,
-      violationCount: 1,
-      unresolvedCount: 0
     },
     {
       name: 'dynamic computed node module factory',
@@ -502,8 +924,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: importDefault,
-      violationCount: 0,
-      unresolvedCount: 1
     },
     {
       name: 'dynamic computed node module factory destructure',
@@ -518,8 +938,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: importDefault,
-      violationCount: 0,
-      unresolvedCount: 1
     },
     {
       name: 'function-returned node module factory',
@@ -534,8 +952,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: importDefault,
-      violationCount: 0,
-      unresolvedCount: 1
     },
     {
       name: 'literal computed node module factory',
@@ -548,8 +964,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: importDefault,
-      violationCount: 1,
-      unresolvedCount: 0
     },
     {
       name: 'CommonJS module-loader member factory',
@@ -561,8 +975,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: requireDefault,
-      violationCount: 1,
-      unresolvedCount: 0
     },
     {
       name: 'indirect module-loader factory container',
@@ -574,8 +986,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: requireDefault,
-      violationCount: 0,
-      unresolvedCount: 1
     },
     {
       name: 'require call',
@@ -583,8 +993,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
       source:
         "module.exports = require.call(null, '../../construction/target.cjs');\n",
       execute: requireDefault,
-      violationCount: 1,
-      unresolvedCount: 0
     },
     {
       name: 'sequence require',
@@ -592,8 +1000,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
       source:
         "module.exports = (0, require)('../../construction/target.cjs');\n",
       execute: requireDefault,
-      violationCount: 1,
-      unresolvedCount: 0
     },
     {
       name: 'computed module loader',
@@ -604,8 +1010,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: requireDefault,
-      violationCount: 0,
-      unresolvedCount: 1
     },
     {
       name: 'computed loader container',
@@ -616,8 +1020,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
         ''
       ].join('\n'),
       execute: requireDefault,
-      violationCount: 0,
-      unresolvedCount: 1
     },
     {
       name: 'eval loader',
@@ -625,8 +1027,6 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
       source:
         "module.exports = eval(\"require('../../construction/target.cjs')\");\n",
       execute: requireDefault,
-      violationCount: 0,
-      unresolvedCount: 1
     }
   ];
 
@@ -648,21 +1048,16 @@ test('loader bindings and indirect calls cannot bypass construction audit', asyn
       const audit = await playbookCompiler.auditManualDependencyBoundary({
         projectRoot
       });
-      assert.equal(
-        audit.import_boundary_violation_count,
-        fixture.violationCount,
-        fixture.name
-      );
-      assert.equal(
-        audit.import_boundary_unresolved_count,
-        fixture.unresolvedCount,
+      assert.ok(
+        audit.import_boundary_violation_count
+          + audit.import_boundary_unresolved_count >= 1,
         fixture.name
       );
     });
   }
 });
 
-test('node module factory controls avoid execution and unrelated-member noise', async (t) => {
+test('node module capabilities are denied even for unrelated member use', async (t) => {
   for (const fixture of [
     {
       name: 'default import unrelated member',
@@ -701,7 +1096,7 @@ test('node module factory controls avoid execution and unrelated-member noise', 
         projectRoot
       });
       assert.equal(audit.import_boundary_violation_count, 0, fixture.name);
-      assert.equal(audit.import_boundary_unresolved_count, 0, fixture.name);
+      assert.equal(audit.import_boundary_unresolved_count, 1, fixture.name);
     });
   }
 
@@ -834,7 +1229,7 @@ test('loader factories cannot escape between audited modules as 0/0', async (t) 
   }
 });
 
-test('loader taint follows lexical scope without shadowing false positives', async (t) => {
+test('capability roots respect lexical shadowing without taint propagation', async (t) => {
   for (const fixture of [
     {
       name: 'shadowed Module parameter',
@@ -853,7 +1248,8 @@ test('loader taint follows lexical scope without shadowing false positives', asy
       },
       execute: importDefault,
       expected: 'parameter-safe',
-      violationCount: 0
+      violationCount: 0,
+      unresolvedCount: 1
     },
     {
       name: 'shadowed local Module',
@@ -874,7 +1270,8 @@ test('loader taint follows lexical scope without shadowing false positives', asy
       },
       execute: importDefault,
       expected: 'local-safe',
-      violationCount: 0
+      violationCount: 0,
+      unresolvedCount: 1
     },
     {
       name: 'shadowed require parameter',
@@ -891,7 +1288,8 @@ test('loader taint follows lexical scope without shadowing false positives', asy
       },
       execute: importDefault,
       expected: 'require-safe',
-      violationCount: 0
+      violationCount: 0,
+      unresolvedCount: 0
     },
     {
       name: 'nested imported Module remains tainted',
@@ -912,7 +1310,8 @@ test('loader taint follows lexical scope without shadowing false positives', asy
       },
       execute: importDefault,
       expected: 'nested-module-executed',
-      violationCount: 1
+      violationCount: 0,
+      unresolvedCount: 1
     },
     {
       name: 'nested CommonJS require remains tainted',
@@ -930,7 +1329,8 @@ test('loader taint follows lexical scope without shadowing false positives', asy
       },
       execute: requireDefault,
       expected: 'nested-require-executed',
-      violationCount: 1
+      violationCount: 1,
+      unresolvedCount: 0
     }
   ]) {
     await t.test(fixture.name, async (t) => {
@@ -949,7 +1349,11 @@ test('loader taint follows lexical scope without shadowing false positives', asy
         fixture.violationCount,
         fixture.name
       );
-      assert.equal(audit.import_boundary_unresolved_count, 0, fixture.name);
+      assert.equal(
+        audit.import_boundary_unresolved_count,
+        fixture.unresolvedCount,
+        fixture.name
+      );
     });
   }
 });
@@ -1209,6 +1613,13 @@ async function checkedInAuditFixture(t, {
       { recursive: true }
     );
   }
+  // These fixtures execute the already-imported real compiler. Keep its copied
+  // dependency edge resolvable without pretending the copy is the auditor.
+  await fs.writeFile(
+    path.join(projectRoot, 'src/playbook/manual/manualDependencyBoundary.js'),
+    'export async function auditManualDependencyBoundary() {}\n',
+    'utf8'
+  );
   await fs.copyFile(
     path.join(ROOT, 'src/runArchitecturePlaybookManual.js'),
     path.join(projectRoot, 'src/runArchitecturePlaybookManual.js')

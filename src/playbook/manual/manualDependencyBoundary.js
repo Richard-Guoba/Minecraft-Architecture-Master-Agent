@@ -7,6 +7,8 @@ import { resolve as resolveEsmSpecifier } from 'import-meta-resolve';
 
 const MODULE_EXTENSIONS = Object.freeze(['.js', '.mjs', '.cjs']);
 const MODULE_EXTENSION_SET = new Set(MODULE_EXTENSIONS);
+const STATIC_EDGE_MODES = Object.freeze({ ESM: 'esm', CJS: 'cjs' });
+const AUDIT_IMPLEMENTATION_PATH = await fs.realpath(fileURLToPath(import.meta.url));
 
 export async function auditManualDependencyBoundary({ projectRoot }) {
   const root = path.resolve(projectRoot);
@@ -62,7 +64,12 @@ export async function auditManualDependencyBoundary({ projectRoot }) {
       unresolved.add(`${safeRelative(root, logicalPath)}:MODULE_READ_FAILED`);
       continue;
     }
-    const scanned = scanModuleDependencies(source, path.extname(realPath));
+    const scanned = scanModuleDependencies({
+      source,
+      extension: path.extname(realPath),
+      modulePath: realPath,
+      auditImplementationPath: AUDIT_IMPLEMENTATION_PATH
+    });
     for (const code of scanned.unresolvedCodes) {
       unresolved.add(`${safeRelative(root, logicalPath)}:${code}`);
     }
@@ -98,7 +105,10 @@ export async function auditManualDependencyBoundary({ projectRoot }) {
         );
         continue;
       }
-      if (MODULE_EXTENSION_SET.has(path.extname(resolvedReal))) {
+      if (
+        !isWithin(resolvedReal, path.join(root, 'node_modules'))
+        && MODULE_EXTENSION_SET.has(path.extname(resolvedReal))
+      ) {
         queuedModules.push(resolvedReal);
       }
     }
@@ -182,106 +192,391 @@ async function listManualEntries({
   return modules;
 }
 
-function scanModuleDependencies(source, extension) {
-  let program;
-  try {
-    program = parse(source, {
-      ecmaVersion: 'latest',
-      sourceType: extension === '.cjs' ? 'script' : 'module'
-    });
-  } catch {
+function scanModuleDependencies({
+  source,
+  extension,
+  modulePath,
+  auditImplementationPath
+}) {
+  const program = parseModule(source, extension);
+  if (!program) {
     return {
       dependencies: [],
       unresolvedCodes: ['SOURCE_PARSE_FAILED']
     };
   }
 
+  const lexical = buildLexicalBindings(program);
   const dependencies = [];
   const unresolvedCodes = new Set();
-  const nodes = collectAstNodes(program);
-  const analysis = buildLexicalAnalysis(program);
-  propagateBindingTaint(nodes, analysis);
-  for (const node of nodes) {
-    if (
-      node.type === 'ImportDeclaration'
-      || node.type === 'ExportNamedDeclaration'
-      || node.type === 'ExportAllDeclaration'
-    ) {
-      addLiteralDependency(dependencies, node.source, 'esm');
-    }
-    if (node.type === 'ImportExpression') {
-      if (!addLiteralDependency(dependencies, node.source, 'esm')) {
-        unresolvedCodes.add('COMPUTED_DYNAMIC_IMPORT');
-      }
-    }
-    if (node.type === 'CallExpression') {
-      evaluateTaint(node, analysis, {
-        dependencies,
-        unresolvedCodes
-      });
-    }
-    if (node.type === 'ReturnStatement') {
-      recordEscapedTaint(
-        evaluateTaint(node.argument, analysis),
-        unresolvedCodes,
-        'RETURN'
-      );
-    }
-    if (node.type === 'ExportNamedDeclaration') {
-      recordExportEscape(node, analysis, unresolvedCodes);
-    }
-    if (node.type === 'ExportDefaultDeclaration') {
-      recordEscapedTaint(
-        evaluateTaint(node.declaration, analysis),
-        unresolvedCodes,
-        'EXPORT'
-      );
-    }
-    if (node.type === 'AssignmentExpression') {
-      recordAssignmentEscape(node, analysis, unresolvedCodes);
-    }
-    if (
-      node.type === 'VariableDeclarator'
-      && hasUnmodeledModuleDestructure(node, analysis)
-    ) {
-      unresolvedCodes.add('INDIRECT_LOADER_FACTORY_DESTRUCTURE');
-    }
-    if (
-      (node.type === 'ObjectExpression' || node.type === 'ArrayExpression')
-      && evaluateTaint(node, analysis) !== TAINT_NONE
-    ) {
-      recordOpaqueTaint(evaluateTaint(node, analysis), unresolvedCodes);
-    }
-  }
+  const trustedAuditImport = program.body.some((node) =>
+    isTrustedAuditModuleImport(node, modulePath, auditImplementationPath));
+
+  walkProgram(program, (node, parent, parentMap) => {
+    collectStaticDependency({
+      node,
+      extension,
+      lexical,
+      dependencies,
+      unresolvedCodes
+    });
+    collectDeniedCapability({
+      node,
+      parent,
+      parentMap,
+      lexical,
+      extension,
+      modulePath,
+      auditImplementationPath,
+      trustedAuditImport,
+      unresolvedCodes
+    });
+  });
 
   return {
     dependencies: uniqueDependencies(dependencies),
-    unresolvedCodes: [...unresolvedCodes]
+    unresolvedCodes: [...unresolvedCodes].sort()
   };
 }
 
-const TAINT_NONE = 0;
-const TAINT_MODULE_NAMESPACE = 1 << 0;
-const TAINT_LOADER_FACTORY = 1 << 1;
-const TAINT_LOADER = 1 << 2;
-const TAINT_OPAQUE_FACTORY = 1 << 3;
-const TAINT_OPAQUE_LOADER = 1 << 4;
-const TAINT_OPAQUE_MODULE_LOADER = 1 << 5;
-const TAINT_OPAQUE_FACTORY_LOADER = 1 << 6;
-const FACTORY_TAINT = TAINT_LOADER_FACTORY | TAINT_OPAQUE_FACTORY;
-const LOADER_TAINT = TAINT_LOADER
-  | TAINT_OPAQUE_LOADER
-  | TAINT_OPAQUE_MODULE_LOADER
-  | TAINT_OPAQUE_FACTORY_LOADER;
+function parseModule(source, extension) {
+  try {
+    return parse(source, {
+      ecmaVersion: 'latest',
+      sourceType: extension === '.cjs' ? 'script' : 'module'
+    });
+  } catch {
+    return null;
+  }
+}
 
-function buildLexicalAnalysis(program) {
+function walkProgram(program, visitor) {
+  const parentMap = new WeakMap();
+  const pending = [{ node: program, parent: null }];
+  while (pending.length > 0) {
+    const { node, parent } = pending.pop();
+    if (!node || typeof node !== 'object') continue;
+    if (parent) parentMap.set(node, parent);
+    visitor(node, parent, parentMap);
+    const children = [];
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (child && typeof child.type === 'string') children.push(child);
+        }
+      } else if (value && typeof value.type === 'string') {
+        children.push(value);
+      }
+    }
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      pending.push({ node: children[index], parent: node });
+    }
+  }
+}
+
+function collectStaticDependency({
+  node,
+  extension,
+  lexical,
+  dependencies,
+  unresolvedCodes
+}) {
+  if (
+    node.type === 'ImportDeclaration'
+    || node.type === 'ExportNamedDeclaration'
+    || node.type === 'ExportAllDeclaration'
+  ) {
+    addStaticDependency(dependencies, node.source, STATIC_EDGE_MODES.ESM);
+    return;
+  }
+  if (node.type === 'ImportExpression') {
+    if (!addStaticDependency(dependencies, node.source, STATIC_EDGE_MODES.ESM)) {
+      unresolvedCodes.add('COMPUTED_DYNAMIC_IMPORT');
+    }
+    return;
+  }
+  if (isDirectGlobalRequireCall(node, lexical)) {
+    if (
+      node.arguments.length !== 1
+      || !addStaticDependency(
+        dependencies,
+        node.arguments[0],
+        STATIC_EDGE_MODES.CJS
+      )
+    ) {
+      unresolvedCodes.add('COMPUTED_REQUIRE');
+    }
+    return;
+  }
+  if (
+    extension === '.cjs'
+    && isDirectGlobalModuleRequireCall(node, lexical)
+  ) {
+    if (
+      node.arguments.length !== 1
+      || !addStaticDependency(
+        dependencies,
+        node.arguments[0],
+        STATIC_EDGE_MODES.CJS
+      )
+    ) {
+      unresolvedCodes.add('COMPUTED_MODULE_REQUIRE');
+    }
+  }
+}
+
+function collectDeniedCapability({
+  node,
+  parent,
+  parentMap,
+  lexical,
+  extension,
+  modulePath,
+  auditImplementationPath,
+  trustedAuditImport,
+  unresolvedCodes
+}) {
+  if (
+    isModuleSourceNode(node)
+    && isNodeModuleSpecifier(literalSpecifier(node.source))
+    && !isSafeNodeModuleImport(node)
+    && !isTrustedAuditModuleImport(
+      node,
+      modulePath,
+      auditImplementationPath
+    )
+  ) {
+    unresolvedCodes.add('DYNAMIC_NODE_MODULE_CAPABILITY');
+  }
+
+  if (
+    (isDirectGlobalRequireCall(node, lexical)
+      || isDirectGlobalModuleRequireCall(node, lexical))
+    && isNodeModuleSpecifier(literalSpecifier(node.arguments[0]))
+  ) {
+    unresolvedCodes.add('DYNAMIC_NODE_MODULE_CAPABILITY');
+  }
+
+  if (
+    node.type === 'MemberExpression'
+    && lexical.isUnboundGlobal(node.object, 'process')
+    && memberPropertyName(node) === 'getBuiltinModule'
+  ) {
+    unresolvedCodes.add('PROCESS_BUILTIN_MODULE_CAPABILITY');
+  }
+
+  if (
+    node.type === 'MemberExpression'
+    && lexical.isUnboundGlobal(node.object, 'module')
+    && memberPropertyName(node) === 'constructor'
+  ) {
+    unresolvedCodes.add('INDIRECT_MODULE_REQUIRE_CAPABILITY');
+  }
+
+  if (
+    node.type === 'MemberExpression'
+    && lexical.isUnboundGlobal(node.object, 'module')
+    && node.computed
+    && memberPropertyName(node) === null
+  ) {
+    unresolvedCodes.add('INDIRECT_MODULE_REQUIRE_CAPABILITY');
+  }
+
+  if (
+    node.type === 'MemberExpression'
+    && lexical.isUnboundGlobal(node.object, 'module')
+    && memberPropertyName(node) === 'require'
+    && !(
+      extension === '.cjs'
+      && !node.computed
+      && parent?.type === 'CallExpression'
+      && parent.callee === node
+    )
+  ) {
+    unresolvedCodes.add('INDIRECT_MODULE_REQUIRE_CAPABILITY');
+  }
+
+  if (
+    lexical.isUnboundGlobal(node, 'require')
+    && isIdentifierReference(node, parent)
+    && !(parent?.type === 'CallExpression' && parent.callee === node)
+  ) {
+    unresolvedCodes.add('INDIRECT_REQUIRE_CAPABILITY');
+  }
+
+  if (
+    lexical.isUnboundGlobal(node, 'eval')
+    && isIdentifierReference(node, parent)
+  ) {
+    unresolvedCodes.add('DYNAMIC_EVAL_CAPABILITY');
+  }
+
+  if (
+    lexical.isUnboundGlobal(node, 'Function')
+    && isIdentifierReference(node, parent)
+  ) {
+    unresolvedCodes.add('DYNAMIC_FUNCTION_CAPABILITY');
+  }
+
+  if (
+    trustedAuditImport
+    && node.type === 'Identifier'
+    && node.name === 'createRequire'
+    && !isTrustedAuditImportIdentifier(node, parent, parentMap)
+    && !isTrustedAuditCreateRequireCall(
+      parent,
+      parentMap,
+      modulePath,
+      auditImplementationPath
+    )
+  ) {
+    unresolvedCodes.add('DYNAMIC_NODE_MODULE_CAPABILITY');
+  }
+}
+
+function isModuleSourceNode(node) {
+  return node.type === 'ImportDeclaration'
+    || node.type === 'ExportNamedDeclaration'
+    || node.type === 'ExportAllDeclaration';
+}
+
+function isSafeNodeModuleImport(node) {
+  return node.type === 'ImportDeclaration'
+    && node.specifiers.length === 1
+    && node.specifiers[0].type === 'ImportSpecifier'
+    && importedName(node.specifiers[0]) === 'isBuiltin';
+}
+
+function isTrustedAuditModuleImport(
+  node,
+  modulePath,
+  auditImplementationPath
+) {
+  if (
+    modulePath !== auditImplementationPath
+    || node.type !== 'ImportDeclaration'
+    || node.source?.value !== 'node:module'
+    || node.specifiers.length !== 2
+  ) return false;
+  const names = node.specifiers.map((specifier) =>
+    specifier.type === 'ImportSpecifier'
+      && importedName(specifier) === specifier.local?.name
+      ? importedName(specifier)
+      : null);
+  return names.includes('createRequire') && names.includes('isBuiltin');
+}
+
+function isTrustedAuditImportIdentifier(node, parent, parentMap) {
+  return parent?.type === 'ImportSpecifier'
+    && parentMap.get(parent)?.type === 'ImportDeclaration'
+    && parentMap.get(parent).source?.value === 'node:module';
+}
+
+function isTrustedAuditCreateRequireCall(
+  call,
+  parentMap,
+  modulePath,
+  auditImplementationPath
+) {
+  if (
+    modulePath !== auditImplementationPath
+    || call?.type !== 'CallExpression'
+    || call.callee?.type !== 'Identifier'
+    || call.callee.name !== 'createRequire'
+    || call.arguments.length !== 1
+  ) return false;
+  const urlCall = call.arguments[0];
+  if (
+    urlCall?.type !== 'CallExpression'
+    || urlCall.callee?.type !== 'Identifier'
+    || urlCall.callee.name !== 'pathToFileURL'
+    || urlCall.arguments.length !== 1
+    || urlCall.arguments[0]?.type !== 'Identifier'
+    || urlCall.arguments[0].name !== 'importerPath'
+  ) return false;
+  const resolveMember = parentMap.get(call);
+  const resolveCall = parentMap.get(resolveMember);
+  return resolveMember?.type === 'MemberExpression'
+    && resolveMember.object === call
+    && !resolveMember.computed
+    && resolveMember.property?.type === 'Identifier'
+    && resolveMember.property.name === 'resolve'
+    && resolveCall?.type === 'CallExpression'
+    && resolveCall.callee === resolveMember
+    && resolveCall.arguments.length === 1
+    && resolveCall.arguments[0]?.type === 'MemberExpression'
+    && !resolveCall.arguments[0].computed
+    && resolveCall.arguments[0].object?.type === 'Identifier'
+    && resolveCall.arguments[0].object.name === 'dependency'
+    && resolveCall.arguments[0].property?.type === 'Identifier'
+    && resolveCall.arguments[0].property.name === 'specifier';
+}
+
+function literalSpecifier(node) {
+  return node?.type === 'Literal' && typeof node.value === 'string'
+    ? node.value
+    : null;
+}
+
+function addStaticDependency(dependencies, node, mode) {
+  const specifier = literalSpecifier(node);
+  if (specifier === null) return false;
+  dependencies.push({ specifier, mode });
+  return true;
+}
+
+function isDirectGlobalRequireCall(node, lexical) {
+  return node?.type === 'CallExpression'
+    && node.callee?.type === 'Identifier'
+    && node.callee.name === 'require'
+    && lexical.isUnboundGlobal(node.callee, 'require');
+}
+
+function isDirectGlobalModuleRequireCall(node, lexical) {
+  return node?.type === 'CallExpression'
+    && node.callee?.type === 'MemberExpression'
+    && !node.callee.computed
+    && lexical.isUnboundGlobal(node.callee.object, 'module')
+    && memberPropertyName(node.callee) === 'require';
+}
+
+function isNodeModuleSpecifier(specifier) {
+  return specifier === 'module' || specifier === 'node:module';
+}
+
+function isIdentifierReference(node, parent) {
+  if (node?.type !== 'Identifier' || !parent) return false;
+  if (
+    parent.type === 'MemberExpression'
+    && parent.property === node
+    && !parent.computed
+  ) return false;
+  if (
+    (parent.type === 'Property' || parent.type === 'MethodDefinition')
+    && parent.key === node
+    && !parent.computed
+    && !parent.shorthand
+  ) return false;
+  if (
+    parent.type === 'LabeledStatement'
+    || parent.type === 'BreakStatement'
+    || parent.type === 'ContinueStatement'
+  ) return false;
+  if (
+    (parent.type === 'VariableDeclarator' && parent.id === node)
+    || ((parent.type === 'FunctionDeclaration'
+      || parent.type === 'FunctionExpression'
+      || parent.type === 'ClassDeclaration'
+      || parent.type === 'ClassExpression') && parent.id === node)
+  ) return false;
+  return true;
+}
+
+function buildLexicalBindings(program) {
   const nodeScopes = new WeakMap();
-  const scopes = [];
 
   function createScope(parent, kind) {
-    const scope = { parent, kind, bindings: new Map() };
-    scopes.push(scope);
-    return scope;
+    return { parent, kind, bindings: new Set() };
   }
 
   const rootScope = createScope(null, 'program');
@@ -294,45 +589,35 @@ function buildLexicalAnalysis(program) {
     return candidate;
   }
 
-  function declareIdentifier(identifier, scope, initialTaint = TAINT_NONE) {
-    if (identifier?.type !== 'Identifier') return;
-    const existing = scope.bindings.get(identifier.name);
-    if (existing) {
-      existing.taint |= initialTaint;
-      return;
+  function declareIdentifier(identifier, scope) {
+    if (identifier?.type === 'Identifier') {
+      scope.bindings.add(identifier.name);
     }
-    scope.bindings.set(identifier.name, {
-      name: identifier.name,
-      taint: initialTaint
-    });
   }
 
-  function declarePattern(pattern, scope, initialTaint = TAINT_NONE) {
+  function declarePattern(pattern, scope) {
     if (!pattern) return;
     if (pattern.type === 'Identifier') {
-      declareIdentifier(pattern, scope, initialTaint);
+      declareIdentifier(pattern, scope);
       return;
     }
     if (pattern.type === 'RestElement') {
-      declarePattern(pattern.argument, scope, initialTaint);
+      declarePattern(pattern.argument, scope);
       return;
     }
     if (pattern.type === 'AssignmentPattern') {
-      declarePattern(pattern.left, scope, initialTaint);
+      declarePattern(pattern.left, scope);
       return;
     }
     if (pattern.type === 'ArrayPattern') {
-      for (const element of pattern.elements) {
-        declarePattern(element, scope, initialTaint);
-      }
+      for (const element of pattern.elements) declarePattern(element, scope);
       return;
     }
     if (pattern.type === 'ObjectPattern') {
       for (const property of pattern.properties) {
         declarePattern(
           property.type === 'RestElement' ? property.argument : property.value,
-          scope,
-          initialTaint
+          scope
         );
       }
     }
@@ -360,24 +645,8 @@ function buildLexicalAnalysis(program) {
       return;
     }
     if (node.type === 'ImportDeclaration') {
-      const isNodeModule = ['module', 'node:module'].includes(node.source?.value);
       for (const specifier of node.specifiers) {
-        let initialTaint = TAINT_NONE;
-        if (isNodeModule && (
-          specifier.type === 'ImportDefaultSpecifier'
-          || specifier.type === 'ImportNamespaceSpecifier'
-          || (specifier.type === 'ImportSpecifier'
-            && importedName(specifier) === 'default')
-        )) {
-          initialTaint = TAINT_MODULE_NAMESPACE;
-        } else if (
-          isNodeModule
-          && specifier.type === 'ImportSpecifier'
-          && importedName(specifier) === 'createRequire'
-        ) {
-          initialTaint = TAINT_LOADER_FACTORY;
-        }
-        declareIdentifier(specifier.local, scope, initialTaint);
+        declareIdentifier(specifier.local, scope);
         visit(specifier, scope);
       }
       visit(node.source, scope);
@@ -446,11 +715,32 @@ function buildLexicalAnalysis(program) {
     if (node.type === 'ClassDeclaration') {
       declareIdentifier(node.id, scope);
     }
+    if (node.type === 'ClassExpression' && node.id) {
+      const classScope = createScope(scope, 'block');
+      declareIdentifier(node.id, classScope);
+      visitChildren(node, classScope, new Set(['id']));
+      return;
+    }
     visitChildren(node, scope);
   }
 
+  function resolveBinding(node, name) {
+    let scope = nodeScopes.get(node) ?? rootScope;
+    while (scope) {
+      if (scope.bindings.has(name)) return true;
+      scope = scope.parent;
+    }
+    return false;
+  }
+
   visit(program, rootScope);
-  return { rootScope, nodeScopes, scopes };
+  return {
+    isUnboundGlobal(node, name) {
+      return node?.type === 'Identifier'
+        && node.name === name
+        && !resolveBinding(node, name);
+    }
+  };
 }
 
 function importedName(specifier) {
@@ -459,437 +749,12 @@ function importedName(specifier) {
   return null;
 }
 
-function resolveBinding(analysis, node, name) {
-  let scope = analysis.nodeScopes.get(node) ?? analysis.rootScope;
-  while (scope) {
-    const binding = scope.bindings.get(name);
-    if (binding) return binding;
-    scope = scope.parent;
-  }
-  return null;
-}
-
-function isUnboundIdentifier(node, analysis, name) {
-  return node?.type === 'Identifier'
-    && node.name === name
-    && !resolveBinding(analysis, node, name);
-}
-
-function propagateBindingTaint(nodes, analysis) {
-  let changed = true;
-  let passes = 0;
-  const maximumPasses = Math.max(1, analysis.scopes.length * 8);
-  while (changed && passes < maximumPasses) {
-    changed = false;
-    passes += 1;
-    for (const node of nodes) {
-      if (node.type === 'VariableDeclarator') {
-        const valueTaint = evaluateTaint(node.init, analysis);
-        changed = propagatePatternTaint(
-          node.id,
-          valueTaint,
-          node.init,
-          analysis
-        ) || changed;
-      } else if (
-        node.type === 'AssignmentExpression'
-        && node.operator === '='
-        && node.left?.type === 'Identifier'
-      ) {
-        const binding = resolveBinding(analysis, node.left, node.left.name);
-        if (binding) {
-          const next = binding.taint | evaluateTaint(node.right, analysis);
-          if (next !== binding.taint) {
-            binding.taint = next;
-            changed = true;
-          }
-        }
-      }
-    }
-  }
-}
-
-function propagatePatternTaint(pattern, taint, source, analysis) {
-  if (!pattern || taint === TAINT_NONE) return false;
-  if (pattern.type === 'Identifier') {
-    const binding = resolveBinding(analysis, pattern, pattern.name);
-    if (!binding) return false;
-    const next = binding.taint | taint;
-    if (next === binding.taint) return false;
-    binding.taint = next;
-    return true;
-  }
-  if (pattern.type === 'AssignmentPattern') {
-    return propagatePatternTaint(pattern.left, taint, source, analysis);
-  }
-  if (pattern.type === 'RestElement') {
-    return propagatePatternTaint(pattern.argument, opaqueTaint(taint), source, analysis);
-  }
-  if (
-    pattern.type === 'ObjectPattern'
-    && (taint & TAINT_MODULE_NAMESPACE) !== 0
-  ) {
-    let changed = false;
-    for (const property of pattern.properties) {
-      if (
-        property.type === 'Property'
-        && propertyKeyName(property) === 'createRequire'
-      ) {
-        changed = propagatePatternTaint(
-          property.value,
-          TAINT_LOADER_FACTORY,
-          source,
-          analysis
-        ) || changed;
-      }
-    }
-    return changed;
-  }
-  let changed = false;
-  for (const identifier of patternIdentifiers(pattern)) {
-    changed = propagatePatternTaint(
-      identifier,
-      opaqueTaint(taint),
-      source,
-      analysis
-    ) || changed;
-  }
-  return changed;
-}
-
-function patternIdentifiers(pattern) {
-  if (!pattern) return [];
-  if (pattern.type === 'Identifier') return [pattern];
-  if (pattern.type === 'RestElement') return patternIdentifiers(pattern.argument);
-  if (pattern.type === 'AssignmentPattern') return patternIdentifiers(pattern.left);
-  if (pattern.type === 'ArrayPattern') {
-    return pattern.elements.flatMap(patternIdentifiers);
-  }
-  if (pattern.type === 'ObjectPattern') {
-    return pattern.properties.flatMap((property) => patternIdentifiers(
-      property.type === 'RestElement' ? property.argument : property.value
-    ));
-  }
-  return [];
-}
-
-function evaluateTaint(node, analysis, collector = null) {
-  if (!node || typeof node !== 'object') return TAINT_NONE;
-  if (node.type === 'Identifier') {
-    const binding = resolveBinding(analysis, node, node.name);
-    if (binding) return binding.taint;
-    return node.name === 'require' ? TAINT_LOADER : TAINT_NONE;
-  }
-  if (node.type === 'ChainExpression') {
-    return evaluateTaint(node.expression, analysis, collector);
-  }
-  if (node.type === 'SequenceExpression') {
-    return evaluateTaint(node.expressions.at(-1), analysis, collector);
-  }
-  if (node.type === 'ConditionalExpression' || node.type === 'LogicalExpression') {
-    return evaluateTaint(node.consequent ?? node.left, analysis, collector)
-      | evaluateTaint(node.alternate ?? node.right, analysis, collector);
-  }
-  if (node.type === 'AssignmentExpression') {
-    return evaluateTaint(node.right, analysis, collector);
-  }
-  if (node.type === 'AwaitExpression' || node.type === 'YieldExpression') {
-    return evaluateTaint(node.argument, analysis, collector);
-  }
-  if (node.type === 'MemberExpression') {
-    if (
-      isUnboundIdentifier(node.object, analysis, 'module')
-      && memberPropertyName(node) === 'require'
-    ) {
-      return TAINT_LOADER;
-    }
-    if (
-      isUnboundIdentifier(node.object, analysis, 'module')
-      && node.computed
-      && memberPropertyName(node) === null
-    ) {
-      collector?.unresolvedCodes.add('INDIRECT_MODULE_LOADER');
-      return TAINT_OPAQUE_MODULE_LOADER;
-    }
-    const objectTaint = evaluateTaint(node.object, analysis, collector);
-    const propertyName = memberPropertyName(node);
-    if ((objectTaint & TAINT_MODULE_NAMESPACE) !== 0) {
-      if (propertyName === 'createRequire') return TAINT_LOADER_FACTORY;
-      if (node.computed && propertyName === null) {
-        collector?.unresolvedCodes.add('INDIRECT_LOADER_FACTORY_CALL');
-        return TAINT_OPAQUE_FACTORY;
-      }
-      return TAINT_NONE;
-    }
-    if ((objectTaint & FACTORY_TAINT) !== 0) return TAINT_OPAQUE_FACTORY;
-    if ((objectTaint & LOADER_TAINT) !== 0) return TAINT_OPAQUE_LOADER;
-    return TAINT_NONE;
-  }
-  if (node.type === 'CallExpression') {
-    return evaluateCallTaint(node, analysis, collector);
-  }
-  if (node.type === 'ObjectExpression') {
-    let contained = TAINT_NONE;
-    for (const property of node.properties) {
-      contained |= evaluateTaint(
-        property.type === 'SpreadElement' ? property.argument : property.value,
-        analysis,
-        collector
-      );
-    }
-    return opaqueTaint(contained);
-  }
-  if (node.type === 'ArrayExpression') {
-    return opaqueTaint(node.elements.reduce(
-      (taint, element) => taint | evaluateTaint(element, analysis, collector),
-      TAINT_NONE
-    ));
-  }
-  return TAINT_NONE;
-}
-
-function evaluateCallTaint(node, analysis, collector) {
-  const callee = node.callee?.type === 'ChainExpression'
-    ? node.callee.expression
-    : node.callee;
-  if (isEvalCallee(callee, analysis)) {
-    collector?.unresolvedCodes.add('INDIRECT_EVAL');
-    return TAINT_NONE;
-  }
-
-  if (callee?.type === 'MemberExpression') {
-    const propertyName = memberPropertyName(callee);
-    const objectTaint = evaluateTaint(callee.object, analysis, collector);
-    if (propertyName === 'resolve' && (objectTaint & TAINT_LOADER) !== 0) {
-      return TAINT_NONE;
-    }
-    if (propertyName === 'bind' && (objectTaint & TAINT_LOADER) !== 0) {
-      return TAINT_LOADER;
-    }
-    if (['call', 'apply'].includes(propertyName) && (objectTaint & TAINT_LOADER) !== 0) {
-      const argument = propertyName === 'call'
-        ? node.arguments[1]
-        : appliedLoaderArgument(node.arguments[1]);
-      if (propertyName === 'apply' && argument === null) {
-        collector?.unresolvedCodes.add('INDIRECT_LOADER_APPLY');
-        return TAINT_NONE;
-      }
-      recordLoaderDependency(argument, collector, 'COMPUTED_REQUIRE');
-      return TAINT_NONE;
-    }
-  }
-
-  const calleeTaint = evaluateTaint(callee, analysis, collector);
-  if ((calleeTaint & TAINT_LOADER_FACTORY) !== 0) return TAINT_LOADER;
-  if ((calleeTaint & TAINT_OPAQUE_FACTORY) !== 0) {
-    collector?.unresolvedCodes.add('INDIRECT_LOADER_FACTORY_CALL');
-    return TAINT_OPAQUE_FACTORY_LOADER;
-  }
-  if ((calleeTaint & TAINT_LOADER) !== 0) {
-    recordLoaderDependency(
-      node.arguments[0],
-      collector,
-      isDirectModuleRequire(callee, analysis)
-        ? 'COMPUTED_MODULE_REQUIRE'
-        : 'COMPUTED_REQUIRE'
-    );
-    if (
-      node.arguments[0]?.type === 'Literal'
-      && ['module', 'node:module'].includes(node.arguments[0].value)
-    ) {
-      return TAINT_MODULE_NAMESPACE;
-    }
-    return TAINT_NONE;
-  }
-  if ((calleeTaint & TAINT_OPAQUE_FACTORY_LOADER) !== 0) {
-    collector?.unresolvedCodes.add('INDIRECT_LOADER_FACTORY_CALL');
-    return TAINT_NONE;
-  }
-  if ((calleeTaint & TAINT_OPAQUE_LOADER) !== 0) {
-    collector?.unresolvedCodes.add('INDIRECT_LOADER_CALL');
-    return TAINT_NONE;
-  }
-  if ((calleeTaint & TAINT_OPAQUE_MODULE_LOADER) !== 0) {
-    collector?.unresolvedCodes.add('INDIRECT_MODULE_LOADER');
-    return TAINT_NONE;
-  }
-
-  const argumentTaint = node.arguments.reduce(
-    (taint, argument) => taint | evaluateTaint(argument, analysis, collector),
-    TAINT_NONE
-  );
-  recordOpaqueTaint(argumentTaint, collector?.unresolvedCodes);
-  return TAINT_NONE;
-}
-
-function appliedLoaderArgument(argument) {
-  return argument?.type === 'ArrayExpression'
-    ? argument.elements[0]
-    : null;
-}
-
-function recordLoaderDependency(argument, collector, computedCode) {
-  if (!collector) return;
-  if (!addLiteralDependency(collector.dependencies, argument, 'cjs')) {
-    collector.unresolvedCodes.add(computedCode);
-  }
-}
-
-function opaqueTaint(taint) {
-  let opaque = TAINT_NONE;
-  if ((taint & (
-    TAINT_MODULE_NAMESPACE
-    | TAINT_LOADER_FACTORY
-    | TAINT_OPAQUE_FACTORY
-  )) !== 0) {
-    opaque |= TAINT_OPAQUE_FACTORY;
-  }
-  if ((taint & LOADER_TAINT) !== 0) {
-    opaque |= TAINT_OPAQUE_LOADER;
-  }
-  return opaque;
-}
-
-function recordOpaqueTaint(taint, unresolvedCodes) {
-  if (!unresolvedCodes) return;
-  if ((taint & FACTORY_TAINT) !== 0) {
-    unresolvedCodes.add('INDIRECT_LOADER_FACTORY_CALL');
-  }
-  if ((taint & LOADER_TAINT) !== 0) {
-    unresolvedCodes.add('INDIRECT_LOADER_CALL');
-  }
-}
-
-function recordEscapedTaint(taint, unresolvedCodes, kind) {
-  if ((taint & (TAINT_MODULE_NAMESPACE | FACTORY_TAINT)) !== 0) {
-    unresolvedCodes.add(`LOADER_FACTORY_${kind}_ESCAPE`);
-  }
-  if ((taint & LOADER_TAINT) !== 0) {
-    unresolvedCodes.add(`LOADER_${kind}_ESCAPE`);
-  }
-}
-
-function recordExportEscape(node, analysis, unresolvedCodes) {
-  if (
-    node.type === 'ExportAllDeclaration'
-    && ['module', 'node:module'].includes(node.source?.value)
-  ) {
-    unresolvedCodes.add('LOADER_FACTORY_EXPORT_ESCAPE');
-  }
-  if (['module', 'node:module'].includes(node.source?.value)) {
-    for (const specifier of node.specifiers ?? []) {
-      if (
-        importedName(specifier) === 'createRequire'
-        || specifier.local?.name === 'createRequire'
-        || specifier.local?.name === 'default'
-      ) {
-        unresolvedCodes.add('LOADER_FACTORY_EXPORT_ESCAPE');
-      }
-    }
-  }
-  for (const specifier of node.specifiers ?? []) {
-    if (!node.source && specifier.local?.type === 'Identifier') {
-      recordEscapedTaint(
-        evaluateTaint(specifier.local, analysis),
-        unresolvedCodes,
-        'EXPORT'
-      );
-    }
-  }
-  if (node.declaration?.type === 'VariableDeclaration') {
-    for (const declaration of node.declaration.declarations) {
-      for (const identifier of patternIdentifiers(declaration.id)) {
-        recordEscapedTaint(
-          evaluateTaint(identifier, analysis),
-          unresolvedCodes,
-          'EXPORT'
-        );
-      }
-    }
-  }
-}
-
-function hasUnmodeledModuleDestructure(node, analysis) {
-  if (
-    node.id?.type !== 'ObjectPattern'
-    || (evaluateTaint(node.init, analysis) & TAINT_MODULE_NAMESPACE) === 0
-  ) return false;
-  return node.id.properties.some((property) =>
-    property.type !== 'Property'
-    || (property.computed && propertyKeyName(property) === null));
-}
-
-function recordAssignmentEscape(node, analysis, unresolvedCodes) {
-  const taint = evaluateTaint(node.right, analysis);
-  if (taint === TAINT_NONE || node.left?.type !== 'MemberExpression') return;
-  if (isCommonJsExportTarget(node.left, analysis)) {
-    recordEscapedTaint(taint, unresolvedCodes, 'EXPORT');
-    return;
-  }
-  recordOpaqueTaint(taint, unresolvedCodes);
-}
-
-function isCommonJsExportTarget(member, analysis) {
-  if (isUnboundIdentifier(member.object, analysis, 'exports')) return true;
-  return member.object?.type === 'Identifier'
-    && isUnboundIdentifier(member.object, analysis, 'module')
-    && memberPropertyName(member) === 'exports';
-}
-
-function addLiteralDependency(dependencies, node, mode) {
-  if (node?.type !== 'Literal' || typeof node.value !== 'string') return false;
-  dependencies.push({ specifier: node.value, mode });
-  return true;
-}
-
-function collectAstNodes(program) {
-  const collected = [];
-  const pending = [program];
-  while (pending.length > 0) {
-    const node = pending.pop();
-    if (!node || typeof node !== 'object') continue;
-    collected.push(node);
-    for (const value of Object.values(node)) {
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (child && typeof child.type === 'string') pending.push(child);
-        }
-      } else if (value && typeof value.type === 'string') {
-        pending.push(value);
-      }
-    }
-  }
-  return collected;
-}
-
-function isDirectModuleRequire(node, analysis) {
-  return node?.type === 'MemberExpression'
-    && isUnboundIdentifier(node.object, analysis, 'module')
-    && memberPropertyName(node) === 'require';
-}
-
-function isEvalCallee(node, analysis) {
-  return isUnboundIdentifier(node, analysis, 'eval')
-    || (node?.type === 'MemberExpression'
-      && memberPropertyName(node) === 'eval');
-}
-
 function memberPropertyName(member) {
   if (!member.computed && member.property?.type === 'Identifier') {
     return member.property.name;
   }
   if (member.computed && member.property?.type === 'Literal') {
     return member.property.value;
-  }
-  return null;
-}
-
-function propertyKeyName(property) {
-  if (!property.computed && property.key?.type === 'Identifier') {
-    return property.key.name;
-  }
-  if (property.key?.type === 'Literal' && typeof property.key.value === 'string') {
-    return property.key.value;
   }
   return null;
 }
