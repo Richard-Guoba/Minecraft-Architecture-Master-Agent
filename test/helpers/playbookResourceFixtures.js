@@ -293,9 +293,7 @@ export async function escapedResourceRegistryFixture(t) {
     'fixture-source-probe-1.json'
   );
   const escapedPath = join(projectRoot, 'escaped-probe.json');
-  const probe = JSON.parse(await readFile(probePath, 'utf8'));
-  probe.source_id = 'other-source';
-  await writeFile(escapedPath, `${JSON.stringify(probe, null, 2)}\n`, 'utf8');
+  await writeFile(escapedPath, await readFile(probePath));
   await rm(probePath);
   await symlink(escapedPath, probePath);
   return projectRoot;

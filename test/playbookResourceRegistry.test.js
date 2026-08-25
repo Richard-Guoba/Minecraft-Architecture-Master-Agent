@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, rename, symlink, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 import {
   auditResourceRegistry,
@@ -36,11 +36,39 @@ test('rejects assessment hash drift', async (t) => {
   );
 });
 
-test('rejects cross-source probes and symlink escapes', async (t) => {
+test('rejects a whole resource-root symlink that escapes the canonical docs location', async (t) => {
+  const projectRoot = await wholeRootEscapedRegistryFixture(t);
+  await assert.rejects(
+    loadResourceRegistry({ projectRoot }),
+    {
+      name: 'PlaybookContractError',
+      code: 'PLAYBOOK_RESOURCE_PATH_ESCAPE'
+    }
+  );
+});
+
+test('rejects a referenced probe symlink escape with an otherwise matching source', async (t) => {
   const projectRoot = await escapedResourceRegistryFixture(t);
   await assert.rejects(
     loadResourceRegistry({ projectRoot }),
-    /PLAYBOOK_RESOURCE_PATH_ESCAPE|PLAYBOOK_RESOURCE_PROBE_SOURCE_MISMATCH/u
+    {
+      name: 'PlaybookContractError',
+      code: 'PLAYBOOK_RESOURCE_PATH_ESCAPE'
+    }
+  );
+});
+
+test('rejects a contained regular probe whose source identity mismatches its directory', async (t) => {
+  const projectRoot = await resourceRegistryProjectFixture(t);
+  await mutateJson(probePath(projectRoot, 'fixture-source-probe-1'), (probe) => {
+    probe.source_id = 'other-source';
+  });
+  await assert.rejects(
+    loadResourceRegistry({ projectRoot }),
+    {
+      name: 'PlaybookContractError',
+      code: 'PLAYBOOK_RESOURCE_PROBE_SOURCE_MISMATCH'
+    }
   );
 });
 
@@ -208,6 +236,18 @@ test('rejects decision history whose decided-at timestamps are out of order', as
 
 function resourceRoot(projectRoot) {
   return join(projectRoot, 'docs', 'architecture-playbook', 'resources');
+}
+
+async function wholeRootEscapedRegistryFixture(t) {
+  const projectRoot = await resourceRegistryProjectFixture(t);
+  const expectedRoot = resourceRoot(projectRoot);
+  const escapedRoot = join(
+    projectRoot, '.local', 'architecture-playbook', 'sources'
+  );
+  await mkdir(dirname(escapedRoot), { recursive: true });
+  await rename(expectedRoot, escapedRoot);
+  await symlink(escapedRoot, expectedRoot, 'dir');
+  return projectRoot;
 }
 
 function sourceProfilePath(projectRoot, sourceId = 'fixture-source') {

@@ -101,11 +101,24 @@ async function resolveResourceRoot(projectRoot) {
   if (typeof projectRoot !== 'string' || projectRoot.length === 0) {
     failPlaybookContract('PLAYBOOK_RESOURCE_PROJECT_ROOT_INVALID', 'projectRoot', projectRoot);
   }
+  let canonicalProjectRoot;
   try {
-    const root = await realpath(resolve(projectRoot, RESOURCE_ROOT));
-    const rootStat = await stat(root);
+    canonicalProjectRoot = await realpath(resolve(projectRoot));
+    const projectStat = await stat(canonicalProjectRoot);
+    if (!projectStat.isDirectory()) throw new Error('project root is not a directory');
+  } catch (error) {
+    failPlaybookContract(
+      'PLAYBOOK_RESOURCE_PATH_INVALID',
+      'projectRoot',
+      error?.message || 'project root is unavailable'
+    );
+  }
+  const expectedResourceRoot = resolve(canonicalProjectRoot, RESOURCE_ROOT);
+  let resourceRoot;
+  try {
+    resourceRoot = await realpath(expectedResourceRoot);
+    const rootStat = await stat(resourceRoot);
     if (!rootStat.isDirectory()) throw new Error('resource root is not a directory');
-    return root;
   } catch (error) {
     failPlaybookContract(
       'PLAYBOOK_RESOURCE_PATH_INVALID',
@@ -113,6 +126,14 @@ async function resolveResourceRoot(projectRoot) {
       error?.message || 'resource root is unavailable'
     );
   }
+  if (resourceRoot !== expectedResourceRoot) {
+    failPlaybookContract(
+      'PLAYBOOK_RESOURCE_PATH_ESCAPE',
+      RESOURCE_ROOT,
+      `${resourceRoot} resolves away from ${expectedResourceRoot}`
+    );
+  }
+  return resourceRoot;
 }
 
 function createContainedReader(resourceRoot) {
