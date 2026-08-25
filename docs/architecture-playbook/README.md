@@ -15,7 +15,7 @@
 - 六集共生成 2,022 个带时间戳 ASR 草稿段、53 张经目视复核的事件关键帧、21 条可重建 EvidenceNote 和 21 条候选规则。
 - 候选规则仍限定为黑辉极乐鸟单一教学体系，成熟度最高为 `candidate`；7 个定量与泛化问题仍显式保留，生产生成器保持不变。
 - P3 已把 21 条候选规则确定性编译为 15 条核心程序和 6 条案例模式；五层知识为 `advisory-partial`，四层为 `not-covered`，九层运行时权限全部为 `none`。
-- P3 自动门禁已通过并开放 P4。P3 本身没有生成住宅、没有视觉改善住宅，也没有接入生产建造流水线；生成—评价—返工效果仍须由 P4 验证。
+- P3 自动门禁已通过并开放 P4；门禁同时验证受管字节快照、Git 跟踪、实际本地依赖图和 `not-covered` 双重声明。P3 本身没有生成住宅、没有视觉改善住宅，也没有接入生产建造流水线；生成—评价—返工效果仍须由 P4 验证。
 - 当前 P3 入口：[人类秘籍 v0.1](manual/v0.1.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[九层覆盖矩阵](manual/coverage-v0.1.json)、[P3 门禁报告](reports/p3-playbook-v0.1.md)、[v0.1 正式设计](../superpowers/specs/2026-08-25-architecture-playbook-v0-1-design.md)和 [v0.1 实施计划](../superpowers/plans/2026-08-25-architecture-playbook-v0-1.md)。
 
 ## 规划空间

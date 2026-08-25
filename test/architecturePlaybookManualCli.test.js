@@ -436,7 +436,47 @@ test('managed check returns sorted missing and drifted paths without writing', a
     P3_MANAGED_ARTIFACT_PATHS[1],
     P3_MANAGED_ARTIFACT_PATHS[4]
   ].sort());
+  assert.deepEqual(summary.checked_artifacts, Object.fromEntries(
+    P3_MANAGED_ARTIFACT_PATHS.map((artifactPath, index) => [
+      artifactPath,
+      index === 1 ? 'drifted\n' : index === 4 ? '' : `wanted-${index}\n`
+    ])
+  ));
+  assert.equal(Object.isFrozen(summary.checked_artifacts), true);
   assert.deepEqual(await filesystemSnapshot(fixture.projectRoot), before);
+});
+
+test('managed check snapshot stays exact after a lexical target replacement', async (t) => {
+  const leakedPath = P3_MANAGED_ARTIFACT_PATHS[0];
+  const originals = P3_MANAGED_ARTIFACT_PATHS.map(
+    (_, index) => index === 0
+      ? '.local/architecture-playbook/private-source/frame-1.png\n'
+      : `wanted-${index}\n`
+  );
+  const fixture = await managedWriteFixture(t, {
+    originals,
+    wantedPrefix: 'wanted'
+  });
+
+  const summary = await checkManagedPlaybookArtifacts({
+    projectRoot: fixture.projectRoot,
+    artifacts: fixture.artifacts
+  });
+  await fs.writeFile(
+    path.join(fixture.projectRoot, leakedPath),
+    'replacement-without-leak\n',
+    'utf8'
+  );
+
+  assert.equal(summary.managed_artifact_drift_count, 1);
+  assert.equal(summary.checked_artifacts[leakedPath], originals[0]);
+  assert.equal(Object.isFrozen(summary.checked_artifacts), true);
+  assert.throws(
+    () => {
+      summary.checked_artifacts[leakedPath] = 'mutated\n';
+    },
+    TypeError
+  );
 });
 
 test('manual CLI builds, checks, and reports drift with safe fixed summaries', async (t) => {

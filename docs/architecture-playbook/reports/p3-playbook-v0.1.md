@@ -10,8 +10,10 @@
 
 - `source_corpus_hash`：`acb642b19f36ecc3633728e3d74a08225d0496c41d00184d3c5f782c7c4a7087`。该哈希按设计覆盖 P2 证据索引、21 条候选、冲突、未知项和 P3 准入政策的规范化内容。
 - P2 门禁状态：`passed`。
-- 五个受管产物均由同一已验证输入在内存中重建，逐字节检查漂移数为 0；五条受管路径均由 Git 跟踪。
-- `src/playbook/manual/` 到 `construction/` 的导入数为 0；P3 没有修改或接入生产建造流水线。
+- 五个受管产物均由同一已验证输入在内存中重建，逐字节检查漂移数为 0；泄漏扫描使用同一次 descriptor 保护读取返回的不可变 UTF-8 快照，未在关闭保护句柄后重新读取普通路径。
+- 五条受管路径均由 Git 跟踪，跟踪验证错误数为 0。
+- 从 `src/playbook/manual/` 的全部 JS、MJS、CJS 入口解析本地依赖图；到 `src/construction/` 的已解析依赖数为 0，无法解析或计算生成的依赖数为 0。P3 没有修改或接入生产建造流水线。
+- 覆盖 JSON 和人类秘籍相对于规范化编译结果的 `not-covered` 声明不匹配数为 0。
 
 ## 规则统计
 
@@ -89,21 +91,30 @@
 | `covered_runtime_layer_count` | 0 | 0 |
 | `public_leak_count` | 0 | 0 |
 | `managed_artifact_drift_count` | 0 | 0 |
+| `untracked_managed_artifact_count` | 0 | 0 |
+| `tracking_verification_error_count` | 0 | 0 |
+| `import_boundary_violation_count` | 0 | 0 |
+| `import_boundary_unresolved_count` | 0 | 0 |
+| `not_covered_declaration_mismatch_count` | 0 | 0 |
 
 自动审计返回 `gate.status = passed`、`gate.next_phase = P4`，没有 blocker code。
+
+这些附加计数器与编译器拥有的计数器一起只计算一次最终门禁。未跟踪受管产物、Git 验证失败、到 construction 的依赖、无法解析的动态依赖或覆盖声明不一致，都会以稳定 blocker code 关闭 P4。
 
 ## 测试证据
 
 - TDD RED：首次有效运行 `node --test test/playbookP3Gate.test.js` 时，因 `playbookV01Compiler.js` 尚未导出 `auditCheckedInPlaybookV01` 而失败。
 - TDD GREEN：实现只读审计后，同一命令通过，1 个测试、0 失败。
-- 聚焦门禁：`node --test test/playbook*.test.js test/architecturePlaybookCourseCli.test.js test/architecturePlaybookEvidenceCli.test.js test/architecturePlaybookManualCli.test.js` 在允许嵌套 CLI 子进程的执行环境中通过，110 个测试、0 失败。
+- 修复轮次 TDD RED：受保护快照测试首次运行 22 个测试中 20 个通过、2 个失败；完整门禁行为测试首次运行 15 个测试中 1 个通过、14 个失败；新增模板插值依赖用例首次运行 15 个测试中 14 个通过、1 个失败。失败分别对应缺少同次读取快照、辅助事实未进入最终门禁或未形成实际依赖图，以及模板表达式中的依赖未被遍历。
+- 修复轮次 TDD GREEN：快照测试 22/22 通过，完整门禁行为测试 15/15 通过；兼容性组合测试 53/53 通过。
+- 聚焦门禁：`node --test test/playbook*.test.js test/architecturePlaybookCourseCli.test.js test/architecturePlaybookEvidenceCli.test.js test/architecturePlaybookManualCli.test.js` 在允许嵌套 CLI 子进程和 Git 验证的执行环境中通过，186 个测试、0 失败。
 - 受管检查：`npm run playbook:manual -- check` 返回 `playbook_status=current`、`artifact_count=5`、`managed_artifact_drift_count=0`。
-- 完整回归：`npm test` 在同一允许子进程的执行环境中通过，532 个测试、0 失败。
+- 完整回归：`npm test` 在同一允许子进程和 Git 验证的执行环境中通过，610 个测试、0 失败。
 - `git diff --check`：退出码 0，无输出。
 - `git ls-files .local/architecture-playbook`：退出码 0，无输出，即没有私有秘籍路径被跟踪。
-- 提交前 `git status --short` 只列出本任务的 README、编译器、P3 报告和门禁测试四个路径。
+- 提交前 `git status --short` 只列出扩展后获准的七个修复路径：README、P3 报告、编译器、依赖边界扫描器、受管检查器、门禁测试和受管检查器测试。
 
-环境说明：默认受限沙箱中的首次聚焦运行有 14/15 个测试文件通过，但嵌套的 manual CLI 进程 stdout 被环境抑制，导致既有输出断言失败；没有放宽或删除断言。使用获准的子进程执行路径重跑完全相同的命令后，110/110 通过。
+环境说明：Git 跟踪验证和嵌套 CLI 测试通过获准的子进程执行路径运行；没有跳过、删除或放宽断言。门禁遇到 Git 缺失、非工作树、权限或子进程失败时返回冻结的稳定阻断事实，不包含原始错误或绝对路径。
 
 ## P4 决策与边界
 

@@ -141,14 +141,17 @@ export async function checkManagedPlaybookArtifacts({ projectRoot, artifacts }) 
   return withManagedAuthority(authority, async () => {
     await assertAuthorityBindings(authority, fs);
     const driftPaths = [];
+    const checkedArtifacts = {};
     for (const target of authority.targets) {
       if (!target.parent) {
         driftPaths.push(target.relativePath);
+        checkedArtifacts[target.relativePath] = '';
         continue;
       }
       const actual = await readManagedTarget(target, fs, {
         errorCode: 'PLAYBOOK_MANUAL_CHECK_FAILED'
       });
+      checkedArtifacts[target.relativePath] = actual?.toString('utf8') ?? '';
       if (actual === null || !actual.equals(artifactBytes[target.relativePath])) {
         driftPaths.push(target.relativePath);
       }
@@ -160,7 +163,8 @@ export async function checkManagedPlaybookArtifacts({ projectRoot, artifacts }) 
       artifact_count: P3_MANAGED_ARTIFACT_PATHS.length,
       managed_artifact_drift_count: driftPaths.length,
       drift_paths: Object.freeze(driftPaths),
-      artifact_hashes: buildArtifactHashes(artifactBytes)
+      artifact_hashes: buildArtifactHashes(artifactBytes),
+      checked_artifacts: Object.freeze(checkedArtifacts)
     });
   });
 }

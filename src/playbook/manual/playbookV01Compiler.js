@@ -4,11 +4,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { loadP2PublicCorpus } from '../knowledge/publicCandidateCorpus.js';
+import { auditManualDependencyBoundary } from './manualDependencyBoundary.js';
 import {
   P3_MANAGED_ARTIFACT_PATHS,
   validateP3AdmissionPolicy
 } from './p3AdmissionPolicy.js';
 import { buildReviewedRuleCards } from './reviewedRuleCard.js';
+
+export { auditManualDependencyBoundary } from './manualDependencyBoundary.js';
 
 const execFileAsync = promisify(execFile);
 const MANUAL_PATH = 'docs/architecture-playbook/manual/v0.1.md';
@@ -190,6 +193,13 @@ export function auditPlaybookV01(
   if (!Number.isInteger(managedArtifactDriftCount) || managedArtifactDriftCount < 0) {
     throw new TypeError('managedArtifactDriftCount must be a non-negative integer');
   }
+  return finalizeAudit(derivePlaybookAuditCounters(
+    compilation,
+    managedArtifactDriftCount
+  ), { includeCheckedInRequirements: false });
+}
+
+function derivePlaybookAuditCounters(compilation, managedArtifactDriftCount) {
   const cards = Array.isArray(compilation?.cards) ? compilation.cards : [];
   const coverageRows = Array.isArray(compilation?.coverage?.layers)
     ? compilation.coverage.layers
@@ -227,15 +237,7 @@ export function auditPlaybookV01(
     public_leak_count: countPublicLeaks(compilation?.artifacts ?? {}),
     managed_artifact_drift_count: managedArtifactDriftCount
   };
-  const blockerCodes = auditBlockerCodes(counters);
-  return deepFreeze({
-    ...counters,
-    gate: {
-      status: blockerCodes.length === 0 ? 'passed' : 'blocked',
-      next_phase: blockerCodes.length === 0 ? 'P4' : null,
-      blocker_codes: blockerCodes
-    }
-  });
+  return counters;
 }
 
 export async function auditCheckedInPlaybookV01({ projectRoot }) {
@@ -257,11 +259,11 @@ export async function auditCheckedInPlaybookV01({ projectRoot }) {
     projectRoot: root,
     artifacts: compilation.artifacts
   });
-  const checkedInArtifacts = await readCheckedInArtifacts(root);
-  const [trackedManagedArtifactPaths, manualConstructionImports] =
+  const checkedInArtifacts = checked.checked_artifacts;
+  const [tracking, dependencyBoundary] =
     await Promise.all([
-      listTrackedManagedArtifactPaths(root),
-      findManualConstructionImports(root)
+      verifyManagedArtifactTracking(root),
+      auditManualDependencyBoundary({ projectRoot: root })
     ]);
   const checkedInCoverage = parseJsonOrNull(checkedInArtifacts[COVERAGE_PATH]);
   const coverageNotCoveredLayers = Array.isArray(checkedInCoverage?.layers)
@@ -269,80 +271,96 @@ export async function auditCheckedInPlaybookV01({ projectRoot }) {
       .filter((row) => row?.status === 'not-covered')
       .map((row) => row.layer)
     : [];
+  const expectedNotCoveredLayers = compilation.coverage.layers
+    .filter((row) => row.status === 'not-covered')
+    .map((row) => row.layer);
   const checkedInManual = checkedInArtifacts[MANUAL_PATH];
-  const manualNotCoveredLayers = coverageNotCoveredLayers.filter((layer) =>
-    checkedInManual.includes(`- \`${layer}\`：状态 \`not-covered\``));
-  const audit = auditPlaybookV01(
+  const manualNotCoveredLayers = [
+    ...checkedInManual.matchAll(/^- `([^`]+)`：状态 `not-covered`/gmu)
+  ].map((match) => match[1]);
+  const notCoveredDeclarationMismatchCount =
+    countDeclarationMismatches(
+      expectedNotCoveredLayers,
+      coverageNotCoveredLayers
+    ) + countDeclarationMismatches(
+      expectedNotCoveredLayers,
+      manualNotCoveredLayers
+    );
+  const counters = derivePlaybookAuditCounters(
     { ...compilation, artifacts: checkedInArtifacts },
-    { managedArtifactDriftCount: checked.managed_artifact_drift_count }
+    checked.managed_artifact_drift_count
   );
 
-  return deepFreeze({
-    ...audit,
+  return finalizeAudit({
+    ...counters,
+    untracked_managed_artifact_count:
+      tracking.untracked_managed_artifact_paths.length,
+    tracking_verification_error_count:
+      tracking.tracking_verification_errors.length,
+    import_boundary_violation_count:
+      dependencyBoundary.import_boundary_violation_count,
+    import_boundary_unresolved_count:
+      dependencyBoundary.import_boundary_unresolved_count,
+    not_covered_declaration_mismatch_count:
+      notCoveredDeclarationMismatchCount,
     source_corpus_hash: compilation.source_corpus_hash,
-    tracked_managed_artifact_paths: trackedManagedArtifactPaths,
-    manual_construction_imports: manualConstructionImports,
+    tracked_managed_artifact_paths:
+      tracking.tracked_managed_artifact_paths,
+    untracked_managed_artifact_paths:
+      tracking.untracked_managed_artifact_paths,
+    tracking_verification_errors:
+      tracking.tracking_verification_errors,
+    manual_construction_imports:
+      dependencyBoundary.manual_construction_imports,
+    unresolved_manual_dependencies:
+      dependencyBoundary.unresolved_manual_dependencies,
+    resolved_manual_dependency_paths:
+      dependencyBoundary.resolved_manual_dependency_paths,
+    expected_not_covered_layers: expectedNotCoveredLayers,
     coverage_not_covered_layers: coverageNotCoveredLayers,
     manual_not_covered_layers: manualNotCoveredLayers
-  });
+  }, { includeCheckedInRequirements: true });
 }
 
-async function readCheckedInArtifacts(projectRoot) {
-  return Object.fromEntries(await Promise.all(
-    P3_MANAGED_ARTIFACT_PATHS.map(async (artifactPath) => {
-      try {
-        return [
-          artifactPath,
-          await fs.readFile(path.join(projectRoot, artifactPath), 'utf8')
-        ];
-      } catch (error) {
-        if (error?.code === 'ENOENT') return [artifactPath, ''];
-        throw error;
-      }
-    })
-  ));
-}
-
-async function listTrackedManagedArtifactPaths(projectRoot) {
-  const { stdout } = await execFileAsync(
-    'git',
-    ['ls-files', '--', ...P3_MANAGED_ARTIFACT_PATHS],
-    { cwd: projectRoot, encoding: 'utf8' }
-  );
-  const tracked = new Set(stdout.split(/\r?\n/u).filter(Boolean));
-  return P3_MANAGED_ARTIFACT_PATHS.filter((artifactPath) =>
-    tracked.has(artifactPath));
-}
-
-async function findManualConstructionImports(projectRoot) {
-  const sourceRoot = path.join(projectRoot, 'src/playbook/manual');
-  const sourcePaths = await listJavaScriptFiles(sourceRoot);
-  const matches = [];
-  const importPatterns = [
-    /\b(?:from|import)\s*['"]([^'"]+)['"]/gmu,
-    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/gmu
-  ];
-  for (const sourcePath of sourcePaths) {
-    const source = await fs.readFile(sourcePath, 'utf8');
-    for (const pattern of importPatterns) {
-      for (const match of source.matchAll(pattern)) {
-        if (/(?:^|\/)construction(?:\/|$)/u.test(match[1])) {
-          matches.push(`${path.relative(projectRoot, sourcePath)}:${match[1]}`);
-        }
-      }
-    }
+async function verifyManagedArtifactTracking(projectRoot) {
+  try {
+    const options = {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024,
+      timeout: 10_000,
+      windowsHide: true
+    };
+    const [{ stdout: topLevel }, { stdout }] = await Promise.all([
+      execFileAsync('git', ['rev-parse', '--show-toplevel'], options),
+      execFileAsync(
+        'git',
+        ['ls-files', '--', ...P3_MANAGED_ARTIFACT_PATHS],
+        options
+      )
+    ]);
+    const [projectReal, topLevelReal] = await Promise.all([
+      fs.realpath(projectRoot),
+      fs.realpath(topLevel.trim())
+    ]);
+    if (projectReal !== topLevelReal) throw new Error('worktree root mismatch');
+    const trackedSet = new Set(stdout.split(/\r?\n/u).filter(Boolean));
+    const trackedPaths = P3_MANAGED_ARTIFACT_PATHS.filter((artifactPath) =>
+      trackedSet.has(artifactPath));
+    const untrackedPaths = P3_MANAGED_ARTIFACT_PATHS.filter((artifactPath) =>
+      !trackedSet.has(artifactPath));
+    return deepFreeze({
+      tracked_managed_artifact_paths: trackedPaths,
+      untracked_managed_artifact_paths: untrackedPaths,
+      tracking_verification_errors: []
+    });
+  } catch {
+    return deepFreeze({
+      tracked_managed_artifact_paths: [],
+      untracked_managed_artifact_paths: [],
+      tracking_verification_errors: ['GIT_TRACKING_UNAVAILABLE']
+    });
   }
-  return matches.sort();
-}
-
-async function listJavaScriptFiles(directoryPath) {
-  const entries = await fs.readdir(directoryPath, { withFileTypes: true });
-  const nestedPaths = await Promise.all(entries.map(async (entry) => {
-    const entryPath = path.join(directoryPath, entry.name);
-    if (entry.isDirectory()) return listJavaScriptFiles(entryPath);
-    return entry.isFile() && entry.name.endsWith('.js') ? [entryPath] : [];
-  }));
-  return nestedPaths.flat().sort();
 }
 
 function parseJsonOrNull(text) {
@@ -351,6 +369,25 @@ function parseJsonOrNull(text) {
   } catch {
     return null;
   }
+}
+
+function countDeclarationMismatches(expected, actual) {
+  const expectedCounts = countValues(expected);
+  const actualCounts = countValues(actual);
+  const values = new Set([...expectedCounts.keys(), ...actualCounts.keys()]);
+  let mismatches = 0;
+  for (const value of values) {
+    mismatches += Math.abs(
+      (expectedCounts.get(value) ?? 0) - (actualCounts.get(value) ?? 0)
+    );
+  }
+  return mismatches;
+}
+
+function countValues(values) {
+  const counts = new Map();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+  return counts;
 }
 
 function assertCompilerInput(corpus, policy) {
@@ -626,7 +663,21 @@ function countDanglingReferences(compilation, cards) {
   return count;
 }
 
-function auditBlockerCodes(counters) {
+function finalizeAudit(fields, { includeCheckedInRequirements }) {
+  const blockerCodes = auditBlockerCodes(fields, {
+    includeCheckedInRequirements
+  });
+  return deepFreeze({
+    ...fields,
+    gate: {
+      status: blockerCodes.length === 0 ? 'passed' : 'blocked',
+      next_phase: blockerCodes.length === 0 ? 'P4' : null,
+      blocker_codes: blockerCodes
+    }
+  });
+}
+
+function auditBlockerCodes(counters, { includeCheckedInRequirements }) {
   const requirements = [
     ['p2_gate_status', 'passed', 'P2_GATE_NOT_PASSED'],
     ['reviewed_rule_count', 21, 'REVIEWED_RULE_COUNT_INVALID'],
@@ -640,6 +691,35 @@ function auditBlockerCodes(counters) {
     ['public_leak_count', 0, 'PUBLIC_SOURCE_LEAK'],
     ['managed_artifact_drift_count', 0, 'MANAGED_ARTIFACT_DRIFT']
   ];
+  if (includeCheckedInRequirements) {
+    requirements.push(
+      [
+        'untracked_managed_artifact_count',
+        0,
+        'UNTRACKED_MANAGED_ARTIFACT'
+      ],
+      [
+        'tracking_verification_error_count',
+        0,
+        'TRACKING_VERIFICATION_FAILED'
+      ],
+      [
+        'import_boundary_violation_count',
+        0,
+        'MANUAL_CONSTRUCTION_IMPORT'
+      ],
+      [
+        'import_boundary_unresolved_count',
+        0,
+        'MANUAL_DEPENDENCY_UNRESOLVED'
+      ],
+      [
+        'not_covered_declaration_mismatch_count',
+        0,
+        'NOT_COVERED_DECLARATION_MISMATCH'
+      ]
+    );
+  }
   return requirements
     .filter(([field, expected]) => counters[field] !== expected)
     .map(([, , code]) => code);
