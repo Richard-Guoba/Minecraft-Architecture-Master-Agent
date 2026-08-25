@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import test from 'node:test';
 import { P3_MANAGED_ARTIFACT_PATHS } from '../src/playbook/manual/p3AdmissionPolicy.js';
@@ -108,12 +110,23 @@ test('a computed dynamic import fails the final checked-in gate closed', async (
     manualFiles: {
       'computed-edge.js': [
         "const moduleName = 'target';",
-        "await import('../../construction/' + moduleName + '.js');",
+        "export default (await import('../../construction/' + moduleName + '.js')).default;",
         ''
       ].join('\n')
     },
-    constructionFiles: { 'target.js': 'export const target = true;\n' }
+    constructionFiles: { 'target.js': "export default 'computed-executed';\n" }
   });
+  await writeFixtureFiles(projectRoot, {
+    'package.json': '{"type":"module"}\n'
+  });
+
+  assert.equal(
+    await importDefault(path.join(
+      projectRoot,
+      'src/playbook/manual/computed-edge.js'
+    )),
+    'computed-executed'
+  );
 
   const audit = await auditCheckedInPlaybookV01({ projectRoot });
 
@@ -250,6 +263,158 @@ test('manual dependency graph resolves every supported construction edge', async
   }
 });
 
+test('module.require construction edge executes and is audited', async (t) => {
+  const projectRoot = await dependencyFixture(t, {
+    'src/playbook/manual/entry.cjs':
+      "module.exports = module.require('../../construction/target.cjs');\n",
+    'src/construction/target.cjs':
+      "module.exports = 'module-require-executed';\n"
+  });
+  const entryPath = path.join(projectRoot, 'src/playbook/manual/entry.cjs');
+
+  assert.equal(createRequire(import.meta.url)(entryPath), 'module-require-executed');
+
+  const audit = await playbookCompiler.auditManualDependencyBoundary({
+    projectRoot
+  });
+  assert.equal(audit.import_boundary_violation_count, 1);
+  assert.equal(audit.import_boundary_unresolved_count, 0);
+});
+
+test('package imports construction edge executes and is audited', async (t) => {
+  const projectRoot = await dependencyFixture(t, {
+    'package.json': JSON.stringify({
+      type: 'module',
+      imports: {
+        '#construction': {
+          import: './src/construction/target.js',
+          require: './src/playbook/safe.js'
+        }
+      }
+    }),
+    'src/playbook/manual/entry.js':
+      "export { default } from '#construction';\n",
+    'src/playbook/safe.js': "export default 'wrong-condition';\n",
+    'src/construction/target.js':
+      "export default 'package-import-executed';\n"
+  });
+  const entryPath = path.join(projectRoot, 'src/playbook/manual/entry.js');
+
+  assert.equal(await importDefault(entryPath), 'package-import-executed');
+
+  const audit = await playbookCompiler.auditManualDependencyBoundary({
+    projectRoot
+  });
+  assert.equal(audit.import_boundary_violation_count, 1);
+  assert.equal(audit.import_boundary_unresolved_count, 0);
+});
+
+test('package self-reference construction edge executes and is audited', async (t) => {
+  const projectRoot = await dependencyFixture(t, {
+    'package.json': JSON.stringify({
+      name: 'playbook-audit-fixture',
+      type: 'module',
+      exports: {
+        './construction': {
+          import: './src/construction/target.js',
+          require: './src/playbook/safe.js'
+        }
+      }
+    }),
+    'src/playbook/manual/entry.js':
+      "export { default } from 'playbook-audit-fixture/construction';\n",
+    'src/playbook/safe.js': "export default 'wrong-condition';\n",
+    'src/construction/target.js':
+      "export default 'self-reference-executed';\n"
+  });
+  const entryPath = path.join(projectRoot, 'src/playbook/manual/entry.js');
+
+  assert.equal(await importDefault(entryPath), 'self-reference-executed');
+
+  const audit = await playbookCompiler.auditManualDependencyBoundary({
+    projectRoot
+  });
+  assert.equal(audit.import_boundary_violation_count, 1);
+  assert.equal(audit.import_boundary_unresolved_count, 0);
+});
+
+test('bare symlink package construction edge executes and is audited', async (t) => {
+  const projectRoot = await dependencyFixture(t, {
+    'package.json': '{"type":"module"}\n',
+    'src/playbook/manual/entry.js':
+      "export { default } from 'construction-symlink';\n",
+    'src/construction/symlink-package/package.json': JSON.stringify({
+      name: 'construction-symlink',
+      type: 'module',
+      exports: './target.js'
+    }),
+    'src/construction/symlink-package/target.js':
+      "export default 'symlink-package-executed';\n"
+  });
+  await fs.mkdir(path.join(projectRoot, 'node_modules'), { recursive: true });
+  await fs.symlink(
+    path.join(projectRoot, 'src/construction/symlink-package'),
+    path.join(projectRoot, 'node_modules/construction-symlink'),
+    'dir'
+  );
+  const entryPath = path.join(projectRoot, 'src/playbook/manual/entry.js');
+
+  assert.equal(await importDefault(entryPath), 'symlink-package-executed');
+
+  const audit = await playbookCompiler.auditManualDependencyBoundary({
+    projectRoot
+  });
+  assert.equal(audit.import_boundary_violation_count, 1);
+  assert.equal(audit.import_boundary_unresolved_count, 0);
+});
+
+test('division after contextual of cannot hide an executing import', async (t) => {
+  const projectRoot = await dependencyFixture(t, {
+    'package.json': JSON.stringify({
+      type: 'module',
+      imports: { '#construction': './src/construction/target.js' }
+    }),
+    'src/playbook/manual/entry.js': [
+      'const of = 8;',
+      "export default of / (await import('#construction')).default / 2;",
+      ''
+    ].join('\n'),
+    'src/construction/target.js': 'export default 2;\n'
+  });
+  const entryPath = path.join(projectRoot, 'src/playbook/manual/entry.js');
+
+  assert.equal(await importDefault(entryPath), 2);
+
+  const audit = await playbookCompiler.auditManualDependencyBoundary({
+    projectRoot
+  });
+  assert.equal(audit.import_boundary_violation_count, 1);
+  assert.equal(audit.import_boundary_unresolved_count, 0);
+});
+
+test('regex and division syntax cannot forge dependency edges', async (t) => {
+  const projectRoot = await dependencyFixture(t, {
+    'package.json': '{"type":"module"}\n',
+    'src/playbook/manual/entry.js': [
+      "if (true) /require('..\\/..\\/construction\\/target.cjs')/u.test('safe');",
+      'const quotient = 8 / 2;',
+      'export default quotient;',
+      ''
+    ].join('\n')
+  });
+  const entryPath = path.join(projectRoot, 'src/playbook/manual/entry.js');
+
+  assert.equal(await importDefault(entryPath), 4);
+
+  const audit = await playbookCompiler.auditManualDependencyBoundary({
+    projectRoot
+  });
+  assert.equal(audit.import_boundary_violation_count, 0);
+  assert.equal(audit.import_boundary_unresolved_count, 0);
+  assert.deepEqual(audit.manual_construction_imports, []);
+  assert.deepEqual(audit.unresolved_manual_dependencies, []);
+});
+
 test('manual dependency graph follows a symlink into construction', async (t) => {
   const projectRoot = await dependencyFixture(t, {
     'src/playbook/manual/entry.js': "import './alias.js';\n",
@@ -293,6 +458,23 @@ test('manual dependency graph fails computed imports closed but ignores prose', 
       "const value = `${await import('../../construction/target.js')}`;\n",
     'src/construction/target.js': 'export const target = true;\n'
   });
+  const computedRequireRoot = await dependencyFixture(t, {
+    'src/playbook/manual/entry.cjs': [
+      "const name = 'target.cjs';",
+      "module.exports = require('../../construction/' + name);",
+      ''
+    ].join('\n'),
+    'src/construction/target.cjs':
+      "module.exports = 'computed-require-executed';\n"
+  });
+
+  assert.equal(
+    createRequire(import.meta.url)(path.join(
+      computedRequireRoot,
+      'src/playbook/manual/entry.cjs'
+    )),
+    'computed-require-executed'
+  );
 
   const computed = await playbookCompiler.auditManualDependencyBoundary({
     projectRoot: computedRoot
@@ -303,6 +485,10 @@ test('manual dependency graph fails computed imports closed but ignores prose', 
   const interpolated = await playbookCompiler.auditManualDependencyBoundary({
     projectRoot: interpolatedRoot
   });
+  const computedRequire =
+    await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot: computedRequireRoot
+    });
 
   assert.equal(computed.import_boundary_violation_count, 0);
   assert.equal(computed.import_boundary_unresolved_count, 1);
@@ -313,6 +499,11 @@ test('manual dependency graph fails computed imports closed but ignores prose', 
   assert.equal(prose.import_boundary_unresolved_count, 0);
   assert.equal(interpolated.import_boundary_violation_count, 1);
   assert.equal(interpolated.import_boundary_unresolved_count, 0);
+  assert.equal(computedRequire.import_boundary_violation_count, 0);
+  assert.equal(computedRequire.import_boundary_unresolved_count, 1);
+  assert.deepEqual(computedRequire.unresolved_manual_dependencies, [
+    'src/playbook/manual/entry.cjs:COMPUTED_REQUIRE'
+  ]);
 });
 
 async function gitTrackedManagedPaths() {
@@ -349,6 +540,13 @@ async function checkedInAuditFixture(t, {
     path.join(ROOT, 'src/runArchitecturePlaybookManual.js'),
     path.join(projectRoot, 'src/runArchitecturePlaybookManual.js')
   );
+  for (const dependency of ['acorn', 'import-meta-resolve']) {
+    await fs.cp(
+      path.join(ROOT, 'node_modules', dependency),
+      path.join(projectRoot, 'node_modules', dependency),
+      { recursive: true }
+    );
+  }
   await writeFixtureFiles(projectRoot, Object.fromEntries([
     ...Object.entries(manualFiles).map(([name, value]) => [
       `src/playbook/manual/${name}`,
@@ -400,4 +598,9 @@ async function temporaryRoot(t, prefix) {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
+async function importDefault(modulePath) {
+  const imported = await import(pathToFileURL(modulePath).href);
+  return imported.default;
 }

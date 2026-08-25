@@ -31,5 +31,9 @@
   "engines": {
     "node": ">=20"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "acorn": "8.15.0",
+    "import-meta-resolve": "4.2.0"
+  }
 }

@@ -12,7 +12,7 @@
 - P2 门禁状态：`passed`。
 - 五个受管产物均由同一已验证输入在内存中重建，逐字节检查漂移数为 0；泄漏扫描使用同一次 descriptor 保护读取返回的不可变 UTF-8 快照，未在关闭保护句柄后重新读取普通路径。
 - 五条受管路径均由 Git 跟踪，跟踪验证错误数为 0。
-- 从 `src/playbook/manual/` 的全部 JS、MJS、CJS 入口解析本地依赖图；到 `src/construction/` 的已解析依赖数为 0，无法解析或计算生成的依赖数为 0。P3 没有修改或接入生产建造流水线。
+- 从 `src/playbook/manual/` 的全部 JS、MJS、CJS 入口解析实际依赖图：语法由固定版本 Acorn `8.15.0` 生成 AST，ESM 通过 `import-meta-resolve` `4.2.0` 按 Node `import` 条件解析，CJS 通过 `createRequire(importer).resolve` 解析，且每个文件节点都经过 `realpath`。到 `src/construction/` 的已解析依赖数为 0，无法解析或计算生成的依赖数为 0。P3 没有修改或接入生产建造流水线。
 - 覆盖 JSON 和人类秘籍相对于规范化编译结果的 `not-covered` 声明不匹配数为 0。
 
 ## 规则统计
@@ -107,9 +107,10 @@
 - TDD GREEN：实现只读审计后，同一命令通过，1 个测试、0 失败。
 - 修复轮次 TDD RED：受保护快照测试首次运行 22 个测试中 20 个通过、2 个失败；完整门禁行为测试首次运行 15 个测试中 1 个通过、14 个失败；新增模板插值依赖用例首次运行 15 个测试中 14 个通过、1 个失败。失败分别对应缺少同次读取快照、辅助事实未进入最终门禁或未形成实际依赖图，以及模板表达式中的依赖未被遍历。
 - 修复轮次 TDD GREEN：快照测试 22/22 通过，完整门禁行为测试 15/15 通过；兼容性组合测试 53/53 通过。
-- 聚焦门禁：`node --test test/playbook*.test.js test/architecturePlaybookCourseCli.test.js test/architecturePlaybookEvidenceCli.test.js test/architecturePlaybookManualCli.test.js` 在允许嵌套 CLI 子进程和 Git 验证的执行环境中通过，186 个测试、0 失败。
+- 第二修复轮次 TDD RED：Node 实际执行证明成功后，`node --test --test-isolation=none test/playbookP3Gate.test.js` 的 21 个测试中 15 个通过、6 个失败；旧扫描器遗漏 `module.require`、包 `imports`、包自身引用、裸 symlink 包和被除法启发式隐藏的动态导入，并把正则文本误报为依赖。AST 与 Node 感知解析实现后，同一命令 21/21 通过；变更套件组合 59/59 通过。
+- 聚焦门禁：`node --test test/playbook*.test.js test/architecturePlaybookCourseCli.test.js test/architecturePlaybookEvidenceCli.test.js test/architecturePlaybookManualCli.test.js` 在允许嵌套 CLI 子进程和 Git 验证的执行环境中通过，192 个测试、0 失败。
 - 受管检查：`npm run playbook:manual -- check` 返回 `playbook_status=current`、`artifact_count=5`、`managed_artifact_drift_count=0`。
-- 完整回归：`npm test` 在同一允许子进程和 Git 验证的执行环境中通过，610 个测试、0 失败。
+- 完整回归：`npm test` 在同一允许子进程和 Git 验证的执行环境中通过，616 个测试、0 失败。
 - `git diff --check`：退出码 0，无输出。
 - `git ls-files .local/architecture-playbook`：退出码 0，无输出，即没有私有秘籍路径被跟踪。
 - 提交前 `git status --short` 只列出扩展后获准的七个修复路径：README、P3 报告、编译器、依赖边界扫描器、受管检查器、门禁测试和受管检查器测试。
