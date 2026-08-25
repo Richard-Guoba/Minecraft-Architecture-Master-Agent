@@ -1,4 +1,4 @@
-# Architecture Playbook v0.1 P3 Design
+# Architecture Playbook v0.1 — P3 Design
 
 日期：2026-08-25  
 阶段：P3 — 秘籍 v0.1  

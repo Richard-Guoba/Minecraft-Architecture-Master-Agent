@@ -1,4 +1,4 @@
-# Architecture Playbook v0.1 P3 Implementation Plan
+# Architecture Playbook v0.1 — P3 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node.js 20+ ESM, `node:test`, canonical JSON/JSONL, generated Markdown, atomic filesystem writes, existing P2 validators and `loadP2PublicCorpus`.
 
-**Spec:** `docs/superpowers/specs/2026-08-25-architecture-playbook-v0.1-design.md`
+**Spec:** `docs/superpowers/specs/2026-08-25-architecture-playbook-v0-1-design.md`
 
 ## Global Constraints
 
