@@ -93,6 +93,63 @@ export function resourceSourceProfileFixture(overrides = {}) {
   };
 }
 
+export function resourceProbeReportFixture(overrides = {}) {
+  return {
+    schema_version: 1,
+    probe_id: 'example-probe',
+    source_id: 'example-source',
+    canonical_url: 'https://example.com/resources/example-probe',
+    title: 'Example probe',
+    sample_role: 'representative-case',
+    selection_reason: 'It represents the source collection without copying content.',
+    observed_at: '2026-08-25T00:00:00.000Z',
+    observation_bases: ['direct-page', 'unverified'],
+    access_result: {
+      status: 'reachable',
+      http_status: 200,
+      final_url: 'https://example.com/resources/example-probe',
+      note: 'The public page was reachable at observation time.'
+    },
+    content_revision: {
+      status: 'unknown', value: null, basis: 'unverified'
+    },
+    content_fingerprint: {
+      status: 'unknown', sha256: null, basis: 'unverified'
+    },
+    creator_observation: {
+      status: 'known',
+      display_name: 'Example creator',
+      profile_url: 'https://example.com/creators/example',
+      bases: ['direct-page']
+    },
+    observed_structure: ['Project overview', 'Materials list'],
+    extractable_fields: ['materials', 'style'],
+    knowledge_value: {
+      principles: { value: 3, reason: 'It describes reusable design principles.' },
+      construction_sequence: { value: 2, reason: 'It includes some construction ordering.' },
+      reference_case: { value: 4, reason: 'It provides a clear reference case.' },
+      materials: { value: 3, reason: 'It identifies common materials.' },
+      survival_constraints: { value: 'unknown', reason: 'Survival constraints were not observed.' },
+      evaluation: { value: 2, reason: 'It offers limited visual evaluation guidance.' },
+      provenance: { value: 3, reason: 'Creator information is directly observed.' },
+      access_stability: { value: 3, reason: 'The public page is currently reachable.' },
+      rights_clarity: { value: 1, reason: 'Reuse rights remain unknown.' }
+    },
+    rights_observations: {
+      public_access: rightsObservationFixture(),
+      local_analysis: rightsObservationFixture(),
+      automated_retrieval: rightsObservationFixture(),
+      artifact_download: rightsObservationFixture(),
+      model_training: rightsObservationFixture(),
+      external_redistribution: rightsObservationFixture()
+    },
+    blocking_conditions: [],
+    recommended_adapter_behavior: ['Require human review before retrieval.'],
+    summary: 'A bounded observation of one representative content unit.',
+    ...overrides
+  };
+}
+
 function accessObservationFixture() {
   return {
     status: 'unknown',

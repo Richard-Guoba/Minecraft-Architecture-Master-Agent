@@ -5,11 +5,13 @@ import {
   LIFECYCLE_STATUSES,
   RESOURCE_SCHEMA_VERSION,
   validateResourceCatalog,
+  validateResourceProbeReport,
   validateResourceSourceProfile
 } from '../src/playbook/resources/contracts/index.js';
 import * as resourceContracts from '../src/playbook/resources/contracts/index.js';
 import {
   resourceCatalogFixture,
+  resourceProbeReportFixture,
   resourceSourceProfileFixture
 } from './helpers/playbookResourceFixtures.js';
 
@@ -291,4 +293,122 @@ test('source profile schema HTTPS URLs mirror runtime scheme and credential rule
 
   assert.equal(httpsPattern.test('HTTPS://example.com/source'), true);
   assert.equal(httpsPattern.test('https://user:pass@example.com/source'), false);
+});
+
+test('validates and freezes a resource probe report', () => {
+  const input = resourceProbeReportFixture();
+  const probe = validateResourceProbeReport(input);
+
+  assert.equal(probe.probe_id, 'example-probe');
+  assert.notEqual(probe, input);
+  assert.ok(Object.isFrozen(probe.creator_observation));
+  assert.equal(probe.knowledge_value.survival_constraints.value, 'unknown');
+});
+
+test('unknown creator cannot carry an invented display name', () => {
+  const probe = resourceProbeReportFixture();
+  probe.creator_observation = {
+    status: 'unknown',
+    display_name: '猜测作者',
+    profile_url: null,
+    bases: ['project-inference']
+  };
+  assert.throws(
+    () => validateResourceProbeReport(probe),
+    /PLAYBOOK_RESOURCE_CREATOR_NAME_FORBIDDEN/u
+  );
+});
+
+test('search-index evidence cannot be presented as direct-page evidence', () => {
+  const probe = resourceProbeReportFixture();
+  probe.observation_bases = ['search-index'];
+  probe.creator_observation.bases = ['direct-page'];
+  assert.throws(
+    () => validateResourceProbeReport(probe),
+    /PLAYBOOK_RESOURCE_CREATOR_BASIS_UNBOUND/u
+  );
+});
+
+test('unknown fingerprint remains distinct from a real SHA-256', () => {
+  const probe = resourceProbeReportFixture();
+  probe.content_fingerprint = {
+    status: 'unknown', sha256: '0'.repeat(64), basis: 'unverified'
+  };
+  assert.throws(
+    () => validateResourceProbeReport(probe),
+    /PLAYBOOK_RESOURCE_FINGERPRINT_UNKNOWN_INVALID/u
+  );
+});
+
+test('probe report rejects synthetic revisions and copied-content fields', () => {
+  const syntheticRevision = resourceProbeReportFixture();
+  syntheticRevision.content_revision = {
+    status: 'known', value: 'derived-from-title', basis: 'project-inference'
+  };
+  assert.throws(
+    () => validateResourceProbeReport(syntheticRevision),
+    /PLAYBOOK_RESOURCE_REVISION_SYNTHETIC_FORBIDDEN/u
+  );
+
+  const copiedContent = resourceProbeReportFixture();
+  copiedContent.raw_html = '<article>Copied page body</article>';
+  assert.throws(
+    () => validateResourceProbeReport(copiedContent),
+    /PLAYBOOK_RESOURCE_FIELD_UNKNOWN/u
+  );
+});
+
+test('probe report keeps access and rights observation shapes strict', () => {
+  const wrongHttpStatus = resourceProbeReportFixture();
+  wrongHttpStatus.access_result.http_status = 99;
+  assert.throws(
+    () => validateResourceProbeReport(wrongHttpStatus),
+    /PLAYBOOK_RESOURCE_HTTP_STATUS_INVALID/u
+  );
+
+  const inventedRightsEvidence = resourceProbeReportFixture();
+  inventedRightsEvidence.rights_observations.model_training.evidence_url =
+    'https://example.com/rights';
+  assert.throws(
+    () => validateResourceProbeReport(inventedRightsEvidence),
+    /PLAYBOOK_RESOURCE_EVIDENCE_URL_INVALID/u
+  );
+});
+
+test('probe report schema matches the strict runtime contract', async () => {
+  const schema = JSON.parse(await readFile(
+    new URL('../docs/architecture-playbook/resources/schemas/probe-report.schema.json', import.meta.url),
+    'utf8'
+  ));
+
+  assert.equal(
+    schema.$id,
+    'https://minecraft-constructing-agents.local/schemas/probe-report-v1.json'
+  );
+  assert.deepEqual(schema.required, resourceContracts.PROBE_REPORT_FIELDS);
+  assert.equal(schema.additionalProperties, false);
+  assert.equal(schema.$defs.accessResult.additionalProperties, false);
+  assert.equal(schema.$defs.creatorObservation.additionalProperties, false);
+  assert.equal(schema.$defs.rightsObservations.additionalProperties, false);
+  assert.equal(schema.$defs.rating.additionalProperties, false);
+  assert.deepEqual(schema.$defs.probeStringArray.items, {
+    type: 'string', minLength: 1, maxLength: 512
+  });
+});
+
+test('probe report schema preserves known and unknown observation boundaries', async () => {
+  const schema = JSON.parse(await readFile(
+    new URL('../docs/architecture-playbook/resources/schemas/probe-report.schema.json', import.meta.url),
+    'utf8'
+  ));
+  const httpsPattern = new RegExp(schema.$defs.httpsUrl.pattern, 'u');
+
+  assert.equal(httpsPattern.test('HTTPS://example.com/probe'), true);
+  assert.equal(httpsPattern.test('https://user:pass@example.com/probe'), false);
+  assert.deepEqual(schema.$defs.contentRevision.allOf[1].then.properties.value, { const: null });
+  assert.deepEqual(schema.$defs.contentFingerprint.allOf[1].then.properties.sha256, { const: null });
+  assert.deepEqual(
+    schema.$defs.creatorObservation.allOf[1].then.properties.display_name,
+    { const: null }
+  );
 });

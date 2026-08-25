@@ -21,3 +21,7 @@ export {
   SOURCE_PROFILE_FIELDS,
   validateResourceSourceProfile
 } from './sourceProfile.js';
+export {
+  PROBE_REPORT_FIELDS,
+  validateResourceProbeReport
+} from './probeReport.js';

@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minecraft-constructing-agents.local/schemas/probe-report-v1.json",
+  "title": "Architecture Playbook ResourceProbeReport v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "probe_id", "source_id", "canonical_url", "title", "sample_role",
+    "selection_reason", "observed_at", "observation_bases", "access_result",
+    "content_revision", "content_fingerprint", "creator_observation", "observed_structure",
+    "extractable_fields", "knowledge_value", "rights_observations", "blocking_conditions",
+    "recommended_adapter_behavior", "summary"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "probe_id": { "$ref": "#/$defs/kebabId" },
+    "source_id": { "$ref": "#/$defs/kebabId" },
+    "canonical_url": { "$ref": "#/$defs/httpsUrl" },
+    "title": { "$ref": "#/$defs/prose" },
+    "sample_role": { "$ref": "#/$defs/kebabId" },
+    "selection_reason": { "$ref": "#/$defs/prose" },
+    "observed_at": { "$ref": "#/$defs/canonicalTimestamp" },
+    "observation_bases": { "$ref": "#/$defs/observationBases" },
+    "access_result": { "$ref": "#/$defs/accessResult" },
+    "content_revision": { "$ref": "#/$defs/contentRevision" },
+    "content_fingerprint": { "$ref": "#/$defs/contentFingerprint" },
+    "creator_observation": { "$ref": "#/$defs/creatorObservation" },
+    "observed_structure": { "$ref": "#/$defs/requiredProbeStringArray" },
+    "extractable_fields": { "$ref": "#/$defs/requiredProbeStringArray" },
+    "knowledge_value": { "$ref": "#/$defs/ratings" },
+    "rights_observations": { "$ref": "#/$defs/rightsObservations" },
+    "blocking_conditions": { "$ref": "#/$defs/probeStringArray" },
+    "recommended_adapter_behavior": { "$ref": "#/$defs/requiredProbeStringArray" },
+    "summary": { "$ref": "#/$defs/prose" }
+  },
+  "$defs": {
+    "kebabId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "prose": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "canonicalTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:[0-9]{4}|[+-][0-9]{6})-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.\\d{3}Z$"
+    },
+    "httpsUrl": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^(?![Hh][Tt][Tt][Pp][Ss]://[^/?#]*@)[Hh][Tt][Tt][Pp][Ss]://"
+    },
+    "nullableHttpsUrl": {
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/httpsUrl" }]
+    },
+    "observationBasis": {
+      "enum": [
+        "direct-page", "site-claim", "search-index", "project-inference", "unverified"
+      ]
+    },
+    "observationBases": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/observationBasis" }
+    },
+    "probeStringArray": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 512 }
+    },
+    "requiredProbeStringArray": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/probeStringItem" }
+    },
+    "probeStringItem": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "accessResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "http_status", "final_url", "note"],
+      "properties": {
+        "status": {
+          "enum": [
+            "reachable", "partial-js-render", "manual-or-api-review-required",
+            "source-unavailable", "unknown"
+          ]
+        },
+        "http_status": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 100, "maximum": 599 }
+          ]
+        },
+        "final_url": { "$ref": "#/$defs/nullableHttpsUrl" },
+        "note": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      }
+    },
+    "contentRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "value", "basis"],
+      "properties": {
+        "status": { "enum": ["known", "unknown"] },
+        "value": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/prose" }] },
+        "basis": { "$ref": "#/$defs/observationBasis" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "known" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "value": { "$ref": "#/$defs/prose" },
+              "basis": { "not": { "const": "project-inference" } }
+            },
+            "required": ["value", "basis"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "const": "unknown" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": { "value": { "const": null } },
+            "required": ["value"]
+          }
+        }
+      ]
+    },
+    "contentFingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "sha256", "basis"],
+      "properties": {
+        "status": { "enum": ["known", "unknown"] },
+        "sha256": {
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          ]
+        },
+        "basis": { "$ref": "#/$defs/observationBasis" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "known" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "basis": { "not": { "const": "project-inference" } }
+            },
+            "required": ["sha256", "basis"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "const": "unknown" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": { "sha256": { "const": null } },
+            "required": ["sha256"]
+          }
+        }
+      ]
+    },
+    "creatorObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "display_name", "profile_url", "bases"],
+      "properties": {
+        "status": { "enum": ["known", "unknown", "conflicting", "not-applicable"] },
+        "display_name": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/prose" }]
+        },
+        "profile_url": { "$ref": "#/$defs/nullableHttpsUrl" },
+        "bases": { "$ref": "#/$defs/observationBases" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "known" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": { "display_name": { "$ref": "#/$defs/prose" } },
+            "required": ["display_name"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "enum": ["unknown", "conflicting", "not-applicable"] } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": { "display_name": { "const": null } },
+            "required": ["display_name"]
+          }
+        }
+      ]
+    },
+    "rightsObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidence_url", "checked_at", "note"],
+      "properties": {
+        "status": {
+          "enum": [
+            "observed-allowed", "observed-prohibited", "not-reviewed", "unknown",
+            "not-applicable"
+          ]
+        },
+        "evidence_url": { "$ref": "#/$defs/nullableHttpsUrl" },
+        "checked_at": { "$ref": "#/$defs/canonicalTimestamp" },
+        "note": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "allOf": [{
+        "if": {
+          "properties": { "status": { "enum": ["not-reviewed", "unknown"] } },
+          "required": ["status"]
+        },
+        "then": {
+          "properties": { "evidence_url": { "const": null } },
+          "required": ["evidence_url"]
+        }
+      }]
+    },
+    "rightsObservations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "public_access", "local_analysis", "automated_retrieval", "artifact_download",
+        "model_training", "external_redistribution"
+      ],
+      "properties": {
+        "public_access": { "$ref": "#/$defs/rightsObservation" },
+        "local_analysis": { "$ref": "#/$defs/rightsObservation" },
+        "automated_retrieval": { "$ref": "#/$defs/rightsObservation" },
+        "artifact_download": { "$ref": "#/$defs/rightsObservation" },
+        "model_training": { "$ref": "#/$defs/rightsObservation" },
+        "external_redistribution": { "$ref": "#/$defs/rightsObservation" }
+      }
+    },
+    "rating": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "reason"],
+      "properties": {
+        "value": {
+          "anyOf": [
+            { "type": "integer", "minimum": 0, "maximum": 4 },
+            { "const": "unknown" }
+          ]
+        },
+        "reason": { "$ref": "#/$defs/prose" }
+      }
+    },
+    "ratings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principles", "construction_sequence", "reference_case", "materials",
+        "survival_constraints", "evaluation", "provenance", "access_stability", "rights_clarity"
+      ],
+      "properties": {
+        "principles": { "$ref": "#/$defs/rating" },
+        "construction_sequence": { "$ref": "#/$defs/rating" },
+        "reference_case": { "$ref": "#/$defs/rating" },
+        "materials": { "$ref": "#/$defs/rating" },
+        "survival_constraints": { "$ref": "#/$defs/rating" },
+        "evaluation": { "$ref": "#/$defs/rating" },
+        "provenance": { "$ref": "#/$defs/rating" },
+        "access_stability": { "$ref": "#/$defs/rating" },
+        "rights_clarity": { "$ref": "#/$defs/rating" }
+      }
+    }
+  }
+}
