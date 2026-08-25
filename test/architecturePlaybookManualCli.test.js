@@ -150,6 +150,47 @@ test('managed writer preserves an unowned wx collision and installs nothing', as
   assert.equal(await fs.readFile(collisionPath, 'utf8'), 'unowned-collision\n');
 });
 
+test('managed authority closes a final parent handle when its admission stat fails', async (t) => {
+  const fixture = await managedWriteFixture(t);
+  const failure = failFinalParentAdmissionStatFs(fs);
+  t.after(() => closeHandleIfOpen(failure.openedHandle));
+
+  await assert.rejects(
+    writeManagedPlaybookArtifacts({
+      projectRoot: fixture.projectRoot,
+      artifacts: fixture.artifacts,
+      fsImpl: failure.fsImpl
+    }),
+    /PLAYBOOK_MANUAL_PATH_CHECK_FAILED/u
+  );
+
+  assert.ok(failure.openedHandle);
+  await assertHandleClosed(failure.openedHandle);
+  assert.deepEqual(await fixture.readTree(), fixture.originalTree);
+  await assertNoTransactionTemps(fixture.projectRoot);
+});
+
+test('managed authority closes an opened child when its predecessor close fails', async (t) => {
+  const fixture = await managedWriteFixture(t);
+  const failure = failIntermediateCloseAfterChildOpenFs(fs);
+  t.after(() => closeHandleIfOpen(failure.previousHandle));
+  t.after(() => closeHandleIfOpen(failure.childHandle));
+
+  await assert.rejects(
+    writeManagedPlaybookArtifacts({
+      projectRoot: fixture.projectRoot,
+      artifacts: fixture.artifacts,
+      fsImpl: failure.fsImpl
+    }),
+    /PLAYBOOK_MANUAL_PATH_CHECK_FAILED/u
+  );
+
+  assert.ok(failure.childHandle);
+  await assertHandleClosed(failure.childHandle);
+  assert.deepEqual(await fixture.readTree(), fixture.originalTree);
+  await assertNoTransactionTemps(fixture.projectRoot);
+});
+
 test('managed writer installs exact bytes without transaction residue', async (t) => {
   const fixture = await managedWriteFixture(t, {
     originals: P3_MANAGED_ARTIFACT_PATHS.map((_, index) => `old-${index}\n`)
@@ -192,6 +233,61 @@ test('managed writer restores installed files after a later rename failure', asy
   assert.deepEqual(await fixture.readAll(), fixture.originalBytes);
   assert.deepEqual(await fixture.readTree(), fixture.originalTree);
   await assertNoTransactionTemps(fixture.projectRoot);
+});
+
+test('managed writer rolls back when parent identity changes after the last install check', async (t) => {
+  const fixture = await managedWriteFixture(t, {
+    originals: ['old-0\n', null, 'old-2\n', null, 'old-4\n']
+  });
+  const parentPath = MANAGED_PARENT_PATHS[1];
+  const managedParent = path.join(fixture.projectRoot, parentPath);
+  const heldParent = `${managedParent}-held`;
+  const outsideRoot = await temporaryRoot(t, 'playbook-final-swap-outside-');
+  await fs.writeFile(
+    path.join(outsideRoot, path.basename(P3_MANAGED_ARTIFACT_PATHS[4])),
+    'outside-original\n',
+    'utf8'
+  );
+  const outsideBefore = await filesystemContentSnapshot(outsideRoot);
+  const originalParents = new Map(fixture.originalTree);
+  const fsImpl = swapAfterLastInstallBindingFs(fs, {
+    projectRoot: fixture.projectRoot,
+    managedParent,
+    heldParent,
+    outsideRoot
+  });
+
+  await assert.rejects(
+    writeManagedPlaybookArtifacts({
+      projectRoot: fixture.projectRoot,
+      artifacts: fixture.artifacts,
+      fsImpl
+    }),
+    (error) => {
+      assert.match(error.message, /PLAYBOOK_MANUAL_SYMLINK_ESCAPE/u);
+      assert.doesNotMatch(error.message, /\/proc\/|\/tmp\/|\/home\//u);
+      return true;
+    }
+  );
+
+  assert.equal((await fs.lstat(managedParent)).isSymbolicLink(), true);
+  assert.deepEqual(
+    await filesystemContentSnapshot(outsideRoot),
+    outsideBefore
+  );
+  assert.deepEqual(
+    await filesystemContentSnapshot(path.join(
+      fixture.projectRoot,
+      MANAGED_PARENT_PATHS[0]
+    )),
+    originalParents.get(MANAGED_PARENT_PATHS[0])
+  );
+  assert.deepEqual(
+    await filesystemContentSnapshot(heldParent),
+    originalParents.get(parentPath)
+  );
+  await assertDirectoryHasNoTransactionTemps(heldParent);
+  await assertDirectoryHasNoTransactionTemps(outsideRoot);
 });
 
 test('managed writer reports rollback failure with managed relative paths only', async (t) => {
@@ -470,6 +566,143 @@ function failInstallAndRollbackFs(fsImpl, projectRoot) {
       };
     }
   });
+}
+
+function failFinalParentAdmissionStatFs(fsImpl) {
+  const failure = { openedHandle: null, fsImpl: null };
+  failure.fsImpl = new Proxy(fsImpl, {
+    get(target, property) {
+      if (property !== 'open') return Reflect.get(target, property);
+      return async (filePath, ...args) => {
+        const handle = await target.open(filePath, ...args);
+        if (
+          failure.openedHandle
+          || path.basename(String(filePath)) !== 'manual'
+        ) {
+          return handle;
+        }
+        failure.openedHandle = handle;
+        let statCount = 0;
+        return proxyHandle(handle, {
+          stat: async () => {
+            statCount += 1;
+            if (statCount === 2) {
+              const error = new Error('simulated private parent stat failure');
+              error.code = 'EIO';
+              throw error;
+            }
+            return handle.stat();
+          }
+        });
+      };
+    }
+  });
+  return failure;
+}
+
+function failIntermediateCloseAfterChildOpenFs(fsImpl) {
+  const failure = {
+    previousHandle: null,
+    childHandle: null,
+    fsImpl: null
+  };
+  failure.fsImpl = new Proxy(fsImpl, {
+    get(target, property) {
+      if (property !== 'open') return Reflect.get(target, property);
+      return async (filePath, ...args) => {
+        const handle = await target.open(filePath, ...args);
+        const name = path.basename(String(filePath));
+        if (name === 'docs' && !failure.previousHandle) {
+          failure.previousHandle = handle;
+          let closeCount = 0;
+          return proxyHandle(handle, {
+            close: async () => {
+              closeCount += 1;
+              if (closeCount === 1) {
+                const error = new Error('simulated private close failure');
+                error.code = 'EIO';
+                throw error;
+              }
+              return handle.close();
+            }
+          });
+        }
+        if (
+          name === 'architecture-playbook'
+          && failure.previousHandle
+          && !failure.childHandle
+        ) {
+          failure.childHandle = handle;
+        }
+        return handle;
+      };
+    }
+  });
+  return failure;
+}
+
+function swapAfterLastInstallBindingFs(fsImpl, {
+  projectRoot,
+  managedParent,
+  heldParent,
+  outsideRoot
+}) {
+  let installCount = 0;
+  let swapped = false;
+  return new Proxy(fsImpl, {
+    get(target, property) {
+      if (property === 'rename') {
+        return async (source, destination) => {
+          await target.rename(source, destination);
+          const relative = managedDestinationPath(destination, projectRoot);
+          if (P3_MANAGED_ARTIFACT_PATHS.includes(relative)) installCount += 1;
+        };
+      }
+      if (property === 'open') {
+        return async (filePath, ...args) => {
+          const handle = await target.open(filePath, ...args);
+          if (
+            installCount !== P3_MANAGED_ARTIFACT_PATHS.length
+            || swapped
+            || path.resolve(String(filePath)) !== path.resolve(managedParent)
+          ) {
+            return handle;
+          }
+          return proxyHandle(handle, {
+            close: async () => {
+              await handle.close();
+              await fs.rename(managedParent, heldParent);
+              await fs.symlink(outsideRoot, managedParent, 'dir');
+              swapped = true;
+            }
+          });
+        };
+      }
+      return Reflect.get(target, property);
+    }
+  });
+}
+
+function proxyHandle(handle, overrides) {
+  return new Proxy(handle, {
+    get(target, property) {
+      if (Object.hasOwn(overrides, property)) return overrides[property];
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    }
+  });
+}
+
+async function assertHandleClosed(handle) {
+  assert.equal(handle.fd, -1);
+  await assert.rejects(
+    handle.stat(),
+    (error) => error?.code === 'EBADF'
+  );
+}
+
+async function closeHandleIfOpen(handle) {
+  if (handle && handle.fd !== -1) await handle.close();
 }
 
 function managedDestinationPath(destination, projectRoot) {

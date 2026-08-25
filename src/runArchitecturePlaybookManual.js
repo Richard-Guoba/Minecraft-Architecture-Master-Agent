@@ -107,6 +107,7 @@ export async function writeManagedPlaybookArtifacts({
         temporary.owned = false;
         await assertAuthorityBindings(authority, fsImpl);
       }
+      await assertAuthorityBindings(authority, fsImpl);
     } catch (error) {
       installError = error;
       const rollbackFailures = await rollbackOriginals({
@@ -126,7 +127,6 @@ export async function writeManagedPlaybookArtifacts({
       throwManualError('PLAYBOOK_MANUAL_INSTALL_FAILED', [failedPath]);
     }
 
-    await assertAuthorityBindings(authority, fsImpl);
     return writeSummary(status, artifactHashes);
   });
 }
@@ -276,14 +276,20 @@ async function acquireManagedAuthority({ projectRoot, fsImpl, createParents }) {
         parents.set(parentRelativePath, null);
         continue;
       }
-      const stat = await handle.stat();
-      parents.set(parentRelativePath, Object.freeze({
-        relativePath: parentRelativePath,
-        lexicalPath: path.join(rootReal, parentRelativePath),
-        handle,
-        descriptorPath: descriptorPath(handle),
-        identity: directoryIdentity(stat)
-      }));
+      let transferredToParents = false;
+      try {
+        const stat = await handle.stat();
+        parents.set(parentRelativePath, Object.freeze({
+          relativePath: parentRelativePath,
+          lexicalPath: path.join(rootReal, parentRelativePath),
+          handle,
+          descriptorPath: descriptorPath(handle),
+          identity: directoryIdentity(stat)
+        }));
+        transferredToParents = true;
+      } finally {
+        if (!transferredToParents) await closeHandleIgnoringError(handle);
+      }
     }
     const targets = P3_MANAGED_ARTIFACT_PATHS.map((relativePath) => {
       const absolutePath = path.resolve(rootReal, relativePath);
@@ -332,55 +338,58 @@ async function openDirectoryTree({
   try {
     for (const component of parentRelativePath.split('/')) {
       const childPath = path.join(descriptorPath(currentHandle), component);
-      let childHandle;
+      let childHandle = null;
+      let transferredToCurrent = false;
       try {
-        childHandle = await fsImpl.open(childPath, DIRECTORY_OPEN_FLAGS);
-      } catch (error) {
-        if (error?.code === 'ENOENT' && !create) {
-          if (ownsCurrent) await currentHandle.close();
-          return null;
-        }
-        if (error?.code === 'ENOENT' && create) {
-          try {
-            await fsImpl.mkdir(childPath);
-          } catch (mkdirError) {
-            if (mkdirError?.code !== 'EEXIST') throw mkdirError;
-          }
-          childHandle = await fsImpl.open(childPath, DIRECTORY_OPEN_FLAGS);
-        } else {
-          if (error?.code === 'ELOOP' || error?.code === 'ENOTDIR') {
-            throwManualError(
-              'PLAYBOOK_MANUAL_SYMLINK_ESCAPE',
-              managedPathsForParent(parentRelativePath)
-            );
-          }
-          throw error;
-        }
-      }
-      try {
-        await assertDescriptorIdentity(childHandle, fsImpl);
-      } catch (error) {
         try {
-          await childHandle.close();
-        } catch {
-          // The stable descriptor error remains primary.
+          childHandle = await fsImpl.open(childPath, DIRECTORY_OPEN_FLAGS);
+        } catch (error) {
+          if (error?.code === 'ENOENT' && !create) {
+            if (ownsCurrent) await currentHandle.close();
+            return null;
+          }
+          if (error?.code === 'ENOENT' && create) {
+            try {
+              await fsImpl.mkdir(childPath);
+            } catch (mkdirError) {
+              if (mkdirError?.code !== 'EEXIST') throw mkdirError;
+            }
+            childHandle = await fsImpl.open(childPath, DIRECTORY_OPEN_FLAGS);
+          } else {
+            if (error?.code === 'ELOOP' || error?.code === 'ENOTDIR') {
+              throwManualError(
+                'PLAYBOOK_MANUAL_SYMLINK_ESCAPE',
+                managedPathsForParent(parentRelativePath)
+              );
+            }
+            throw error;
+          }
         }
-        throw error;
+        await assertDescriptorIdentity(childHandle, fsImpl);
+        if (ownsCurrent) await currentHandle.close();
+        currentHandle = childHandle;
+        ownsCurrent = true;
+        transferredToCurrent = true;
+      } finally {
+        if (childHandle && !transferredToCurrent) {
+          await closeHandleIgnoringError(childHandle);
+        }
       }
-      if (ownsCurrent) await currentHandle.close();
-      currentHandle = childHandle;
-      ownsCurrent = true;
     }
     return currentHandle;
   } catch (error) {
     if (ownsCurrent) {
-      try {
-        await currentHandle.close();
-      } catch {
-        // The stable path or authority error remains primary.
-      }
+      await closeHandleIgnoringError(currentHandle);
     }
     throw error;
+  }
+}
+
+async function closeHandleIgnoringError(handle) {
+  try {
+    await handle.close();
+  } catch {
+    // The stable path or authority error remains primary.
   }
 }
 
