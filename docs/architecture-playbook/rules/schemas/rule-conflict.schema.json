@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minecraft-architecture-agent.local/schemas/rule-conflict-v1.json",
+  "title": "Architecture Playbook RuleConflict v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "conflict_id",
+    "primary_school",
+    "rule_ids",
+    "evidence_ids",
+    "resolution",
+    "condition_note",
+    "review_status"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "conflict_id": {
+      "type": "string",
+      "pattern": "^conflict:[a-z0-9][a-z0-9_.:-]{0,127}$"
+    },
+    "primary_school": { "const": "heihui-jileniao" },
+    "rule_ids": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^rule:[a-z0-9][a-z0-9_.:-]{0,127}$"
+      }
+    },
+    "evidence_ids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^ev:[a-z0-9][a-z0-9_.:-]{0,127}$"
+      }
+    },
+    "resolution": {
+      "enum": ["conditional-difference", "unresolved", "superseded"]
+    },
+    "condition_note": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "review_status": { "enum": ["draft", "unresolved", "needs-owner-review"] }
+  }
+}

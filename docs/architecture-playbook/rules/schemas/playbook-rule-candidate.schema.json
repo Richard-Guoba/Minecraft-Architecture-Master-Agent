@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minecraft-architecture-agent.local/schemas/playbook-rule-candidate-v1.json",
+  "title": "Architecture Playbook Rule Candidate v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "rule_id",
+    "rule_version",
+    "primary_school",
+    "source_episode_bvids",
+    "evidence_ids",
+    "claim_type",
+    "design_layer",
+    "intent",
+    "applicability",
+    "prerequisites",
+    "exclusions",
+    "action",
+    "parameters",
+    "implementation_hints",
+    "positive_signs",
+    "failure_modes",
+    "repairs",
+    "author_reason",
+    "confidence",
+    "maturity",
+    "review_status",
+    "conflict_ids",
+    "supersedes"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "rule_id": {
+      "type": "string",
+      "pattern": "^rule:[a-z0-9][a-z0-9_.:-]{0,127}$"
+    },
+    "rule_version": { "type": "integer", "minimum": 1 },
+    "primary_school": { "const": "heihui-jileniao" },
+    "source_episode_bvids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^BV[1-9A-Za-z]{10}$" }
+    },
+    "evidence_ids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^ev:[a-z0-9][a-z0-9_.:-]{0,127}$"
+      }
+    },
+    "claim_type": { "enum": ["fact", "author_claim", "inference"] },
+    "design_layer": {
+      "enum": ["brief", "massing", "structure", "roof", "facade"]
+    },
+    "intent": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "applicability": { "$ref": "#/$defs/nonemptyTextArray" },
+    "prerequisites": { "$ref": "#/$defs/nonemptyTextArray" },
+    "exclusions": { "$ref": "#/$defs/textArray" },
+    "action": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "parameters": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "value", "unit", "status"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "value": { "type": ["string", "number", "boolean", "null"] },
+          "unit": { "type": ["string", "null"], "maxLength": 64 },
+          "status": { "enum": ["known", "unknown"] }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "status": { "const": "unknown" } } },
+            "then": { "properties": { "value": { "const": null } } }
+          }
+        ]
+      }
+    },
+    "implementation_hints": { "$ref": "#/$defs/nonemptyTextArray" },
+    "positive_signs": { "$ref": "#/$defs/nonemptyTextArray" },
+    "failure_modes": { "$ref": "#/$defs/nonemptyTextArray" },
+    "repairs": { "$ref": "#/$defs/nonemptyTextArray" },
+    "author_reason": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "confidence": { "enum": ["unknown", "low", "medium", "high"] },
+    "maturity": { "enum": ["observed", "candidate"] },
+    "review_status": { "enum": ["draft", "unresolved", "needs-owner-review"] },
+    "conflict_ids": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^conflict:[a-z0-9][a-z0-9_.:-]{0,127}$"
+      }
+    },
+    "supersedes": { "type": "array", "maxItems": 0 }
+  },
+  "$defs": {
+    "textArray": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+    },
+    "nonemptyTextArray": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+    }
+  }
+}
