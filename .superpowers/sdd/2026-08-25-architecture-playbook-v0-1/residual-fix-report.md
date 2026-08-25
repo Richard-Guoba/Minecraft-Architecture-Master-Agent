@@ -157,3 +157,134 @@ permitted real-subprocess path, matching the documented sandbox distinction.
 No open correctness concern remains. Percent normalization intentionally
 blocks on budget exhaustion; this may conservatively reject extremely nested
 percent text, but it cannot open P4 without proving the content safe.
+
+## Principled hardening round
+
+### Baseline and scope
+
+This round began from the requested clean commit:
+
+```text
+bba02f9a96de9a422a6309fbdd51c1dfdbd20bdc
+```
+
+Only the manual dependency audit, public-leak range scanner, and their P3/pure
+compiler tests changed. No construction module, runtime pipeline,
+resource-registry file, managed artifact, admission policy, or public P3 claim
+was modified.
+
+### Scope-aware loader/factory analysis
+
+The previous global name sets were replaced by one Acorn-based lexical scope
+index and a fixed-point taint analysis. Bindings are resolved through program,
+function, block, catch, loop, and switch scopes. Default/namespace
+`node:module` bindings, `createRequire` factories, created loaders, and opaque
+factory/loader escapes are distinct states. Direct modeled loaders still add
+real CJS dependency edges. Unsupported computed access, unknown calls,
+returns, exports, containers, destructuring, and inter-module escapes now add
+stable unresolved facts instead of leaving the audit at 0/0.
+
+The executable regression fixtures cover:
+
+- `import { default as Module } from 'node:module'`;
+- dynamic `Module[key]` factory access and dynamic destructuring;
+- a function returning the factory;
+- ESM named/default factory re-exports and a namespace re-export;
+- CJS `module.exports` and `exports.member` factory exports;
+- nested real bindings plus shadowed parameter, local, and `require` controls.
+
+Every malicious fixture separately executes its construction target and
+observes the marker value before invoking the production audit. The existing
+non-execution fixture still proves that the audit resolves a target without
+executing its module body. `Module.isBuiltin(...)`, the unrelated CJS member
+control, and exact loader `.resolve(...)` remain 0/0.
+
+Initial dependency RED, before production changes:
+
+```text
+node --test --test-isolation=none --test-name-pattern='loader bindings|loader factories cannot escape|loader taint follows lexical scope' test/playbookP3Gate.test.js
+tests 27; pass 14; fail 13
+```
+
+The same command after the scope-aware implementation passed 27/27. An
+additional policy-boundary RED for dynamic factory destructuring and a Node
+module namespace re-export reported 23 tests, 19 pass, 4 fail (the two cases
+and their parents); the same command then passed 23/23. The obsolete name-set
+scanner was removed rather than retained as a weaker second result.
+
+### Unified normalized leak ranges
+
+Percent normalization now supplies both HTTPS exemption ranges and all leak
+matcher ranges, preserving their raw input offsets. File URL matching accepts
+one or more slash characters, which covers canonical `file:/`, `file://`, and
+`file:///` forms and their mixed/partial encoded equivalents. High-priority
+file and UNC matches are added before HTTPS filtering, so an embedded file URL
+or UNC reference remains a leak; an ordinary absolute path inside a partially
+encoded public HTTPS URL remains exempt. The existing eight-round decoding
+budget, exhaustion blocker, malformed-input behavior, overlap merging, and
+range deduplication remain deterministic and fail closed.
+
+Leak RED across the pure compiler and descriptor-protected checked snapshot:
+
+```text
+node --test --test-isolation=none --test-name-pattern='pure audit blocks file URLs|protected checked snapshot blocks file URL' test/playbookV01Compiler.test.js test/playbookP3Gate.test.js
+tests 12; pass 6; fail 6
+```
+
+The failures were the one-slash and partial file URL misses, the embedded
+partial-HTTPS file miss, the partial-HTTPS ordinary-path false positive, and
+their parent tests. The identical command passed 12/12 after using the unified
+normalized range mapping.
+
+### Final verification for this round
+
+Changed suites:
+
+```text
+node --test --test-isolation=none test/playbookV01Compiler.test.js test/playbookP3Gate.test.js
+tests 87; pass 87; fail 0
+```
+
+Exact focused playbook/CLI gate through the permitted real-subprocess path:
+
+```text
+node --test test/playbook*.test.js test/architecturePlaybookCourseCli.test.js test/architecturePlaybookEvidenceCli.test.js test/architecturePlaybookManualCli.test.js
+tests 243; pass 243; fail 0
+```
+
+The same focused command inside the restricted subprocess sandbox completed
+19 files and failed only the manual CLI file because its first nested build
+captured empty stdout after successfully writing the fixture artifacts. No
+assertion was weakened: the required permitted path produced the authoritative
+243/243 result.
+
+Managed artifact verification:
+
+```text
+npm run playbook:manual -- check
+playbook_status=current
+reviewed_rule_count=21
+core_procedure_count=15
+case_pattern_count=6
+artifact_count=5
+managed_artifact_drift_count=0
+```
+
+Full regression through the permitted real-subprocess path:
+
+```text
+npm test
+tests 667; pass 667; fail 0
+```
+
+### Preserved claims and residual risk
+
+P3 remains exactly 21 cards (15 core procedures and 6 case patterns), one
+conflict, seven unknowns, advisory/candidate/not-tested maturity, P2 lineage,
+five byte-current managed artifacts, and zero runtime authority. P3 has not
+generated or visually improved a house and provides zero runtime authority.
+
+The dependency analysis deliberately blocks opaque factory/loader flows that
+it cannot prove safe. This can reject unusual metaprogramming in the manual
+module tree, but it cannot silently open P4. No open scoped correctness concern
+remains.

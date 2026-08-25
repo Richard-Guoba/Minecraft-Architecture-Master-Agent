@@ -412,7 +412,10 @@ test('pure audit excludes public HTTPS URL ranges without hiding local private s
 test('pure audit blocks file URLs and UNC references before HTTPS exceptions', async () => {
   const base = compilePlaybookV01(await checkedInCompilerFixture());
   const privateReferences = [
+    'file:/home/user/artifact.bin',
+    'file://home/user/artifact.bin',
     'file:///home/user/artifact.bin',
+    'f%69le:%2Fhome%2Fuser%2Fartifact.bin',
     'file:%2F%2F%2Fhome%2Fuser%2Fartifact.bin',
     '%66%69%6c%65%3A%2F%2F%2Fhome%2Fuser%2Fartifact.bin',
     '\\\\server\\share\\artifact.bin',
@@ -421,6 +424,8 @@ test('pure audit blocks file URLs and UNC references before HTTPS exceptions', a
     '%2F%2Fserver%2Fshare%2Fartifact.bin',
     'https://example.test/?next=file:///home/user/artifact.bin',
     'https://example.test/?next=%5C%5Cserver%5Cshare%5Cartifact.bin',
+    'h%74tps://example.test/?next=f%69le:%2Fhome%2Falice%2Fsecret.txt',
+    String.raw`h%74tps://example.test/?next=%5C\server\share\secret.txt`,
     'f%69le:%2F%2F%2Fhome%2Falice%2Fsecret.txt',
     String.raw`%5C\server\share\secret.txt`,
     'f%2569le:%252F%252F%252Fhome%252Falice%252Fsecret.txt',
@@ -439,6 +444,7 @@ test('pure audit blocks file URLs and UNC references before HTTPS exceptions', a
 
   for (const reference of [
     'https://example.test/path/file.txt',
+    'h%74tps://example.test/?next=/home/alice/public.txt',
     'ordinary file cabinet on a public server share',
     'malformed f%6Zle:%2F%2 reference',
     'https%3A%2F%2Fexample.test%2Fpublic',

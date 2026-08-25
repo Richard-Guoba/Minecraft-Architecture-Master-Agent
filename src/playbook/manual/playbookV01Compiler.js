@@ -46,7 +46,7 @@ const SPECIAL_CHAPTER_IDS = new Set([
   'unknowns-and-coverage'
 ]);
 const PUBLIC_HTTPS_URL = /https:\/\/[^\s`"'<>|)]+/gimu;
-const FILE_URL_REFERENCE = /(?<![A-Za-z0-9])(?:file(?::|%3a)|%66%69%6c%65(?::|%3a))(?:(?:[\\/]|%2f|%5c){2,})[^\s`"'<>|)]*/gimu;
+const FILE_URL_REFERENCE = /(?<![A-Za-z0-9])(?:file(?::|%3a)|%66%69%6c%65(?::|%3a))(?:(?:[\\/]|%2f|%5c)+)[^\s`"'<>|)]*/gimu;
 const UNC_REFERENCE = /(?<![A-Za-z0-9:])(?:(?:\\\\|\/\/)|(?:%5c%5c|%2f%2f))[A-Za-z0-9%._~@+-]+(?:(?:[\\/]|%2f|%5c)[^\s`"'<>|)]+)+/gimu;
 const UNIX_ABSOLUTE_PATH = /(?<![A-Za-z0-9:/.])\/(?!\/)[A-Za-z0-9._~@+-]+(?:\/[A-Za-z0-9._~@+()-]+)*/gimu;
 const WINDOWS_ABSOLUTE_PATH = /(?<![A-Za-z0-9])[A-Za-z]:[\\/](?:[^\\/\s`"'<>|]+[\\/])*[^\\/\s`"'<>|]+/gimu;
@@ -977,8 +977,8 @@ function countPublicLeaks(artifacts) {
 }
 
 function countDistinctLeakRanges(value) {
-  const publicUrlRanges = matchRanges(value, PUBLIC_HTTPS_URL);
   const normalized = normalizePercentForLeakScan(value);
+  const publicUrlRanges = normalizedMatchRanges(normalized, PUBLIC_HTTPS_URL);
   const highPriorityRanges = HIGH_PRIORITY_PUBLIC_LEAK_MATCHERS.flatMap(
     (matcher) => normalizedMatchRanges(normalized, matcher)
   );
@@ -987,7 +987,9 @@ function countDistinctLeakRanges(value) {
   }
   const ranges = [
     ...highPriorityRanges,
-    ...PUBLIC_LEAK_MATCHERS.flatMap((matcher) => matchRanges(value, matcher))
+    ...PUBLIC_LEAK_MATCHERS.flatMap(
+      (matcher) => normalizedMatchRanges(normalized, matcher)
+    )
       .filter((range) => !publicUrlRanges.some((publicUrlRange) =>
         range.start >= publicUrlRange.start && range.end <= publicUrlRange.end))
   ]
@@ -1063,13 +1065,6 @@ function normalizedMatchRanges(normalized, matcher) {
   return [...normalized.text.matchAll(matcher)].map((match) => ({
     start: normalized.units[match.index].start,
     end: normalized.units[match.index + match[0].length - 1].end
-  }));
-}
-
-function matchRanges(value, matcher) {
-  return [...value.matchAll(matcher)].map((match) => ({
-    start: match.index,
-    end: match.index + match[0].length
   }));
 }
 
