@@ -10,10 +10,11 @@
 ## 当前状态
 
 - 已生成并验证 50 集课程来源账本，共 50 个唯一 BV 号，总时长 51,992 秒（约 14.44 小时）。
-- 已批准以 6 集、约 2.05 小时的内容建立最小垂直切片。
+- 6 集、7,381 秒（约 2.05 小时）的 P2 证据垂直切片已经完成。
 - 已批准最小完成标准：课程证据能够转化为秘籍 v0.1，秘籍能够指导至少三个中世纪民居候选，产生固定多视角预览，完成至少一次设计层返工，并与当前生成器做盲选比较。
-- `1.2 结构主次` 单集技术探针已通过：本地媒体已固定哈希，中文 ASR 产生 407 个带时间戳草稿段，8 个事件关键帧已视觉复核，2 条 EvidenceNote 草稿能够重建。
-- 探针仍保留 3 个 unresolved 术语；EvidenceNote 尚未升级为生产规则，生产生成器保持不变。P2 六集证据包现已开放。
+- 六集共生成 2,022 个带时间戳 ASR 草稿段、53 张经目视复核的事件关键帧、21 条可重建 EvidenceNote 和 21 条候选规则。
+- 候选规则仍限定为黑辉极乐鸟单一教学体系，成熟度最高为 `candidate`；7 个定量与泛化问题仍显式保留，生产生成器保持不变。
+- 下一阶段是把候选规则组织成秘籍 v0.1 和 Agent 中间表示，并完成三个中世纪民居候选的生成—评价—返工闭环。
 
 ## 规划空间
 
@@ -57,3 +58,10 @@ docs/architecture-playbook/
 P1 的逐任务实施计划见：
 
 - [P1 课程来源账本与单集探针实施计划](../superpowers/plans/2026-08-25-architecture-playbook-p1-course-probe.md)
+
+P2 的实施计划、结果审计和公开语料入口见：
+
+- [P2 六集证据实施计划](../superpowers/plans/2026-08-25-architecture-playbook-p2-six-episode-evidence.md)
+- [P2 六集证据审计报告](reports/p2-six-episode-evidence.md)
+- [黑辉极乐鸟候选规则 v0.1](rules/schools/heihui-jileniao/candidates-v0.1.jsonl)
+- [六集公开 Evidence 索引](rules/schools/heihui-jileniao/evidence-index-v0.1.json)

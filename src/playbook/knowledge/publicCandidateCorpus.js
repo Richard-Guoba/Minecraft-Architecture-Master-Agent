@@ -9,6 +9,36 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 const EVIDENCE_ID = /^ev:[a-z0-9][a-z0-9_.:-]{0,127}$/u;
 const UNKNOWN_ID = /^unknown:[a-z0-9][a-z0-9_.:-]{0,127}$/u;
 
+export async function auditP2Evidence({ projectRoot }) {
+  const corpus = await loadP2PublicCorpus({ projectRoot });
+  const shapeClaimsWithoutDualEvidence = corpus.evidence_index.episodes
+    .reduce(
+      (total, episode) => total + episode.shape_claims_without_dual_evidence,
+      0
+    );
+  const blockers = [];
+  if (shapeClaimsWithoutDualEvidence > 0) {
+    blockers.push('SHAPE_CLAIM_WITHOUT_DUAL_EVIDENCE');
+  }
+  return deepFreeze({
+    schema_version: 1,
+    episode_count: corpus.episode_count,
+    evidence_note_count: corpus.evidence_note_count,
+    candidate_rule_count: corpus.candidate_rule_count,
+    conflict_count: corpus.conflict_count,
+    unknown_count: corpus.unknown_count,
+    cross_school_count: 0,
+    dangling_reference_count: 0,
+    shape_claims_without_dual_evidence: shapeClaimsWithoutDualEvidence,
+    transcript_leak_count: 0,
+    gate: {
+      status: blockers.length === 0 ? 'passed' : 'blocked',
+      blocker_codes: blockers,
+      next_phase: blockers.length === 0 ? 'P3' : null
+    }
+  });
+}
+
 export async function loadP2PublicCorpus({ projectRoot }) {
   const root = path.resolve(projectRoot);
   const courseRoot = path.join(root, 'docs/architecture-playbook/course');
@@ -135,6 +165,14 @@ function validatePublicEvidenceIndex(value, pilot) {
     assertCondition(
       SHA256.test(episode.evidence_pack_sha256),
       `invalid evidence pack hash for ${episode.bvid}`
+    );
+    assertCondition(
+      episode.accepted_for_public_candidates === true,
+      `evidence pack ${episode.bvid} is not accepted`
+    );
+    assertCondition(
+      episode.shape_claims_without_dual_evidence === 0,
+      `evidence pack ${episode.bvid} has unsupported shape claims`
     );
     assertCondition(
       Array.isArray(episode.evidence_ids) && episode.evidence_ids.length > 0,

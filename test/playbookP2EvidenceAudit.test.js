@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  auditP2Evidence,
   loadP2PublicCorpus,
   parseAndValidateCandidateJsonl
 } from '../src/playbook/knowledge/publicCandidateCorpus.js';
@@ -18,6 +19,17 @@ test('loads the committed six-episode P2 corpus with full lineage', async () => 
   assert.equal(corpus.conflict_count, 1);
   assert.equal(corpus.unknown_count, 7);
   assert.equal(corpus.note_file_count, 6);
+});
+
+test('P2 public knowledge passes the school-isolated evidence gate', async () => {
+  const audit = await auditP2Evidence({ projectRoot });
+
+  assert.equal(audit.episode_count, 6);
+  assert.equal(audit.cross_school_count, 0);
+  assert.equal(audit.dangling_reference_count, 0);
+  assert.equal(audit.shape_claims_without_dual_evidence, 0);
+  assert.equal(audit.transcript_leak_count, 0);
+  assert.equal(audit.gate.status, 'passed');
 });
 
 test('rejects a candidate that cites evidence outside the public index', async () => {
