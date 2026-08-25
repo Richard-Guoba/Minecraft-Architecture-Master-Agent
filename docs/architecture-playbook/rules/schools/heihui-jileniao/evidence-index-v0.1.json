@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "school_id": "heihui-jileniao",
+  "episode_count": 6,
+  "note_count": 21,
+  "episodes": [
+    {
+      "bvid": "BV1fNkgYBEyy",
+      "evidence_pack_sha256": "898348b5df39058774c049e4e3198e2b4b23dfb200434d5a496702ad475fbda0",
+      "evidence_ids": [
+        "ev:bv1fnkgybeyy:three-volumes",
+        "ev:bv1fnkgybeyy:layer-volumes"
+      ]
+    },
+    {
+      "bvid": "BV1HhEuzZEyZ",
+      "evidence_pack_sha256": "0e7e0688ff05716a14244a8aa16ef52371aa3496bcd5f6fa4c38db492993a1a9",
+      "evidence_ids": [
+        "ev:bv1hheuzzeyz:hierarchy-contrast",
+        "ev:bv1hheuzzeyz:subordinate-support"
+      ]
+    },
+    {
+      "bvid": "BV1WhkbYeE5k",
+      "evidence_pack_sha256": "921bd5f3e7e79e4ac77fcc74c502ef9d337285e95c85131a4b30c2d02e652370",
+      "evidence_ids": [
+        "ev:bv1whkbye5k:roof-border-contrast",
+        "ev:bv1whkbye5k:roof-slope-scale",
+        "ev:bv1whkbye5k:break-flat-roof-plane"
+      ]
+    },
+    {
+      "bvid": "BV1HTCaY6EDt",
+      "evidence_pack_sha256": "67d324b0a4b8aeb39e8b37949956305e318e2db3da4b9f13e146634ff726f324",
+      "evidence_ids": [
+        "ev:bv1htcay6edt:frame-basic-wall",
+        "ev:bv1htcay6edt:offset-depth",
+        "ev:bv1htcay6edt:partition-large-wall",
+        "ev:bv1htcay6edt:break-repeated-bays"
+      ]
+    },
+    {
+      "bvid": "BV1WsZcYZEMQ",
+      "evidence_pack_sha256": "3d25a9ee27688cc423b21abf230934147e75953cdf7ae660574af1e27d2e2f9a",
+      "evidence_ids": [
+        "ev:bv1wszcyzemq:purposeful-overhang",
+        "ev:bv1wszcyzemq:visible-load-path",
+        "ev:bv1wszcyzemq:roof-frame-alignment",
+        "ev:bv1wszcyzemq:stone-base"
+      ]
+    },
+    {
+      "bvid": "BV1jbdUYCEjG",
+      "evidence_pack_sha256": "0ef27640969dcbf1c2daa6a3d64e9ed9e09bcedc0f46db0cfe715c336bbeb7a7",
+      "evidence_ids": [
+        "ev:bv1jbduycejg:tower-joint",
+        "ev:bv1jbduycejg:repeat-window-motif",
+        "ev:bv1jbduycejg:purposeful-greenery",
+        "ev:bv1jbduycejg:viewpoint-detail-budget",
+        "ev:bv1jbduycejg:dark-roof-balance",
+        "ev:bv1jbduycejg:scene-depth"
+      ]
+    }
+  ]
+}
