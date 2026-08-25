@@ -25,3 +25,7 @@ export {
   PROBE_REPORT_FIELDS,
   validateResourceProbeReport
 } from './probeReport.js';
+export {
+  PROMOTION_DECISION_FIELDS,
+  validateResourcePromotionDecision
+} from './promotionDecision.js';

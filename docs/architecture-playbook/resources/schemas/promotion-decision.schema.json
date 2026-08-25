@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minecraft-constructing-agents.local/schemas/promotion-decision-v1.json",
+  "title": "Architecture Playbook ResourcePromotionDecision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "decision_id", "source_id", "decision", "decided_by", "decided_at",
+    "assessment_path", "assessment_sha256", "probe_ids", "conditions", "reason"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "decision_id": { "$ref": "#/$defs/kebabId" },
+    "source_id": { "$ref": "#/$defs/kebabId" },
+    "decision": { "enum": ["approved-for-intake", "deferred", "rejected"] },
+    "decided_by": { "const": "project-owner" },
+    "decided_at": { "$ref": "#/$defs/canonicalTimestamp" },
+    "assessment_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^sources/[a-z0-9]+(?:-[a-z0-9]+)*/assessment\\.md$"
+    },
+    "assessment_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "probe_ids": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/kebabId" }
+    },
+    "conditions": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/shortOriginalString" }
+    },
+    "reason": { "$ref": "#/$defs/prose" }
+  },
+  "$defs": {
+    "kebabId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "canonicalTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?:[0-9]{4}|[+-][0-9]{6})-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.\\d{3}Z$"
+    },
+    "shortOriginalString": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "prose": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    }
+  }
+}

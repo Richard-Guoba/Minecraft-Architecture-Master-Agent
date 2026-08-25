@@ -5,12 +5,14 @@ import {
   LIFECYCLE_STATUSES,
   RESOURCE_SCHEMA_VERSION,
   validateResourceCatalog,
+  validateResourcePromotionDecision,
   validateResourceProbeReport,
   validateResourceSourceProfile
 } from '../src/playbook/resources/contracts/index.js';
 import * as resourceContracts from '../src/playbook/resources/contracts/index.js';
 import {
   resourceCatalogFixture,
+  resourcePromotionDecisionFixture,
   resourceProbeReportFixture,
   resourceSourceProfileFixture
 } from './helpers/playbookResourceFixtures.js';
@@ -21,6 +23,8 @@ test('validates and freezes the minimal resource catalog', () => {
 
   assert.equal(catalog.catalog_id, 'architecture-playbook-resource-catalog');
   assert.notEqual(catalog, input);
+  assert.ok(Object.isFrozen(catalog));
+  assert.ok(Object.isFrozen(catalog.sources));
   assert.ok(Object.isFrozen(catalog.sources[0]));
 });
 
@@ -176,6 +180,7 @@ test('catalog schema binds assessment paths to lifecycle and records runtime-onl
 test('assessed source requires a bound assessment and no owner decision', () => {
   const profile = validateResourceSourceProfile(resourceSourceProfileFixture());
   assert.equal(profile.lifecycle_status, 'assessed');
+  assert.ok(Object.isFrozen(profile));
   assert.equal(profile.assessment.probe_ids.length, 5);
   assert.deepEqual(profile.decision_history, []);
   assert.ok(Object.isFrozen(profile.assessment.ratings));
@@ -301,6 +306,8 @@ test('validates and freezes a resource probe report', () => {
 
   assert.equal(probe.probe_id, 'example-probe');
   assert.notEqual(probe, input);
+  assert.ok(Object.isFrozen(probe));
+  assert.ok(Object.isFrozen(probe.knowledge_value));
   assert.ok(Object.isFrozen(probe.creator_observation));
   assert.equal(probe.knowledge_value.survival_constraints.value, 'unknown');
 });
@@ -411,4 +418,97 @@ test('probe report schema preserves known and unknown observation boundaries', a
     schema.$defs.creatorObservation.allOf[1].then.properties.display_name,
     { const: null }
   );
+});
+
+test('promotion decision is reserved for the project owner', () => {
+  const decision = resourcePromotionDecisionFixture();
+  decision.decided_by = 'ai-agent';
+  assert.throws(
+    () => validateResourcePromotionDecision(decision),
+    /PLAYBOOK_RESOURCE_DECIDER_INVALID/u
+  );
+});
+
+test('promotion decision binds the exact source assessment path', () => {
+  const decision = resourcePromotionDecisionFixture();
+  decision.assessment_path = 'sources/other/assessment.md';
+  assert.throws(
+    () => validateResourcePromotionDecision(decision),
+    /PLAYBOOK_RESOURCE_DECISION_SOURCE_MISMATCH/u
+  );
+});
+
+test('validates and freezes a resource promotion decision', () => {
+  const input = resourcePromotionDecisionFixture({
+    conditions: ['Confirm current retrieval terms before intake.']
+  });
+  const decision = validateResourcePromotionDecision(input);
+
+  assert.equal(decision.decision_id, '2026-08-25-deferred');
+  assert.notEqual(decision, input);
+  assert.ok(Object.isFrozen(decision));
+  assert.ok(Object.isFrozen(decision.probe_ids));
+  assert.ok(Object.isFrozen(decision.conditions));
+});
+
+test('promotion decision keeps probe identities unique and conditions in their original order', () => {
+  const duplicateProbe = resourcePromotionDecisionFixture({
+    probe_ids: ['probe-one', 'probe-one', 'probe-three']
+  });
+  assert.throws(
+    () => validateResourcePromotionDecision(duplicateProbe),
+    /PLAYBOOK_RESOURCE_ARRAY_DUPLICATE/u
+  );
+
+  const input = resourcePromotionDecisionFixture({
+    conditions: ['Preserve this wording.', 'Then preserve this wording too.', 'Preserve this wording.']
+  });
+  const decision = validateResourcePromotionDecision(input);
+  assert.deepEqual(decision.conditions, [
+    'Preserve this wording.', 'Then preserve this wording too.', 'Preserve this wording.'
+  ]);
+});
+
+test('all resource contract schemas parse as JSON', async () => {
+  const schemaPaths = [
+    'catalog.schema.json',
+    'source-profile.schema.json',
+    'probe-report.schema.json',
+    'promotion-decision.schema.json'
+  ];
+  const schemas = await Promise.all(schemaPaths.map(async (schemaPath) => JSON.parse(await readFile(
+    new URL(`../docs/architecture-playbook/resources/schemas/${schemaPath}`, import.meta.url),
+    'utf8'
+  ))));
+
+  assert.equal(schemas.length, 4);
+});
+
+test('promotion decision schema matches the strict runtime contract', async () => {
+  const schema = JSON.parse(await readFile(
+    new URL('../docs/architecture-playbook/resources/schemas/promotion-decision.schema.json', import.meta.url),
+    'utf8'
+  ));
+
+  assert.equal(
+    schema.$id,
+    'https://minecraft-constructing-agents.local/schemas/promotion-decision-v1.json'
+  );
+  assert.deepEqual(schema.required, resourceContracts.PROMOTION_DECISION_FIELDS);
+  assert.equal(schema.additionalProperties, false);
+  assert.equal(schema.properties.schema_version.const, RESOURCE_SCHEMA_VERSION);
+  assert.deepEqual(schema.properties.decision.enum, resourceContracts.DECISIONS);
+  assert.equal(schema.properties.decided_by.const, 'project-owner');
+  assert.deepEqual(schema.properties.probe_ids, {
+    type: 'array', minItems: 3, maxItems: 5, uniqueItems: true,
+    items: { $ref: '#/$defs/kebabId' }
+  });
+  assert.deepEqual(schema.properties.conditions, {
+    type: 'array', minItems: 0, maxItems: 32,
+    items: { $ref: '#/$defs/shortOriginalString' }
+  });
+  assert.equal(schema.properties.assessment_path.pattern,
+    '^sources/[a-z0-9]+(?:-[a-z0-9]+)*/assessment\\.md$');
+  assert.equal(schema.properties.assessment_sha256.pattern, '^[a-f0-9]{64}$');
+  assert.equal(schema.$defs.shortOriginalString.maxLength, 256);
 });

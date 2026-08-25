@@ -150,6 +150,23 @@ export function resourceProbeReportFixture(overrides = {}) {
   };
 }
 
+export function resourcePromotionDecisionFixture(overrides = {}) {
+  return {
+    schema_version: 1,
+    decision_id: '2026-08-25-deferred',
+    source_id: 'example-source',
+    decision: 'deferred',
+    decided_by: 'project-owner',
+    decided_at: '2026-08-25T00:00:00.000Z',
+    assessment_path: 'sources/example-source/assessment.md',
+    assessment_sha256: 'a'.repeat(64),
+    probe_ids: ['probe-one', 'probe-two', 'probe-three'],
+    conditions: [],
+    reason: 'Rights remain unclear, so intake is deferred pending owner review.',
+    ...overrides
+  };
+}
+
 function accessObservationFixture() {
   return {
     status: 'unknown',
