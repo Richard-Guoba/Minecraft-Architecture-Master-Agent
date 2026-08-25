@@ -105,10 +105,7 @@ export async function auditManualDependencyBoundary({ projectRoot }) {
         );
         continue;
       }
-      if (
-        !isWithin(resolvedReal, path.join(root, 'node_modules'))
-        && MODULE_EXTENSION_SET.has(path.extname(resolvedReal))
-      ) {
+      if (MODULE_EXTENSION_SET.has(path.extname(resolvedReal))) {
         queuedModules.push(resolvedReal);
       }
     }
@@ -339,7 +336,7 @@ function collectDeniedCapability({
   if (
     isModuleSourceNode(node)
     && isNodeModuleSpecifier(literalSpecifier(node.source))
-    && !isSafeNodeModuleImport(node)
+    && !isSafeNodeModuleImport(node, modulePath)
     && !isTrustedAuditModuleImport(
       node,
       modulePath,
@@ -436,15 +433,24 @@ function collectDeniedCapability({
 
 function isModuleSourceNode(node) {
   return node.type === 'ImportDeclaration'
+    || node.type === 'ImportExpression'
     || node.type === 'ExportNamedDeclaration'
     || node.type === 'ExportAllDeclaration';
 }
 
-function isSafeNodeModuleImport(node) {
-  return node.type === 'ImportDeclaration'
-    && node.specifiers.length === 1
-    && node.specifiers[0].type === 'ImportSpecifier'
-    && importedName(node.specifiers[0]) === 'isBuiltin';
+function isSafeNodeModuleImport(node, modulePath) {
+  if (
+    node.type !== 'ImportDeclaration'
+    || node.specifiers.length !== 1
+    || node.specifiers[0].type !== 'ImportSpecifier'
+  ) return false;
+  const name = importedName(node.specifiers[0]);
+  return name === 'isBuiltin'
+    || (name === 'builtinModules' && isNodeModulesPath(modulePath));
+}
+
+function isNodeModulesPath(modulePath) {
+  return modulePath.split(path.sep).includes('node_modules');
 }
 
 function isTrustedAuditModuleImport(
@@ -664,27 +670,29 @@ function buildLexicalBindings(program) {
     }
     if (node.type === 'FunctionDeclaration') {
       declareIdentifier(node.id, scope);
-      const functionScope = createScope(scope, 'function');
-      nodeScopes.set(node, functionScope);
-      if (node.id) declareIdentifier(node.id, functionScope);
+      const parameterScope = createScope(scope, 'parameters');
+      nodeScopes.set(node, parameterScope);
+      if (node.id) declareIdentifier(node.id, parameterScope);
       for (const parameter of node.params) {
-        declarePattern(parameter, functionScope);
-        visit(parameter, functionScope);
+        declarePattern(parameter, parameterScope);
+        visit(parameter, parameterScope);
       }
-      visit(node.body, functionScope);
+      const bodyScope = createScope(parameterScope, 'function');
+      visit(node.body, bodyScope);
       return;
     }
     if (node.type === 'FunctionExpression' || node.type === 'ArrowFunctionExpression') {
-      const functionScope = createScope(scope, 'function');
-      nodeScopes.set(node, functionScope);
+      const parameterScope = createScope(scope, 'parameters');
+      nodeScopes.set(node, parameterScope);
       if (node.type === 'FunctionExpression' && node.id) {
-        declareIdentifier(node.id, functionScope);
+        declareIdentifier(node.id, parameterScope);
       }
       for (const parameter of node.params) {
-        declarePattern(parameter, functionScope);
-        visit(parameter, functionScope);
+        declarePattern(parameter, parameterScope);
+        visit(parameter, parameterScope);
       }
-      visit(node.body, functionScope);
+      const bodyScope = createScope(parameterScope, 'function');
+      visit(node.body, bodyScope);
       return;
     }
     if (node.type === 'BlockStatement') {

@@ -503,6 +503,19 @@ test('capability deny rejects unsupported loader roots before value propagation'
       execute: requireDefault
     },
     {
+      name: 'default parameter is not shadowed by body var',
+      entryPath: 'src/playbook/manual/entry.cjs',
+      source: [
+        "function loadTarget(value = require('../../construction/target.cjs')) {",
+        '  var require;',
+        '  return value;',
+        '}',
+        'module.exports = loadTarget();',
+        ''
+      ].join('\n'),
+      execute: requireDefault
+    },
+    {
       name: 'implicit return',
       entryPath: 'src/playbook/manual/entry.cjs',
       source: [
@@ -533,6 +546,20 @@ test('capability deny rejects unsupported loader roots before value propagation'
         ''
       ].join('\n'),
       execute: requireDefault
+    },
+    {
+      name: 'literal dynamic import node module capability',
+      entryPath: 'src/playbook/manual/entry.js',
+      files: {
+        'package.json': '{"type":"module"}\n',
+        'src/playbook/manual/entry.js': [
+          "const Module = await import('node:module');",
+          "export default Module.createRequire(import.meta.url)('../../construction/target.cjs');",
+          ''
+        ].join('\n')
+      },
+      execute: importDefault,
+      expectedCode: 'DYNAMIC_NODE_MODULE_CAPABILITY'
     },
     {
       name: 'ESM re-export',
@@ -586,6 +613,11 @@ test('capability deny rejects unsupported loader roots before value propagation'
           + audit.import_boundary_unresolved_count >= 1,
         fixture.name
       );
+      if (fixture.expectedCode) {
+        assert.deepEqual(audit.unresolved_manual_dependencies, [
+          `${fixture.entryPath}:${fixture.expectedCode}`
+        ]);
+      }
     });
   }
 });
@@ -608,6 +640,26 @@ test('capability deny allows only literal static edges and shadowed local names'
     });
     assert.equal(audit.import_boundary_violation_count, 0);
     assert.equal(audit.import_boundary_unresolved_count, 0);
+  });
+
+  await t.test('business module builtinModules import remains denied', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.js';
+    const projectRoot = await dependencyFixture(t, {
+      'package.json': '{"type":"module"}\n',
+      [entryPath]: [
+        "import { builtinModules } from 'node:module';",
+        "export default builtinModules.includes('fs');",
+        ''
+      ].join('\n')
+    });
+
+    assert.equal(await importDefault(path.join(projectRoot, entryPath)), true);
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.deepEqual(audit.unresolved_manual_dependencies, [
+      `${entryPath}:DYNAMIC_NODE_MODULE_CAPABILITY`
+    ]);
   });
 
   await t.test('shadowed local capability names are safe', async (t) => {
@@ -642,6 +694,49 @@ test('capability deny allows only literal static edges and shadowed local names'
     assert.equal(audit.import_boundary_violation_count, 0);
     assert.equal(audit.import_boundary_unresolved_count, 0);
   });
+
+  for (const fixture of [
+    {
+      name: 'earlier parameter shadows require in a default initializer',
+      source: [
+        "function local(require, value = require('safe')) {",
+        '  return value;',
+        '}',
+        "module.exports = local(() => 'parameter-safe');",
+        ''
+      ].join('\n'),
+      expected: 'parameter-safe'
+    },
+    {
+      name: 'function body var shadows require in the body',
+      source: [
+        'function local() {',
+        "  var require = () => 'body-safe';",
+        "  return require('safe');",
+        '}',
+        'module.exports = local();',
+        ''
+      ].join('\n'),
+      expected: 'body-safe'
+    }
+  ]) {
+    await t.test(fixture.name, async (t) => {
+      const entryPath = 'src/playbook/manual/entry.cjs';
+      const projectRoot = await dependencyFixture(t, {
+        [entryPath]: fixture.source
+      });
+
+      assert.equal(
+        requireDefault(path.join(projectRoot, entryPath)),
+        fixture.expected
+      );
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.equal(audit.import_boundary_violation_count, 0);
+      assert.equal(audit.import_boundary_unresolved_count, 0);
+    });
+  }
 
   const stableCapabilityFacts = [
     {
@@ -1384,6 +1479,50 @@ test('package imports construction edge executes and is audited', async (t) => {
   });
   assert.equal(audit.import_boundary_violation_count, 1);
   assert.equal(audit.import_boundary_unresolved_count, 0);
+});
+
+test('package dependency internal construction edge executes and is audited', async (t) => {
+  for (const fixture of [
+    {
+      name: 'static re-export',
+      packageSource:
+        "export { default } from '../../src/construction/target.js';\n"
+    },
+    {
+      name: 'literal dynamic import',
+      packageSource: [
+        "const target = await import('../../src/construction/target.js');",
+        'export default target.default;',
+        ''
+      ].join('\n')
+    }
+  ]) {
+    await t.test(fixture.name, async (t) => {
+      const entryPath = 'src/playbook/manual/entry.js';
+      const projectRoot = await dependencyFixture(t, {
+        'package.json': '{"type":"module"}\n',
+        [entryPath]: "export { default } from 'boundary-package';\n",
+        'node_modules/boundary-package/package.json': JSON.stringify({
+          name: 'boundary-package',
+          type: 'module',
+          exports: './index.js'
+        }),
+        'node_modules/boundary-package/index.js': fixture.packageSource,
+        'src/construction/target.js':
+          "export default 'construction-executed';\n"
+      });
+
+      assert.equal(
+        await importDefault(path.join(projectRoot, entryPath)),
+        'construction-executed'
+      );
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.equal(audit.import_boundary_violation_count, 1, fixture.name);
+      assert.equal(audit.import_boundary_unresolved_count, 0, fixture.name);
+    });
+  }
 });
 
 test('package self-reference construction edge executes and is audited', async (t) => {
