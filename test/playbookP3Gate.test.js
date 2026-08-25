@@ -403,6 +403,127 @@ test('manual dependency graph resolves every supported construction edge', async
   }
 });
 
+test('audit resolver exception is physical-file and AST-shape bound', {
+  concurrency: false
+}, async (t) => {
+  const auditPath = path.join(
+    ROOT,
+    'src/playbook/manual/manualDependencyBoundary.js'
+  );
+  const originalSource = await fs.readFile(auditPath, 'utf8');
+  const trustedResolver = [
+    '      const resolved = createRequire(pathToFileURL(importerPath))',
+    '        .resolve(dependency.specifier);'
+  ].join('\n');
+
+  await t.test('real physical auditor and pinned resolver dependency pass', async () => {
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot: ROOT
+    });
+
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+    assert.ok(audit.resolved_manual_dependency_paths.includes(
+      'src/playbook/manual/manualDependencyBoundary.js'
+    ));
+    assert.ok(audit.resolved_manual_dependency_paths.includes(
+      'node_modules/import-meta-resolve/lib/resolve.js'
+    ));
+    assert.equal(Object.isFrozen(audit), true);
+    for (const value of Object.values(audit)) {
+      if (Array.isArray(value)) assert.equal(Object.isFrozen(value), true);
+    }
+  });
+
+  for (const fixture of [
+    {
+      name: 'same-byte copy with a different basename',
+      relativePath: 'src/playbook/manual/not-the-auditor.js'
+    },
+    {
+      name: 'same-byte path spoof with the auditor basename',
+      relativePath:
+        'src/playbook/manual/resolver-path-spoof/manualDependencyBoundary.js'
+    }
+  ]) {
+    await t.test(fixture.name, async () => {
+      await withTemporaryProjectFile(
+        fixture.relativePath,
+        originalSource,
+        async () => {
+          const audit = await playbookCompiler.auditManualDependencyBoundary({
+            projectRoot: ROOT
+          });
+
+          assert.deepEqual(audit.unresolved_manual_dependencies, [
+            `${fixture.relativePath}:DYNAMIC_NODE_MODULE_CAPABILITY`
+          ]);
+          assert.equal(Object.isFrozen(audit), true);
+          assert.equal(
+            Object.isFrozen(audit.unresolved_manual_dependencies),
+            true
+          );
+          assert.doesNotMatch(
+            JSON.stringify(audit.unresolved_manual_dependencies),
+            new RegExp(escapeRegExp(ROOT), 'u')
+          );
+        }
+      );
+    });
+  }
+
+  const mutations = [
+    {
+      name: 'direct loader call',
+      source: replaceExactlyOnce(originalSource, trustedResolver, [
+        '      const resolved = createRequire(import.meta.url)(',
+        "        '../../construction/target.cjs'",
+        '      );'
+      ].join('\n'))
+    },
+    {
+      name: 'exported loader value',
+      source: `${originalSource}\nconst load = createRequire(import.meta.url);\nexport { load };\n`
+    },
+    {
+      name: 'computed resolve member',
+      source: replaceExactlyOnce(originalSource, trustedResolver, [
+        "      const method = 'resolve';",
+        '      const resolved = createRequire(pathToFileURL(importerPath))',
+        '        [method](dependency.specifier);'
+      ].join('\n'))
+    },
+    {
+      name: 'shadowed pathToFileURL binding',
+      source: replaceExactlyOnce(
+        originalSource,
+        'async function resolveDependency({ importerPath, dependency }) {',
+        [
+          'async function resolveDependency({ importerPath, dependency }) {',
+          '  const pathToFileURL = () => new URL(import.meta.url);'
+        ].join('\n')
+      )
+    }
+  ];
+
+  for (const mutation of mutations) {
+    await t.test(mutation.name, async () => {
+      await withTemporaryFileContents(auditPath, mutation.source, async () => {
+        const audit = await playbookCompiler.auditManualDependencyBoundary({
+          projectRoot: ROOT
+        });
+
+        assert.deepEqual(audit.unresolved_manual_dependencies, [
+          'src/playbook/manual/manualDependencyBoundary.js:'
+            + 'DYNAMIC_NODE_MODULE_CAPABILITY'
+        ]);
+        assert.equal(audit.import_boundary_violation_count, 0);
+        assert.equal(audit.import_boundary_unresolved_count, 1);
+      });
+    });
+  }
+});
+
 test('module.require construction edge executes and is audited', async (t) => {
   const projectRoot = await dependencyFixture(t, {
     'src/playbook/manual/entry.cjs':
@@ -1885,6 +2006,37 @@ async function writeFixtureFiles(projectRoot, files) {
     await fs.mkdir(path.dirname(absolutePath), { recursive: true });
     await fs.writeFile(absolutePath, contents, 'utf8');
   }
+}
+
+async function withTemporaryProjectFile(relativePath, contents, callback) {
+  const absolutePath = path.join(ROOT, relativePath);
+  await assert.rejects(fs.access(absolutePath));
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  await fs.writeFile(absolutePath, contents, 'utf8');
+  try {
+    return await callback();
+  } finally {
+    await fs.rm(absolutePath, { force: true });
+    const parentPath = path.dirname(absolutePath);
+    if (parentPath !== path.join(ROOT, 'src/playbook/manual')) {
+      await fs.rmdir(parentPath);
+    }
+  }
+}
+
+async function withTemporaryFileContents(filePath, contents, callback) {
+  const original = await fs.readFile(filePath, 'utf8');
+  await fs.writeFile(filePath, contents, 'utf8');
+  try {
+    return await callback();
+  } finally {
+    await fs.writeFile(filePath, original, 'utf8');
+  }
+}
+
+function replaceExactlyOnce(source, search, replacement) {
+  assert.equal(source.split(search).length, 2);
+  return source.replace(search, replacement);
 }
 
 async function runGit(projectRoot, args) {

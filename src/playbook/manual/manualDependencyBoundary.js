@@ -432,11 +432,15 @@ function collectDeniedCapability({
     && node.type === 'Identifier'
     && node.name === 'createRequire'
     && !isTrustedAuditImportIdentifier(node, parent, parentMap)
-    && !isTrustedAuditCreateRequireCall(
+    && !isTrustedResolverCall(
       parent,
-      parentMap,
-      modulePath,
-      auditImplementationPath
+      parentMap.get(parent),
+      {
+        modulePath,
+        auditImplementationPath,
+        lexical,
+        parentMap
+      }
     )
   ) {
     unresolvedCodes.add('DYNAMIC_NODE_MODULE_CAPABILITY');
@@ -495,44 +499,59 @@ function isTrustedAuditImportIdentifier(node, parent, parentMap) {
     && parentMap.get(parent).source?.value === 'node:module';
 }
 
-function isTrustedAuditCreateRequireCall(
-  call,
-  parentMap,
-  modulePath,
-  auditImplementationPath
+function isTrustedResolverCall(
+  node,
+  parent,
+  context
 ) {
-  if (
-    modulePath !== auditImplementationPath
-    || call?.type !== 'CallExpression'
-    || call.callee?.type !== 'Identifier'
-    || call.callee.name !== 'createRequire'
-    || call.arguments.length !== 1
-  ) return false;
-  const urlCall = call.arguments[0];
-  if (
-    urlCall?.type !== 'CallExpression'
-    || urlCall.callee?.type !== 'Identifier'
-    || urlCall.callee.name !== 'pathToFileURL'
-    || urlCall.arguments.length !== 1
-    || urlCall.arguments[0]?.type !== 'Identifier'
-    || urlCall.arguments[0].name !== 'importerPath'
-  ) return false;
-  const resolveMember = parentMap.get(call);
-  const resolveCall = parentMap.get(resolveMember);
-  return resolveMember?.type === 'MemberExpression'
-    && resolveMember.object === call
-    && !resolveMember.computed
-    && resolveMember.property?.type === 'Identifier'
-    && resolveMember.property.name === 'resolve'
-    && resolveCall?.type === 'CallExpression'
-    && resolveCall.callee === resolveMember
-    && resolveCall.arguments.length === 1
-    && resolveCall.arguments[0]?.type === 'MemberExpression'
-    && !resolveCall.arguments[0].computed
-    && resolveCall.arguments[0].object?.type === 'Identifier'
-    && resolveCall.arguments[0].object.name === 'dependency'
-    && resolveCall.arguments[0].property?.type === 'Identifier'
-    && resolveCall.arguments[0].property.name === 'specifier';
+  return context.modulePath === context.auditImplementationPath
+    && node?.type === 'CallExpression'
+    && isNamedImportBinding(
+      node.callee,
+      'createRequire',
+      'node:module',
+      context.lexical
+    )
+    && isPathToFileUrlImporterArgument(node.arguments, context.lexical)
+    && parent?.type === 'MemberExpression'
+    && parent.object === node
+    && !parent.computed
+    && parent.property?.type === 'Identifier'
+    && parent.property.name === 'resolve'
+    && context.parentMap.get(parent)?.type === 'CallExpression'
+    && context.parentMap.get(parent).callee === parent
+    && isDependencySpecifierArgument(
+      context.parentMap.get(parent).arguments
+    );
+}
+
+function isNamedImportBinding(node, name, source, lexical) {
+  return lexical.isNamedImportBinding(node, name, source);
+}
+
+function isPathToFileUrlImporterArgument(args, lexical) {
+  if (args.length !== 1) return false;
+  const urlCall = args[0];
+  return urlCall?.type === 'CallExpression'
+    && isNamedImportBinding(
+      urlCall.callee,
+      'pathToFileURL',
+      'node:url',
+      lexical
+    )
+    && urlCall.arguments.length === 1
+    && urlCall.arguments[0]?.type === 'Identifier'
+    && urlCall.arguments[0].name === 'importerPath';
+}
+
+function isDependencySpecifierArgument(args) {
+  return args.length === 1
+    && args[0]?.type === 'MemberExpression'
+    && !args[0].computed
+    && args[0].object?.type === 'Identifier'
+    && args[0].object.name === 'dependency'
+    && args[0].property?.type === 'Identifier'
+    && args[0].property.name === 'specifier';
 }
 
 function literalSpecifier(node) {
@@ -599,7 +618,7 @@ function buildLexicalBindings(program) {
   const nodeScopes = new WeakMap();
 
   function createScope(parent, kind) {
-    return { parent, kind, bindings: new Set() };
+    return { parent, kind, bindings: new Map() };
   }
 
   const rootScope = createScope(null, 'program');
@@ -612,9 +631,9 @@ function buildLexicalBindings(program) {
     return candidate;
   }
 
-  function declareIdentifier(identifier, scope) {
+  function declareIdentifier(identifier, scope, binding = null) {
     if (identifier?.type === 'Identifier') {
-      scope.bindings.add(identifier.name);
+      scope.bindings.set(identifier.name, binding);
     }
   }
 
@@ -669,7 +688,11 @@ function buildLexicalBindings(program) {
     }
     if (node.type === 'ImportDeclaration') {
       for (const specifier of node.specifiers) {
-        declareIdentifier(specifier.local, scope);
+        declareIdentifier(specifier.local, scope, {
+          kind: specifier.type,
+          importedName: importedName(specifier),
+          source: literalSpecifier(node.source)
+        });
         visit(specifier, scope);
       }
       visit(node.source, scope);
@@ -752,10 +775,13 @@ function buildLexicalBindings(program) {
   function resolveBinding(node, name) {
     let scope = nodeScopes.get(node) ?? rootScope;
     while (scope) {
-      if (scope.bindings.has(name)) return true;
+      if (scope.bindings.has(name)) return {
+        found: true,
+        binding: scope.bindings.get(name)
+      };
       scope = scope.parent;
     }
-    return false;
+    return { found: false, binding: null };
   }
 
   visit(program, rootScope);
@@ -763,7 +789,15 @@ function buildLexicalBindings(program) {
     isUnboundGlobal(node, name) {
       return node?.type === 'Identifier'
         && node.name === name
-        && !resolveBinding(node, name);
+        && !resolveBinding(node, name).found;
+    },
+    isNamedImportBinding(node, name, source) {
+      if (node?.type !== 'Identifier' || node.name !== name) return false;
+      const resolved = resolveBinding(node, name);
+      return resolved.found
+        && resolved.binding?.kind === 'ImportSpecifier'
+        && resolved.binding.importedName === name
+        && resolved.binding.source === source;
     }
   };
 }
