@@ -1091,7 +1091,7 @@ function findFileUrlRanges(normalized) {
     const normalizedEnd = publicReferenceTokenEnd(
       normalized.text,
       match.index + match[0].length,
-      { stopAtNewScheme: true }
+      { stopAtNewScheme: true, stopAtReferenceBoundary: true }
     );
     ranges.push({
       ...normalizedRange(normalized, match.index, normalizedEnd),
@@ -1111,7 +1111,8 @@ function findUncRanges(normalized, httpsRanges, fileRanges) {
     }
     if (isAsciiAlphaNumeric(normalized.text[index - 1])) continue;
     const normalizedEnd = publicReferenceTokenEnd(normalized.text, index + 2, {
-      stopAtNewScheme: true
+      stopAtNewScheme: true,
+      stopAtReferenceBoundary: true
     });
     const normalizedCandidate = {
       normalizedStart: index,
@@ -1138,6 +1139,10 @@ function isUncReference(candidate) {
 }
 
 function isHttpsPathSeparator(candidate, httpsRanges, text) {
+  if (
+    text[candidate.normalizedStart] !== '/'
+    || text[candidate.normalizedStart + 1] !== '/'
+  ) return false;
   const httpsRange = httpsRanges.find((range) =>
     candidate.normalizedStart >= range.normalizedStart
       && candidate.normalizedStart < range.normalizedEnd);
@@ -1150,9 +1155,17 @@ function isHttpsPathSeparator(candidate, httpsRanges, text) {
     || candidate.normalizedStart < httpsRange.normalizedStart + queryIndex;
 }
 
-function publicReferenceTokenEnd(text, start, { stopAtNewScheme = false } = {}) {
+function publicReferenceTokenEnd(text, start, {
+  stopAtNewScheme = false,
+  stopAtReferenceBoundary = false
+} = {}) {
   let index = start;
   while (index < text.length && !isPublicReferenceTerminator(text[index])) {
+    if (
+      stopAtReferenceBoundary
+      && isPublicReferenceBoundary(text[index])
+      && !startsExtendedUncSuffix(text, start, index)
+    ) break;
     if (stopAtNewScheme && index > start && startsUriScheme(text, index)) break;
     index += 1;
   }
@@ -1162,6 +1175,14 @@ function publicReferenceTokenEnd(text, start, { stopAtNewScheme = false } = {}) 
 function isPublicReferenceTerminator(character) {
   return character === undefined
     || /[\s\x60"'<>|()[\]{}]/u.test(character);
+}
+
+function isPublicReferenceBoundary(character) {
+  return /[?#&,;]/u.test(character);
+}
+
+function startsExtendedUncSuffix(text, tokenBodyStart, index) {
+  return index === tokenBodyStart && /^\?[\\/]UNC[\\/]/iu.test(text.slice(index));
 }
 
 function startsUriScheme(text, index) {
