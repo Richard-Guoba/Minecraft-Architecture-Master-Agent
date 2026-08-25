@@ -1110,7 +1110,7 @@ function findUncRanges(normalized, httpsRanges, fileRanges) {
     const candidateStart = uncCandidateStart(index, normalized.text, httpsRanges);
     if (candidateStart === null) continue;
     const hasIndependentBoundary = candidateStart !== index
-      || isIndependentReferenceStart(normalized.text, candidateStart);
+      || isIndependentReferenceStart(normalized.text, candidateStart, httpsRanges);
     if (
       !hasIndependentBoundary
       && !isExplicitHttpsUncRun(normalized.text, candidateStart, httpsRanges)
@@ -1154,19 +1154,55 @@ function isHttpsSchemeRunStart(runStart, httpsRanges) {
     runStart === range.normalizedStart + 'https:'.length);
 }
 
-function isIndependentReferenceStart(text, index) {
+function isIndependentReferenceStart(text, index, httpsRanges) {
   if (index === 0) return true;
   const previous = text[index - 1];
   return isPublicReferenceTerminator(previous)
     || previous === ','
-    || previous === '='
+    || isHttpsQueryOrFragmentStart(text, index, httpsRanges)
+    || isHttpsQueryParameterValueStart(text, index, httpsRanges)
     || /[A-Za-z][A-Za-z0-9+.-]*:$/u.test(text.slice(0, index));
+}
+
+function isHttpsQueryOrFragmentStart(text, index, httpsRanges) {
+  const delimiter = text[index - 1];
+  if (delimiter !== '?' && delimiter !== '#') return false;
+  return httpsRanges.some((range) =>
+    isFirstHttpsUrlDelimiter(text, index - 1, delimiter, range));
+}
+
+function isFirstHttpsUrlDelimiter(text, delimiterIndex, delimiter, range) {
+  const contentStart = range.normalizedStart + 'https://'.length;
+  if (delimiterIndex < contentStart || delimiterIndex >= range.normalizedEnd) {
+    return false;
+  }
+  const prefix = text.slice(contentStart, delimiterIndex);
+  return delimiter === '?'
+    ? !prefix.includes('?') && !prefix.includes('#')
+    : !prefix.includes('#');
+}
+
+function isHttpsQueryParameterValueStart(text, index, httpsRanges) {
+  if (text[index - 1] !== '=') return false;
+  return httpsRanges.some((range) => {
+    if (index >= range.normalizedEnd) return false;
+    const contentStart = range.normalizedStart + 'https://'.length;
+    const queryStart = text.indexOf('?', contentStart);
+    if (queryStart < contentStart || queryStart >= index) return false;
+    const fragmentStart = text.indexOf('#', contentStart);
+    if (fragmentStart !== -1 && fragmentStart < index) return false;
+    const queryPrefix = text.slice(queryStart + 1, index - 1);
+    const parameterName = queryPrefix.slice(queryPrefix.lastIndexOf('&') + 1);
+    return /^[A-Za-z0-9._~-]+$/u.test(parameterName);
+  });
 }
 
 function isExplicitHttpsUncRun(text, index, httpsRanges) {
   let runEnd = index + 2;
   while (isSlash(text[runEnd])) runEnd += 1;
-  if (!text.slice(index, runEnd).includes('\\')) return false;
+  const hasUncMarker = text.slice(index, runEnd).includes('\\')
+    || text[index - 1] === '=';
+  if (!hasUncMarker) return false;
   return httpsRanges.some((range) =>
     index > range.normalizedStart + 'https:'.length
       && index < range.normalizedEnd);

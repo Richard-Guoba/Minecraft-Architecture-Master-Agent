@@ -503,6 +503,8 @@ test('pure public leak audit exempts only the HTTPS scheme delimiter', async () 
   const base = compilePlaybookV01(await checkedInCompilerFixture());
   for (const [name, reference, expectedCount] of [
     ['ordinary HTTPS path', 'https://example.test/path/file.txt', 0],
+    ['ordinary repeated-separator HTTPS path',
+      'https://example.test/path//folder/file.txt', 0],
     ['forward UNC left in the HTTPS scheme run', 'https:////server/share/a.txt', 1],
     ['backslash UNC left in the HTTPS scheme run', String.raw`https://\\server\share\a.txt`, 1],
     ['encoded forward UNC left in the HTTPS scheme run',
@@ -511,7 +513,15 @@ test('pure public leak audit exempts only the HTTPS scheme delimiter', async () 
       'https:%2F%2F%5C%5Cserver%5Cshare%5Ca.txt', 1],
     ['forward UNC in HTTPS path', 'https://example.test/path=//server/share/a.txt', 1],
     ['forward UNC in HTTPS query', 'https://example.test/?next=//server/share/a.txt', 1],
-    ['forward UNC in HTTPS fragment', 'https://example.test/#next=//server/share/a.txt', 1]
+    ['forward UNC in HTTPS fragment', 'https://example.test/#next=//server/share/a.txt', 1],
+    ['direct forward UNC after HTTPS query delimiter',
+      'https://example.test/?//server/share/a.txt', 1],
+    ['direct forward UNC after HTTPS fragment delimiter',
+      'https://example.test/#//server/share/a.txt', 1],
+    ['encoded direct forward UNC after HTTPS query delimiter',
+      'https://example.test/?%2F%2Fserver%2Fshare%2Fa.txt', 1],
+    ['partially encoded HTTPS with direct forward UNC after fragment delimiter',
+      'h%74tps://example.test/#%2F%2Fserver%2Fshare%2Fa.txt', 1]
   ]) {
     const compilation = structuredClone(base);
     compilation.artifacts[MANUAL_PATH] += `${reference}\n`;
@@ -560,6 +570,12 @@ test('pure public leak audit starts one UNC candidate per separator run', async 
       String.raw`\\server\share.//folder/file`, 1],
     ['encoded separator run after punctuation inside one UNC path',
       '%5C%5Cserver%5Cshare.%2F%2Ffolder%2Ffile', 1],
+    ['equals and separator run inside one UNC path',
+      String.raw`\\server\share=//folder/file`, 1],
+    ['encoded equals and separator run inside one UNC path',
+      '%5C%5Cserver%5Cshare%3D%2F%2Ffolder%2Ffile', 1],
+    ['equals after a question mark inside one UNC fragment',
+      String.raw`https://example.test/#\\server\share?a=//folder/file`, 1],
     ['mixed triple separator prefix', String.raw`/\\server\share\a.txt`, 1],
     ['two whitespace-separated UNC references', String.raw`\\one\share \\two\share`, 2],
     ['UNC followed by a new file scheme', String.raw`\\one\share,file:/two`, 2],
