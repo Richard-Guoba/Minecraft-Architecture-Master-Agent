@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import test from 'node:test';
 import {
@@ -14,7 +15,7 @@ import {
   P3_MANAGED_ARTIFACT_PATHS
 } from '../src/playbook/manual/p3AdmissionPolicy.js';
 
-const ROOT = path.resolve(import.meta.dirname, '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CLI_PATH = path.join(ROOT, 'src/runArchitecturePlaybookManual.js');
 const execFileAsync = promisify(execFile);
 const MANAGED_PARENT_PATHS = Object.freeze([
@@ -22,6 +23,16 @@ const MANAGED_PARENT_PATHS = Object.freeze([
   'docs/architecture-playbook/rules/schools/heihui-jileniao'
 ]);
 const TRANSACTION_TEMP = /\.playbook-manual-(?:stage|rollback)-/u;
+
+test('manual CLI derives its module directory on every supported Node 20 release', async () => {
+  const source = await fs.readFile(CLI_PATH, 'utf8');
+
+  assert.doesNotMatch(source, /import\.meta\.dirname/u);
+  assert.match(
+    source,
+    /path\.dirname\(fileURLToPath\(import\.meta\.url\)\)/u
+  );
+});
 
 test('manual CLI accepts build and check only', () => {
   assert.deepEqual(parseArchitecturePlaybookManualArgs(['build']), {

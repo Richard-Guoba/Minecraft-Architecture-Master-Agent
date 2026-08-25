@@ -11,8 +11,9 @@
 - `source_corpus_hash`：`acb642b19f36ecc3633728e3d74a08225d0496c41d00184d3c5f782c7c4a7087`。该哈希按设计覆盖 P2 证据索引、21 条候选、冲突、未知项和 P3 准入政策的规范化内容。
 - P2 门禁状态：`passed`。
 - 五个受管产物均由同一已验证输入在内存中重建，逐字节检查漂移数为 0；泄漏扫描使用同一次 descriptor 保护读取返回的不可变 UTF-8 快照，未在关闭保护句柄后重新读取普通路径。
-- 五条受管路径均由 Git 跟踪，跟踪验证错误数为 0。
-- 从 `src/playbook/manual/` 的全部 JS、MJS、CJS 入口解析实际依赖图：语法由固定版本 Acorn `8.15.0` 生成 AST，ESM 通过 `import-meta-resolve` `4.2.0` 按 Node `import` 条件解析，CJS 通过 `createRequire(importer).resolve` 解析，且每个文件节点都经过 `realpath`。到 `src/construction/` 的已解析依赖数为 0，无法解析或计算生成的依赖数为 0。P3 没有修改或接入生产建造流水线。
+- 审计先捕获一个固定的 Git commit tree，并要求 12 个 P2 输入/准入文件与 5 个受管输出都是普通 blob。输入由捕获的 commit blob 编译，index 和工作树差异会阻断；同次 descriptor 保护读取的 5 个输出字节还必须逐一等于对应 commit blob。五条受管路径均由 Git 跟踪，跟踪验证错误数为 0。
+- 从 `src/playbook/manual/` 的全部 JS、MJS、CJS 入口解析实际依赖图：语法由固定版本 Acorn `8.15.0` 生成 AST，ESM 通过 `import-meta-resolve` `4.2.0` 按 Node `import` 条件解析，CJS 通过 `createRequire(importer).resolve` 解析，且每个文件节点都经过 `realpath`。绑定传播覆盖 `createRequire`、`require` alias、`.call`、sequence 和可证明的 loader 调用；计算或其他间接 loader 以及 `eval` 保守阻断。到 `src/construction/` 的已解析依赖数为 0，无法解析或计算生成的依赖数为 0。P3 没有修改或接入生产建造流水线。
+- 泄漏计数为 0；`file:` URL 与 UNC 引用的字面和百分号编码形式会在 HTTPS 例外之前被拒绝。
 - 覆盖 JSON 和人类秘籍相对于规范化编译结果的 `not-covered` 声明不匹配数为 0。
 
 ## 规则统计
@@ -108,12 +109,13 @@
 - 修复轮次 TDD RED：受保护快照测试首次运行 22 个测试中 20 个通过、2 个失败；完整门禁行为测试首次运行 15 个测试中 1 个通过、14 个失败；新增模板插值依赖用例首次运行 15 个测试中 14 个通过、1 个失败。失败分别对应缺少同次读取快照、辅助事实未进入最终门禁或未形成实际依赖图，以及模板表达式中的依赖未被遍历。
 - 修复轮次 TDD GREEN：快照测试 22/22 通过，完整门禁行为测试 15/15 通过；兼容性组合测试 53/53 通过。
 - 第二修复轮次 TDD RED：Node 实际执行证明成功后，`node --test --test-isolation=none test/playbookP3Gate.test.js` 的 21 个测试中 15 个通过、6 个失败；旧扫描器遗漏 `module.require`、包 `imports`、包自身引用、裸 symlink 包和被除法启发式隐藏的动态导入，并把正则文本误报为依赖。AST 与 Node 感知解析实现后，同一命令 21/21 通过；变更套件组合 59/59 通过。
-- 聚焦门禁：`node --test test/playbook*.test.js test/architecturePlaybookCourseCli.test.js test/architecturePlaybookEvidenceCli.test.js test/architecturePlaybookManualCli.test.js` 在允许嵌套 CLI 子进程和 Git 验证的执行环境中通过，192 个测试、0 失败。
+- 最终集中修复 TDD：loader/间接调用 RED 为 21/28，Git blob 绑定 RED 为 28/32，file URL/UNC 组合 RED 为 48/52，报告事实 RED 为 35/36；Node 20 静态断言也先失败。对应最小修复后分别达到 28/28、32/32、52/52、36/36 和获准子进程路径下 CLI 23/23。自审新增的 CJS `createRequire` 与计算 loader 测试 RED 为 6/9，修复后为 9/9。
+- 聚焦门禁：`node --test test/playbook*.test.js test/architecturePlaybookCourseCli.test.js test/architecturePlaybookEvidenceCli.test.js test/architecturePlaybookManualCli.test.js` 在允许嵌套 CLI 子进程和 Git 验证的执行环境中通过，211 个测试、0 失败。
 - 受管检查：`npm run playbook:manual -- check` 返回 `playbook_status=current`、`artifact_count=5`、`managed_artifact_drift_count=0`。
-- 完整回归：`npm test` 在同一允许子进程和 Git 验证的执行环境中通过，616 个测试、0 失败。
+- 完整回归：`npm test` 在同一允许子进程和 Git 验证的执行环境中通过，635 个测试、0 失败。
 - `git diff --check`：退出码 0，无输出。
 - `git ls-files .local/architecture-playbook`：退出码 0，无输出，即没有私有秘籍路径被跟踪。
-- 提交前 `git status --short` 只列出扩展后获准的七个修复路径：README、P3 报告、编译器、依赖边界扫描器、受管检查器、门禁测试和受管检查器测试。
+- 历史范围说明：第一修复轮次提交前的 `git status --short` 只列出当时获准的七个修复路径；这是该轮证据，不代表最终整分支范围。
 
 环境说明：Git 跟踪验证和嵌套 CLI 测试通过获准的子进程执行路径运行；没有跳过、删除或放宽断言。门禁遇到 Git 缺失、非工作树、权限或子进程失败时返回冻结的稳定阻断事实，不包含原始错误或绝对路径。
 

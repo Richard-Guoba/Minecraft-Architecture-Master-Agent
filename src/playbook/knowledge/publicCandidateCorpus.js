@@ -39,7 +39,10 @@ export async function auditP2Evidence({ projectRoot }) {
   });
 }
 
-export async function loadP2PublicCorpus({ projectRoot }) {
+export async function loadP2PublicCorpus({ projectRoot, readFile = fs.readFile }) {
+  if (typeof readFile !== 'function') {
+    throw new TypeError('loadP2PublicCorpus readFile must be a function');
+  }
   const root = path.resolve(projectRoot);
   const courseRoot = path.join(root, 'docs/architecture-playbook/course');
   const schoolRoot = path.join(
@@ -48,17 +51,20 @@ export async function loadP2PublicCorpus({ projectRoot }) {
     SCHOOL_ID
   );
   const pilotEpisodeSet = validatePilotEpisodeSet(
-    await readJson(path.join(courseRoot, 'pilot-episodes.json'))
+    await readJson(path.join(courseRoot, 'pilot-episodes.json'), readFile)
   );
   const evidenceIndex = validatePublicEvidenceIndex(
-    await readJson(path.join(schoolRoot, 'evidence-index-v0.1.json')),
+    await readJson(
+      path.join(schoolRoot, 'evidence-index-v0.1.json'),
+      readFile
+    ),
     pilotEpisodeSet
   );
   const evidenceIds = new Set(
     evidenceIndex.episodes.flatMap((episode) => episode.evidence_ids)
   );
   const candidates = parseAndValidateCandidateJsonl(
-    await fs.readFile(path.join(schoolRoot, 'candidates-v0.1.jsonl'), 'utf8'),
+    await readFile(path.join(schoolRoot, 'candidates-v0.1.jsonl'), 'utf8'),
     { pilotEpisodeSet, evidenceIds }
   );
   const candidateRuleIds = new Set(candidates.map((rule) => rule.rule_id));
@@ -70,7 +76,8 @@ export async function loadP2PublicCorpus({ projectRoot }) {
   );
 
   const conflictDocument = await readJson(
-    path.join(schoolRoot, 'conflicts-v0.1.json')
+    path.join(schoolRoot, 'conflicts-v0.1.json'),
+    readFile
   );
   assertHeader(conflictDocument, 'conflicts');
   const conflicts = conflictDocument.conflicts.map((conflict) =>
@@ -93,12 +100,14 @@ export async function loadP2PublicCorpus({ projectRoot }) {
   }
 
   const unknownDocument = await readJson(
-    path.join(schoolRoot, 'unknowns-v0.1.json')
+    path.join(schoolRoot, 'unknowns-v0.1.json'),
+    readFile
   );
   const unknowns = validateUnknowns(unknownDocument, pilotEpisodeSet);
   const noteFileCount = await validatePublicNotes({
     courseRoot,
-    evidenceIndex
+    evidenceIndex,
+    readFile
   });
 
   return deepFreeze({
@@ -208,10 +217,10 @@ function validateUnknowns(value, pilot) {
   return value.unknowns;
 }
 
-async function validatePublicNotes({ courseRoot, evidenceIndex }) {
+async function validatePublicNotes({ courseRoot, evidenceIndex, readFile }) {
   const noteRoot = path.join(courseRoot, 'notes', SCHOOL_ID);
   for (const episode of evidenceIndex.episodes) {
-    const note = await fs.readFile(
+    const note = await readFile(
       path.join(noteRoot, `${episode.bvid}.md`),
       'utf8'
     );
@@ -265,8 +274,8 @@ function assertCondition(condition, message) {
   if (!condition) throw new Error(`PLAYBOOK_P2_CORPUS_INVALID: ${message}`);
 }
 
-async function readJson(filePath) {
-  return JSON.parse(await fs.readFile(filePath, 'utf8'));
+async function readJson(filePath, readFile) {
+  return JSON.parse(await readFile(filePath, 'utf8'));
 }
 
 function deepFreeze(value) {

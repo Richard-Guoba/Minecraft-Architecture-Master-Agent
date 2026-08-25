@@ -409,6 +409,31 @@ test('pure audit excludes public HTTPS URL ranges without hiding local private s
   assert.equal(auditPlaybookV01(mixed).public_leak_count, 1);
 });
 
+test('pure audit blocks file URLs and UNC references before HTTPS exceptions', async () => {
+  const base = compilePlaybookV01(await checkedInCompilerFixture());
+  const privateReferences = [
+    'file:///home/user/artifact.bin',
+    'file:%2F%2F%2Fhome%2Fuser%2Fartifact.bin',
+    '%66%69%6c%65%3A%2F%2F%2Fhome%2Fuser%2Fartifact.bin',
+    '\\\\server\\share\\artifact.bin',
+    '//server/share/artifact.bin',
+    '%5C%5Cserver%5Cshare%5Cartifact.bin',
+    '%2F%2Fserver%2Fshare%2Fartifact.bin',
+    'https://example.test/?next=file:///home/user/artifact.bin',
+    'https://example.test/?next=%5C%5Cserver%5Cshare%5Cartifact.bin'
+  ];
+
+  for (const reference of privateReferences) {
+    const compilation = structuredClone(base);
+    compilation.artifacts[MANUAL_PATH] += `${reference}\n`;
+    const audit = auditPlaybookV01(compilation);
+
+    assert.equal(audit.public_leak_count, 1, reference);
+    assert.equal(audit.gate.status, 'blocked', reference);
+    assert.deepEqual(audit.gate.blocker_codes, ['PUBLIC_SOURCE_LEAK'], reference);
+  }
+});
+
 test('pure audit ignores a stale P2 summary and rederives status from source gate evidence', async () => {
   const compilation = structuredClone(
     compilePlaybookV01(await checkedInCompilerFixture())

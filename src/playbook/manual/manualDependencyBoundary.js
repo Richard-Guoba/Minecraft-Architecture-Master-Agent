@@ -198,10 +198,9 @@ function scanModuleDependencies(source, extension) {
 
   const dependencies = [];
   const unresolvedCodes = new Set();
-  const nodes = [program];
-  while (nodes.length > 0) {
-    const node = nodes.pop();
-    if (!node || typeof node !== 'object') continue;
+  const nodes = collectAstNodes(program);
+  const loaderBindings = discoverLoaderBindings(nodes);
+  for (const node of nodes) {
 
     if (
       node.type === 'ImportDeclaration'
@@ -214,23 +213,13 @@ function scanModuleDependencies(source, extension) {
         unresolvedCodes.add('COMPUTED_DYNAMIC_IMPORT');
       }
     } else if (node.type === 'CallExpression') {
-      const requireKind = requireCallKind(node.callee);
-      if (requireKind) {
-        if (!addLiteralDependency(dependencies, node.arguments[0], 'cjs')) {
-          unresolvedCodes.add(requireKind === 'module.require'
-            ? 'COMPUTED_MODULE_REQUIRE'
-            : 'COMPUTED_REQUIRE');
+      const loaderCall = classifyLoaderCall(node, loaderBindings);
+      if (loaderCall?.unresolvedCode) {
+        unresolvedCodes.add(loaderCall.unresolvedCode);
+      } else if (loaderCall && !loaderCall.resolutionOnly) {
+        if (!addLiteralDependency(dependencies, loaderCall.argument, 'cjs')) {
+          unresolvedCodes.add(loaderCall.computedCode);
         }
-      }
-    }
-
-    for (const value of Object.values(node)) {
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (child && typeof child.type === 'string') nodes.push(child);
-        }
-      } else if (value && typeof value.type === 'string') {
-        nodes.push(value);
       }
     }
   }
@@ -247,19 +236,281 @@ function addLiteralDependency(dependencies, node, mode) {
   return true;
 }
 
-function requireCallKind(callee) {
-  if (callee?.type === 'Identifier' && callee.name === 'require') {
-    return 'require';
+function collectAstNodes(program) {
+  const collected = [];
+  const pending = [program];
+  while (pending.length > 0) {
+    const node = pending.pop();
+    if (!node || typeof node !== 'object') continue;
+    collected.push(node);
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (child && typeof child.type === 'string') pending.push(child);
+        }
+      } else if (value && typeof value.type === 'string') {
+        pending.push(value);
+      }
+    }
+  }
+  return collected;
+}
+
+function discoverLoaderBindings(nodes) {
+  const loaders = new Set(['require']);
+  const factories = new Set();
+  const moduleNamespaces = new Set();
+  const opaqueLoaderContainers = new Set();
+  for (const node of nodes) {
+    if (
+      node.type !== 'ImportDeclaration'
+      || !['module', 'node:module'].includes(node.source?.value)
+    ) continue;
+    for (const specifier of node.specifiers) {
+      if (specifier.type === 'ImportNamespaceSpecifier') {
+        moduleNamespaces.add(specifier.local.name);
+      } else if (
+        specifier.type === 'ImportSpecifier'
+        && specifier.imported?.name === 'createRequire'
+      ) {
+        factories.add(specifier.local.name);
+      }
+    }
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const node of nodes) {
+      if (
+        node.type === 'VariableDeclarator'
+        && node.id?.type === 'ObjectPattern'
+        && isModuleNamespaceExpression(node.init, {
+          loaders,
+          factories,
+          moduleNamespaces,
+          opaqueLoaderContainers
+        })
+      ) {
+        for (const property of node.id.properties) {
+          if (
+            property.type === 'Property'
+            && propertyKeyName(property) === 'createRequire'
+            && property.value?.type === 'Identifier'
+            && !factories.has(property.value.name)
+          ) {
+            factories.add(property.value.name);
+            changed = true;
+          }
+        }
+      }
+      const binding = assignedIdentifier(node);
+      if (!binding) continue;
+      const state = {
+        loaders,
+        factories,
+        moduleNamespaces,
+        opaqueLoaderContainers
+      };
+      if (
+        isModuleNamespaceExpression(binding.value, state)
+        && !moduleNamespaces.has(binding.name)
+      ) {
+        moduleNamespaces.add(binding.name);
+        changed = true;
+      } else if (
+        isLoaderExpression(binding.value, {
+          loaders,
+          factories,
+          moduleNamespaces,
+          opaqueLoaderContainers
+        })
+        && !loaders.has(binding.name)
+      ) {
+        loaders.add(binding.name);
+        changed = true;
+      }
+      if (
+        isLoaderFactoryExpression(binding.value, {
+          factories,
+          moduleNamespaces
+        })
+        && !factories.has(binding.name)
+      ) {
+        factories.add(binding.name);
+        changed = true;
+      } else if (
+        containsLoaderValue(binding.value, state)
+        && !opaqueLoaderContainers.has(binding.name)
+      ) {
+        opaqueLoaderContainers.add(binding.name);
+        changed = true;
+      }
+    }
+  }
+  return { loaders, factories, moduleNamespaces, opaqueLoaderContainers };
+}
+
+function assignedIdentifier(node) {
+  if (node.type === 'VariableDeclarator' && node.id?.type === 'Identifier') {
+    return { name: node.id.name, value: node.init };
+  }
+  if (
+    node.type === 'AssignmentExpression'
+    && node.operator === '='
+    && node.left?.type === 'Identifier'
+  ) {
+    return { name: node.left.name, value: node.right };
+  }
+  return null;
+}
+
+function isLoaderFactoryExpression(node, state) {
+  if (node?.type === 'Identifier') return state.factories.has(node.name);
+  return node?.type === 'MemberExpression'
+    && node.object?.type === 'Identifier'
+    && state.moduleNamespaces.has(node.object.name)
+    && memberPropertyName(node) === 'createRequire';
+}
+
+function isModuleNamespaceExpression(node, state) {
+  if (node?.type === 'Identifier') {
+    return state.moduleNamespaces.has(node.name);
+  }
+  return node?.type === 'CallExpression'
+    && isLoaderExpression(node.callee, state)
+    && node.arguments[0]?.type === 'Literal'
+    && ['module', 'node:module'].includes(node.arguments[0].value);
+}
+
+function isLoaderExpression(node, state) {
+  if (node?.type === 'Identifier') return state.loaders.has(node.name);
+  if (isDirectModuleRequire(node)) return true;
+  if (node?.type === 'ChainExpression') {
+    return isLoaderExpression(node.expression, state);
+  }
+  if (node?.type === 'SequenceExpression') {
+    return isLoaderExpression(node.expressions.at(-1), state);
+  }
+  if (node?.type !== 'CallExpression') return false;
+  if (isLoaderFactoryExpression(node.callee, state)) return true;
+  return node.callee?.type === 'MemberExpression'
+    && memberPropertyName(node.callee) === 'bind'
+    && isLoaderExpression(node.callee.object, state);
+}
+
+function classifyLoaderCall(node, state) {
+  const callee = node.callee?.type === 'ChainExpression'
+    ? node.callee.expression
+    : node.callee;
+  if (isEvalCallee(callee)) {
+    return { unresolvedCode: 'INDIRECT_EVAL' };
   }
   if (
     callee?.type === 'MemberExpression'
     && callee.object?.type === 'Identifier'
     && callee.object.name === 'module'
-    && memberPropertyName(callee) === 'require'
+    && callee.computed
+    && memberPropertyName(callee) === null
   ) {
-    return 'module.require';
+    return { unresolvedCode: 'INDIRECT_MODULE_LOADER' };
+  }
+  if (isLoaderExpression(callee, state)) {
+    return {
+      argument: node.arguments[0],
+      computedCode: isDirectModuleRequire(callee)
+        ? 'COMPUTED_MODULE_REQUIRE'
+        : 'COMPUTED_REQUIRE'
+    };
+  }
+  if (
+    isLoaderResolutionCall(node, state)
+  ) {
+    return { resolutionOnly: true };
+  }
+  if (
+    callee?.type === 'MemberExpression'
+    && ['call', 'apply'].includes(memberPropertyName(callee))
+    && isLoaderExpression(callee.object, state)
+  ) {
+    if (memberPropertyName(callee) === 'call') {
+      return {
+        argument: node.arguments[1],
+        computedCode: 'COMPUTED_REQUIRE'
+      };
+    }
+    const appliedArguments = node.arguments[1];
+    if (appliedArguments?.type !== 'ArrayExpression') {
+      return { unresolvedCode: 'INDIRECT_LOADER_APPLY' };
+    }
+    return {
+      argument: appliedArguments.elements[0],
+      computedCode: 'COMPUTED_REQUIRE'
+    };
+  }
+  if (
+    containsLoaderValue(callee, state)
+    || node.arguments.some((argument) => containsLoaderValue(argument, state))
+  ) {
+    return { unresolvedCode: 'INDIRECT_LOADER_CALL' };
   }
   return null;
+}
+
+function containsLoaderValue(node, state) {
+  if (!node || typeof node !== 'object') return false;
+  if (isLoaderExpression(node, state)) return true;
+  if (isLoaderResolutionCall(node, state)) return false;
+  if (
+    node.type === 'Identifier'
+    && state.opaqueLoaderContainers.has(node.name)
+  ) return true;
+  if (node.type === 'CallExpression') {
+    if (isLoaderExpression(node.callee, state)) {
+      return node.arguments.some((argument) =>
+        containsLoaderValue(argument, state));
+    }
+    return containsLoaderValue(node.callee, state)
+      || node.arguments.some((argument) =>
+        containsLoaderValue(argument, state));
+  }
+  if (node.type === 'MemberExpression') {
+    return containsLoaderValue(node.object, state)
+      || (node.computed && containsLoaderValue(node.property, state));
+  }
+  if (node.type === 'Property') {
+    return containsLoaderValue(node.value, state)
+      || (node.computed && containsLoaderValue(node.key, state));
+  }
+  return Object.entries(node).some(([key, value]) => {
+    if (['start', 'end', 'loc'].includes(key)) return false;
+    if (Array.isArray(value)) {
+      return value.some((child) => containsLoaderValue(child, state));
+    }
+    return value && typeof value === 'object'
+      ? containsLoaderValue(value, state)
+      : false;
+  });
+}
+
+function isLoaderResolutionCall(node, state) {
+  return node?.type === 'CallExpression'
+    && node.callee?.type === 'MemberExpression'
+    && memberPropertyName(node.callee) === 'resolve'
+    && isLoaderExpression(node.callee.object, state);
+}
+
+function isDirectModuleRequire(node) {
+  return node?.type === 'MemberExpression'
+    && node.object?.type === 'Identifier'
+    && node.object.name === 'module'
+    && memberPropertyName(node) === 'require';
+}
+
+function isEvalCallee(node) {
+  return (node?.type === 'Identifier' && node.name === 'eval')
+    || (node?.type === 'MemberExpression'
+      && memberPropertyName(node) === 'eval');
 }
 
 function memberPropertyName(member) {
@@ -268,6 +519,16 @@ function memberPropertyName(member) {
   }
   if (member.computed && member.property?.type === 'Literal') {
     return member.property.value;
+  }
+  return null;
+}
+
+function propertyKeyName(property) {
+  if (!property.computed && property.key?.type === 'Identifier') {
+    return property.key.name;
+  }
+  if (property.key?.type === 'Literal' && typeof property.key.value === 'string') {
+    return property.key.value;
   }
   return null;
 }

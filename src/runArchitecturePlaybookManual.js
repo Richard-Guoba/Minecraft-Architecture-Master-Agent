@@ -174,7 +174,7 @@ export async function main(argv = process.argv.slice(2)) {
     const options = parseArchitecturePlaybookManualArgs(argv);
     const projectRoot = process.env.PLAYBOOK_PROJECT_ROOT
       ? path.resolve(process.env.PLAYBOOK_PROJECT_ROOT)
-      : path.resolve(import.meta.dirname, '..');
+      : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
     const compilation = await loadCheckedCompilation(projectRoot);
     const result = options.command === 'build'
       ? await writeManagedPlaybookArtifacts({

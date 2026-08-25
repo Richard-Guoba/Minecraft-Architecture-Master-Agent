@@ -14,10 +14,27 @@ const execFileAsync = promisify(execFile);
 const ROOT = path.resolve(import.meta.dirname, '..');
 const COVERAGE_PATH = 'docs/architecture-playbook/manual/coverage-v0.1.json';
 const MANUAL_PATH = 'docs/architecture-playbook/manual/v0.1.md';
+const P3_REPORT_PATH = 'docs/architecture-playbook/reports/p3-playbook-v0.1.md';
+const ADMISSION_PATH =
+  'docs/architecture-playbook/rules/schools/heihui-jileniao/admission-v0.1.json';
 const NOT_COVERED_LAYERS = ['space', 'materials', 'interior', 'scene'];
 const {
   auditCheckedInPlaybookV01
 } = playbookCompiler;
+
+test('public P3 report marks the seven-path scope as historical', async () => {
+  const report = await fs.readFile(path.join(ROOT, P3_REPORT_PATH), 'utf8');
+
+  assert.doesNotMatch(report, /^- 提交前 .*七个修复路径.*$/mu);
+  assert.match(
+    report,
+    /历史范围说明：第一修复轮次.*七个修复路径.*不代表最终整分支范围/u
+  );
+  assert.match(
+    report,
+    /P3 has not generated or visually improved a house and provides zero runtime authority\./u
+  );
+});
 
 test('P3 checked-in playbook passes with no runtime authority', async () => {
   const audit = await auditCheckedInPlaybookV01({ projectRoot: ROOT });
@@ -182,6 +199,77 @@ test('Git tracking verification failure returns a stable blocked audit', async (
   assert.doesNotMatch(serialized, /fatal:|stderr|ENOENT|\/home\//u);
 });
 
+test('staged checked-input divergence blocks the captured commit gate', async (t) => {
+  const projectRoot = await checkedInAuditFixture(t);
+  await fs.appendFile(path.join(projectRoot, ADMISSION_PATH), ' \n', 'utf8');
+  await runGit(projectRoot, ['add', '--', ADMISSION_PATH]);
+
+  const audit = await auditCheckedInPlaybookV01({ projectRoot });
+
+  assert.deepEqual(audit.tracking_verification_errors, [
+    'GIT_INDEX_DIVERGENCE'
+  ]);
+  assert.equal(audit.tracking_verification_error_count, 1);
+  assert.equal(audit.gate.status, 'blocked');
+  assert.ok(audit.gate.blocker_codes.includes('TRACKING_VERIFICATION_FAILED'));
+});
+
+test('unstaged checked-input divergence blocks the captured commit gate', async (t) => {
+  const projectRoot = await checkedInAuditFixture(t);
+  await fs.appendFile(path.join(projectRoot, ADMISSION_PATH), ' \n', 'utf8');
+
+  const audit = await auditCheckedInPlaybookV01({ projectRoot });
+
+  assert.deepEqual(audit.tracking_verification_errors, [
+    'GIT_WORKTREE_DIVERGENCE'
+  ]);
+  assert.equal(audit.tracking_verification_error_count, 1);
+  assert.equal(audit.gate.status, 'blocked');
+});
+
+test('protected output snapshot must equal its captured commit blob', async (t) => {
+  const projectRoot = await checkedInAuditFixture(t);
+  await fs.appendFile(
+    path.join(projectRoot, MANUAL_PATH),
+    'public but not committed\n',
+    'utf8'
+  );
+
+  const audit = await auditCheckedInPlaybookV01({ projectRoot });
+
+  assert.equal(audit.managed_artifact_drift_count, 1);
+  assert.deepEqual(audit.tracking_verification_errors, [
+    'GIT_OUTPUT_SNAPSHOT_DIVERGENCE'
+  ]);
+  assert.equal(audit.gate.status, 'blocked');
+});
+
+test('a non-blob checked input returns a stable blocked audit', async (t) => {
+  const projectRoot = await checkedInAuditFixture(t);
+  const admissionPath = path.join(projectRoot, ADMISSION_PATH);
+  await fs.rm(admissionPath);
+  await fs.mkdir(admissionPath);
+  await fs.writeFile(
+    path.join(admissionPath, 'nested.json'),
+    '{"not":"the admission blob"}\n',
+    'utf8'
+  );
+  await runGit(projectRoot, ['add', '--all']);
+  await commitFixture(projectRoot, 'replace admission blob with tree');
+
+  await assert.doesNotReject(async () => {
+    const audit = await auditCheckedInPlaybookV01({ projectRoot });
+    const serialized = JSON.stringify(audit);
+    assert.deepEqual(audit.tracking_verification_errors, [
+      'GIT_TREE_PATH_NOT_BLOB'
+    ]);
+    assert.equal(audit.tracking_verification_error_count, 1);
+    assert.equal(audit.gate.status, 'blocked');
+    assert.doesNotMatch(serialized, new RegExp(escapeRegExp(projectRoot), 'u'));
+    assert.doesNotMatch(serialized, /fatal:|stderr|EISDIR/u);
+  });
+});
+
 test('protected managed snapshot drives both drift and public-leak counters', async (t) => {
   const projectRoot = await checkedInAuditFixture(t);
   const manualPath = path.join(projectRoot, MANUAL_PATH);
@@ -198,6 +286,30 @@ test('protected managed snapshot drives both drift and public-leak counters', as
   assert.ok(audit.gate.blocker_codes.includes('MANAGED_ARTIFACT_DRIFT'));
   assert.ok(audit.gate.blocker_codes.includes('PUBLIC_SOURCE_LEAK'));
   assert.equal(audit.gate.status, 'blocked');
+});
+
+test('protected checked snapshot blocks file URL and UNC leakage', async (t) => {
+  for (const [name, reference] of [
+    ['encoded file URL',
+      'https://example.test/?next=file:%2F%2F%2Fhome%2Fuser%2Fartifact.bin'],
+    ['encoded UNC',
+      'https://example.test/?next=%5C%5Cserver%5Cshare%5Cartifact.bin']
+  ]) {
+    await t.test(name, async (t) => {
+      const projectRoot = await checkedInAuditFixture(t);
+      await fs.appendFile(
+        path.join(projectRoot, MANUAL_PATH),
+        `${reference}\n`,
+        'utf8'
+      );
+
+      const audit = await auditCheckedInPlaybookV01({ projectRoot });
+
+      assert.equal(audit.public_leak_count, 1);
+      assert.ok(audit.gate.blocker_codes.includes('PUBLIC_SOURCE_LEAK'));
+      assert.equal(audit.gate.status, 'blocked');
+    });
+  }
 });
 
 test('manual dependency graph resolves every supported construction edge', async (t) => {
@@ -279,6 +391,132 @@ test('module.require construction edge executes and is audited', async (t) => {
   });
   assert.equal(audit.import_boundary_violation_count, 1);
   assert.equal(audit.import_boundary_unresolved_count, 0);
+});
+
+test('loader bindings and indirect calls cannot bypass construction audit', async (t) => {
+  const cases = [
+    {
+      name: 'createRequire loader alias',
+      extension: 'js',
+      packageJson: '{"type":"module"}\n',
+      source: [
+        "import { createRequire as makeLoader } from 'node:module';",
+        'const load = makeLoader(import.meta.url);',
+        "export default load('../../construction/target.cjs');",
+        ''
+      ].join('\n'),
+      execute: importDefault,
+      violationCount: 1,
+      unresolvedCount: 0
+    },
+    {
+      name: 'require alias',
+      extension: 'cjs',
+      source: [
+        'const load = require;',
+        "module.exports = load('../../construction/target.cjs');",
+        ''
+      ].join('\n'),
+      execute: requireDefault,
+      violationCount: 1,
+      unresolvedCount: 0
+    },
+    {
+      name: 'CommonJS createRequire loader alias',
+      extension: 'cjs',
+      source: [
+        "const { createRequire: makeLoader } = require('node:module');",
+        'const load = makeLoader(__filename);',
+        "module.exports = load('../../construction/target.cjs');",
+        ''
+      ].join('\n'),
+      execute: requireDefault,
+      violationCount: 1,
+      unresolvedCount: 0
+    },
+    {
+      name: 'require call',
+      extension: 'cjs',
+      source:
+        "module.exports = require.call(null, '../../construction/target.cjs');\n",
+      execute: requireDefault,
+      violationCount: 1,
+      unresolvedCount: 0
+    },
+    {
+      name: 'sequence require',
+      extension: 'cjs',
+      source:
+        "module.exports = (0, require)('../../construction/target.cjs');\n",
+      execute: requireDefault,
+      violationCount: 1,
+      unresolvedCount: 0
+    },
+    {
+      name: 'computed module loader',
+      extension: 'cjs',
+      source: [
+        "const method = 'require';",
+        "module.exports = module[method]('../../construction/target.cjs');",
+        ''
+      ].join('\n'),
+      execute: requireDefault,
+      violationCount: 0,
+      unresolvedCount: 1
+    },
+    {
+      name: 'computed loader container',
+      extension: 'cjs',
+      source: [
+        'const loaders = { load: require };',
+        "module.exports = loaders['load']('../../construction/target.cjs');",
+        ''
+      ].join('\n'),
+      execute: requireDefault,
+      violationCount: 0,
+      unresolvedCount: 1
+    },
+    {
+      name: 'eval loader',
+      extension: 'cjs',
+      source:
+        "module.exports = eval(\"require('../../construction/target.cjs')\");\n",
+      execute: requireDefault,
+      violationCount: 0,
+      unresolvedCount: 1
+    }
+  ];
+
+  for (const fixture of cases) {
+    await t.test(fixture.name, async (t) => {
+      const entryPath = `src/playbook/manual/entry.${fixture.extension}`;
+      const projectRoot = await dependencyFixture(t, {
+        ...(fixture.packageJson
+          ? { 'package.json': fixture.packageJson }
+          : {}),
+        [entryPath]: fixture.source,
+        'src/construction/target.cjs':
+          "module.exports = 'loader-edge-executed';\n"
+      });
+      const absoluteEntry = path.join(projectRoot, entryPath);
+
+      assert.equal(await fixture.execute(absoluteEntry), 'loader-edge-executed');
+
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.equal(
+        audit.import_boundary_violation_count,
+        fixture.violationCount,
+        fixture.name
+      );
+      assert.equal(
+        audit.import_boundary_unresolved_count,
+        fixture.unresolvedCount,
+        fixture.name
+      );
+    });
+  }
 });
 
 test('package imports construction edge executes and is audited', async (t) => {
@@ -560,6 +798,7 @@ async function checkedInAuditFixture(t, {
   if (initializeGit) {
     await runGit(projectRoot, ['init', '--quiet']);
     await runGit(projectRoot, ['add', '--', 'docs', 'src']);
+    await commitFixture(projectRoot, 'checked-in audit fixture');
     if (untrackedManagedPath) {
       await runGit(projectRoot, [
         'rm', '--quiet', '--cached', '--', untrackedManagedPath
@@ -590,6 +829,14 @@ async function runGit(projectRoot, args) {
   });
 }
 
+async function commitFixture(projectRoot, message) {
+  await runGit(projectRoot, [
+    '-c', 'user.name=Playbook Test',
+    '-c', 'user.email=playbook-test@example.invalid',
+    'commit', '--quiet', '-m', message
+  ]);
+}
+
 async function temporaryRoot(t, prefix) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -603,4 +850,8 @@ function escapeRegExp(value) {
 async function importDefault(modulePath) {
   const imported = await import(pathToFileURL(modulePath).href);
   return imported.default;
+}
+
+function requireDefault(modulePath) {
+  return createRequire(import.meta.url)(modulePath);
 }

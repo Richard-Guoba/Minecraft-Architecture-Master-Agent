@@ -21,6 +21,24 @@ const CARDS_PATH = 'docs/architecture-playbook/rules/schools/heihui-jileniao/rev
 const INDEX_PATH = 'docs/architecture-playbook/rules/schools/heihui-jileniao/rule-index-v0.1.json';
 const POLICY_PATH =
   'docs/architecture-playbook/rules/schools/heihui-jileniao/admission-v0.1.json';
+const P3_CHECKED_INPUT_PATHS = Object.freeze([
+  'docs/architecture-playbook/course/pilot-episodes.json',
+  'docs/architecture-playbook/course/notes/heihui-jileniao/BV1HTCaY6EDt.md',
+  'docs/architecture-playbook/course/notes/heihui-jileniao/BV1HhEuzZEyZ.md',
+  'docs/architecture-playbook/course/notes/heihui-jileniao/BV1WhkbYeE5k.md',
+  'docs/architecture-playbook/course/notes/heihui-jileniao/BV1WsZcYZEMQ.md',
+  'docs/architecture-playbook/course/notes/heihui-jileniao/BV1fNkgYBEyy.md',
+  'docs/architecture-playbook/course/notes/heihui-jileniao/BV1jbdUYCEjG.md',
+  'docs/architecture-playbook/rules/schools/heihui-jileniao/evidence-index-v0.1.json',
+  'docs/architecture-playbook/rules/schools/heihui-jileniao/candidates-v0.1.jsonl',
+  'docs/architecture-playbook/rules/schools/heihui-jileniao/conflicts-v0.1.json',
+  'docs/architecture-playbook/rules/schools/heihui-jileniao/unknowns-v0.1.json',
+  POLICY_PATH
+]);
+const P3_CHECKED_GIT_PATHS = Object.freeze([
+  ...P3_CHECKED_INPUT_PATHS,
+  ...P3_MANAGED_ARTIFACT_PATHS
+]);
 const SPECIAL_CHAPTER_IDS = new Set([
   'method-and-boundaries',
   'failure-and-repair',
@@ -28,6 +46,8 @@ const SPECIAL_CHAPTER_IDS = new Set([
   'unknowns-and-coverage'
 ]);
 const PUBLIC_HTTPS_URL = /https:\/\/[^\s`"'<>|)]+/gimu;
+const FILE_URL_REFERENCE = /(?<![A-Za-z0-9])(?:file(?::|%3a)|%66%69%6c%65(?::|%3a))(?:(?:[\\/]|%2f|%5c){2,})[^\s`"'<>|)]*/gimu;
+const UNC_REFERENCE = /(?<![A-Za-z0-9:])(?:(?:\\\\|\/\/)|(?:%5c%5c|%2f%2f))[A-Za-z0-9%._~@+-]+(?:(?:[\\/]|%2f|%5c)[^\s`"'<>|)]+)+/gimu;
 const UNIX_ABSOLUTE_PATH = /(?<![A-Za-z0-9:/.])\/(?!\/)[A-Za-z0-9._~@+-]+(?:\/[A-Za-z0-9._~@+()-]+)*/gimu;
 const WINDOWS_ABSOLUTE_PATH = /(?<![A-Za-z0-9])[A-Za-z]:[\\/](?:[^\\/\s`"'<>|]+[\\/])*[^\\/\s`"'<>|]+/gimu;
 const PRIVATE_SOURCE_DIRECTORY = /(?<![A-Za-z0-9._-])(?:\.{1,2}[\\/])*(?:frames?|screenshots?|source-frames?|private-source)(?:[\\/][^\s`"'<>|)]+)+/gimu;
@@ -43,6 +63,10 @@ const PUBLIC_LEAK_MATCHERS = Object.freeze([
   PRIVATE_SOURCE_FIELD,
   FRAME_IMAGE_REFERENCE,
   PRIVATE_SOURCE_MARKER
+]);
+const HIGH_PRIORITY_PUBLIC_LEAK_MATCHERS = Object.freeze([
+  FILE_URL_REFERENCE,
+  UNC_REFERENCE
 ]);
 
 export function compilePlaybookV01({ corpus, policy }) {
@@ -242,9 +266,15 @@ function derivePlaybookAuditCounters(compilation, managedArtifactDriftCount) {
 
 export async function auditCheckedInPlaybookV01({ projectRoot }) {
   const root = path.resolve(projectRoot);
-  const corpus = await loadP2PublicCorpus({ projectRoot: root });
+  const gitSnapshot = await captureCheckedInGitSnapshot(root);
+  if (!gitSnapshot.complete) return blockedGitSnapshotAudit(gitSnapshot);
+  const readSnapshotFile = snapshotReadFile(root, gitSnapshot.commit_blobs);
+  const corpus = await loadP2PublicCorpus({
+    projectRoot: root,
+    readFile: readSnapshotFile
+  });
   const policy = validateP3AdmissionPolicy(
-    JSON.parse(await fs.readFile(path.join(root, POLICY_PATH), 'utf8')),
+    JSON.parse(await readSnapshotFile(path.join(root, POLICY_PATH), 'utf8')),
     {
       candidateRuleIds: new Set(
         corpus.candidates.map((candidate) => candidate.rule_id)
@@ -260,11 +290,19 @@ export async function auditCheckedInPlaybookV01({ projectRoot }) {
     artifacts: compilation.artifacts
   });
   const checkedInArtifacts = checked.checked_artifacts;
-  const [tracking, dependencyBoundary] =
+  const [worktreeErrors, dependencyBoundary] =
     await Promise.all([
-      verifyManagedArtifactTracking(root),
+      verifyCheckedInWorktree({
+        projectRoot: root,
+        gitSnapshot,
+        checkedInArtifacts
+      }),
       auditManualDependencyBoundary({ projectRoot: root })
     ]);
+  const trackingErrors = [...new Set([
+    ...gitSnapshot.tracking_verification_errors,
+    ...worktreeErrors
+  ])].sort();
   const checkedInCoverage = parseJsonOrNull(checkedInArtifacts[COVERAGE_PATH]);
   const coverageNotCoveredLayers = Array.isArray(checkedInCoverage?.layers)
     ? checkedInCoverage.layers
@@ -294,9 +332,9 @@ export async function auditCheckedInPlaybookV01({ projectRoot }) {
   return finalizeAudit({
     ...counters,
     untracked_managed_artifact_count:
-      tracking.untracked_managed_artifact_paths.length,
+      gitSnapshot.untracked_managed_artifact_paths.length,
     tracking_verification_error_count:
-      tracking.tracking_verification_errors.length,
+      trackingErrors.length,
     import_boundary_violation_count:
       dependencyBoundary.import_boundary_violation_count,
     import_boundary_unresolved_count:
@@ -304,12 +342,14 @@ export async function auditCheckedInPlaybookV01({ projectRoot }) {
     not_covered_declaration_mismatch_count:
       notCoveredDeclarationMismatchCount,
     source_corpus_hash: compilation.source_corpus_hash,
+    git_commit: gitSnapshot.git_commit,
+    verified_git_snapshot_paths: gitSnapshot.verified_git_snapshot_paths,
     tracked_managed_artifact_paths:
-      tracking.tracked_managed_artifact_paths,
+      gitSnapshot.tracked_managed_artifact_paths,
     untracked_managed_artifact_paths:
-      tracking.untracked_managed_artifact_paths,
+      gitSnapshot.untracked_managed_artifact_paths,
     tracking_verification_errors:
-      tracking.tracking_verification_errors,
+      trackingErrors,
     manual_construction_imports:
       dependencyBoundary.manual_construction_imports,
     unresolved_manual_dependencies:
@@ -322,7 +362,7 @@ export async function auditCheckedInPlaybookV01({ projectRoot }) {
   }, { includeCheckedInRequirements: true });
 }
 
-async function verifyManagedArtifactTracking(projectRoot) {
+async function captureCheckedInGitSnapshot(projectRoot) {
   try {
     const options = {
       cwd: projectRoot,
@@ -331,11 +371,11 @@ async function verifyManagedArtifactTracking(projectRoot) {
       timeout: 10_000,
       windowsHide: true
     };
-    const [{ stdout: topLevel }, { stdout }] = await Promise.all([
+    const [{ stdout: topLevel }, { stdout: commitOutput }] = await Promise.all([
       execFileAsync('git', ['rev-parse', '--show-toplevel'], options),
       execFileAsync(
         'git',
-        ['ls-files', '--', ...P3_MANAGED_ARTIFACT_PATHS],
+        ['rev-parse', '--verify', 'HEAD^{commit}'],
         options
       )
     ]);
@@ -344,23 +384,210 @@ async function verifyManagedArtifactTracking(projectRoot) {
       fs.realpath(topLevel.trim())
     ]);
     if (projectReal !== topLevelReal) throw new Error('worktree root mismatch');
-    const trackedSet = new Set(stdout.split(/\r?\n/u).filter(Boolean));
+    const gitCommit = commitOutput.trim();
+    if (!/^[a-f0-9]{40,64}$/u.test(gitCommit)) {
+      throw new Error('invalid commit identity');
+    }
+    const [{ stdout: treeOutput }, { stdout: indexOutput }] = await Promise.all([
+      execFileAsync('git', [
+        'ls-tree', '-z', '--full-tree', gitCommit, '--',
+        ...P3_CHECKED_GIT_PATHS
+      ], options),
+      execFileAsync('git', [
+        'ls-files', '--stage', '-z', '--', ...P3_CHECKED_GIT_PATHS
+      ], options)
+    ]);
+    const treeEntries = parseGitTreeEntries(treeOutput);
+    const indexEntries = parseGitIndexEntries(indexOutput);
+    if (P3_CHECKED_GIT_PATHS.some((checkedPath) => {
+      const entry = treeEntries.get(checkedPath);
+      return !entry
+        || entry.type !== 'blob'
+        || !/^100(?:644|755)$/u.test(entry.mode);
+    })) {
+      return incompleteGitSnapshot('GIT_TREE_PATH_NOT_BLOB');
+    }
+    const commitBlobs = await readGitBlobs({
+      projectRoot,
+      entries: treeEntries
+    });
     const trackedPaths = P3_MANAGED_ARTIFACT_PATHS.filter((artifactPath) =>
-      trackedSet.has(artifactPath));
+      indexEntries.has(artifactPath));
     const untrackedPaths = P3_MANAGED_ARTIFACT_PATHS.filter((artifactPath) =>
-      !trackedSet.has(artifactPath));
-    return deepFreeze({
+      !indexEntries.has(artifactPath));
+    const indexErrors = [];
+    const indexBlobEntries = new Map();
+    for (const checkedPath of P3_CHECKED_GIT_PATHS) {
+      const commitEntry = treeEntries.get(checkedPath);
+      const indexEntry = indexEntries.get(checkedPath);
+      if (!indexEntry) {
+        if (!P3_MANAGED_ARTIFACT_PATHS.includes(checkedPath)) {
+          indexErrors.push('GIT_INDEX_DIVERGENCE');
+        }
+        continue;
+      }
+      if (
+        indexEntry.stage !== '0'
+        || !/^100(?:644|755)$/u.test(indexEntry.mode)
+        || indexEntry.oid !== commitEntry.oid
+      ) {
+        indexErrors.push('GIT_INDEX_DIVERGENCE');
+      }
+      if (
+        indexEntry.stage === '0'
+        && /^100(?:644|755)$/u.test(indexEntry.mode)
+      ) {
+        indexBlobEntries.set(checkedPath, indexEntry);
+      }
+    }
+    const indexBlobs = await readGitBlobs({
+      projectRoot,
+      entries: indexBlobEntries
+    });
+    return {
+      complete: true,
+      git_commit: gitCommit,
+      commit_blobs: commitBlobs,
+      index_blobs: indexBlobs,
+      verified_git_snapshot_paths: [...P3_CHECKED_GIT_PATHS],
       tracked_managed_artifact_paths: trackedPaths,
       untracked_managed_artifact_paths: untrackedPaths,
-      tracking_verification_errors: []
-    });
+      tracking_verification_errors: [...new Set(indexErrors)].sort()
+    };
   } catch {
-    return deepFreeze({
-      tracked_managed_artifact_paths: [],
-      untracked_managed_artifact_paths: [],
-      tracking_verification_errors: ['GIT_TRACKING_UNAVAILABLE']
-    });
+    return incompleteGitSnapshot('GIT_TRACKING_UNAVAILABLE');
   }
+}
+
+function incompleteGitSnapshot(errorCode) {
+  return deepFreeze({
+    complete: false,
+    git_commit: null,
+    verified_git_snapshot_paths: [],
+    tracked_managed_artifact_paths: [],
+    untracked_managed_artifact_paths: [],
+    tracking_verification_errors: [errorCode]
+  });
+}
+
+function parseGitTreeEntries(output) {
+  const entries = new Map();
+  for (const record of output.split('\0').filter(Boolean)) {
+    const tab = record.indexOf('\t');
+    if (tab === -1) continue;
+    const [mode, type, oid] = record.slice(0, tab).split(' ');
+    entries.set(record.slice(tab + 1), { mode, type, oid });
+  }
+  return entries;
+}
+
+function parseGitIndexEntries(output) {
+  const entries = new Map();
+  for (const record of output.split('\0').filter(Boolean)) {
+    const tab = record.indexOf('\t');
+    if (tab === -1) continue;
+    const [mode, oid, stage] = record.slice(0, tab).split(' ');
+    entries.set(record.slice(tab + 1), { mode, oid, stage });
+  }
+  return entries;
+}
+
+async function readGitBlobs({ projectRoot, entries }) {
+  const pairs = await Promise.all([...entries].map(async ([checkedPath, entry]) => {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['cat-file', 'blob', entry.oid],
+      {
+        cwd: projectRoot,
+        encoding: 'buffer',
+        maxBuffer: 2 * 1024 * 1024,
+        timeout: 10_000,
+        windowsHide: true
+      }
+    );
+    return [checkedPath, Buffer.from(stdout)];
+  }));
+  return Object.fromEntries(pairs);
+}
+
+function snapshotReadFile(projectRoot, blobs) {
+  return async (filePath, encoding = null) => {
+    const relativePath = path.relative(projectRoot, path.resolve(filePath))
+      .split(path.sep).join('/');
+    if (!P3_CHECKED_INPUT_PATHS.includes(relativePath) || !blobs[relativePath]) {
+      throw new Error('PLAYBOOK_GIT_SNAPSHOT_PATH_NOT_ALLOWED');
+    }
+    const bytes = Buffer.from(blobs[relativePath]);
+    return encoding ? bytes.toString(encoding) : bytes;
+  };
+}
+
+async function verifyCheckedInWorktree({
+  projectRoot,
+  gitSnapshot,
+  checkedInArtifacts
+}) {
+  const errors = [];
+  for (const inputPath of P3_CHECKED_INPUT_PATHS) {
+    const expected = gitSnapshot.index_blobs[inputPath];
+    if (!expected) continue;
+    try {
+      const absolutePath = path.join(projectRoot, inputPath);
+      const stat = await fs.lstat(absolutePath);
+      const actual = stat.isFile() && !stat.isSymbolicLink()
+        ? await fs.readFile(absolutePath)
+        : null;
+      if (actual === null || !actual.equals(expected)) {
+        errors.push('GIT_WORKTREE_DIVERGENCE');
+      }
+    } catch {
+      errors.push('GIT_WORKTREE_DIVERGENCE');
+    }
+  }
+  if (P3_MANAGED_ARTIFACT_PATHS.some((artifactPath) =>
+    !Buffer.from(checkedInArtifacts[artifactPath], 'utf8')
+      .equals(gitSnapshot.commit_blobs[artifactPath]))) {
+    errors.push('GIT_OUTPUT_SNAPSHOT_DIVERGENCE');
+  }
+  return [...new Set(errors)].sort();
+}
+
+function blockedGitSnapshotAudit(gitSnapshot) {
+  return finalizeAudit({
+    p2_gate_status: 'blocked',
+    reviewed_rule_count: 0,
+    core_procedure_count: 0,
+    case_pattern_count: 0,
+    dangling_reference_count: 0,
+    cross_school_count: 0,
+    authority_escalation_count: 0,
+    maturity_escalation_count: 0,
+    covered_runtime_layer_count: 0,
+    public_leak_count: 0,
+    managed_artifact_drift_count: 0,
+    untracked_managed_artifact_count:
+      gitSnapshot.untracked_managed_artifact_paths.length,
+    tracking_verification_error_count:
+      gitSnapshot.tracking_verification_errors.length,
+    import_boundary_violation_count: 0,
+    import_boundary_unresolved_count: 0,
+    not_covered_declaration_mismatch_count: 0,
+    source_corpus_hash: null,
+    git_commit: gitSnapshot.git_commit,
+    verified_git_snapshot_paths: gitSnapshot.verified_git_snapshot_paths,
+    tracked_managed_artifact_paths:
+      gitSnapshot.tracked_managed_artifact_paths,
+    untracked_managed_artifact_paths:
+      gitSnapshot.untracked_managed_artifact_paths,
+    tracking_verification_errors:
+      gitSnapshot.tracking_verification_errors,
+    manual_construction_imports: [],
+    unresolved_manual_dependencies: [],
+    resolved_manual_dependency_paths: [],
+    expected_not_covered_layers: [],
+    coverage_not_covered_layers: [],
+    manual_not_covered_layers: []
+  }, { includeCheckedInRequirements: true });
 }
 
 function parseJsonOrNull(text) {
@@ -750,10 +977,15 @@ function countPublicLeaks(artifacts) {
 
 function countDistinctLeakRanges(value) {
   const publicUrlRanges = matchRanges(value, PUBLIC_HTTPS_URL);
-  const ranges = PUBLIC_LEAK_MATCHERS.flatMap((matcher) =>
-    matchRanges(value, matcher))
-    .filter((range) => !publicUrlRanges.some((publicUrlRange) =>
-      range.start >= publicUrlRange.start && range.end <= publicUrlRange.end))
+  const highPriorityRanges = HIGH_PRIORITY_PUBLIC_LEAK_MATCHERS.flatMap(
+    (matcher) => matchRanges(value, matcher)
+  );
+  const ranges = [
+    ...highPriorityRanges,
+    ...PUBLIC_LEAK_MATCHERS.flatMap((matcher) => matchRanges(value, matcher))
+      .filter((range) => !publicUrlRanges.some((publicUrlRange) =>
+        range.start >= publicUrlRange.start && range.end <= publicUrlRange.end))
+  ]
     .sort((left, right) => left.start - right.start || right.end - left.end);
   let count = 0;
   let coveredUntil = -1;
