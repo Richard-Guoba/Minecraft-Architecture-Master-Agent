@@ -10,7 +10,8 @@ import {
 const OPTIONS = Object.freeze({
   capturedAt: '2026-08-25T00:00:00.000Z',
   sourceUrl: 'https://www.bilibili.com/video/BV1HhEuzZEyZ/',
-  expectedEpisodeCount: 2
+  expectedEpisodeCount: 2,
+  sourceSnapshotSha256: 'd'.repeat(64)
 });
 
 test('Bilibili snapshot maps curriculum and published titles in source order', () => {
@@ -20,6 +21,7 @@ test('Bilibili snapshot maps curriculum and published titles in source order', (
   );
 
   assert.equal(manifest.course.season_id, 4369851);
+  assert.equal(manifest.source_snapshot_sha256, 'd'.repeat(64));
   assert.equal(manifest.course.author.platform_user_id, 351448296);
   assert.equal(manifest.episodes[0].order, 1);
   assert.equal(manifest.episodes[0].curriculum_title, '1.1结构入门');

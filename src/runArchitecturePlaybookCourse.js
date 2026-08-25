@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -112,6 +113,7 @@ export async function fetchCourseSnapshot({
 }) {
   const root = path.resolve(projectRoot);
   const target = assertPrivateSnapshotPath(snapshotPath, root);
+  await assertPrivateSnapshotStorage(target, root, { createParent: true });
   if (bvid !== COURSE_BVID) {
     failPlaybookContract('PLAYBOOK_COURSE_BVID_INVALID', 'bvid', bvid);
   }
@@ -150,7 +152,8 @@ export async function fetchCourseSnapshot({
   const manifest = buildCourseManifestFromBilibiliSnapshot(snapshot, {
     capturedAt: new Date().toISOString(),
     sourceUrl: `https://www.bilibili.com/video/${bvid}/`,
-    expectedEpisodeCount: EXPECTED_EPISODE_COUNT
+    expectedEpisodeCount: EXPECTED_EPISODE_COUNT,
+    sourceSnapshotSha256: sha256(bytes)
   });
   const status = await writeAtomicContent(target, bytes, { replace });
   return Object.freeze({
@@ -169,6 +172,7 @@ export async function writeManifestFromSnapshot({
   const root = path.resolve(projectRoot);
   const source = assertPrivateSnapshotPath(snapshotPath, root);
   const target = assertManifestPath(outputPath, root);
+  await assertPrivateSnapshotStorage(source, root, { createParent: false });
   assertTimestamp(capturedAt, 'capturedAt');
   const bytes = await fs.readFile(source, 'utf8');
   let snapshot;
@@ -184,7 +188,8 @@ export async function writeManifestFromSnapshot({
   const manifest = buildCourseManifestFromBilibiliSnapshot(snapshot, {
     capturedAt,
     sourceUrl: `https://www.bilibili.com/video/${COURSE_BVID}/`,
-    expectedEpisodeCount: EXPECTED_EPISODE_COUNT
+    expectedEpisodeCount: EXPECTED_EPISODE_COUNT,
+    sourceSnapshotSha256: sha256(bytes)
   });
   const output = `${JSON.stringify(manifest, null, 2)}\n`;
   const status = await writeAtomicContent(target, output, { replace: true });
@@ -264,6 +269,82 @@ function assertManifestPath(value, projectRoot) {
   return resolved;
 }
 
+async function assertPrivateSnapshotStorage(
+  target,
+  projectRoot,
+  { createParent }
+) {
+  const privateRoot = path.resolve(projectRoot, PRIVATE_ROOT);
+  const projectReal = await fs.realpath(projectRoot);
+  const nearest = await nearestExistingAncestor(path.dirname(target));
+  const nearestReal = await fs.realpath(nearest);
+  if (!isWithin(nearestReal, projectReal)) {
+    failPlaybookContract(
+      'PLAYBOOK_SNAPSHOT_SYMLINK_ESCAPE',
+      'snapshotPath',
+      nearestReal
+    );
+  }
+
+  let privateReal = null;
+  try {
+    privateReal = await fs.realpath(privateRoot);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  if (privateReal && !isWithin(privateReal, projectReal)) {
+    failPlaybookContract(
+      'PLAYBOOK_SNAPSHOT_SYMLINK_ESCAPE',
+      'snapshotPath',
+      privateReal
+    );
+  }
+  if (
+    privateReal
+    && nearest.startsWith(`${privateRoot}${path.sep}`)
+    && !isWithin(nearestReal, privateReal)
+  ) {
+    failPlaybookContract(
+      'PLAYBOOK_SNAPSHOT_SYMLINK_ESCAPE',
+      'snapshotPath',
+      nearestReal
+    );
+  }
+
+  if (createParent) await fs.mkdir(path.dirname(target), { recursive: true });
+  const parentReal = await fs.realpath(path.dirname(target));
+  const finalPrivateReal = await fs.realpath(privateRoot);
+  if (
+    !isWithin(finalPrivateReal, projectReal)
+    || !isWithin(parentReal, finalPrivateReal)
+  ) {
+    failPlaybookContract(
+      'PLAYBOOK_SNAPSHOT_SYMLINK_ESCAPE',
+      'snapshotPath',
+      parentReal
+    );
+  }
+}
+
+async function nearestExistingAncestor(start) {
+  let current = path.resolve(start);
+  while (true) {
+    try {
+      await fs.lstat(current);
+      return current;
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) throw new Error(`no existing ancestor for ${start}`);
+    current = parent;
+  }
+}
+
+function isWithin(candidate, root) {
+  return candidate === root || candidate.startsWith(`${root}${path.sep}`);
+}
+
 function assertTimestamp(value, valuePath) {
   if (
     typeof value !== 'string'
@@ -303,6 +384,10 @@ async function writeAtomicContent(target, content, { replace }) {
     throw error;
   }
   return existing === null ? 'created' : 'updated';
+}
+
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex');
 }
 
 const isMain = process.argv[1]

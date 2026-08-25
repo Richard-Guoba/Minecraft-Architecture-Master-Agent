@@ -2,7 +2,7 @@
   "schema_version": 1,
   "manifest_id": "bilibili-ugc-season-4369851",
   "captured_at": "2026-08-25T08:29:41.000Z",
-  "source_snapshot_sha256": "b15aa6bdcd97c31ad6c8a423fdfdf3161948c80b710f9db4107edbf0b4f4b750",
+  "source_snapshot_sha256": "18ac639c11ab68ba7cfaea59f3efefeb029f4968afa857a642531df95ebab98c",
   "course": {
     "platform": "bilibili",
     "season_id": 4369851,

@@ -27,7 +27,7 @@ export function buildProbeCapabilityReport(input) {
   );
   const keyframes = check(
     mediaAcquisition.status === 'passed'
-      && input.tools.ffmpeg_available
+      && input.tools.frame_decoder_available
       && validFrames(input.artifacts.frames),
     keyframeReasons(input, mediaAcquisition)
   );
@@ -145,10 +145,12 @@ function keyframeReasons(input, mediaAcquisition) {
   if (mediaAcquisition.status !== 'passed') {
     reasons.push('MEDIA_PREREQUISITE_BLOCKED');
   }
-  if (!input.tools.ffmpeg_available) reasons.push('FFMPEG_TOOL_UNAVAILABLE');
+  if (!input.tools.frame_decoder_available) {
+    reasons.push('FRAME_DECODER_TOOL_UNAVAILABLE');
+  }
   if (
     mediaAcquisition.status === 'passed'
-    && input.tools.ffmpeg_available
+    && input.tools.frame_decoder_available
     && !validFrames(input.artifacts.frames)
   ) {
     reasons.push('KEYFRAME_ARTIFACT_MISSING');

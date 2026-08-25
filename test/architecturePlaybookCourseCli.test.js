@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -73,11 +74,8 @@ test('offline manifest conversion is deterministic and writes one newline', asyn
     'docs/architecture-playbook/course/course-manifest.json'
   );
   await fs.mkdir(path.dirname(snapshotPath), { recursive: true });
-  await fs.writeFile(
-    snapshotPath,
-    JSON.stringify(bilibiliFiftyEpisodeSnapshotFixture()),
-    'utf8'
-  );
+  const snapshotBytes = JSON.stringify(bilibiliFiftyEpisodeSnapshotFixture());
+  await fs.writeFile(snapshotPath, snapshotBytes, 'utf8');
 
   const first = await writeManifestFromSnapshot({
     snapshotPath,
@@ -87,7 +85,12 @@ test('offline manifest conversion is deterministic and writes one newline', asyn
   });
   const firstBytes = await fs.readFile(outputPath, 'utf8');
   assert.equal(first.status, 'created');
-  assert.equal(JSON.parse(firstBytes).episodes.length, 50);
+  const manifest = JSON.parse(firstBytes);
+  assert.equal(manifest.episodes.length, 50);
+  assert.equal(
+    manifest.source_snapshot_sha256,
+    createHash('sha256').update(snapshotBytes).digest('hex')
+  );
   assert.ok(firstBytes.endsWith('\n'));
   assert.ok(!firstBytes.endsWith('\n\n'));
 
@@ -127,6 +130,30 @@ test('snapshot acquisition refuses silent replacement of different bytes', async
     /PLAYBOOK_SNAPSHOT_CONFLICT/u
   );
   assert.equal(await fs.readFile(snapshotPath, 'utf8'), '{"old":true}');
+});
+
+test('snapshot acquisition rejects a private-path symlink escape', async (t) => {
+  const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-link-'));
+  const outsideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-outside-'));
+  t.after(() => fs.rm(projectRoot, { recursive: true, force: true }));
+  t.after(() => fs.rm(outsideRoot, { recursive: true, force: true }));
+  const privateRoot = path.join(projectRoot, '.local/architecture-playbook');
+  await fs.mkdir(privateRoot, { recursive: true });
+  await fs.symlink(outsideRoot, path.join(privateRoot, 'work'), 'dir');
+  const snapshotPath = path.join(privateRoot, 'work/season.json');
+  const body = JSON.stringify(bilibiliFiftyEpisodeSnapshotFixture());
+
+  await assert.rejects(
+    fetchCourseSnapshot({
+      bvid: 'BV1HhEuzZEyZ',
+      snapshotPath,
+      projectRoot,
+      replace: false,
+      fetchImpl: async () => new Response(body, { status: 200 })
+    }),
+    /PLAYBOOK_SNAPSHOT_SYMLINK_ESCAPE/u
+  );
+  await assert.rejects(fs.access(path.join(outsideRoot, 'season.json')));
 });
 
 function bilibiliFiftyEpisodeSnapshotFixture() {

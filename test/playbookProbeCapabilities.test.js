@@ -21,7 +21,7 @@ test('probe capability report keeps downstream stages blocked without artifacts'
   assert.equal(report.checks.keyframes.status, 'blocked');
   assert.deepEqual(report.checks.keyframes.reason_codes, [
     'MEDIA_PREREQUISITE_BLOCKED',
-    'FFMPEG_TOOL_UNAVAILABLE'
+    'FRAME_DECODER_TOOL_UNAVAILABLE'
   ]);
   assert.equal(report.checks.terminology_review.status, 'blocked');
   assert.equal(report.checks.evidence_reconstruction.status, 'blocked');
@@ -30,7 +30,8 @@ test('probe capability report keeps downstream stages blocked without artifacts'
 
 test('probe capability report passes only with complete reproducible evidence', () => {
   const input = blockedProbeFixture();
-  input.tools.ffmpeg_available = true;
+  input.tools.frame_decoder_available = true;
+  input.tools.frame_decoder = 'pyav-18.1.0';
   input.tools.asr_available = true;
   input.artifacts.media = {
     sha256: '1'.repeat(64),
@@ -98,7 +99,8 @@ function blockedProbeFixture() {
       subtitle_track_count: 0
     },
     tools: {
-      ffmpeg_available: false,
+      frame_decoder_available: false,
+      frame_decoder: 'unavailable',
       asr_available: false
     },
     artifacts: {

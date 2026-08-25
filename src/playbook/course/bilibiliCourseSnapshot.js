@@ -12,7 +12,8 @@ export function buildCourseManifestFromBilibiliSnapshot(
   {
     capturedAt,
     sourceUrl,
-    expectedEpisodeCount
+    expectedEpisodeCount,
+    sourceSnapshotSha256
   }
 ) {
   validateSnapshotEnvelope(snapshot);
@@ -53,7 +54,7 @@ export function buildCourseManifestFromBilibiliSnapshot(
     schema_version: 1,
     manifest_id: 'bilibili-ugc-season-4369851',
     captured_at: capturedAt,
-    source_snapshot_sha256: sha256(stableJson(snapshot)),
+    source_snapshot_sha256: sourceSnapshotSha256,
     course: {
       platform: 'bilibili',
       season_id: season.id,
