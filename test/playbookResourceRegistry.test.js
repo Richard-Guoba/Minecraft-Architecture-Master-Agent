@@ -116,6 +116,23 @@ test('rejects an unexpected public HTML snapshot', async (t) => {
   );
 });
 
+test('rejects a source directory omitted from the catalog', async (t) => {
+  const projectRoot = await resourceRegistryProjectFixture(t);
+  const unregisteredRoot = join(
+    resourceRoot(projectRoot), 'sources', 'unregistered-source'
+  );
+  await mkdir(unregisteredRoot, { recursive: true });
+  await writeFile(join(unregisteredRoot, 'source.json'), '{}\n', 'utf8');
+
+  await assert.rejects(
+    loadResourceRegistry({ projectRoot }),
+    {
+      name: 'PlaybookContractError',
+      code: 'PLAYBOOK_RESOURCE_UNEXPECTED_FILE'
+    }
+  );
+});
+
 test('rejects an absolute Unix home path persisted in JSON', async (t) => {
   const projectRoot = await resourceRegistryProjectFixture(t);
   await mutateJson(sourceProfilePath(projectRoot), (profile) => {
