@@ -521,7 +521,19 @@ test('pure public leak audit exempts only the HTTPS scheme delimiter', async () 
     ['encoded direct forward UNC after HTTPS query delimiter',
       'https://example.test/?%2F%2Fserver%2Fshare%2Fa.txt', 1],
     ['partially encoded HTTPS with direct forward UNC after fragment delimiter',
-      'h%74tps://example.test/#%2F%2Fserver%2Fshare%2Fa.txt', 1]
+      'h%74tps://example.test/#%2F%2Fserver%2Fshare%2Fa.txt', 1],
+    ['forward UNC after HTTPS query component separator',
+      'https://example.test/?x=1&//server/share/a.txt', 1],
+    ['encoded forward UNC after HTTPS query component separator',
+      'https://example.test/?x=1%26%2F%2Fserver%2Fshare%2Fa.txt', 1],
+    ['two forward UNC parameter values in one HTTPS fragment',
+      'https://example.test/#a=//one/share&b=//two/share', 2],
+    ['encoded two forward UNC parameter values in one HTTPS fragment',
+      'https://example.test/#a%3D%2F%2Fone%2Fshare%26b%3D%2F%2Ftwo%2Fshare', 2],
+    ['parameter-like delimiters inside an active fragment UNC stay one token',
+      'https://example.test/#//server/share&b=//folder/file', 1],
+    ['encoded parameter-like delimiters inside an active fragment UNC stay one token',
+      'https://example.test/#%2F%2Fserver%2Fshare%26b%3D%2F%2Ffolder%2Ffile', 1]
   ]) {
     const compilation = structuredClone(base);
     compilation.artifacts[MANUAL_PATH] += `${reference}\n`;

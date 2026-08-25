@@ -1109,15 +1109,26 @@ function findUncRanges(normalized, httpsRanges, fileRanges) {
     if (!isSeparatorRunStart(normalized.text, index)) continue;
     const candidateStart = uncCandidateStart(index, normalized.text, httpsRanges);
     if (candidateStart === null) continue;
+    const uriComponentStart = classifyHttpsUriComponentStart(
+      normalized.text,
+      candidateStart,
+      httpsRanges
+    );
     const hasIndependentBoundary = candidateStart !== index
-      || isIndependentReferenceStart(normalized.text, candidateStart, httpsRanges);
+      || isIndependentReferenceStart(
+        normalized.text,
+        candidateStart,
+        uriComponentStart
+      );
     if (
       !hasIndependentBoundary
       && !isExplicitHttpsUncRun(normalized.text, candidateStart, httpsRanges)
     ) continue;
-    const normalizedEnd = publicReferenceTokenEnd(normalized.text, candidateStart + 2, {
-      stopAtNewScheme: true
-    });
+    const normalizedEnd = uncReferenceTokenEnd(
+      normalized.text,
+      candidateStart + 2,
+      uriComponentStart
+    );
     const normalizedCandidate = {
       normalizedStart: candidateStart,
       normalizedEnd,
@@ -1126,7 +1137,10 @@ function findUncRanges(normalized, httpsRanges, fileRanges) {
     if (!isUncReference(normalized.text.slice(candidateStart, normalizedEnd))) {
       continue;
     }
-    if (!hasIndependentBoundary && overlapsAny(normalizedCandidate, ranges)) {
+    if (
+      overlapsAny(normalizedCandidate, ranges)
+      && normalized.text[candidateStart - 1] !== ','
+    ) {
       continue;
     }
     if (overlapsAny(normalizedCandidate, fileRanges)) continue;
@@ -1154,47 +1168,102 @@ function isHttpsSchemeRunStart(runStart, httpsRanges) {
     runStart === range.normalizedStart + 'https:'.length);
 }
 
-function isIndependentReferenceStart(text, index, httpsRanges) {
+function isIndependentReferenceStart(text, index, uriComponentStart) {
   if (index === 0) return true;
   const previous = text[index - 1];
   return isPublicReferenceTerminator(previous)
     || previous === ','
-    || isHttpsQueryOrFragmentStart(text, index, httpsRanges)
-    || isHttpsQueryParameterValueStart(text, index, httpsRanges)
+    || uriComponentStart !== null
     || /[A-Za-z][A-Za-z0-9+.-]*:$/u.test(text.slice(0, index));
 }
 
-function isHttpsQueryOrFragmentStart(text, index, httpsRanges) {
-  const delimiter = text[index - 1];
-  if (delimiter !== '?' && delimiter !== '#') return false;
-  return httpsRanges.some((range) =>
-    isFirstHttpsUrlDelimiter(text, index - 1, delimiter, range));
-}
-
-function isFirstHttpsUrlDelimiter(text, delimiterIndex, delimiter, range) {
-  const contentStart = range.normalizedStart + 'https://'.length;
-  if (delimiterIndex < contentStart || delimiterIndex >= range.normalizedEnd) {
-    return false;
+function classifyHttpsUriComponentStart(text, index, httpsRanges) {
+  for (const range of httpsRanges) {
+    if (index <= range.normalizedStart || index >= range.normalizedEnd) continue;
+    const component = httpsUriComponentAt(text, index, range);
+    if (!component) continue;
+    const previous = text[index - 1];
+    if (index - 1 === component.delimiterIndex) {
+      return { kind: 'component-root', range };
+    }
+    if (previous === '&') {
+      return { kind: 'parameter-separator', range };
+    }
+    if (previous !== '=') continue;
+    const parameterStart = text.lastIndexOf('&', index - 2) + 1;
+    const boundedParameterStart = Math.max(parameterStart, component.contentStart);
+    const parameterName = text.slice(boundedParameterStart, index - 1);
+    if (/^[A-Za-z0-9._~-]+$/u.test(parameterName)) {
+      return { kind: 'parameter-value', range };
+    }
   }
-  const prefix = text.slice(contentStart, delimiterIndex);
-  return delimiter === '?'
-    ? !prefix.includes('?') && !prefix.includes('#')
-    : !prefix.includes('#');
+  return null;
 }
 
-function isHttpsQueryParameterValueStart(text, index, httpsRanges) {
-  if (text[index - 1] !== '=') return false;
-  return httpsRanges.some((range) => {
-    if (index >= range.normalizedEnd) return false;
-    const contentStart = range.normalizedStart + 'https://'.length;
-    const queryStart = text.indexOf('?', contentStart);
-    if (queryStart < contentStart || queryStart >= index) return false;
-    const fragmentStart = text.indexOf('#', contentStart);
-    if (fragmentStart !== -1 && fragmentStart < index) return false;
-    const queryPrefix = text.slice(queryStart + 1, index - 1);
-    const parameterName = queryPrefix.slice(queryPrefix.lastIndexOf('&') + 1);
-    return /^[A-Za-z0-9._~-]+$/u.test(parameterName);
+function httpsUriComponentAt(text, index, range) {
+  const contentStart = range.normalizedStart + 'https://'.length;
+  const queryIndex = boundedIndexOf(text, '?', contentStart, range.normalizedEnd);
+  const fragmentIndex = boundedIndexOf(text, '#', contentStart, range.normalizedEnd);
+  if (fragmentIndex !== -1 && fragmentIndex < index) {
+    return {
+      delimiterIndex: fragmentIndex,
+      contentStart: fragmentIndex + 1
+    };
+  }
+  if (
+    queryIndex !== -1
+    && queryIndex < index
+    && (fragmentIndex === -1 || queryIndex < fragmentIndex)
+  ) {
+    return {
+      delimiterIndex: queryIndex,
+      contentStart: queryIndex + 1
+    };
+  }
+  return null;
+}
+
+function boundedIndexOf(text, character, start, end) {
+  const index = text.indexOf(character, start);
+  return index !== -1 && index < end ? index : -1;
+}
+
+function uncReferenceTokenEnd(text, start, uriComponentStart) {
+  const tokenEnd = publicReferenceTokenEnd(text, start, { stopAtNewScheme: true });
+  if (
+    uriComponentStart?.kind !== 'parameter-value'
+    && uriComponentStart?.kind !== 'parameter-separator'
+  ) return tokenEnd;
+  for (let index = start; index < tokenEnd; index += 1) {
+    if (text[index] !== '&') continue;
+    const nextStart = nextHttpsParameterUncStart(
+      text,
+      index,
+      uriComponentStart.range
+    );
+    if (nextStart !== null) return index;
+  }
+  return tokenEnd;
+}
+
+function nextHttpsParameterUncStart(text, ampersandIndex, range) {
+  let candidateStart = ampersandIndex + 1;
+  if (!isSeparatorRunStart(text, candidateStart)) {
+    const equalsIndex = text.indexOf('=', candidateStart);
+    if (
+      equalsIndex === -1
+      || equalsIndex >= range.normalizedEnd
+      || !/^[A-Za-z0-9._~-]+$/u.test(text.slice(candidateStart, equalsIndex))
+    ) return null;
+    candidateStart = equalsIndex + 1;
+  }
+  if (!isSeparatorRunStart(text, candidateStart)) return null;
+  const candidateEnd = publicReferenceTokenEnd(text, candidateStart + 2, {
+    stopAtNewScheme: true
   });
+  return isUncReference(text.slice(candidateStart, candidateEnd))
+    ? candidateStart
+    : null;
 }
 
 function isExplicitHttpsUncRun(text, index, httpsRanges) {

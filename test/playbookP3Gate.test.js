@@ -15,6 +15,8 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 const COVERAGE_PATH = 'docs/architecture-playbook/manual/coverage-v0.1.json';
 const MANUAL_PATH = 'docs/architecture-playbook/manual/v0.1.md';
 const P3_REPORT_PATH = 'docs/architecture-playbook/reports/p3-playbook-v0.1.md';
+const DEPENDENCY_BOUNDARY_PATH =
+  'src/playbook/manual/manualDependencyBoundary.js';
 const ADMISSION_PATH =
   'docs/architecture-playbook/rules/schools/heihui-jileniao/admission-v0.1.json';
 const NOT_COVERED_LAYERS = ['space', 'materials', 'interior', 'scene'];
@@ -34,6 +36,24 @@ test('public P3 report marks the seven-path scope as historical', async () => {
     report,
     /P3 has not generated or visually improved a house and provides zero runtime authority\./u
   );
+  assert.doesNotMatch(report, /绑定传播覆盖 `createRequire`/u);
+  assert.match(report, /只接受字符串字面量表达的静态 ESM\/CJS 模块边/u);
+  assert.match(report, /不受支持的 loader 根在源头以稳定 unresolved fact 关闭门禁/u);
+  assert.match(report, /唯一 `createRequire` 例外同时绑定到审计实现的真实物理路径/u);
+  assert.match(report, /共享同一个最多八轮、保留原始区间映射的百分号规范化视图/u);
+});
+
+test('dependency gate source records the capability-deny architecture', async () => {
+  const source = await fs.readFile(
+    path.join(ROOT, DEPENDENCY_BOUNDARY_PATH),
+    'utf8'
+  );
+
+  assert.equal(source.includes('propagateBindingTaint'), false);
+  assert.equal(source.includes('maximumPasses'), false);
+  assert.equal(source.includes('TAINT_LOADER'), false);
+  assert.match(source, /DYNAMIC_NODE_MODULE_CAPABILITY/u);
+  assert.match(source, /INDIRECT_REQUIRE_CAPABILITY/u);
 });
 
 test('P3 checked-in playbook passes with no runtime authority', async () => {
@@ -332,6 +352,18 @@ test('protected checked snapshot blocks file URL and UNC leakage', async (t) => 
       'https://example.test/?%2F%2Fserver%2Fshare%2Fa.txt'],
     ['partially encoded HTTPS with direct forward UNC after fragment delimiter',
       'h%74tps://example.test/#%2F%2Fserver%2Fshare%2Fa.txt'],
+    ['forward UNC after HTTPS query component separator',
+      'https://example.test/?x=1&//server/share/a.txt'],
+    ['encoded forward UNC after HTTPS query component separator',
+      'https://example.test/?x=1%26%2F%2Fserver%2Fshare%2Fa.txt'],
+    ['two forward UNC parameter values in one HTTPS fragment',
+      'https://example.test/#a=//one/share&b=//two/share', 2],
+    ['encoded two forward UNC parameter values in one HTTPS fragment',
+      'https://example.test/#a%3D%2F%2Fone%2Fshare%26b%3D%2F%2Ftwo%2Fshare', 2],
+    ['parameter-like delimiters inside an active fragment UNC stay one token',
+      'https://example.test/#//server/share&b=//folder/file'],
+    ['encoded parameter-like delimiters inside an active fragment UNC stay one token',
+      'https://example.test/#%2F%2Fserver%2Fshare%26b%3D%2F%2Ffolder%2Ffile'],
     ['forward UNC left in the HTTPS scheme run',
       'https:////server/share/a.txt'],
     ['backslash UNC left in the HTTPS scheme run',

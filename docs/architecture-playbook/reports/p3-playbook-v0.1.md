@@ -12,8 +12,8 @@
 - P2 门禁状态：`passed`。
 - 五个受管产物均由同一已验证输入在内存中重建，逐字节检查漂移数为 0；泄漏扫描使用同一次 descriptor 保护读取返回的不可变 UTF-8 快照，未在关闭保护句柄后重新读取普通路径。
 - 审计先捕获一个固定的 Git commit tree，并要求 12 个 P2 输入/准入文件与 5 个受管输出都是普通 blob。输入由捕获的 commit blob 编译，index 和工作树差异会阻断；同次 descriptor 保护读取的 5 个输出字节还必须逐一等于对应 commit blob。五条受管路径均由 Git 跟踪，跟踪验证错误数为 0。
-- 从 `src/playbook/manual/` 的全部 JS、MJS、CJS 入口解析实际依赖图：语法由固定版本 Acorn `8.15.0` 生成 AST，ESM 通过 `import-meta-resolve` `4.2.0` 按 Node `import` 条件解析，CJS 通过 `createRequire(importer).resolve` 解析，且每个文件节点都经过 `realpath`。绑定传播覆盖 `createRequire`、`require` alias、`.call`、sequence 和可证明的 loader 调用；计算或其他间接 loader 以及 `eval` 保守阻断。到 `src/construction/` 的已解析依赖数为 0，无法解析或计算生成的依赖数为 0。P3 没有修改或接入生产建造流水线。
-- 泄漏计数为 0；`file:` URL 与 UNC 引用的字面和百分号编码形式会在 HTTPS 例外之前被拒绝。
+- 从 `src/playbook/manual/` 的全部 JS、MJS、CJS 入口解析实际依赖图：语法由固定版本 Acorn `8.15.0` 生成 AST，且只接受字符串字面量表达的静态 ESM/CJS 模块边；ESM 通过 `import-meta-resolve` `4.2.0` 按 Node `import` 条件解析，CJS 按 Node `require` 条件解析，每个文件节点都经过 `realpath`。不受支持的 loader 根在源头以稳定 unresolved fact 关闭门禁，不进行 loader 值传播；唯一 `createRequire` 例外同时绑定到审计实现的真实物理路径、固定依赖物理路径和精确 AST resolver 形状。到 `src/construction/` 的已解析依赖数为 0，无法解析或不受支持的依赖数为 0。P3 没有修改或接入生产建造流水线。
+- 泄漏计数为 0；`file:` URL、UNC 引用和 HTTPS 例外共享同一个最多八轮、保留原始区间映射的百分号规范化视图。字面和编码形式由同一组区间产生，URI query/fragment component 起点有界识别，最终发现映射回稳定原始区间。
 - 覆盖 JSON 和人类秘籍相对于规范化编译结果的 `not-covered` 声明不匹配数为 0。
 
 ## 规则统计
@@ -104,6 +104,8 @@
 
 ## 测试证据
 
+以下旧计数只记录此前实现的历史演进；其中 loader taint/绑定传播与固定点轮次已经被本轮 capability-deny 架构取代，不描述当前实现。
+
 - TDD RED：首次有效运行 `node --test test/playbookP3Gate.test.js` 时，因 `playbookV01Compiler.js` 尚未导出 `auditCheckedInPlaybookV01` 而失败。
 - TDD GREEN：实现只读审计后，同一命令通过，1 个测试、0 失败。
 - 修复轮次 TDD RED：受保护快照测试首次运行 22 个测试中 20 个通过、2 个失败；完整门禁行为测试首次运行 15 个测试中 1 个通过、14 个失败；新增模板插值依赖用例首次运行 15 个测试中 14 个通过、1 个失败。失败分别对应缺少同次读取快照、辅助事实未进入最终门禁或未形成实际依赖图，以及模板表达式中的依赖未被遍历。
@@ -113,6 +115,10 @@
 - 聚焦门禁：`node --test test/playbook*.test.js test/architecturePlaybookCourseCli.test.js test/architecturePlaybookEvidenceCli.test.js test/architecturePlaybookManualCli.test.js` 在允许嵌套 CLI 子进程和 Git 验证的执行环境中通过，211 个测试、0 失败。
 - 受管检查：`npm run playbook:manual -- check` 返回 `playbook_status=current`、`artifact_count=5`、`managed_artifact_drift_count=0`。
 - 完整回归：`npm test` 在同一允许子进程和 Git 验证的执行环境中通过，635 个测试、0 失败。
+- capability-deny/统一区间计划的验证范围为 `634c03e..HEAD`（以本报告提交为 `HEAD`）。最终 URI-component 修复的 TDD RED 在真实子进程环境运行 67 个测试，61 个通过、6 个失败；四个新增受保护快照分别把预期 `1/1/2/2` 计为 `0/0/1/1`。最小分类器修复后同一命令 67/67 通过；补齐 active-UNC raw/encoded 控制后的最终相关套件为 69/69。
+- 本计划最终聚焦门禁：`node --test --test-isolation=none test/playbookP3AdmissionPolicy.test.js test/playbookReviewedRuleCard.test.js test/playbookV01Compiler.test.js test/playbookP3Gate.test.js test/architecturePlaybookManualCli.test.js test/architecturePlaybookCourseCli.test.js test/architecturePlaybookEvidenceCli.test.js` 在允许真实嵌套 Node 和 Git 子进程的执行环境中通过，252 个测试、0 失败。
+- 本计划最终完整回归：`npm test` 在同一真实子进程环境中通过，774 个测试、0 失败。
+- 架构结果：taint/固定点分析已移除；依赖结果：只接受字面静态模块边，不受支持的 loader 根稳定 fail closed；泄漏结果：file/UNC 与 HTTPS 区间共享一个有界规范化映射视图；运行时结果：没有 construction、运行时或资源注册表文件发生变化；产物结果：五个受管输出为 `current`，漂移数为 0。
 - `git diff --check`：退出码 0，无输出。
 - `git ls-files .local/architecture-playbook`：退出码 0，无输出，即没有私有秘籍路径被跟踪。
 - 历史范围说明：第一修复轮次提交前的 `git status --short` 只列出当时获准的七个修复路径；这是该轮证据，不代表最终整分支范围。
