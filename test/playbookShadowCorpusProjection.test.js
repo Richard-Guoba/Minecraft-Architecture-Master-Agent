@@ -9,8 +9,10 @@ import {
 import { projectBlueprint } from '../src/playbook/shadow/blueprintProjection.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
+const REVIEWED_RULES_PATH = SHADOW_CORPUS_PATHS[0];
 const ADMISSION_PATH =
   'docs/architecture-playbook/rules/schools/heihui-jileniao/admission-v0.1.json';
+const COVERAGE_PATH = SHADOW_CORPUS_PATHS[2];
 
 test('loads exactly 21 ordered reviewed rules and binds all three corpus files', async () => {
   const corpus = await loadShadowCorpus({ projectRoot: ROOT });
@@ -49,6 +51,89 @@ test('corpus loader rejects coverage authority drift even when row counts match'
     loadShadowCorpus({ projectRoot: ROOT, readFile: mapReader(files) }),
     /PLAYBOOK_CORPUS_INVALID/u
   );
+});
+
+test('corpus loader rejects reviewed-card authority metadata drift', async (t) => {
+  for (const [name, mutate] of [
+    ['schema version', (card) => { card.schema_version = 2; }],
+    ['playbook version', (card) => { card.playbook_version = '0.1.1'; }],
+    ['rule version', (card) => { card.rule_version = 2; }],
+    ['maturity', (card) => { card.maturity = 'unreviewed-drift'; }],
+    ['authority', (card) => { card.authority = 'runtime'; }],
+    ['effect status', (card) => { card.effect_validation_status = 'validated'; }]
+  ]) {
+    await t.test(name, async () => {
+      const files = await loadCorpusBytes(ROOT);
+      const cards = parseReviewedCards(files);
+      mutate(cards[0]);
+      writeReviewedCards(files, cards);
+
+      await assertCorpusRejected(files);
+    });
+  }
+});
+
+test('corpus loader rejects admission and coverage documents with different coverage', async () => {
+  const files = await loadCorpusBytes(ROOT);
+  const admission = JSON.parse(files.get(ADMISSION_PATH));
+  admission.coverage[0].unknown_ids.reverse();
+  files.set(ADMISSION_PATH, Buffer.from(`${JSON.stringify(admission)}\n`));
+
+  await assertCorpusRejected(files);
+});
+
+test('corpus loader rejects coordinated drift from the authoritative unknown-ID set', async () => {
+  const files = await loadCorpusBytes(ROOT);
+  const admission = JSON.parse(files.get(ADMISSION_PATH));
+  const coverage = JSON.parse(files.get(COVERAGE_PATH));
+  admission.coverage[0].unknown_ids.push('unknown:invented');
+  coverage.layers[0].unknown_ids.push('unknown:invented');
+  files.set(ADMISSION_PATH, Buffer.from(`${JSON.stringify(admission)}\n`));
+  files.set(COVERAGE_PATH, Buffer.from(`${JSON.stringify(coverage)}\n`));
+
+  await assertCorpusRejected(files);
+});
+
+test('corpus loader rejects invalid teaching-role and coverage-status relationships', async (t) => {
+  for (const [name, mutate] of [
+    ['core procedure marked manual-only', (card, admission) => {
+      card.runtime_projection.coverage_status = 'manual-example-only';
+      admission.runtime_projection.coverage_status = 'manual-example-only';
+    }],
+    ['case pattern marked advisory-partial', (card, admission) => {
+      card.teaching_role = 'case-pattern';
+      admission.teaching_role = 'case-pattern';
+    }],
+    ['unreviewed admission decision', (card, admission) => {
+      card.admission_status = 'manual-example-only';
+      admission.decision = 'manual-example-only';
+    }]
+  ]) {
+    await t.test(name, async () => {
+      const files = await loadCorpusBytes(ROOT);
+      const cards = parseReviewedCards(files);
+      const admissionDocument = JSON.parse(files.get(ADMISSION_PATH));
+      mutate(cards[0], admissionDocument.rule_admissions[0]);
+      writeReviewedCards(files, cards);
+      files.set(ADMISSION_PATH, Buffer.from(`${JSON.stringify(admissionDocument)}\n`));
+
+      await assertCorpusRejected(files);
+    });
+  }
+});
+
+test('corpus loader rejects coordinated rule reordering outside registry authority', async () => {
+  const files = await loadCorpusBytes(ROOT);
+  const cards = parseReviewedCards(files);
+  [cards[0], cards[1]] = [cards[1], cards[0]];
+  writeReviewedCards(files, cards);
+  const admission = JSON.parse(files.get(ADMISSION_PATH));
+  [admission.rule_admissions[0], admission.rule_admissions[1]] = [
+    admission.rule_admissions[1], admission.rule_admissions[0]
+  ];
+  files.set(ADMISSION_PATH, Buffer.from(`${JSON.stringify(admission)}\n`));
+
+  await assertCorpusRejected(files);
 });
 
 test('projection copies only the approved five-layer whitelist', () => {
@@ -149,6 +234,21 @@ function mapReader(files) {
     if (!value) throw new Error('missing test corpus file');
     return Buffer.from(value);
   };
+}
+
+function parseReviewedCards(files) {
+  return files.get(REVIEWED_RULES_PATH).toString('utf8').trim().split('\n').map(JSON.parse);
+}
+
+function writeReviewedCards(files, cards) {
+  files.set(REVIEWED_RULES_PATH, Buffer.from(`${cards.map(JSON.stringify).join('\n')}\n`));
+}
+
+async function assertCorpusRejected(files) {
+  await assert.rejects(
+    loadShadowCorpus({ projectRoot: ROOT, readFile: mapReader(files) }),
+    /PLAYBOOK_CORPUS_INVALID/u
+  );
 }
 
 function minimalBlueprintFixture() {
