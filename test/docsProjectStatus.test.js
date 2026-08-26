@@ -27,3 +27,18 @@ test('project docs describe the residential renderer as a foundation only', () =
   assert.match(residential, /R1/u);
   assert.match(residential, /not a trained model/iu);
 });
+
+test('architecture playbook docs describe the strict P4 boundary', () => {
+  const readme = read('docs/architecture-playbook/README.md');
+  const report = read('docs/architecture-playbook/reports/p4-shadow-guidance.md');
+  assert.match(readme, /P4.*影子指导.*通过/u);
+  assert.match(readme, /npm run playbook:shadow -- --run/u);
+  assert.match(report, /21 条规则/u);
+  assert.match(report, /15 条核心程序/u);
+  assert.match(report, /6 条案例模式/u);
+  assert.match(report, /没有视觉输入/u);
+  assert.match(report, /没有修改建筑/u);
+  assert.match(report, /不证明.*质量提升/u);
+  assert.match(report, /P5/u);
+  assert.doesNotMatch(report, /P6 已开放|已改善建筑审美/u);
+});
