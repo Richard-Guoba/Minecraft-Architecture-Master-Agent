@@ -94,6 +94,31 @@ test('CLI renders unchanged and replacement outcomes with public status names', 
   assert.match(updatedOutput.text(), /^shadow_status=updated$/mu);
 });
 
+test('CLI rejects a newline in a run component without writing stdout', async (t) => {
+  const fixture = await cliFixture(t, 'medieval-positive.json', {
+    runRelative: 'out/run\ninjected=1'
+  });
+  const output = captureWritable();
+
+  await assert.rejects(
+    main(
+      ['--run', fixture.runRelative, '--mode', 'mock'],
+      { projectRoot: fixture.root, stdout: output }
+    ),
+    (error) => {
+      assert.equal(error.code, 'INVALID_ARGUMENT');
+      assert.equal(error.message, 'INVALID_ARGUMENT');
+      return true;
+    }
+  );
+
+  assert.equal(output.text(), '');
+  await assert.rejects(
+    fs.access(path.join(fixture.runPath, 'playbook-shadow')),
+    { code: 'ENOENT' }
+  );
+});
+
 test('top-level CLI emits only a safe stable error code', async () => {
   await assert.rejects(
     execFileAsync(process.execPath, [
@@ -113,10 +138,9 @@ test('top-level CLI emits only a safe stable error code', async () => {
   );
 });
 
-async function cliFixture(t, fixtureName) {
+async function cliFixture(t, fixtureName, { runRelative = 'out/run-1' } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-shadow-cli-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const runRelative = 'out/run-1';
   const runPath = path.join(root, runRelative);
   await fs.mkdir(path.join(runPath, 'existing'), { recursive: true });
   await fs.copyFile(

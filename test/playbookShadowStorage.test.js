@@ -26,6 +26,35 @@ test('admits a nested candidate under out and reads exact blueprint bytes', asyn
   assert.deepEqual(authority.blueprint_bytes, fixture.blueprintBytes);
 });
 
+test('rejects control characters and line separators in every run path component', async (t) => {
+  const fixture = await storageFixture(t);
+  for (const [name, component] of [
+    ['line-feed', 'run\ninjected=1'],
+    ['tab', 'run\twith-tab'],
+    ['unit-separator', 'run\u001fwith-separator'],
+    ['delete', 'run\u007fwith-delete'],
+    ['next-line', 'run\u0085with-next-line'],
+    ['line-separator', 'run\u2028with-line-separator'],
+    ['paragraph-separator', 'run\u2029with-paragraph-separator']
+  ]) {
+    await t.test(name, async () => {
+      const runArg = `out/${component}`;
+      const runPath = path.join(fixture.root, runArg);
+      await fs.mkdir(runPath, { recursive: true });
+      await fs.writeFile(path.join(runPath, 'blueprint.json'), fixture.blueprintBytes);
+
+      await assert.rejects(
+        admitShadowRun({ projectRoot: fixture.root, runArg }),
+        (error) => {
+          assert.equal(error.code, 'INVALID_ARGUMENT');
+          assert.equal(error.message, 'INVALID_ARGUMENT');
+          return true;
+        }
+      );
+    });
+  }
+});
+
 test('rejects outside, missing, non-directory, and every symlinked path component', async (t) => {
   const fixture = await storageFixture(t);
   for (const scenario of await invalidAdmissionScenarios(t, fixture)) {

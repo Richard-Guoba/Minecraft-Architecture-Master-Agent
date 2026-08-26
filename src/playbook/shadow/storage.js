@@ -24,6 +24,7 @@ const MOVE_BINARY = '/usr/bin/mv';
 const DIRECTORY_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
 const WRITE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
+const UNSAFE_PATH_CHARACTER = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u;
 const AUTHORITIES = new WeakMap();
 let temporarySequence = 0;
 
@@ -827,6 +828,7 @@ function isStrictRelativeDescendant(relativePath) {
 function isPlainBasename(value) {
   return typeof value === 'string'
     && value.length > 0
+    && !UNSAFE_PATH_CHARACTER.test(value)
     && value !== '.'
     && value !== '..'
     && path.posix.basename(value) === value
