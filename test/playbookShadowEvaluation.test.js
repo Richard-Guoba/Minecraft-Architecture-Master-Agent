@@ -71,6 +71,23 @@ test('case patterns cannot be promoted by a malicious checker result', async () 
   );
 });
 
+test('evaluation rejects every noncanonical blueprint path', async () => {
+  const { corpus, registry, blueprint } = await evaluationFixture('positive');
+
+  for (const blueprintPath of ['other.json', 'C:/tmp/blueprint.json']) {
+    assert.throws(
+      () => evaluateShadowReview({
+        blueprint,
+        blueprintPath,
+        blueprintSha256: sha256(stableJson(blueprint)),
+        corpus,
+        registry
+      }),
+      /BLUEPRINT_INVALID: blueprint-path/u
+    );
+  }
+});
+
 test('prompt packet is review-bound and excludes blueprint, media, and private data', async () => {
   const { review, corpus, blueprint } = await completedEvaluationFixture();
   blueprint.operations = [{ command: 'setblock 0 0 0 diamond_block' }];

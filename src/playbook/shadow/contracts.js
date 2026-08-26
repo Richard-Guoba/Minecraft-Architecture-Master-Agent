@@ -100,7 +100,7 @@ export function validateReview(value) {
   assertExactObject(value, 'review', REVIEW_FIELDS, 'BLUEPRINT_INVALID');
   assertSchemaHeader(value, 'BLUEPRINT_INVALID');
   assertExactObject(value.input, 'review-input', INPUT_FIELDS, 'BLUEPRINT_INVALID');
-  assertRelativePath(value.input.blueprint_path, 'BLUEPRINT_INVALID');
+  assertBlueprintPath(value.input.blueprint_path, 'BLUEPRINT_INVALID');
   assertSha256(value.input.blueprint_sha256, 'BLUEPRINT_INVALID');
   if (value.input.workflow !== 'construction_method_v1') fail('BLUEPRINT_INVALID', 'workflow');
   if (!Number.isInteger(value.input.seed) || value.input.seed < 0) fail('BLUEPRINT_INVALID', 'seed');
@@ -446,14 +446,8 @@ function assertSha256(value, code) {
   if (typeof value !== 'string' || !SHA256.test(value)) fail(code, 'sha256');
 }
 
-function assertRelativePath(value, code) {
-  if (
-    typeof value !== 'string'
-    || value.length === 0
-    || value.startsWith('/')
-    || value.includes('\\')
-    || value.split('/').some((part) => part === '' || part === '.' || part === '..')
-  ) fail(code, 'blueprint-path');
+function assertBlueprintPath(value, code) {
+  if (value !== 'blueprint.json') fail(code, 'blueprint-path');
 }
 
 function assertString(value, code, detail, minimum = 1, maximum = 512) {

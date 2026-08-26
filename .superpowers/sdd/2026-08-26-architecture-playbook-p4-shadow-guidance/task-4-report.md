@@ -19,3 +19,8 @@
 ## Scope boundary
 
 No blueprint mutation, visual/media input, private/config data, score, quality claim, coordinate, block ID, or patch generation was added.
+
+## Fix round 1: exact blueprint input path
+
+- RED: after adding direct-contract and evaluator boundary cases for `other.json` and `C:/tmp/blueprint.json`, `node --test test/playbookShadowEvaluation.test.js test/playbookShadowContracts.test.js` exited non-zero. The individual failures were `AssertionError: Missing expected exception`, proving both values were accepted before the fix.
+- GREEN: replaced the generic relative-path predicate with the exact `blueprint_path === 'blueprint.json'` requirement. `node --test test/playbookShadowEvaluation.test.js test/playbookShadowContracts.test.js` passed: 2 test files, 2 passing, 0 failing.

@@ -33,6 +33,17 @@ test('review contract rejects unknown fields and a case-pattern repair', () => {
   assert.throws(() => validateReview(review), /case-pattern/u);
 });
 
+test('review contract accepts only the fixed blueprint.json input path', () => {
+  for (const blueprintPath of ['other.json', 'C:/tmp/blueprint.json']) {
+    const review = validReviewFixture();
+    review.input.blueprint_path = blueprintPath;
+    assert.throws(
+      () => validateReview(review),
+      /BLUEPRINT_INVALID: blueprint-path/u
+    );
+  }
+});
+
 test('explanation must preserve review hash, rule order, status, and repair IDs', () => {
   const review = validateReview(validReviewFixture());
   const explanation = validExplanationFixture(review);
