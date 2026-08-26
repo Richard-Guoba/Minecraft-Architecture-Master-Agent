@@ -5,6 +5,7 @@ import {
   checkThreeVolumeComposition
 } from './checkers/massing.js';
 import { checkVisibleLoadPath } from './checkers/structure.js';
+import { deepFreeze } from './canonical.js';
 import { shadowError } from './contracts.js';
 
 const CHECKER_ROWS = Object.freeze([
@@ -32,13 +33,13 @@ const CHECKER_ROWS = Object.freeze([
 ]);
 
 export function createCheckerDefinitions() {
-  return CHECKER_ROWS.map(({ check_id, rule_id, design_layer, kind, evaluate }) => ({
+  return deepFreeze(CHECKER_ROWS.map(({ check_id, rule_id, design_layer, kind, evaluate }) => ({
     check_id, rule_id, design_layer, kind, evaluate
-  }));
+  })));
 }
 
 export function createCheckerRegistry() {
-  return new Map(createCheckerDefinitions().map((definition) => [definition.check_id, definition]));
+  return readonlyMap(createCheckerDefinitions().map((definition) => [definition.check_id, definition]));
 }
 
 export function validateCheckerRegistry(cards, registry) {
@@ -81,12 +82,30 @@ export function validateCheckerRegistry(cards, registry) {
   }
 
   if (seen.size !== CHECKER_ROWS.length || cardsByCheck.size !== CHECKER_ROWS.length) incomplete();
-  return new Map(cards.map((card) => {
+  return readonlyMap(cards.map((card) => {
     const checkId = card.runtime_projection.observable_checks[0];
     const definition = definitions.find(({ definition: item }) => item.check_id === checkId)?.definition;
     if (!definition) incomplete();
     return [checkId, definition];
   }));
+}
+
+function readonlyMap(entries) {
+  const map = new Map(entries);
+  const immutable = new Proxy(map, {
+    get(target, property) {
+      if (property === 'set' || property === 'delete' || property === 'clear') {
+        return rejectMapMutation;
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    }
+  });
+  return Object.freeze(immutable);
+}
+
+function rejectMapMutation() {
+  throw new TypeError('ReadonlyMap cannot be mutated');
 }
 
 function row(check_id, rule_id, design_layer, kind, evaluate) {

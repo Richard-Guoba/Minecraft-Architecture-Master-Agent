@@ -28,6 +28,22 @@ test('registry fails closed on a missing, duplicate, wrong-rule, or wrong-layer 
   }
 });
 
+test('registry and checker definitions cannot be mutated after creation', () => {
+  const definitions = createCheckerDefinitions();
+  const registry = createCheckerRegistry();
+
+  assert.equal(Object.isFrozen(definitions), true);
+  assert.equal(Object.isFrozen(definitions[0]), true);
+  assert.throws(() => {
+    definitions[0].rule_id = 'rule:changed';
+  }, TypeError);
+  assert.throws(() => {
+    registry.set('check:extra', definitions[0]);
+  }, TypeError);
+  assert.equal(registry.size, 21);
+  assert.equal(registry.has('check:extra'), false);
+});
+
 function removeFirst(definitions) {
   return definitions.slice(1);
 }

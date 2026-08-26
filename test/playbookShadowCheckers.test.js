@@ -57,6 +57,36 @@ test('visible load path treats an explicit medieval style as applicable for a ti
   assert.deepEqual(result.evidence_json_pointers, ['/structure/load_paths']);
 });
 
+test('three-volume composition requires the primary mass to be centered', () => {
+  const result = runChecker('check:massing:three-volume-composition', projected({
+    massing: {
+      volumes: [
+        volume('main', [1, 1, 1], { relation: 'attached-north', attach_to: 'site' }, ['primary-mass']),
+        volume('left', [0.4, 0.6, 0.5], { relation: 'attached-west', attach_to: 'main' }, ['secondary-mass']),
+        volume('right', [0.5, 0.7, 0.4], { relation: 'attached-east', attach_to: 'main' }, ['secondary-mass'])
+      ]
+    }
+  }));
+
+  assert.equal(result.status, 'violated');
+  assert.deepEqual(result.evidence_json_pointers, ['/architecture/volumes']);
+});
+
+test('primary-secondary hierarchy is unknown when an attached volume lacks role or tag evidence', () => {
+  const result = runChecker('check:massing:primary-secondary-hierarchy', projected({
+    massing: {
+      volumes: [
+        volume('main', [1, 1, 1], { relation: 'center' }, ['primary-mass']),
+        volume('wing', [0.4, 0.6, 0.5], { relation: 'attached-west', attach_to: 'main' }, ['secondary-mass']),
+        volume('unclassified', [0.3, 0.4, 0.4], { relation: 'attached-east', attach_to: 'main' })
+      ]
+    }
+  }));
+
+  assert.equal(result.status, 'unknown');
+  assert.ok(result.missing_signals.includes('massing.secondary_volume_ids'));
+});
+
 test('every evidence-required checker returns its explicit unknown evidence', () => {
   const registry = createCheckerRegistry();
   const evidenceRequired = [...registry.values()].filter((checker) => checker.kind === 'evidence-required');

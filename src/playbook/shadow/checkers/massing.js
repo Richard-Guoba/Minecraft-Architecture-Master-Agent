@@ -20,6 +20,7 @@ export function checkThreeVolumeComposition(projected) {
   if (
     volumes.length === 3
     && primary
+    && isCentered(primary)
     && attached.length === 2
     && !allScalesEqual(volumes)
   ) return checkResult('satisfied', { evidence: [volumePointer(projected)] });
@@ -49,6 +50,9 @@ export function checkPrimarySecondaryHierarchy(projected) {
   if (primaries.length !== 1) return unknown('massing.primary_volume_id');
 
   const primary = primaries[0];
+  if (volumes.some((volume) => !isPrimary(volume) && !isSecondary(volume))) {
+    return unknown('massing.secondary_volume_ids');
+  }
   const secondaries = volumes.filter((volume) => volume !== primary && isSecondary(volume));
   if (secondaries.length === 0 || secondaries.some((volume) => !isAttachedTo(volume, primary.id))) {
     return unknown('massing.secondary_volume_ids');
@@ -131,6 +135,10 @@ function isPrimary(volume) {
 function isSecondary(volume) {
   return volume?.role === 'secondary-mass'
     || Array.isArray(volume?.tags) && volume.tags.includes('secondary-mass');
+}
+
+function isCentered(volume) {
+  return volume?.placement?.relation === 'center';
 }
 
 function isAttachedTo(volume, primaryId) {
