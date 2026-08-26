@@ -395,6 +395,13 @@ function collectDeniedCapability({
   }
 
   if (
+    lexical.isUnboundGlobal(node, 'Reflect')
+    && isIdentifierReference(node, parent)
+  ) {
+    unresolvedCodes.add('DYNAMIC_FUNCTION_CAPABILITY');
+  }
+
+  if (
     isDynamicFunctionConstructorSource(node, parent, lexical)
   ) {
     unresolvedCodes.add('DYNAMIC_FUNCTION_CAPABILITY');
@@ -650,7 +657,14 @@ function isDynamicFunctionConstructorSource(node, parent, lexical) {
   }
   return node.computed
     && propertyName === null
-    && isSyntacticFunctionValue(node.object);
+    && (
+      isSyntacticFunctionValue(node.object)
+      || isDirectMemberCall(node, parent)
+    );
+}
+
+function isDirectMemberCall(node, parent) {
+  return parent?.type === 'CallExpression' && parent.callee === node;
 }
 
 function isDynamicReflectGet(node, lexical) {

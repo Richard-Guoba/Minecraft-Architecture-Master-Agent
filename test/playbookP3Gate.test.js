@@ -976,6 +976,44 @@ test('equivalent Function constructors execute but reflection fails closed', asy
     });
   }
 
+  for (const [name, entrySource] of [
+    ['aliased computed constructor', [
+      'const fn = () => {};',
+      "const key = 'constructor';",
+      `const body = ${JSON.stringify(body)};`,
+      'module.exports = fn[key](\'filename\', body)(__filename);',
+      ''
+    ].join('\n')],
+    ['aliased global Reflect', [
+      'const R = Reflect;',
+      `const body = ${JSON.stringify(body)};`,
+      "module.exports = R.get(() => {}, 'constructor')(",
+      "  'filename', body",
+      ')(__filename);',
+      ''
+    ].join('\n')]
+  ]) {
+    await t.test(name, async (t) => {
+      const entryPath = 'src/playbook/manual/entry.cjs';
+      const projectRoot = await dependencyFixture(t, {
+        [entryPath]: entrySource,
+        'src/construction/target.cjs':
+          "module.exports = 'construction-executed';\n"
+      });
+
+      assert.equal(
+        requireDefault(path.join(projectRoot, entryPath)),
+        'construction-executed'
+      );
+      const audit = await playbookCompiler.auditManualDependencyBoundary({
+        projectRoot
+      });
+      assert.deepEqual(audit.unresolved_manual_dependencies, [
+        `${entryPath}:DYNAMIC_FUNCTION_CAPABILITY`
+      ]);
+    });
+  }
+
   await t.test('provable own constructor data stays ordinary', async (t) => {
     const entryPath = 'src/playbook/manual/entry.cjs';
     const projectRoot = await dependencyFixture(t, {
@@ -1009,6 +1047,32 @@ test('equivalent Function constructors execute but reflection fails closed', asy
     assert.equal(
       requireDefault(path.join(projectRoot, entryPath)),
       'reflect-safe'
+    );
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+  });
+
+  await t.test('local Reflect alias and static computed call stay ordinary', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.cjs';
+    const projectRoot = await dependencyFixture(t, {
+      [entryPath]: [
+        'function local(Reflect) {',
+        '  const R = Reflect;',
+        "  const reflected = R.get({ value: 'reflect-safe' }, 'value');",
+        "  const called = ({ safe: () => 'call-safe' })['safe']();",
+        '  return [reflected, called];',
+        '}',
+        'module.exports = local({ get: (value, key) => value[key] });',
+        ''
+      ].join('\n')
+    });
+
+    assert.deepEqual(
+      requireDefault(path.join(projectRoot, entryPath)),
+      ['reflect-safe', 'call-safe']
     );
     const audit = await playbookCompiler.auditManualDependencyBoundary({
       projectRoot
