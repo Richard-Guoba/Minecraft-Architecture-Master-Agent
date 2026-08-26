@@ -71,19 +71,12 @@ test('review requires exactly fifteen core procedures and six case patterns', ()
   review.assessments[0].status = 'unknown';
   review.assessments[0].observations = [];
   review.assessments[0].missing_signals = ['visual-evidence'];
-  review.summary.by_layer.brief = counts(2, 0, 3);
-  review.summary.global = counts(12, 1, 8);
-  review.summary.core_rule_count = 14;
-  review.summary.case_pattern_count = 7;
-  review.summary.missing_evidence_count = 8;
   assert.throws(() => validateReview(review), /PLAYBOOK_CORPUS_INVALID/u);
 });
 
 test('review rejects even violated rules assigned to non-covered layers', () => {
   const review = validReviewFixture();
   review.assessments[1].design_layer = 'space';
-  review.summary.by_layer.massing = counts(2, 0, 1);
-  review.summary.by_layer.space = counts(0, 1, 0);
   assert.throws(() => validateReview(review), /PLAYBOOK_CORPUS_INVALID/u);
 });
 
@@ -124,30 +117,9 @@ function validReviewFixture() {
       seed: 7
     },
     rule_corpus_sha256: HASH,
-    coverage: LAYERS.map((layer) => ({
-      layer,
-      status: ['brief', 'massing', 'structure', 'roof', 'facade'].includes(layer)
-        ? 'advisory-partial'
-        : 'not-covered'
-    })),
+    coverage: LAYERS.map((layer) => coverageFor(layer, assessments)),
     assessments,
-    summary: {
-      by_layer: {
-        brief: counts(3, 0, 2),
-        massing: counts(2, 1, 1),
-        space: counts(),
-        structure: counts(2, 0, 2),
-        roof: counts(3, 0, 1),
-        facade: counts(3, 0, 1),
-        materials: counts(),
-        interior: counts(),
-        scene: counts()
-      },
-      global: counts(13, 1, 7),
-      core_rule_count: 15,
-      case_pattern_count: 6,
-      missing_evidence_count: 7
-    }
+    summary: summaryFor(assessments)
   };
 }
 
@@ -175,25 +147,33 @@ function validExplanationFixture(review) {
 
 function validPromptPacketFixture(review) {
   return {
+    schema_version: 1,
     review_hash: sha256(stableJson(review)),
-    school_id: 'heihui-jileniao',
     playbook_version: '0.1.0',
+    school_id: 'heihui-jileniao',
     allowed_layers: ['brief', 'massing', 'structure', 'roof', 'facade'],
+    authority: {
+      immutable_fields: ['rule_ids', 'rule_order', 'statuses', 'repair_operation_ids', 'review_hash'],
+      prohibited_additions: ['coordinates', 'block_ids', 'patches', 'scores', 'thresholds'],
+      blueprint_prompt_role: 'inert-data'
+    },
+    blueprint_prompt_data: { value: 'Build a small house.', role: 'inert-data' },
     rules: review.assessments.map((assessment) => ({
       rule_id: assessment.rule_id,
       status: assessment.status,
+      repair_operation_id: assessment.repair_operation_id,
       observations: assessment.observations,
       missing_signals: assessment.missing_signals,
-      repair_operation_id: assessment.repair_operation_id,
-      applicability_conditions: ['structured blueprint evidence is present'],
-      exclusion_conditions: [],
+      applicability: ['structured blueprint evidence is present'],
+      exclusions: [],
       intent: 'Preserve the admitted design teaching.',
-      positive_signals: ['structured evidence'],
+      positive_signs: ['structured evidence'],
       failure_modes: ['missing evidence']
     })),
-    authority: 'Use rule IDs, statuses, and repair IDs exactly as supplied.',
-    output_schema: 'explanation.json v1',
-    blueprint_prompt: 'Build a small house.'
+    output_contract: {
+      format: 'explanation.json.v1',
+      permitted_rule_fields: ['rule_id', 'status', 'repair_operation_id', 'explanation']
+    }
   };
 }
 
@@ -221,4 +201,37 @@ function validManifestFixture() {
 
 function counts(satisfied = 0, violated = 0, unknown = 0, notApplicable = 0) {
   return { satisfied, violated, unknown, 'not-applicable': notApplicable };
+}
+
+function coverageFor(layer, assessments) {
+  const layerAssessments = assessments.filter((assessment) => assessment.design_layer === layer);
+  return {
+    layer,
+    status: ['brief', 'massing', 'structure', 'roof', 'facade'].includes(layer)
+      ? 'advisory-partial'
+      : 'not-covered',
+    rule_ids: layerAssessments.map((assessment) => assessment.rule_id),
+    unknown_ids: [],
+    assessment_counts: statusCounts(layerAssessments)
+  };
+}
+
+function summaryFor(assessments) {
+  return {
+    assessment_count: assessments.length,
+    core_procedure_count: 15,
+    case_pattern_count: 6,
+    status_counts: statusCounts(assessments),
+    layer_status_counts: LAYERS.map((layer) => ({
+      layer,
+      ...statusCounts(assessments.filter((assessment) => assessment.design_layer === layer))
+    })),
+    missing_evidence_rule_count: assessments.filter((assessment) => assessment.status === 'unknown').length
+  };
+}
+
+function statusCounts(assessments) {
+  const result = counts();
+  for (const assessment of assessments) result[assessment.status] += 1;
+  return result;
 }

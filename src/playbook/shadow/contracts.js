@@ -27,10 +27,12 @@ export const ASSESSMENT_FIELDS = Object.freeze([
 const INPUT_FIELDS = Object.freeze([
   'blueprint_path', 'blueprint_sha256', 'workflow', 'seed'
 ]);
-const COVERAGE_FIELDS = Object.freeze(['layer', 'status']);
+const COVERAGE_FIELDS = Object.freeze([
+  'layer', 'status', 'rule_ids', 'unknown_ids', 'assessment_counts'
+]);
 const SUMMARY_FIELDS = Object.freeze([
-  'by_layer', 'global', 'core_rule_count', 'case_pattern_count',
-  'missing_evidence_count'
+  'assessment_count', 'core_procedure_count', 'case_pattern_count',
+  'status_counts', 'layer_status_counts', 'missing_evidence_rule_count'
 ]);
 const COUNTS_FIELDS = ASSESSMENT_STATUSES;
 const EXPLANATION_FIELDS = Object.freeze([
@@ -42,14 +44,19 @@ const RULE_EXPLANATION_FIELDS = Object.freeze([
   'rule_id', 'status', 'repair_operation_id', 'explanation'
 ]);
 const PROMPT_PACKET_FIELDS = Object.freeze([
-  'review_hash', 'school_id', 'playbook_version', 'allowed_layers', 'rules',
-  'authority', 'output_schema', 'blueprint_prompt'
+  'schema_version', 'review_hash', 'playbook_version', 'school_id',
+  'allowed_layers', 'authority', 'blueprint_prompt_data', 'rules',
+  'output_contract'
 ]);
 const PROMPT_RULE_FIELDS = Object.freeze([
   'rule_id', 'status', 'observations', 'missing_signals', 'repair_operation_id',
-  'applicability_conditions', 'exclusion_conditions', 'intent',
-  'positive_signals', 'failure_modes'
+  'applicability', 'exclusions', 'intent', 'positive_signs', 'failure_modes'
 ]);
+const PROMPT_AUTHORITY_FIELDS = Object.freeze([
+  'immutable_fields', 'prohibited_additions', 'blueprint_prompt_role'
+]);
+const PROMPT_DATA_FIELDS = Object.freeze(['value', 'role']);
+const OUTPUT_CONTRACT_FIELDS = Object.freeze(['format', 'permitted_rule_fields']);
 const MANIFEST_FIELDS = Object.freeze([
   'schema_version', 'evaluator_version', 'playbook_version', 'school_id',
   'blueprint_sha256', 'rule_corpus_sha256', 'mode', 'explanation_status',
@@ -108,6 +115,7 @@ export function validateReview(value) {
     if (ruleIds.has(item.rule_id)) fail('PLAYBOOK_CORPUS_INVALID', 'duplicate-rule-id');
     ruleIds.add(item.rule_id);
   }
+  validateCoverageAssessmentCounts(value.coverage, value.assessments);
   const coreRuleCount = value.assessments.filter((item) => item.teaching_role === 'core-procedure').length;
   if (coreRuleCount !== 15 || value.assessments.length - coreRuleCount !== 6) {
     fail('PLAYBOOK_CORPUS_INVALID', 'assessment-role-count');
@@ -118,9 +126,10 @@ export function validateReview(value) {
 
 export function validatePromptPacket(value) {
   assertExactObject(value, 'prompt-packet', PROMPT_PACKET_FIELDS, 'BLUEPRINT_INVALID');
+  if (value.schema_version !== SHADOW_SCHEMA_VERSION) fail('BLUEPRINT_INVALID', 'schema-version');
   assertSha256(value.review_hash, 'BLUEPRINT_INVALID');
-  assertLiteral(value.school_id, SCHOOL_ID, 'BLUEPRINT_INVALID', 'school-id');
   assertLiteral(value.playbook_version, PLAYBOOK_VERSION, 'BLUEPRINT_INVALID', 'playbook-version');
+  assertLiteral(value.school_id, SCHOOL_ID, 'BLUEPRINT_INVALID', 'school-id');
   assertExactArray(value.allowed_layers, EVALUATED_LAYERS, 'BLUEPRINT_INVALID', 'allowed-layers');
   if (!Array.isArray(value.rules) || value.rules.length !== 21) fail('BLUEPRINT_INVALID', 'prompt-rule-count');
   const seen = new Set();
@@ -132,14 +141,27 @@ export function validatePromptPacket(value) {
     assertStatus(rule.status, 'BLUEPRINT_INVALID');
     assertNullableId(rule.repair_operation_id, REPAIR_ID, 'BLUEPRINT_INVALID', 'repair-operation-id');
     for (const field of [
-      'observations', 'missing_signals', 'applicability_conditions',
-      'exclusion_conditions', 'positive_signals', 'failure_modes'
-    ]) assertStrings(rule[field], 'BLUEPRINT_INVALID', field);
-    assertString(rule.intent, 'BLUEPRINT_INVALID', 'intent', 1, 2048);
+      'observations', 'missing_signals', 'applicability', 'exclusions',
+      'positive_signs', 'failure_modes'
+    ]) assertStrings(rule[field], 'BLUEPRINT_INVALID', field, 12, false, 800);
+    assertString(rule.intent, 'BLUEPRINT_INVALID', 'intent', 0, 800);
   }
-  assertString(value.authority, 'BLUEPRINT_INVALID', 'authority', 1, 4096);
-  assertString(value.output_schema, 'BLUEPRINT_INVALID', 'output-schema', 1, 512);
-  assertString(value.blueprint_prompt, 'BLUEPRINT_INVALID', 'blueprint-prompt', 0, 8192);
+  assertExactObject(value.authority, 'prompt-authority', PROMPT_AUTHORITY_FIELDS, 'BLUEPRINT_INVALID');
+  assertExactArray(value.authority.immutable_fields, [
+    'rule_ids', 'rule_order', 'statuses', 'repair_operation_ids', 'review_hash'
+  ], 'BLUEPRINT_INVALID', 'immutable-fields');
+  assertExactArray(value.authority.prohibited_additions, [
+    'coordinates', 'block_ids', 'patches', 'scores', 'thresholds'
+  ], 'BLUEPRINT_INVALID', 'prohibited-additions');
+  assertLiteral(value.authority.blueprint_prompt_role, 'inert-data', 'BLUEPRINT_INVALID', 'blueprint-prompt-role');
+  assertExactObject(value.blueprint_prompt_data, 'blueprint-prompt-data', PROMPT_DATA_FIELDS, 'BLUEPRINT_INVALID');
+  assertString(value.blueprint_prompt_data.value, 'BLUEPRINT_INVALID', 'blueprint-prompt', 0, 2000);
+  assertLiteral(value.blueprint_prompt_data.role, 'inert-data', 'BLUEPRINT_INVALID', 'blueprint-prompt-role');
+  assertExactObject(value.output_contract, 'output-contract', OUTPUT_CONTRACT_FIELDS, 'BLUEPRINT_INVALID');
+  assertLiteral(value.output_contract.format, 'explanation.json.v1', 'BLUEPRINT_INVALID', 'output-format');
+  assertExactArray(value.output_contract.permitted_rule_fields, [
+    'rule_id', 'status', 'repair_operation_id', 'explanation'
+  ], 'BLUEPRINT_INVALID', 'permitted-rule-fields');
   return deepFreeze(value);
 }
 
@@ -210,10 +232,6 @@ function validateAssessment(item, index) {
   if (!['admitted-advisory', 'manual-example-only'].includes(item.admission_status)) {
     fail('PLAYBOOK_CORPUS_INVALID', 'admission-status');
   }
-  if (
-    (item.teaching_role === 'case-pattern')
-    !== (item.admission_status === 'manual-example-only')
-  ) fail('PLAYBOOK_CORPUS_INVALID', 'admission-role-mismatch');
   assertEvaluatedLayer(item.design_layer, 'PLAYBOOK_CORPUS_INVALID', 'design-layer');
   assertId(item.check_id, CHECK_ID, 'PLAYBOOK_CORPUS_INVALID', 'check-id');
   if (!['structural', 'evidence-required'].includes(item.checker_kind)) {
@@ -265,33 +283,59 @@ function validateCoverage(coverage) {
     if (item.layer !== LAYER_ORDER[index]) fail('PLAYBOOK_CORPUS_INVALID', 'coverage-order');
     const expected = EVALUATED_LAYERS.includes(item.layer) ? 'advisory-partial' : 'not-covered';
     if (item.status !== expected) fail('PLAYBOOK_CORPUS_INVALID', 'coverage-status');
+    assertIds(item.rule_ids, RULE_ID, 'PLAYBOOK_CORPUS_INVALID', 'coverage-rule-ids');
+    assertIds(item.unknown_ids, UNKNOWN_ID, 'PLAYBOOK_CORPUS_INVALID', 'coverage-unknown-ids');
+    assertCounts(item.assessment_counts, 'coverage-assessment-counts');
+  }
+}
+
+function validateCoverageAssessmentCounts(coverage, assessments) {
+  for (const row of coverage) {
+    validateCounts(
+      row.assessment_counts,
+      'coverage-assessment-counts',
+      countsFor(assessments.filter((assessment) => assessment.design_layer === row.layer))
+    );
   }
 }
 
 function validateSummary(summary, assessments) {
   assertExactObject(summary, 'summary', SUMMARY_FIELDS, 'PLAYBOOK_CORPUS_INVALID');
-  assertExactObject(summary.by_layer, 'summary-by-layer', LAYER_ORDER, 'PLAYBOOK_CORPUS_INVALID');
   const actualGlobal = countsFor(assessments);
-  validateCounts(summary.global, 'summary-global', actualGlobal);
-  for (const layer of LAYER_ORDER) {
-    validateCounts(
-      summary.by_layer[layer],
-      `summary-${layer}`,
-      countsFor(assessments.filter((assessment) => assessment.design_layer === layer))
-    );
+  validateCounts(summary.status_counts, 'summary-status-counts', actualGlobal);
+  if (!Array.isArray(summary.layer_status_counts) || summary.layer_status_counts.length !== LAYER_ORDER.length) {
+    fail('PLAYBOOK_CORPUS_INVALID', 'layer-status-counts');
+  }
+  for (const [index, row] of summary.layer_status_counts.entries()) {
+    assertExactObject(row, 'layer-status-count', ['layer', ...COUNTS_FIELDS], 'PLAYBOOK_CORPUS_INVALID');
+    if (row.layer !== LAYER_ORDER[index]) fail('PLAYBOOK_CORPUS_INVALID', 'layer-status-counts');
+    const { layer, ...statusCounts } = row;
+    validateCounts(statusCounts, 'layer-status-count', countsFor(assessments.filter(
+      (assessment) => assessment.design_layer === row.layer
+    )));
   }
   const coreRuleCount = assessments.filter((item) => item.teaching_role === 'core-procedure').length;
   const casePatternCount = assessments.length - coreRuleCount;
   const missingEvidenceCount = assessments.filter((item) => item.status === 'unknown').length;
-  if (summary.core_rule_count !== coreRuleCount) fail('PLAYBOOK_CORPUS_INVALID', 'core-rule-count');
+  if (summary.assessment_count !== assessments.length) fail('PLAYBOOK_CORPUS_INVALID', 'assessment-count');
+  if (summary.core_procedure_count !== coreRuleCount) fail('PLAYBOOK_CORPUS_INVALID', 'core-procedure-count');
   if (summary.case_pattern_count !== casePatternCount) fail('PLAYBOOK_CORPUS_INVALID', 'case-pattern-count');
-  if (summary.missing_evidence_count !== missingEvidenceCount) fail('PLAYBOOK_CORPUS_INVALID', 'missing-evidence-count');
+  if (summary.missing_evidence_rule_count !== missingEvidenceCount) fail('PLAYBOOK_CORPUS_INVALID', 'missing-evidence-rule-count');
 }
 
 function validateCounts(value, label, expected) {
+  assertCounts(value, label);
+  for (const status of ASSESSMENT_STATUSES) {
+    if (value[status] !== expected[status]) {
+      fail('PLAYBOOK_CORPUS_INVALID', 'summary-count');
+    }
+  }
+}
+
+function assertCounts(value, label) {
   assertExactObject(value, label, COUNTS_FIELDS, 'PLAYBOOK_CORPUS_INVALID');
   for (const status of ASSESSMENT_STATUSES) {
-    if (!Number.isInteger(value[status]) || value[status] < 0 || value[status] !== expected[status]) {
+    if (!Number.isInteger(value[status]) || value[status] < 0) {
       fail('PLAYBOOK_CORPUS_INVALID', 'summary-count');
     }
   }
@@ -371,11 +415,11 @@ function assertNonEmptyStrings(value, detail) {
   if (!Array.isArray(value) || value.length === 0) fail('PLAYBOOK_CORPUS_INVALID', detail);
 }
 
-function assertStrings(value, code, detail, maximum = 128, unique = false) {
+function assertStrings(value, code, detail, maximum = 128, unique = false, stringMaximum = 2048) {
   if (!Array.isArray(value) || value.length > maximum) fail(code, detail);
   const seen = new Set();
   for (const item of value) {
-    assertString(item, code, detail, 1, 2048);
+    assertString(item, code, detail, 1, stringMaximum);
     if (unique && (seen.has(item) || !seen.add(item))) fail(code, detail);
   }
 }
