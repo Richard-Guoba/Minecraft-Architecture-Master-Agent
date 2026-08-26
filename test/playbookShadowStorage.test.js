@@ -273,17 +273,15 @@ test('failure after backup rename restores the exact old output', async (t) => {
   await writeArtifactDirectory(fixture.runPath, oldFiles);
   let backupRenamed = false;
   const fsImpl = fsWith({
-    async rename(source, destination) {
-      const sourceName = path.basename(String(source));
-      const destinationName = path.basename(String(destination));
+    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
       if (sourceName === 'playbook-shadow' && destinationName.startsWith(BACKUP_PREFIX)) {
         backupRenamed = true;
-        return fs.rename(source, destination);
+        return next(directoryHandle, sourceName, destinationName);
       }
       if (backupRenamed && sourceName.startsWith(STAGE_PREFIX) && destinationName === 'playbook-shadow') {
         throw new Error('RAW_AFTER_BACKUP_RENAME');
       }
-      return fs.rename(source, destination);
+      return next(directoryHandle, sourceName, destinationName);
     }
   });
   const authority = await admitShadowRun({ projectRoot: fixture.root, runArg: fixture.runArg });
@@ -303,12 +301,10 @@ test('rollback failure is sanitized and leaves the verified backup recoverable',
   await writeArtifactDirectory(fixture.runPath, oldFiles);
   let backupRenamed = false;
   const fsImpl = fsWith({
-    async rename(source, destination) {
-      const sourceName = path.basename(String(source));
-      const destinationName = path.basename(String(destination));
+    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
       if (sourceName === 'playbook-shadow' && destinationName.startsWith(BACKUP_PREFIX)) {
         backupRenamed = true;
-        return fs.rename(source, destination);
+        return next(directoryHandle, sourceName, destinationName);
       }
       if (backupRenamed && sourceName.startsWith(STAGE_PREFIX) && destinationName === 'playbook-shadow') {
         throw new Error('RAW_INSTALL_FAILURE');
@@ -316,7 +312,7 @@ test('rollback failure is sanitized and leaves the verified backup recoverable',
       if (sourceName.startsWith(BACKUP_PREFIX) && destinationName === 'playbook-shadow') {
         throw new Error('RAW_ROLLBACK_FAILURE');
       }
-      return fs.rename(source, destination);
+      return next(directoryHandle, sourceName, destinationName);
     }
   });
   const authority = await admitShadowRun({ projectRoot: fixture.root, runArg: fixture.runArg });
@@ -332,21 +328,251 @@ test('rollback failure is sanitized and leaves the verified backup recoverable',
   assertArtifactBytes(await readNamedDirectory(fixture.runPath, generated[0]), oldFiles);
 });
 
+test('backup cleanup failure preserves the complete installed output', async (t) => {
+  const fixture = await storageFixture(t);
+  const oldFiles = validArtifactFiles('old');
+  const newFiles = validArtifactFiles('new');
+  await writeArtifactDirectory(fixture.runPath, oldFiles);
+  let backupUnlinks = 0;
+  const fsImpl = fsWith({
+    async unlink(target) {
+      if ((await descriptorParentBasename(target)).startsWith(BACKUP_PREFIX)) {
+        backupUnlinks += 1;
+        if (backupUnlinks === 3) throw new Error('RAW_BACKUP_CLEANUP_FAILURE');
+      }
+      return fs.unlink(target);
+    }
+  });
+  const authority = await admitShadowRun({ projectRoot: fixture.root, runArg: fixture.runArg });
+  t.after(() => authority.close());
+
+  await assertStableInstallFailure(
+    installShadowArtifacts({ authority, files: newFiles, fsImpl }),
+    'RAW_BACKUP_CLEANUP_FAILURE'
+  );
+  assertArtifactBytes(await readArtifactDirectory(fixture.runPath), newFiles);
+  const generated = await generatedEntries(fixture.runPath);
+  assert.equal(generated.length, 1);
+  assert.match(generated[0], /^\.playbook-shadow\.backup-/u);
+  assertArtifactBytes(await readNamedDirectory(fixture.runPath, generated[0]), oldFiles);
+});
+
+test('no-replace install preserves an empty final-output collision', async (t) => {
+  const fixture = await storageFixture(t);
+  let outputMisses = 0;
+  let collisionIdentity;
+  const fsImpl = fsWith({
+    async lstat(target, ...args) {
+      try {
+        return await fs.lstat(target, ...args);
+      } catch (error) {
+        if (error.code === 'ENOENT' && path.basename(String(target)) === 'playbook-shadow') {
+          outputMisses += 1;
+          if (outputMisses === 2) {
+            await fs.mkdir(target);
+            collisionIdentity = fileIdentity(await fs.lstat(target));
+          }
+        }
+        throw error;
+      }
+    }
+  });
+  const authority = await admitShadowRun({ projectRoot: fixture.root, runArg: fixture.runArg });
+  t.after(() => authority.close());
+
+  await assertStableInstallFailure(
+    installShadowArtifacts({ authority, files: validArtifactFiles(), fsImpl }),
+    'RAW_UNUSED'
+  );
+  assert.deepEqual(
+    fileIdentity(await fs.lstat(path.join(fixture.runPath, 'playbook-shadow'))),
+    collisionIdentity
+  );
+  assert.deepEqual(await fs.readdir(path.join(fixture.runPath, 'playbook-shadow')), []);
+  assert.equal((await generatedEntries(fixture.runPath)).length, 0);
+});
+
+test('no-replace backup reservation preserves an empty collision and old output', async (t) => {
+  const fixture = await storageFixture(t);
+  const oldFiles = validArtifactFiles('old');
+  await writeArtifactDirectory(fixture.runPath, oldFiles);
+  let collisionPath;
+  let collisionIdentity;
+  const fsImpl = fsWith({
+    async lstat(target, ...args) {
+      try {
+        return await fs.lstat(target, ...args);
+      } catch (error) {
+        if (error.code === 'ENOENT' && path.basename(String(target)).startsWith(BACKUP_PREFIX)) {
+          collisionPath = String(target);
+          await fs.mkdir(target);
+          collisionIdentity = fileIdentity(await fs.lstat(target));
+        }
+        throw error;
+      }
+    }
+  });
+  const authority = await admitShadowRun({ projectRoot: fixture.root, runArg: fixture.runArg });
+  t.after(() => authority.close());
+
+  await assertStableInstallFailure(
+    installShadowArtifacts({ authority, files: validArtifactFiles('new'), fsImpl }),
+    'RAW_UNUSED'
+  );
+  assertArtifactBytes(await readArtifactDirectory(fixture.runPath), oldFiles);
+  assert.deepEqual(fileIdentity(await fs.lstat(collisionPath)), collisionIdentity);
+  assert.deepEqual(await fs.readdir(collisionPath), []);
+  assert.deepEqual(await generatedEntries(fixture.runPath), [path.basename(collisionPath)]);
+});
+
+test('source swap is restored without deleting either unverified or old bytes', async (t) => {
+  const fixture = await storageFixture(t);
+  const oldFiles = validArtifactFiles('old');
+  await writeArtifactDirectory(fixture.runPath, oldFiles);
+  const heldOutput = path.join(fixture.runPath, 'held-owned-output');
+  const outputPath = path.join(fixture.runPath, 'playbook-shadow');
+  let swapped = false;
+  let foreignIdentity;
+  const fsImpl = fsWith({
+    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
+      if (
+        !swapped
+        && sourceName === 'playbook-shadow'
+        && destinationName.startsWith(BACKUP_PREFIX)
+      ) {
+        swapped = true;
+        await fs.rename(outputPath, heldOutput);
+        await fs.mkdir(outputPath);
+        foreignIdentity = fileIdentity(await fs.lstat(outputPath));
+      }
+      return next(directoryHandle, sourceName, destinationName);
+    }
+  });
+  const authority = await admitShadowRun({ projectRoot: fixture.root, runArg: fixture.runArg });
+  t.after(() => authority.close());
+
+  await assertStableInstallFailure(
+    installShadowArtifacts({ authority, files: validArtifactFiles('new'), fsImpl }),
+    'RAW_UNUSED'
+  );
+  assert.deepEqual(fileIdentity(await fs.lstat(outputPath)), foreignIdentity);
+  assert.deepEqual(await fs.readdir(outputPath), []);
+  assertArtifactBytes(await readNamedDirectory(fixture.runPath, 'held-owned-output'), oldFiles);
+  assert.equal((await generatedEntries(fixture.runPath)).length, 0);
+});
+
+test('stage rechecks authority immediately before chmod, write, and sync', async (t) => {
+  await t.test('chmod', async (t) => {
+    const fixture = await storageFixture(t);
+    const heldRun = `${fixture.runPath}-held-chmod`;
+    let swapped = false;
+    const fsImpl = fsWith({
+      async open(target, flags, ...args) {
+        const handle = await fs.open(target, flags, ...args);
+        if (!swapped && path.basename(String(target)).startsWith(STAGE_PREFIX)) {
+          await handle.chmod(0o755);
+          await swapAdmittedRun(fixture, heldRun);
+          swapped = true;
+        }
+        return handle;
+      }
+    });
+    const authority = await admitShadowRun({ projectRoot: fixture.root, runArg: fixture.runArg });
+    t.after(() => authority.close());
+
+    await assert.rejects(
+      installShadowArtifacts({ authority, files: validArtifactFiles(), fsImpl }),
+      /SHADOW_INSTALL_FAILED/u
+    );
+    const [stageName] = await generatedEntries(heldRun);
+    assert.equal((await fs.lstat(path.join(heldRun, stageName))).mode & 0o777, 0o755);
+  });
+
+  await t.test('write', async (t) => {
+    const fixture = await storageFixture(t);
+    const heldRun = `${fixture.runPath}-held-write`;
+    let swapped = false;
+    const fsImpl = fsWith({
+      async open(target, flags, ...args) {
+        const handle = await fs.open(target, flags, ...args);
+        if (
+          !swapped
+          && (flags & constants.O_WRONLY) !== 0
+          && (await descriptorParentBasename(target)).startsWith(STAGE_PREFIX)
+        ) {
+          await swapAdmittedRun(fixture, heldRun);
+          swapped = true;
+        }
+        return handle;
+      }
+    });
+    const authority = await admitShadowRun({ projectRoot: fixture.root, runArg: fixture.runArg });
+    t.after(() => authority.close());
+
+    await assert.rejects(
+      installShadowArtifacts({ authority, files: validArtifactFiles(), fsImpl }),
+      /SHADOW_INSTALL_FAILED/u
+    );
+    const [stageName] = await generatedEntries(heldRun);
+    assert.equal((await fs.lstat(path.join(heldRun, stageName, 'manifest.json'))).size, 0);
+  });
+
+  await t.test('sync', async (t) => {
+    const fixture = await storageFixture(t);
+    const heldRun = `${fixture.runPath}-held-sync`;
+    let wrapped = false;
+    let syncCalled = false;
+    const fsImpl = fsWith({
+      async open(target, flags, ...args) {
+        const handle = await fs.open(target, flags, ...args);
+        if (
+          !wrapped
+          && (flags & constants.O_WRONLY) !== 0
+          && (await descriptorParentBasename(target)).startsWith(STAGE_PREFIX)
+        ) {
+          wrapped = true;
+          return wrapFileHandle(handle, {
+            async writeFile(...writeArgs) {
+              const result = await handle.writeFile(...writeArgs);
+              await swapAdmittedRun(fixture, heldRun);
+              return result;
+            },
+            async sync() {
+              syncCalled = true;
+              return handle.sync();
+            }
+          });
+        }
+        return handle;
+      }
+    });
+    const authority = await admitShadowRun({ projectRoot: fixture.root, runArg: fixture.runArg });
+    t.after(() => authority.close());
+
+    await assert.rejects(
+      installShadowArtifacts({ authority, files: validArtifactFiles(), fsImpl }),
+      /SHADOW_INSTALL_FAILED/u
+    );
+    assert.equal(syncCalled, false);
+  });
+});
+
 test('an unowned collision during final install is preserved', async (t) => {
   const fixture = await storageFixture(t);
   let collided = false;
   const fsImpl = fsWith({
-    async rename(source, destination) {
+    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
       if (
         !collided
-        && path.basename(String(source)).startsWith(STAGE_PREFIX)
-        && path.basename(String(destination)) === 'playbook-shadow'
+        && sourceName.startsWith(STAGE_PREFIX)
+        && destinationName === 'playbook-shadow'
       ) {
         collided = true;
+        const destination = path.join(`/proc/self/fd/${directoryHandle.fd}`, destinationName);
         await fs.mkdir(destination);
         await fs.writeFile(path.join(destination, 'foreign.txt'), 'late collision\n');
       }
-      return fs.rename(source, destination);
+      return next(directoryHandle, sourceName, destinationName);
     }
   });
   const authority = await admitShadowRun({ projectRoot: fixture.root, runArg: fixture.runArg });
@@ -617,6 +843,26 @@ async function descriptorParentBasename(target) {
   const parent = path.dirname(String(target));
   if (!parent.startsWith('/proc/self/fd/')) return path.basename(parent);
   return path.basename(await fs.readlink(parent));
+}
+
+async function swapAdmittedRun(fixture, heldRun) {
+  await fs.rename(fixture.runPath, heldRun);
+  await fs.mkdir(fixture.runPath);
+  await fs.writeFile(path.join(fixture.runPath, 'blueprint.json'), fixture.blueprintBytes);
+}
+
+function wrapFileHandle(handle, overrides) {
+  return new Proxy(handle, {
+    get(target, property) {
+      if (Object.hasOwn(overrides, property)) return overrides[property];
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    }
+  });
+}
+
+function fileIdentity(stat) {
+  return { dev: stat.dev, ino: stat.ino };
 }
 
 async function assertStableInstallFailure(promise, forbiddenPattern) {

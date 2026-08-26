@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -19,6 +20,7 @@ const BODY_FILES = SHADOW_OUTPUT_FILES.filter((name) => name !== 'manifest.json'
 const OUTPUT_BASENAME = 'playbook-shadow';
 const STAGE_PREFIX = '.playbook-shadow.stage-';
 const BACKUP_PREFIX = '.playbook-shadow.backup-';
+const MOVE_BINARY = '/usr/bin/mv';
 const DIRECTORY_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
 const WRITE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
@@ -121,8 +123,9 @@ export async function installShadowArtifacts({ authority, files, fsImpl } = {}) 
       ) throw shadowError('SHADOW_INSTALL_FAILED');
 
       backupName = await unusedTemporaryBasename(internal, ops, BACKUP_PREFIX);
-      await assertAuthority(internal, ops);
-      await ops.rename(runEntryPath(internal, OUTPUT_BASENAME), runEntryPath(internal, backupName));
+      await renameExpectedDirectoryNoReplace(
+        internal, ops, OUTPUT_BASENAME, backupName, existing.identity
+      );
       oldMoved = true;
       await verifyExpectedDirectory(
         internal, ops, backupName, existing.identity, existing.files, { requireComplete: true }
@@ -132,8 +135,9 @@ export async function installShadowArtifacts({ authority, files, fsImpl } = {}) 
       if (collision) throw shadowError('SHADOW_INSTALL_FAILED');
     }
 
-    await assertAuthority(internal, ops);
-    await ops.rename(runEntryPath(internal, stage.basename), runEntryPath(internal, OUTPUT_BASENAME));
+    await renameExpectedDirectoryNoReplace(
+      internal, ops, stage.basename, OUTPUT_BASENAME, stage.identity
+    );
     newInstalled = true;
     await closeHandle(stage.handle);
     stage.handle = undefined;
@@ -141,17 +145,6 @@ export async function installShadowArtifacts({ authority, files, fsImpl } = {}) 
       internal, ops, OUTPUT_BASENAME, stage.identity, artifactFiles, { requireComplete: true }
     );
 
-    if (backupName) {
-      await removeVerifiedDirectory(
-        internal, ops, backupName, existing.identity, existing.files,
-        { requireComplete: true, verifyBytes: true }
-      );
-      oldMoved = false;
-    }
-    return Object.freeze({
-      status: existing ? 'replaced' : 'created',
-      artifact_hashes: Object.freeze(artifactHashes)
-    });
   } catch (error) {
     await closeHandle(stage?.handle);
     if (stage) {
@@ -194,6 +187,31 @@ export async function installShadowArtifacts({ authority, files, fsImpl } = {}) 
     if (rollbackFailed) throw shadowError('SHADOW_INSTALL_FAILED');
     throw externalError(error, 'SHADOW_INSTALL_FAILED');
   }
+
+  if (backupName) {
+    try {
+      await removeVerifiedDirectory(
+        internal, ops, backupName, existing.identity, existing.files,
+        { requireComplete: true, verifyBytes: true }
+      );
+      oldMoved = false;
+    } catch (error) {
+      // Installation is committed once the complete new directory is verified.
+      // A destructive backup cleanup cannot safely re-enter rollback.
+      try {
+        await recoverVerifiedBackup(
+          internal, ops, backupName, existing.identity, existing.files
+        );
+      } catch {
+        // The complete installed output remains authoritative if recovery itself fails.
+      }
+      throw externalError(error, 'SHADOW_INSTALL_FAILED');
+    }
+  }
+  return Object.freeze({
+    status: existing ? 'replaced' : 'created',
+    artifact_hashes: Object.freeze(artifactHashes)
+  });
 }
 
 async function openAbsoluteDirectory(ops, absolutePath, missingCode) {
@@ -445,6 +463,7 @@ async function createStage(internal, ops, files) {
     const pathStat = await ops.lstat(directoryPath);
     if (pathStat.isSymbolicLink() || !pathStat.isDirectory()) throw shadowError('SHADOW_INSTALL_FAILED');
     handle = await ops.open(directoryPath, DIRECTORY_FLAGS);
+    await assertAuthority(internal, ops);
     await handle.chmod(0o700);
     const opened = await handle.stat();
     if (!sameIdentity(identity(pathStat), identity(opened))) throw shadowError('SHADOW_INSTALL_FAILED');
@@ -455,7 +474,9 @@ async function createStage(internal, ops, files) {
       let fileHandle;
       try {
         fileHandle = await ops.open(descriptorEntryPath(handle, name), WRITE_FLAGS, 0o600);
+        await assertAuthority(internal, ops);
         await fileHandle.writeFile(files[name]);
+        await assertAuthority(internal, ops);
         await fileHandle.sync();
       } finally {
         await closeHandle(fileHandle);
@@ -551,6 +572,7 @@ async function removeVerifiedDirectory(
       await assertNamedDirectoryIdentity(internal, ops, basename, expectedIdentity);
       const bytes = await readRegularFile(ops, handle, name, 'SHADOW_INSTALL_FAILED');
       if (verifyBytes && !bytes.equals(expectedFiles[name])) throw shadowError('SHADOW_INSTALL_FAILED');
+      await assertAuthority(internal, ops);
       await ops.unlink(descriptorEntryPath(handle, name));
     }
     if ((await ops.readdir(descriptorPath(handle))).length !== 0) throw shadowError('SHADOW_INSTALL_FAILED');
@@ -558,6 +580,7 @@ async function removeVerifiedDirectory(
     handle = undefined;
     await assertAuthority(internal, ops);
     await assertNamedDirectoryIdentity(internal, ops, basename, expectedIdentity);
+    await assertAuthority(internal, ops);
     await ops.rmdir(target);
   } catch (error) {
     if (allowMissing && isMissingError(error)) return;
@@ -571,14 +594,135 @@ async function rollbackBackup(internal, ops, backupName, existing) {
   await verifyExpectedDirectory(
     internal, ops, backupName, existing.identity, existing.files, { requireComplete: true }
   );
-  if (await entryExists(ops, runEntryPath(internal, OUTPUT_BASENAME))) {
-    throw shadowError('SHADOW_INSTALL_FAILED');
-  }
-  await assertAuthority(internal, ops);
-  await ops.rename(runEntryPath(internal, backupName), runEntryPath(internal, OUTPUT_BASENAME));
+  await renameExpectedDirectoryNoReplace(
+    internal, ops, backupName, OUTPUT_BASENAME, existing.identity
+  );
   await verifyExpectedDirectory(
     internal, ops, OUTPUT_BASENAME, existing.identity, existing.files, { requireComplete: true }
   );
+}
+
+async function recoverVerifiedBackup(
+  internal,
+  ops,
+  backupName,
+  expectedIdentity,
+  expectedFiles
+) {
+  await assertAuthority(internal, ops);
+  const backupPath = runEntryPath(internal, backupName);
+  let handle;
+  try {
+    let pathStat;
+    let created = false;
+    try {
+      pathStat = await ops.lstat(backupPath);
+    } catch (error) {
+      if (!isMissingError(error)) throw error;
+      await assertAuthority(internal, ops);
+      await ops.mkdir(backupPath, { recursive: false, mode: 0o700 });
+      pathStat = await ops.lstat(backupPath);
+      created = true;
+    }
+    if (pathStat.isSymbolicLink() || !pathStat.isDirectory()) {
+      throw shadowError('SHADOW_INSTALL_FAILED');
+    }
+    handle = await ops.open(backupPath, DIRECTORY_FLAGS);
+    const opened = await handle.stat();
+    const backupIdentity = identity(opened);
+    if (
+      !sameIdentity(identity(pathStat), backupIdentity)
+      || (!created && !sameIdentity(backupIdentity, expectedIdentity))
+    ) {
+      throw shadowError('SHADOW_INSTALL_FAILED');
+    }
+    const entries = await ops.readdir(descriptorPath(handle));
+    if (entries.some((name) => !SHADOW_OUTPUT_FILES.includes(name))) {
+      throw shadowError('SHADOW_INSTALL_FAILED');
+    }
+    for (const name of entries) {
+      const bytes = await readRegularFile(ops, handle, name, 'SHADOW_INSTALL_FAILED');
+      if (!bytes.equals(expectedFiles[name])) throw shadowError('SHADOW_INSTALL_FAILED');
+    }
+    for (const name of SHADOW_OUTPUT_FILES.filter((candidate) => !entries.includes(candidate))) {
+      await assertAuthority(internal, ops);
+      await assertNamedDirectoryIdentity(internal, ops, backupName, backupIdentity);
+      let fileHandle;
+      try {
+        fileHandle = await ops.open(descriptorEntryPath(handle, name), WRITE_FLAGS, 0o600);
+        await assertAuthority(internal, ops);
+        await fileHandle.writeFile(expectedFiles[name]);
+        await assertAuthority(internal, ops);
+        await fileHandle.sync();
+      } finally {
+        await closeHandle(fileHandle);
+      }
+    }
+    await verifyDirectoryHandleContents(ops, handle, expectedFiles, true, true);
+    await assertNamedDirectoryIdentity(internal, ops, backupName, backupIdentity);
+  } catch (error) {
+    throw externalError(error, 'SHADOW_INSTALL_FAILED');
+  } finally {
+    await closeHandle(handle);
+  }
+}
+
+async function renameExpectedDirectoryNoReplace(
+  internal,
+  ops,
+  sourceName,
+  destinationName,
+  expectedIdentity
+) {
+  await assertAuthority(internal, ops);
+  await assertNamedDirectoryIdentity(internal, ops, sourceName, expectedIdentity);
+  try {
+    await assertAuthority(internal, ops);
+    await ops.renameNoReplace(internal.runHandle, sourceName, destinationName);
+  } catch (error) {
+    throw externalError(error, 'SHADOW_INSTALL_FAILED');
+  }
+
+  let destinationStat;
+  let sourceExists = false;
+  try {
+    destinationStat = await ops.lstat(runEntryPath(internal, destinationName));
+    sourceExists = await entryExists(ops, runEntryPath(internal, sourceName));
+  } catch (error) {
+    throw externalError(error, 'SHADOW_INSTALL_FAILED');
+  }
+  if (
+    destinationStat.isDirectory()
+    && !destinationStat.isSymbolicLink()
+    && sameIdentity(identity(destinationStat), expectedIdentity)
+    && !sourceExists
+  ) return;
+
+  if (!sourceExists) {
+    await restoreUnexpectedRename(
+      internal, ops, destinationName, sourceName, identity(destinationStat)
+    );
+  }
+  throw shadowError('SHADOW_INSTALL_FAILED');
+}
+
+async function restoreUnexpectedRename(
+  internal,
+  ops,
+  sourceName,
+  destinationName,
+  movedIdentity
+) {
+  await assertAuthority(internal, ops);
+  const before = await ops.lstat(runEntryPath(internal, sourceName));
+  if (!sameIdentity(identity(before), movedIdentity)) throw shadowError('SHADOW_INSTALL_FAILED');
+  await assertAuthority(internal, ops);
+  await ops.renameNoReplace(internal.runHandle, sourceName, destinationName);
+  const restored = await ops.lstat(runEntryPath(internal, destinationName));
+  if (
+    !sameIdentity(identity(restored), movedIdentity)
+    || await entryExists(ops, runEntryPath(internal, sourceName))
+  ) throw shadowError('SHADOW_INSTALL_FAILED');
 }
 
 async function readRegularFile(ops, directoryHandle, basename, fallbackCode) {
@@ -725,15 +869,44 @@ function fsOperations(source) {
     const owner = provided && typeof provided[name] === 'function' ? provided : fs;
     return owner[name].bind(owner);
   };
+  const defaultRenameNoReplace = renameNoReplaceByDescriptor;
+  const customRenameNoReplace = provided && typeof provided.renameNoReplace === 'function'
+    ? provided.renameNoReplace.bind(provided)
+    : null;
   return Object.freeze({
     source: provided,
     open: operation('open'),
     lstat: operation('lstat'),
     mkdir: operation('mkdir'),
     readdir: operation('readdir'),
-    rename: operation('rename'),
+    renameNoReplace: customRenameNoReplace
+      ? (directoryHandle, sourceName, destinationName) => customRenameNoReplace(
+        directoryHandle, sourceName, destinationName, defaultRenameNoReplace
+      )
+      : defaultRenameNoReplace,
     unlink: operation('unlink'),
     rmdir: operation('rmdir')
+  });
+}
+
+async function renameNoReplaceByDescriptor(directoryHandle, sourceName, destinationName) {
+  if (!isPlainBasename(sourceName) || !isPlainBasename(destinationName)) {
+    throw shadowError('SHADOW_INSTALL_FAILED');
+  }
+  await new Promise((resolve, reject) => {
+    const child = spawn(MOVE_BINARY, [
+      '--no-clobber',
+      '--no-target-directory',
+      `/proc/self/fd/3/${sourceName}`,
+      `/proc/self/fd/3/${destinationName}`
+    ], {
+      stdio: ['ignore', 'ignore', 'ignore', directoryHandle.fd]
+    });
+    child.once('error', () => reject(shadowError('SHADOW_INSTALL_FAILED')));
+    child.once('close', (code) => {
+      if (code === 0) resolve();
+      else reject(shadowError('SHADOW_INSTALL_FAILED'));
+    });
   });
 }
 
