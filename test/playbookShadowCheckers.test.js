@@ -72,6 +72,48 @@ test('three-volume composition requires the primary mass to be centered', () => 
   assert.deepEqual(result.evidence_json_pointers, ['/architecture/volumes']);
 });
 
+test('three-volume composition is unknown when an attached relation lacks a valid target', async (t) => {
+  for (const [name, attachTo] of [
+    ['missing', undefined],
+    ['blank', '   '],
+    ['non-string', 42]
+  ]) {
+    await t.test(name, () => {
+      const placement = { relation: 'attached-west' };
+      if (attachTo !== undefined) placement.attach_to = attachTo;
+      const result = runChecker('check:massing:three-volume-composition', projected({
+        massing: {
+          volumes: [
+            volume('main', [1, 1, 1], { relation: 'center' }, ['primary-mass'], 'main-building-envelope'),
+            volume('left', [0.4, 0.6, 0.5], placement, ['secondary-mass']),
+            volume('right', [0.5, 0.7, 0.4], { relation: 'attached-east', attach_to: 'main' }, ['secondary-mass'])
+          ]
+        }
+      }));
+
+      assert.equal(result.status, 'unknown');
+      assert.deepEqual(result.evidence_json_pointers, []);
+      assert.deepEqual(result.observations, []);
+      assert.deepEqual(result.missing_signals, ['massing.volume_relations']);
+    });
+  }
+});
+
+test('three-volume composition preserves a violation for a specified wrong attachment target', () => {
+  const result = runChecker('check:massing:three-volume-composition', projected({
+    massing: {
+      volumes: [
+        volume('main', [1, 1, 1], { relation: 'center' }, ['primary-mass'], 'main-building-envelope'),
+        volume('left', [0.4, 0.6, 0.5], { relation: 'attached-west', attach_to: 'other' }, ['secondary-mass']),
+        volume('right', [0.5, 0.7, 0.4], { relation: 'attached-east', attach_to: 'main' }, ['secondary-mass'])
+      ]
+    }
+  }));
+
+  assert.equal(result.status, 'violated');
+  assert.deepEqual(result.observations, ['three-volume-composition-not-established']);
+});
+
 test('primary-secondary hierarchy is unknown when an attached volume lacks role or tag evidence', () => {
   const result = runChecker('check:massing:primary-secondary-hierarchy', projected({
     massing: {

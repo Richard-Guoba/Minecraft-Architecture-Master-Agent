@@ -13,6 +13,9 @@ export function checkThreeVolumeComposition(projected) {
   if (!Array.isArray(volumes) || volumes.some((volume) => !isWellFormedBox(volume))) {
     return unknown('massing.volumes');
   }
+  if (volumes.map(attachmentState).includes(null)) {
+    return unknown('massing.volume_relations');
+  }
 
   const primaries = volumes.filter(isPrimary);
   const primary = primaries.length === 1 ? primaries[0] : null;

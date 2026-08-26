@@ -21,6 +21,43 @@ export const SHADOW_CORPUS_PATHS = Object.freeze([
 
 const [REVIEWED_RULES_PATH, ADMISSION_PATH, COVERAGE_PATH] = SHADOW_CORPUS_PATHS;
 const CORE_PROCEDURE_COUNT = 15;
+const REVIEWED_RULE_IDS_BY_LAYER = Object.freeze({
+  brief: Object.freeze([
+    'rule:case.allocate-detail-by-viewpoint',
+    'rule:case.compose-context-depth'
+  ]),
+  massing: Object.freeze([
+    'rule:structure.compose-three-volumes',
+    'rule:structure.layer-volumes-to-reduce-blankness',
+    'rule:structure.create-primary-secondary-hierarchy',
+    'rule:case.join-crossed-massing-with-tower'
+  ]),
+  space: Object.freeze([]),
+  structure: Object.freeze([
+    'rule:structure.keep-support-volumes-subordinate',
+    'rule:medieval.extend-only-needed-facades',
+    'rule:medieval.show-load-path',
+    'rule:medieval.align-roof-with-overhang',
+    'rule:medieval.use-stone-base-for-height'
+  ]),
+  roof: Object.freeze([
+    'rule:roof.border-with-material-contrast',
+    'rule:roof.scale-slope-to-massing',
+    'rule:roof.break-large-flat-plane',
+    'rule:case.balance-warm-mass-with-dark-roof'
+  ]),
+  facade: Object.freeze([
+    'rule:facade.frame-before-openings',
+    'rule:facade.offset-frame-for-depth',
+    'rule:facade.partition-large-wall',
+    'rule:facade.break-repetitive-bays',
+    'rule:case.repeat-motif-for-unity',
+    'rule:case.use-greenery-as-composition'
+  ]),
+  materials: Object.freeze([]),
+  interior: Object.freeze([]),
+  scene: Object.freeze([])
+});
 const REVIEWED_UNKNOWN_IDS_BY_LAYER = Object.freeze({
   brief: Object.freeze([
     'unknown:aesthetic-evaluator',
@@ -212,6 +249,10 @@ function validateCoverage(layers, cards) {
     if (layer.status !== expectedStatus) invalid();
     if (layer.status === 'advisory-partial') advisoryCount += 1;
     else uncoveredCount += 1;
+    if (!isDeepStrictEqual(
+      layer.rule_ids,
+      REVIEWED_RULE_IDS_BY_LAYER[layer.layer]
+    )) invalid();
     if (!isDeepStrictEqual(
       layer.unknown_ids,
       REVIEWED_UNKNOWN_IDS_BY_LAYER[layer.layer]

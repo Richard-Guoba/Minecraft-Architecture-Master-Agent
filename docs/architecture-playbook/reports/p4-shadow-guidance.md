@@ -19,7 +19,7 @@ npm run playbook:shadow -- --run <out/run-directory> --mode mock
 npm run playbook:shadow -- --run <out/run-directory> --mode llm
 ```
 
-它只读取既有 `out/<run>/blueprint.json` 的精确字节，校验其路径、普通文件属性、工作流和 SHA-256；不读取预览、截图、视频、世界存档或视觉模型。投影只覆盖 `brief`、`massing`、`structure`、`roof`、`facade` 五层；`space`、`materials`、`interior`、`scene` 明确为 `not-covered`。
+它只读取既有 `out/<run>/blueprint.json` 的精确字节，校验其路径、普通文件属性、工作流和 SHA-256；不读取预览、截图、视频、世界存档或视觉模型。投影只覆盖 `brief`、`massing`、`structure`、`roof`、`facade` 五层；`space`、`materials`、`interior`、`scene` 明确为 `not-covered`。语料加载器独立固定九层逐层、逐项、有序的 `rule_ids` 和 `unknown_ids` 权威，因此 admission 与 coverage 即使协调移动、重排、删增、复制或写入非字符串 ID，也不能绕过校验。
 
 `mock` 模式不创建 LLM client、不读取模型环境变量、也不联网，五个受管输出对相同输入和语料逐字节稳定。`llm` 模式只能解释确定性权威 review；任何配置、请求或输出错误均降级为稳定的 unavailable 解释，不能改判、加规则、加 patch 或写回权威结论。
 
@@ -27,7 +27,7 @@ npm run playbook:shadow -- --run <out/run-directory> --mode llm
 
 语料包含 21 条规则：15 条核心程序（`admitted-advisory`）与 6 条案例模式（`manual-example-only`）。每一条都有一个明确注册的 `check:*` 检查器入口；缺项、重复、规则错配或层错配均以 `CHECK_REGISTRY_INCOMPLETE` 失败，不会被掩盖为普通 `unknown`。
 
-核心程序只使用 `satisfied`、`violated`、`unknown`、`not-applicable` 四态的受限合同。字段、视觉证据、量化阈值或适用性证据不足时必须是 `unknown`，不得改写为 `not-applicable`。案例模式仅可为 `unknown` 或 `not-applicable`，不参与核心 satisfied/violated 汇总，也没有修复操作。
+核心程序只使用 `satisfied`、`violated`、`unknown`、`not-applicable` 四态的受限合同。字段、视觉证据、量化阈值或适用性证据不足时必须是 `unknown`，不得改写为 `not-applicable`。三体块组合中必要的 `attach_to` 缺失、空白或类型错误时同样保持 `unknown`，且不附加修复；只有目标已明确但关系不满足时才形成可判定的 `violated`。案例模式仅可为 `unknown` 或 `not-applicable`，不参与核心 satisfied/violated 汇总，也没有修复操作。
 
 ## 三个原创夹具
 
@@ -51,13 +51,13 @@ npm run playbook:shadow -- --run <out/run-directory> --mode llm
 
 ## 测试证据
 
-- 文档状态 RED：`node test/docsProjectStatus.test.js` 在报告不存在时按预期失败，错误为 `ENOENT`；实现后，`node --test --test-isolation=none test/docsProjectStatus.test.js` 为 3/3 通过、0 失败。
-- P4 聚焦套件：执行规定的 11 个测试文件命令，155/155 通过、0 失败。默认受管 sandbox 会阻止 CLI 子进程；使用获准的子进程执行路径后，原命令 155/155 通过。
+- P4 聚焦套件：在最终修复 `HEAD` 执行规定的 11 个测试文件命令，200/200 通过、0 失败。默认受管 sandbox 会阻止 CLI 子进程；使用获准的子进程执行路径后，原命令 200/200 通过。
+- P4 独立依赖门禁：`node --test --test-isolation=none test/playbookShadowGate.test.js` 为 27/27 通过、0 失败，已检查当前源码图和所有受支持的直接、传递、realpath 与动态加载边。
 - P3 受管语料检查：`npm run playbook:manual -- check` 返回 `playbook_status=current`、`reviewed_rule_count=21`、`core_procedure_count=15`、`case_pattern_count=6`、`artifact_count=5`、`managed_artifact_drift_count=0`。
-- 完整回归：在同一获准的子进程执行环境中，`npm test` 为 1000/1000 通过、0 失败。
-- Linux 运行环境检查确认 `/usr/bin/mv` 是 GNU coreutils 9.4；这只验证本门禁所用环境满足上述已接受的依赖，不能推广为跨平台支持结论。
+- 完整回归：在同一获准的子进程执行环境中，`npm test -- --test-reporter=dot` 退出码为 0，共 1045 个通过标记、0 个失败标记。
+- 仓库卫生：`git diff --check` 退出码为 0；`git ls-files out .local/architecture-playbook` 无输出，没有提交运行产物或私有秘籍材料。
 
-历史审计遵循已记录的“不要求恰好九个实现提交”裁定。检查了 SDD ledger 的各任务完成范围及 `fb53f69..9358484` 的完整分支差异：任务 1–8 分别至少有一个独立审查后的完成提交，后续 review fix 提交保留为合法、可审计的历史；该范围的改动仅为 P4 影子审查、其夹具、测试、CLI/package script、兼容审计与关联 SDD 证据，没有发现无关实现提交。任务 9 的文档提交在本报告完成后单独创建并同样接受最终分支检查。
+历史审计遵循已记录的“不要求恰好九个实现提交”裁定。最终完整分支审计范围为 `6dd635ee7874a0d8a87a5408396f9aea49570030..HEAD`；本轮统一修复审计范围为 `28d44b90952f9c37837d4b3d87f0e94c5921adfe..HEAD`。`HEAD` 指本报告所在的最终修复提交。各任务至少有一个独立审查后的完成提交，后续 review fix 与 remediation 提交保留为合法、可审计的历史；范围内改动属于 P4 影子审查、语料与解释权限加固、事务安全、夹具、测试、CLI/package script、兼容审计和公开证据，没有发现生成器或 P5/P6 行为改动。
 
 ## P5 待批准入口与 P6 保留项
 

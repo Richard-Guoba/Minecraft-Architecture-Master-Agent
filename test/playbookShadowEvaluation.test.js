@@ -49,6 +49,40 @@ test('only violated core rules receive the reviewed repair', async () => {
   }
 });
 
+test('evaluation preserves unknown attachment evidence without attaching a repair', async (t) => {
+  for (const [name, attachTo] of [
+    ['missing', undefined],
+    ['blank', ''],
+    ['non-string', 42]
+  ]) {
+    await t.test(name, async () => {
+      const { corpus, registry, blueprint } = await evaluationFixture('positive');
+      for (const volume of blueprint.architecture.volumes) {
+        if (volume.purpose === undefined) delete volume.purpose;
+      }
+      if (attachTo === undefined) delete blueprint.architecture.volumes[1].placement.attach_to;
+      else blueprint.architecture.volumes[1].placement.attach_to = attachTo;
+
+      const review = evaluateShadowReview({
+        blueprint,
+        blueprintPath: 'blueprint.json',
+        blueprintSha256: sha256(stableJson(blueprint)),
+        corpus,
+        registry
+      });
+      const assessment = review.assessments.find(
+        (item) => item.rule_id === 'rule:structure.compose-three-volumes'
+      );
+
+      assert.equal(assessment.status, 'unknown');
+      assert.deepEqual(assessment.missing_signals, ['massing.volume_relations']);
+      assert.equal(assessment.repair_operation_id, null);
+      assert.equal(assessment.repair_target_layer, null);
+      assert.deepEqual(assessment.invalidates_layers, []);
+    });
+  }
+});
+
 test('case patterns cannot be promoted by a malicious checker result', async () => {
   const { corpus, registry, blueprint } = await evaluationFixture('positive');
   const poisoned = replaceCaseChecker(corpus, registry, () => ({

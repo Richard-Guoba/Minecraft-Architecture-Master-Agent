@@ -165,6 +165,37 @@ test('corpus loader rejects an extra known unknown ID in one layer', async () =>
   await assertCorpusRejected(files);
 });
 
+test('corpus loader rejects every exact per-layer rule-ID authority mutation', async (t) => {
+  for (const [name, mutate] of [
+    ['coordinated cross-layer move', (layers) => {
+      [layers[0].rule_ids[0], layers[1].rule_ids[0]] = [
+        layers[1].rule_ids[0], layers[0].rule_ids[0]
+      ];
+    }],
+    ['within-layer reorder', (layers) => {
+      layers[1].rule_ids.reverse();
+    }],
+    ['missing ID', (layers) => {
+      layers[1].rule_ids.pop();
+    }],
+    ['extra ID', (layers) => {
+      layers[1].rule_ids.push('rule:invented');
+    }],
+    ['duplicate ID', (layers) => {
+      layers[1].rule_ids[1] = layers[1].rule_ids[0];
+    }],
+    ['non-string ID', (layers) => {
+      layers[1].rule_ids[0] = null;
+    }]
+  ]) {
+    await t.test(name, async () => {
+      const files = await loadCorpusBytes(ROOT);
+      mutateBothCoverageDocuments(files, mutate);
+      await assertCorpusRejected(files);
+    });
+  }
+});
+
 test('corpus loader rejects invalid teaching-role and coverage-status relationships', async (t) => {
   for (const [name, mutate] of [
     ['core procedure marked manual-only', (card, admission) => {
