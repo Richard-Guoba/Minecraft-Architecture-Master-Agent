@@ -52,9 +52,9 @@ npm run playbook:shadow -- --run <out/run-directory> --mode llm
 ## 测试证据
 
 - 文档状态 RED：`node test/docsProjectStatus.test.js` 在报告不存在时按预期失败，错误为 `ENOENT`；实现后，`node --test --test-isolation=none test/docsProjectStatus.test.js` 为 3/3 通过、0 失败。
-- P4 聚焦套件：执行规定的 11 个测试文件命令，128/128 通过、0 失败。默认受管 sandbox 会阻止 CLI 子进程，导致一个仅检查顶层 stderr 的环境性失败；使用获准的子进程执行路径后，原命令 128/128 通过。
+- P4 聚焦套件：执行规定的 11 个测试文件命令，155/155 通过、0 失败。默认受管 sandbox 会阻止 CLI 子进程；使用获准的子进程执行路径后，原命令 155/155 通过。
 - P3 受管语料检查：`npm run playbook:manual -- check` 返回 `playbook_status=current`、`reviewed_rule_count=21`、`core_procedure_count=15`、`case_pattern_count=6`、`artifact_count=5`、`managed_artifact_drift_count=0`。
-- 完整回归：在同一获准的子进程执行环境中，`npm test` 为 973/973 通过、0 失败。
+- 完整回归：在同一获准的子进程执行环境中，`npm test` 为 1000/1000 通过、0 失败。
 - Linux 运行环境检查确认 `/usr/bin/mv` 是 GNU coreutils 9.4；这只验证本门禁所用环境满足上述已接受的依赖，不能推广为跨平台支持结论。
 
 历史审计遵循已记录的“不要求恰好九个实现提交”裁定。检查了 SDD ledger 的各任务完成范围及 `fb53f69..9358484` 的完整分支差异：任务 1–8 分别至少有一个独立审查后的完成提交，后续 review fix 提交保留为合法、可审计的历史；该范围的改动仅为 P4 影子审查、其夹具、测试、CLI/package script、兼容审计与关联 SDD 证据，没有发现无关实现提交。任务 9 的文档提交在本报告完成后单独创建并同样接受最终分支检查。
