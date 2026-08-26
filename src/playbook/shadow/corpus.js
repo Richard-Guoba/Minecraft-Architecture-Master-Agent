@@ -21,15 +21,32 @@ export const SHADOW_CORPUS_PATHS = Object.freeze([
 
 const [REVIEWED_RULES_PATH, ADMISSION_PATH, COVERAGE_PATH] = SHADOW_CORPUS_PATHS;
 const CORE_PROCEDURE_COUNT = 15;
-const KNOWN_UNKNOWN_IDS = Object.freeze([
-  'unknown:aesthetic-evaluator',
-  'unknown:blank-plane-threshold',
-  'unknown:cross-author-validity',
-  'unknown:massing-ratio-thresholds',
-  'unknown:medieval-scale-generalization',
-  'unknown:repetition-limit',
-  'unknown:roof-slope-table'
-]);
+const REVIEWED_UNKNOWN_IDS_BY_LAYER = Object.freeze({
+  brief: Object.freeze([
+    'unknown:aesthetic-evaluator',
+    'unknown:cross-author-validity'
+  ]),
+  massing: Object.freeze([
+    'unknown:massing-ratio-thresholds',
+    'unknown:blank-plane-threshold'
+  ]),
+  space: Object.freeze([]),
+  structure: Object.freeze([
+    'unknown:medieval-scale-generalization',
+    'unknown:cross-author-validity'
+  ]),
+  roof: Object.freeze([
+    'unknown:roof-slope-table',
+    'unknown:blank-plane-threshold'
+  ]),
+  facade: Object.freeze([
+    'unknown:blank-plane-threshold',
+    'unknown:repetition-limit'
+  ]),
+  materials: Object.freeze(['unknown:cross-author-validity']),
+  interior: Object.freeze([]),
+  scene: Object.freeze(['unknown:aesthetic-evaluator'])
+});
 
 export async function loadShadowCorpus({ projectRoot, readFile } = {}) {
   try {
@@ -181,7 +198,6 @@ function validateCoverage(layers, cards) {
   const coveredRuleIds = new Set();
   let advisoryCount = 0;
   let uncoveredCount = 0;
-  const unknownIds = new Set();
 
   for (const [index, layer] of layers.entries()) {
     if (!isObject(layer) || layer.layer !== LAYER_ORDER[index]) invalid();
@@ -196,21 +212,20 @@ function validateCoverage(layers, cards) {
     if (layer.status !== expectedStatus) invalid();
     if (layer.status === 'advisory-partial') advisoryCount += 1;
     else uncoveredCount += 1;
+    if (!isDeepStrictEqual(
+      layer.unknown_ids,
+      REVIEWED_UNKNOWN_IDS_BY_LAYER[layer.layer]
+    )) invalid();
 
     for (const ruleId of layer.rule_ids) {
       const card = cards.find((candidate) => candidate.rule_id === ruleId);
       if (!card || coveredRuleIds.has(ruleId)) invalid();
       coveredRuleIds.add(ruleId);
     }
-    for (const unknownId of layer.unknown_ids) {
-      if (typeof unknownId !== 'string' || unknownIds.has(unknownId)) continue;
-      unknownIds.add(unknownId);
-    }
   }
 
   if (advisoryCount !== 5 || uncoveredCount !== 4) invalid();
   if (coveredRuleIds.size !== cards.length) invalid();
-  if (!isDeepStrictEqual([...unknownIds].sort(), [...KNOWN_UNKNOWN_IDS])) invalid();
 }
 
 function corpusHash(files) {

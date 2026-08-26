@@ -94,6 +94,77 @@ test('corpus loader rejects coordinated drift from the authoritative unknown-ID 
   await assertCorpusRejected(files);
 });
 
+test('corpus loader rejects a non-string per-layer unknown ID', async () => {
+  const files = await loadCorpusBytes(ROOT);
+
+  mutateBothCoverageDocuments(files, (layers) => {
+    layers[0].unknown_ids.push(null);
+  });
+
+  await assertCorpusRejected(files);
+});
+
+test('corpus loader rejects a duplicate unknown ID within one layer', async () => {
+  const files = await loadCorpusBytes(ROOT);
+
+  mutateBothCoverageDocuments(files, (layers) => {
+    layers[0].unknown_ids.push('unknown:aesthetic-evaluator');
+  });
+
+  await assertCorpusRejected(files);
+});
+
+test('corpus loader rejects a reviewed repeated unknown ID in an unapproved layer', async () => {
+  const files = await loadCorpusBytes(ROOT);
+
+  mutateBothCoverageDocuments(files, (layers) => {
+    layers[2].unknown_ids.push('unknown:cross-author-validity');
+  });
+
+  await assertCorpusRejected(files);
+});
+
+test('corpus loader rejects coordinated unknown-ID reassignment between layers', async () => {
+  const files = await loadCorpusBytes(ROOT);
+
+  mutateBothCoverageDocuments(files, (layers) => {
+    const [reassigned] = layers[1].unknown_ids.splice(0, 1);
+    layers[2].unknown_ids.push(reassigned);
+  });
+
+  await assertCorpusRejected(files);
+});
+
+test('corpus loader rejects reordered per-layer unknown IDs', async () => {
+  const files = await loadCorpusBytes(ROOT);
+
+  mutateBothCoverageDocuments(files, (layers) => {
+    layers[0].unknown_ids.reverse();
+  });
+
+  await assertCorpusRejected(files);
+});
+
+test('corpus loader rejects a missing per-layer unknown ID', async () => {
+  const files = await loadCorpusBytes(ROOT);
+
+  mutateBothCoverageDocuments(files, (layers) => {
+    layers[1].unknown_ids.pop();
+  });
+
+  await assertCorpusRejected(files);
+});
+
+test('corpus loader rejects an extra known unknown ID in one layer', async () => {
+  const files = await loadCorpusBytes(ROOT);
+
+  mutateBothCoverageDocuments(files, (layers) => {
+    layers[1].unknown_ids.push('unknown:roof-slope-table');
+  });
+
+  await assertCorpusRejected(files);
+});
+
 test('corpus loader rejects invalid teaching-role and coverage-status relationships', async (t) => {
   for (const [name, mutate] of [
     ['core procedure marked manual-only', (card, admission) => {
@@ -244,10 +315,23 @@ function writeReviewedCards(files, cards) {
   files.set(REVIEWED_RULES_PATH, Buffer.from(`${cards.map(JSON.stringify).join('\n')}\n`));
 }
 
+function mutateBothCoverageDocuments(files, mutate) {
+  const admission = JSON.parse(files.get(ADMISSION_PATH));
+  const coverage = JSON.parse(files.get(COVERAGE_PATH));
+  mutate(admission.coverage);
+  mutate(coverage.layers);
+  files.set(ADMISSION_PATH, Buffer.from(`${JSON.stringify(admission)}\n`));
+  files.set(COVERAGE_PATH, Buffer.from(`${JSON.stringify(coverage)}\n`));
+}
+
 async function assertCorpusRejected(files) {
   await assert.rejects(
     loadShadowCorpus({ projectRoot: ROOT, readFile: mapReader(files) }),
-    /PLAYBOOK_CORPUS_INVALID/u
+    (error) => {
+      assert.equal(error.code, 'PLAYBOOK_CORPUS_INVALID');
+      assert.equal(error.message, 'PLAYBOOK_CORPUS_INVALID');
+      return true;
+    }
   );
 }
 
