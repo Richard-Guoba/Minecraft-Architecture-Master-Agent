@@ -92,10 +92,16 @@ export function validateCheckerRegistry(cards, registry) {
 
 function readonlyMap(entries) {
   const map = new Map(entries);
-  const immutable = new Proxy(map, {
+  let immutable;
+  immutable = new Proxy(map, {
     get(target, property) {
       if (property === 'set' || property === 'delete' || property === 'clear') {
         return rejectMapMutation;
+      }
+      if (property === 'forEach') {
+        return (callback, thisArg) => target.forEach(
+          (value, key) => callback.call(thisArg, value, key, immutable)
+        );
       }
       const value = Reflect.get(target, property, target);
       return typeof value === 'function' ? value.bind(target) : value;

@@ -44,6 +44,20 @@ test('registry and checker definitions cannot be mutated after creation', () => 
   assert.equal(registry.has('check:extra'), false);
 });
 
+test('registry forEach never exposes a mutable backing map', () => {
+  const registry = createCheckerRegistry();
+
+  assert.throws(() => {
+    registry.forEach((checker, checkId, receivedRegistry) => {
+      assert.equal(receivedRegistry, registry);
+      receivedRegistry.set('check:extra', checker);
+      assert.equal(checkId, 'check:massing:three-volume-composition');
+    });
+  }, TypeError);
+  assert.equal(registry.has('check:extra'), false);
+  assert.equal(registry.size, 21);
+});
+
 function removeFirst(definitions) {
   return definitions.slice(1);
 }
