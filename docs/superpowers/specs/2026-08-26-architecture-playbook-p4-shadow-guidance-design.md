@@ -338,7 +338,9 @@ LLM 输出必须满足：
 - blueprint 与规则语料哈希；
 - mode 和 explanation status；
 - 五个受管相对路径；
-- 每个受管文件的 SHA-256。
+- `review.json`、`prompt-packet.json`、`explanation.json` 和 `report.md` 的 SHA-256。
+
+`manifest.json` 不记录自身最终字节的哈希，因为这会形成不可解的自引用。它仍属于五个受管路径，并由严格 schema、固定 allowlist、普通文件检查和目录所有权验证保护。
 
 报告只使用相对路径，不复制完整规则语料，不声称读取视觉或改善建筑。
 
