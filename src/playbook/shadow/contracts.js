@@ -72,6 +72,13 @@ const CHECK_ID = /^check:[a-z0-9][a-z0-9:-]*$/u;
 const REPAIR_ID = /^repair:[a-z0-9][a-z0-9:-]*$/u;
 const UNKNOWN_ID = /^unknown:[a-z0-9][a-z0-9:-]*$/u;
 const SAFE_DETAIL = /^[a-z][a-z0-9-]{0,79}$/u;
+const IDENTIFIER_LIKE = /\b[a-z][a-z0-9.-]*:[a-z0-9][a-z0-9:._/-]*\b/giu;
+const MINECRAFT_BLOCK_ID = /\bminecraft:[a-z0-9_./-]+\b/iu;
+const COORDINATE_TRIPLE = /(?:\(|\[)\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*,\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*,\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*(?:\)|\])/u;
+const AXIS_COORDINATES = /\bx\s*[:=]\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)[,;\s]+y\s*[:=]\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)[,;\s]+z\s*[:=]\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)/iu;
+const PATCH_CONTENT = /(?:\b(?:apply[_ -]?patch|patch|diff --git|git apply)\b|(?:^|\n)@@\s|"op"\s*:\s*"(?:add|remove|replace|move|copy|test)"|补丁)/iu;
+const SCORE_CONTENT = /(?:\b(?:score|rating|grade)\s*(?:is\s*)?[:=]?\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:\s*\/\s*\d+|\s*%)?|(?:评分|得分|分数)\s*[:=为]?\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)|[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*%)/iu;
+const THRESHOLD_CONTENT = /(?:\b(?:threshold|cutoff|minimum|maximum|min|max)\s*(?:is|of)?\s*[:=]?\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)|(?:阈值|门槛|至少|至多|超过|低于|高于)\s*[:=为]?\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)|(?:>=|<=|>|<)\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+))/iu;
 
 export class ArchitecturePlaybookShadowError extends Error {
   constructor(code, detailCode) {
@@ -204,6 +211,9 @@ export function validateExplanation(value, review) {
       || explanation.status !== assessment.status
       || explanation.repair_operation_id !== assessment.repair_operation_id
     ) fail('LLM_AUTHORITY_VIOLATION', 'rule-authority');
+  }
+  if (value.mode === 'llm' && value.status === 'available') {
+    validateLlmContentAuthority(value, authoritativeReview);
   }
   return deepFreeze(value);
 }
@@ -352,6 +362,44 @@ function validateLayerExplanations(value, status) {
     assertExactObject(item, 'layer-explanation', LAYER_EXPLANATION_FIELDS, 'LLM_OUTPUT_INVALID');
     if (item.layer !== EVALUATED_LAYERS[index]) fail('LLM_OUTPUT_INVALID', 'layer-order');
     assertExplanationText(item.explanation, status, 'layer-explanation');
+  }
+}
+
+function validateLlmContentAuthority(value, review) {
+  const authoritativeUnknowns = new Set(review.assessments
+    .filter((assessment) => assessment.status === 'unknown')
+    .flatMap((assessment) => [...assessment.unknown_ids, ...assessment.missing_signals]));
+  if (value.overall_unknowns.some((item) => !authoritativeUnknowns.has(item))) {
+    fail('LLM_AUTHORITY_VIOLATION', 'overall-unknown-authority');
+  }
+
+  const authoritativeIdentifiers = new Set(review.assessments.flatMap((assessment) => [
+    assessment.rule_id,
+    assessment.check_id,
+    assessment.repair_operation_id,
+    ...assessment.unknown_ids
+  ].filter((item) => typeof item === 'string')));
+  for (const row of review.coverage) {
+    for (const unknownId of row.unknown_ids) authoritativeIdentifiers.add(unknownId);
+  }
+
+  const prose = [
+    ...value.layer_explanations.map((item) => item.explanation),
+    ...value.rule_explanations.map((item) => item.explanation)
+  ];
+  for (const text of prose) {
+    if (MINECRAFT_BLOCK_ID.test(text)) fail('LLM_AUTHORITY_VIOLATION', 'block-id');
+    if (COORDINATE_TRIPLE.test(text) || AXIS_COORDINATES.test(text)) {
+      fail('LLM_AUTHORITY_VIOLATION', 'coordinates');
+    }
+    if (PATCH_CONTENT.test(text)) fail('LLM_AUTHORITY_VIOLATION', 'patch');
+    if (SCORE_CONTENT.test(text)) fail('LLM_AUTHORITY_VIOLATION', 'score');
+    if (THRESHOLD_CONTENT.test(text)) fail('LLM_AUTHORITY_VIOLATION', 'threshold');
+    for (const match of text.matchAll(IDENTIFIER_LIKE)) {
+      if (!authoritativeIdentifiers.has(match[0])) {
+        fail('LLM_AUTHORITY_VIOLATION', 'invented-identifier');
+      }
+    }
   }
 }
 

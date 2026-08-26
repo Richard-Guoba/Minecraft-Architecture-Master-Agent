@@ -145,6 +145,46 @@ test('missing, added, reordered, status-drift, repair-drift, and hash-drift LLM 
   }
 });
 
+test('LLM prose with prohibited authority additions is discarded', async (t) => {
+  for (const [name, prohibitedText] of [
+    ['invented identifier', 'The unresolved source is unknown:invented-by-model.'],
+    ['coordinates', 'Place the support at x=12, y=64, z=-3.'],
+    ['block ID', 'Use minecraft:diamond_block for emphasis.'],
+    ['patch', 'Apply patch [{"op":"replace","path":"/architecture/volumes/0"}].'],
+    ['score', 'The architectural score is 0.92.'],
+    ['threshold', 'Treat the wall as blank when threshold=0.75.']
+  ]) {
+    await t.test(name, async () => {
+      const fixture = await explanationFixture();
+      const payload = validLlmPayload(fixture.review);
+      payload.layer_explanations[0].explanation = prohibitedText;
+
+      const result = await explainReview({
+        mode: 'llm', ...fixture, createClient: () => fakeClient(payload)
+      });
+
+      assert.equal(result.status, 'unavailable');
+      assert.equal(result.error_code, 'LLM_AUTHORITY_VIOLATION');
+      assert.equal(JSON.stringify(result).includes(prohibitedText), false);
+      assertUnavailableAuthority(result, fixture.review);
+    });
+  }
+});
+
+test('LLM overall unknowns must quote authoritative unknown or missing-signal values', async () => {
+  const fixture = await explanationFixture();
+  const payload = validLlmPayload(fixture.review);
+  payload.overall_unknowns = ['unknown:invented-by-model'];
+
+  const result = await explainReview({
+    mode: 'llm', ...fixture, createClient: () => fakeClient(payload)
+  });
+
+  assert.equal(result.status, 'unavailable');
+  assert.equal(result.error_code, 'LLM_AUTHORITY_VIOLATION');
+  assertUnavailableAuthority(result, fixture.review);
+});
+
 async function explanationFixture() {
   const corpus = await loadShadowCorpus({ projectRoot: ROOT });
   const blueprint = blueprintFixture();
@@ -166,6 +206,9 @@ async function explanationFixture() {
 }
 
 function validLlmPayload(review) {
+  const authoritativeUnknown = review.assessments
+    .filter((assessment) => assessment.status === 'unknown')
+    .flatMap((assessment) => [...assessment.unknown_ids, ...assessment.missing_signals])[0];
   return {
     review_hash: sha256(stableJson(review)),
     layer_explanations: LAYERS.map((layer) => ({ layer, explanation: `${layer} explanation` })),
@@ -175,7 +218,7 @@ function validLlmPayload(review) {
       repair_operation_id: assessment.repair_operation_id,
       explanation: `Explanation for ${assessment.rule_id}`
     })),
-    overall_unknowns: ['visual-evidence']
+    overall_unknowns: authoritativeUnknown ? [authoritativeUnknown] : []
   };
 }
 
