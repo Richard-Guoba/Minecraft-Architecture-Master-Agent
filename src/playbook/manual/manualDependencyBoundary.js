@@ -396,7 +396,7 @@ function collectDeniedCapability({
 
   if (
     lexical.isUnboundGlobal(node, 'Reflect')
-    && isIdentifierReference(node, parent)
+    && isReflectValueReference(node, parent)
   ) {
     unresolvedCodes.add('DYNAMIC_FUNCTION_CAPABILITY');
   }
@@ -659,12 +659,23 @@ function isDynamicFunctionConstructorSource(node, parent, lexical) {
     && propertyName === null
     && (
       isSyntacticFunctionValue(node.object)
-      || isDirectMemberCall(node, parent)
+      || isDirectConstFunctionMemberCall(node, parent, lexical)
     );
 }
 
-function isDirectMemberCall(node, parent) {
-  return parent?.type === 'CallExpression' && parent.callee === node;
+function isDirectConstFunctionMemberCall(node, parent, lexical) {
+  return parent?.type === 'CallExpression'
+    && parent.callee === node
+    && lexical.isConstFunctionBinding(node.object);
+}
+
+function isReflectValueReference(node, parent) {
+  return isIdentifierReference(node, parent)
+    && !(
+      parent?.type === 'MemberExpression'
+      && parent.object === node
+      && !parent.computed
+    );
 }
 
 function isDynamicReflectGet(node, lexical) {
@@ -802,7 +813,15 @@ function buildLexicalBindings(program) {
         ? nearestVarScope(scope)
         : scope;
       for (const declaration of node.declarations) {
-        declarePattern(declaration.id, declarationScope);
+        if (declaration.id?.type === 'Identifier') {
+          declareIdentifier(declaration.id, declarationScope, {
+            kind: 'VariableDeclarator',
+            declarationKind: node.kind,
+            init: declaration.init
+          });
+        } else {
+          declarePattern(declaration.id, declarationScope);
+        }
         visit(declaration, scope);
       }
       return;
@@ -903,6 +922,14 @@ function buildLexicalBindings(program) {
         && resolved.binding?.kind === 'ImportSpecifier'
         && resolved.binding.importedName === name
         && resolved.binding.source === source;
+    },
+    isConstFunctionBinding(node) {
+      if (node?.type !== 'Identifier') return false;
+      const resolved = resolveBinding(node, node.name);
+      return resolved.found
+        && resolved.binding?.kind === 'VariableDeclarator'
+        && resolved.binding.declarationKind === 'const'
+        && isSyntacticFunctionValue(resolved.binding.init);
     }
   };
 }

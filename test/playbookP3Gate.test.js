@@ -1080,6 +1080,43 @@ test('equivalent Function constructors execute but reflection fails closed', asy
     assert.equal(audit.import_boundary_violation_count, 0);
     assert.equal(audit.import_boundary_unresolved_count, 0);
   });
+
+  await t.test('ordinary dynamic computed dispatch stays ordinary', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.cjs';
+    const projectRoot = await dependencyFixture(t, {
+      [entryPath]: [
+        "const handlers = { safe: () => 'dispatch-safe' };",
+        "const key = 'safe';",
+        'module.exports = handlers[key]();',
+        ''
+      ].join('\n')
+    });
+
+    assert.equal(
+      requireDefault(path.join(projectRoot, entryPath)),
+      'dispatch-safe'
+    );
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+  });
+
+  await t.test('static Reflect.apply stays ordinary', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.cjs';
+    const projectRoot = await dependencyFixture(t, {
+      [entryPath]:
+        "module.exports = Reflect.apply((value) => value, null, ['safe']);\n"
+    });
+
+    assert.equal(requireDefault(path.join(projectRoot, entryPath)), 'safe');
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+  });
 });
 
 test('resolved targets use a supported format or fail closed once', async (t) => {
