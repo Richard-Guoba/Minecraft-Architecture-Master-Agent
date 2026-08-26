@@ -19,6 +19,8 @@ const SYSTEM_INSTRUCTION = [
   'Select authoritative references from the supplied deterministic architecture review.',
   'Return no explanation prose and copy only exact rule or fact references present in the packet.',
   'Preserve every required row, rule id, rule order, status, repair operation id, and review hash.',
+  'Return exactly five layer rows and 21 rule rows in the published order.',
+  'Every selected reference must be unique, canonically ordered, and satisfy the published membership and overall-unknown ordering rules.',
   'Follow output_contract exactly and do not add fields.'
 ].join(' ');
 

@@ -100,9 +100,9 @@ test('report does not promote accepted LLM reference selections into a new repor
 
   const explanation = JSON.parse(files['explanation.json']);
   assert.equal(explanation.status, 'available');
-  assert.match(explanation.rule_explanations[0].explanation, /references=/u);
+  assert.match(explanation.rule_explanations[0].explanation, /reference_indexes=/u);
   assert.doesNotMatch(files['explanation.json'].toString('utf8'), /A compact medieval timber house/u);
-  assert.doesNotMatch(files['report.md'].toString('utf8'), /references=/u);
+  assert.doesNotMatch(files['report.md'].toString('utf8'), /reference_indexes=/u);
 });
 
 test('orchestration rejects malformed blueprint bytes before producing artifacts', async () => {

@@ -203,3 +203,131 @@ No unrelated source or runtime output was added. `git diff --check` passes, and 
 ## Concerns
 
 The internal provider candidate contract is intentionally breaking: any external fixture or configured provider prompt that still emits free-form explanation rows will degrade safely until updated to the published reference-selection schema. No remaining safety concern was found within the requested boundary.
+
+---
+
+## Fix round 1: exact public/wrapper parity and bounded rendering
+
+### Findings and root-cause hypothesis
+
+The first implementation closed the free-prose boundary but left three structural mismatches:
+
+1. Candidate-wide overall unknowns were chosen from the first 12 prompt-exposed values per field, while `validateExplanation()` accepted the larger review-wide unknown set. A thirteenth missing signal therefore existed in the public validator's authority universe even though the provider could not select it.
+2. Public rule text was parsed and subset-checked, but was not reconstructed with the wrapper renderer. Canonical JSON bytes alone do not impose object key order, so a reversed-key object could pass.
+3. Candidate values were bounded in the prompt, then resolved to review strings as long as 2,048 code points and embedded in one rule explanation. Consequently, a valid selection could exceed the final 2,048-code-point text limit and degrade.
+
+The hypothesis was that all three defects came from representing the public explanation with resolved strings while independently reimplementing candidate authority in the public validator. The correction therefore needed one bounded normalized representation and exact re-rendering, not more lexical filtering.
+
+### RED evidence
+
+Each narrow regression failed against the prior implementation for its intended reason:
+
+```text
+node --test --test-isolation=none \
+  --test-name-pattern='outside the prompt-bounded universe' \
+  test/playbookShadowExplanation.test.js
+tests 1; pass 0; fail 1
+Missing expected exception
+
+node --test --test-isolation=none \
+  --test-name-pattern='non-canonical rendered rule key order' \
+  test/playbookShadowExplanation.test.js
+tests 1; pass 0; fail 1
+Missing expected exception
+
+node --test --test-isolation=none \
+  --test-name-pattern='maximum-length review fact' \
+  test/playbookShadowExplanation.test.js
+tests 1; pass 0; fail 1
+actual 'unavailable'; expected 'available'
+
+node --test --test-isolation=none \
+  --test-name-pattern='clamps untrusted prose' \
+  test/playbookShadowEvaluation.test.js
+tests 1; pass 0; fail 1
+published row/reference/render contracts were absent
+```
+
+During implementation, comparison of the prompt and review universes exposed one adjacent parity case: two distinct review strings can truncate to the same 800-code-point prompt value, so the later index is not provider-selectable. Its regression also failed RED with `Missing expected exception` before the public validator adopted the same selectable-index set.
+
+### Corrected contracts
+
+The provider candidate schema remains reference-only and unchanged. `output_contract` now strictly publishes and validates:
+
+- `row_contract`: mandatory layer count 5 and exact layer order; mandatory rule count 21 and exact rule order; immutable `rule_id`, `status`, and `repair_operation_id` row fields;
+- `reference_contract`: uniqueness, canonical ordering, same-layer rule membership, same-rule prompt-field membership, prompt-exposed unknown-assessment membership, and exact `rule_order / unknown_ids / missing_signals` overall ordering;
+- `render_contract`: `authoritative-reference-indexes.v1` with a 2,048-code-point explanation maximum.
+
+The system instruction now states the five/21 row requirements and the published uniqueness, canonical-order, membership, and overall-unknown constraints explicitly.
+
+After candidate validation, local normalized layer/rule selections contain only canonical zero-based indexes into their bounded authoritative reference lists. The wrapper renders fixed forms:
+
+```text
+<layer>：rule_indexes=<canonical JSON array>
+<status>：reference_indexes={"observations":[],"missing_signals":[],"unknown_ids":[]}
+```
+
+The fixed row/field maxima make every valid index rendering far shorter than 2,048 code points, independent of resolved review-string length. The public validator parses these forms, validates index reachability against the same first-12 prompt universe (including truncation aliases), invokes the same render functions, and requires exact text equality. Public overall unknowns are validated against the same prompt-bounded unknown universe as candidate validation, rather than all review unknowns. Mock templates and final authority rows/artifacts are unchanged.
+
+No free-prose blacklist was added or restored.
+
+### GREEN and verification evidence
+
+Focused explanation/contracts/evaluation/run suites:
+
+```text
+node --test --test-isolation=none \
+  test/playbookShadowExplanation.test.js \
+  test/playbookShadowContracts.test.js \
+  test/playbookShadowEvaluation.test.js \
+  test/playbookShadowRun.test.js
+tests 58
+pass 58
+fail 0
+```
+
+Exact 11-file P4 suite with CLI subprocess permission:
+
+```text
+tests 184
+pass 184
+fail 0
+```
+
+The first sandboxed P4 run reproduced the known CLI subprocess restriction only (`top-level CLI emits only a safe stable error code`: empty child stderr); the permissioned exact rerun passed 184/184.
+
+Dependency gate:
+
+```text
+node --test --test-isolation=none test/playbookShadowGate.test.js
+tests 27
+pass 27
+fail 0
+```
+
+Managed P3 check:
+
+```text
+npm run playbook:manual -- check
+playbook_status=current
+playbook_version=0.1.0
+reviewed_rule_count=21
+core_procedure_count=15
+case_pattern_count=6
+artifact_count=5
+managed_artifact_drift_count=0
+```
+
+Full repository regression with subprocess permission and the dot reporter:
+
+```text
+npm test -- --test-reporter=dot
+dot_count 1029
+exit 0
+```
+
+### Fix-round self-review and concerns
+
+The diff was reviewed for wrapper/public authority symmetry, prompt truncation and duplicate aliases, zero/negative/non-integer/reordered indexes, canonical object key order, five/21 row invariants, field membership, overall ordering, unavailable degradation, mock stability, and output/report claim accuracy. `git diff --check` passes. No generated run output is tracked.
+
+The public LLM explanation text intentionally changes from resolved reference strings to bounded reference indexes; its outer `Explanation` schema, five authority layer rows, 21 authority rule rows, mock rendering, artifacts, manifest/storage/CLI contracts, deterministic review, and Level-A boundary remain unchanged. No remaining safety concern was found within the requested boundary.

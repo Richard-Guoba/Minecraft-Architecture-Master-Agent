@@ -61,18 +61,11 @@ test('valid reference-only LLM candidate is accepted and wrapper-rendered', asyn
   assert.equal(result.rule_explanations[0].explanation.includes('Explanation for'), false);
   assert.match(result.rule_explanations[0].explanation, /^(?:satisfied|violated|unknown|not-applicable)：/u);
   const multiSignalIndex = fixture.promptPacket.rules.findIndex((rule) => rule.missing_signals.length >= 2);
-  assert.equal(
-    result.rule_explanations[multiSignalIndex].explanation.includes(
-      fixture.promptPacket.rules[multiSignalIndex].missing_signals[0]
-    ),
-    true
-  );
-  assert.equal(
-    result.rule_explanations[multiSignalIndex].explanation.includes(
-      fixture.promptPacket.rules[multiSignalIndex].missing_signals[1]
-    ),
-    false
-  );
+  const row = result.rule_explanations[multiSignalIndex];
+  const indexes = JSON.parse(row.explanation.slice(
+    `${row.status}：reference_indexes=`.length
+  ));
+  assert.deepEqual(indexes.missing_signals, [0]);
 });
 
 test('LLM authority changes discard the whole explanation but preserve review and prompt bytes', async () => {
@@ -252,6 +245,99 @@ test('public explanation validation rejects non-wrapper LLM prose', async () => 
 
   assert.throws(
     () => validateExplanation(bypass, fixture.review),
+    /LLM_AUTHORITY_VIOLATION/u
+  );
+});
+
+test('public explanation validation rejects an overall unknown outside the prompt-bounded universe', async () => {
+  const fixture = await explanationFixture();
+  const review = structuredClone(fixture.review);
+  const ruleIndex = review.assessments.findIndex((assessment) => assessment.status === 'unknown');
+  review.assessments[ruleIndex].unknown_ids = [];
+  review.assessments[ruleIndex].missing_signals = Array.from(
+    { length: 13 },
+    (_, index) => `signal-${String(index).padStart(2, '0')}`
+  );
+  const promptPacket = buildPromptPacket({
+    review,
+    cards: fixture.cards,
+    blueprintPrompt: 'A compact medieval timber house.'
+  });
+  const available = await explainReview({
+    mode: 'llm',
+    review,
+    promptPacket,
+    createClient: () => fakeClient(validLlmSelection(review, promptPacket))
+  });
+  assert.equal(available.status, 'available');
+
+  const bypass = structuredClone(available);
+  bypass.overall_unknowns = [review.assessments[ruleIndex].missing_signals[12]];
+  assert.throws(
+    () => validateExplanation(bypass, review),
+    /LLM_AUTHORITY_VIOLATION/u
+  );
+});
+
+test('public explanation validation rejects non-canonical rendered rule key order', async () => {
+  const fixture = await explanationFixture();
+  const available = await explainReview({
+    mode: 'llm',
+    ...fixture,
+    createClient: () => fakeClient(validLlmSelection(fixture.review, fixture.promptPacket))
+  });
+  assert.equal(available.status, 'available');
+
+  const bypass = structuredClone(available);
+  const row = bypass.rule_explanations[0];
+  const prefix = `${row.status}：reference_indexes=`;
+  const references = JSON.parse(row.explanation.slice(prefix.length));
+  row.explanation = `${prefix}${JSON.stringify({
+    unknown_ids: references.unknown_ids,
+    missing_signals: references.missing_signals,
+    observations: references.observations
+  })}`;
+
+  assert.throws(
+    () => validateExplanation(bypass, fixture.review),
+    /LLM_AUTHORITY_VIOLATION/u
+  );
+});
+
+test('public explanation validation rejects an index hidden by prompt truncation aliasing', async () => {
+  const fixture = await explanationFixture();
+  const review = structuredClone(fixture.review);
+  const ruleIndex = review.assessments.findIndex((assessment) => assessment.status === 'unknown');
+  review.assessments[ruleIndex].missing_signals = [
+    `${'a'.repeat(800)}-first`,
+    `${'a'.repeat(800)}-second`
+  ];
+  const promptPacket = buildPromptPacket({
+    review,
+    cards: fixture.cards,
+    blueprintPrompt: 'A compact medieval timber house.'
+  });
+  assert.equal(
+    promptPacket.rules[ruleIndex].missing_signals[0],
+    promptPacket.rules[ruleIndex].missing_signals[1]
+  );
+  const available = await explainReview({
+    mode: 'llm',
+    review,
+    promptPacket,
+    createClient: () => fakeClient(validLlmSelection(review, promptPacket))
+  });
+  assert.equal(available.status, 'available');
+
+  const bypass = structuredClone(available);
+  const row = bypass.rule_explanations[ruleIndex];
+  const prefix = `${row.status}：reference_indexes=`;
+  const indexes = JSON.parse(row.explanation.slice(prefix.length));
+  indexes.missing_signals = [1];
+  row.explanation = `${prefix}${JSON.stringify(indexes)}`;
+
+  assert.throws(
+    () => validateExplanation(bypass, review),
     /LLM_AUTHORITY_VIOLATION/u
   );
 });
@@ -446,13 +532,13 @@ test('the same validated reference selection produces deterministic explanation 
   assert.equal(stableJson(first), stableJson(second));
 });
 
-test('wrapper rendering resolves a bounded prompt reference back to the authoritative review fact', async () => {
+test('wrapper rendering accepts a maximum-length review fact through bounded index references', async () => {
   const fixture = await explanationFixture();
   const review = structuredClone(fixture.review);
   const ruleIndex = review.assessments.findIndex((assessment) => (
     assessment.status === 'unknown' && assessment.missing_signals.length > 0
   ));
-  const authoritativeSignal = `signal-${'a'.repeat(900)}`;
+  const authoritativeSignal = 'a'.repeat(2048);
   review.assessments[ruleIndex].missing_signals[0] = authoritativeSignal;
   const promptPacket = buildPromptPacket({
     review,
@@ -467,7 +553,11 @@ test('wrapper rendering resolves a bounded prompt reference back to the authorit
 
   assert.equal(Array.from(promptPacket.rules[ruleIndex].missing_signals[0]).length, 800);
   assert.equal(result.status, 'available');
-  assert.equal(result.rule_explanations[ruleIndex].explanation.includes(authoritativeSignal), true);
+  assert.equal(
+    Array.from(result.rule_explanations[ruleIndex].explanation).length <= 2048,
+    true
+  );
+  assert.match(result.rule_explanations[ruleIndex].explanation, /reference_indexes=/u);
 });
 
 async function explanationFixture() {

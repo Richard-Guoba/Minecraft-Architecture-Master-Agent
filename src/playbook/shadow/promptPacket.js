@@ -50,7 +50,26 @@ export function buildPromptPacket({ review, cards, blueprintPrompt } = {}) {
       rule_selection_fields: [...LLM_RULE_SELECTION_FIELDS],
       maximum_layer_rule_references: MAX_LAYER_RULE_REFERENCES,
       maximum_rule_references_per_field: MAX_RULE_FACT_REFERENCES,
-      maximum_overall_unknown_references: MAX_OVERALL_UNKNOWN_REFERENCES
+      maximum_overall_unknown_references: MAX_OVERALL_UNKNOWN_REFERENCES,
+      row_contract: {
+        layer_count: EVALUATED_LAYERS.length,
+        layer_order: [...EVALUATED_LAYERS],
+        rule_count: authoritativeReview.assessments.length,
+        rule_order: authoritativeReview.assessments.map((assessment) => assessment.rule_id),
+        immutable_rule_fields: ['rule_id', 'status', 'repair_operation_id']
+      },
+      reference_contract: {
+        unique: true,
+        canonical_order: true,
+        layer_rule_membership: 'same-layer-assessments',
+        rule_fact_membership: 'same-rule-prompt-field',
+        overall_unknown_membership: 'prompt-exposed-unknown-assessments',
+        overall_unknown_order: ['rule_order', 'unknown_ids', 'missing_signals']
+      },
+      render_contract: {
+        format: 'authoritative-reference-indexes.v1',
+        maximum_explanation_code_points: 2048
+      }
     }
   };
   return validatePromptPacket(deepFreeze(packet), authoritativeReview);

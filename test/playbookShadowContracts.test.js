@@ -84,6 +84,30 @@ test('manifest accepts only the fixed managed_paths field', () => {
   assert.throws(() => validateManifest(legacyHashField), /SHADOW_OUTPUT_OWNERSHIP/u);
 });
 
+test('prompt output contract rejects drift in published row, membership, and render constraints', () => {
+  const review = validateReview(validReviewFixture());
+  const variants = [
+    (packet) => { packet.output_contract.row_contract.layer_count = 4; },
+    (packet) => { packet.output_contract.row_contract.rule_order.reverse(); },
+    (packet) => { packet.output_contract.reference_contract.unique = false; },
+    (packet) => {
+      packet.output_contract.reference_contract.rule_fact_membership = 'any-rule';
+    },
+    (packet) => {
+      packet.output_contract.reference_contract.overall_unknown_order.reverse();
+    },
+    (packet) => {
+      packet.output_contract.render_contract.maximum_explanation_code_points = 4096;
+    }
+  ];
+
+  for (const mutate of variants) {
+    const packet = validPromptPacketFixture(review);
+    mutate(packet);
+    assert.throws(() => validatePromptPacket(packet, review), /BLUEPRINT_INVALID/u);
+  }
+});
+
 test('review rejects invalidated layers on non-violated assessments', () => {
   const review = validReviewFixture();
   review.assessments[0].invalidates_layers = ['roof'];
@@ -215,7 +239,26 @@ function validPromptPacketFixture(review) {
       ],
       maximum_layer_rule_references: 21,
       maximum_rule_references_per_field: 12,
-      maximum_overall_unknown_references: 64
+      maximum_overall_unknown_references: 64,
+      row_contract: {
+        layer_count: 5,
+        layer_order: ['brief', 'massing', 'structure', 'roof', 'facade'],
+        rule_count: 21,
+        rule_order: review.assessments.map((assessment) => assessment.rule_id),
+        immutable_rule_fields: ['rule_id', 'status', 'repair_operation_id']
+      },
+      reference_contract: {
+        unique: true,
+        canonical_order: true,
+        layer_rule_membership: 'same-layer-assessments',
+        rule_fact_membership: 'same-rule-prompt-field',
+        overall_unknown_membership: 'prompt-exposed-unknown-assessments',
+        overall_unknown_order: ['rule_order', 'unknown_ids', 'missing_signals']
+      },
+      render_contract: {
+        format: 'authoritative-reference-indexes.v1',
+        maximum_explanation_code_points: 2048
+      }
     }
   };
 }

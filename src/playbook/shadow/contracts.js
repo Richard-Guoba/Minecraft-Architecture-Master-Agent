@@ -60,7 +60,26 @@ const PROMPT_DATA_FIELDS = Object.freeze(['value', 'role']);
 const OUTPUT_CONTRACT_FIELDS = Object.freeze([
   'format', 'candidate_fields', 'layer_selection_fields', 'rule_selection_fields',
   'maximum_layer_rule_references', 'maximum_rule_references_per_field',
-  'maximum_overall_unknown_references'
+  'maximum_overall_unknown_references', 'row_contract', 'reference_contract',
+  'render_contract'
+]);
+const ROW_CONTRACT_FIELDS = Object.freeze([
+  'layer_count', 'layer_order', 'rule_count', 'rule_order',
+  'immutable_rule_fields'
+]);
+const REFERENCE_CONTRACT_FIELDS = Object.freeze([
+  'unique', 'canonical_order', 'layer_rule_membership',
+  'rule_fact_membership', 'overall_unknown_membership',
+  'overall_unknown_order'
+]);
+const RENDER_CONTRACT_FIELDS = Object.freeze([
+  'format', 'maximum_explanation_code_points'
+]);
+const IMMUTABLE_RULE_FIELDS = Object.freeze([
+  'rule_id', 'status', 'repair_operation_id'
+]);
+const OVERALL_UNKNOWN_ORDER = Object.freeze([
+  'rule_order', 'unknown_ids', 'missing_signals'
 ]);
 export const LLM_CANDIDATE_FIELDS = Object.freeze([
   'review_hash', 'layer_selections', 'rule_selections', 'overall_unknown_references'
@@ -223,6 +242,102 @@ export function validatePromptPacket(value, review) {
     'BLUEPRINT_INVALID',
     'maximum-overall-unknown-references'
   );
+  assertExactObject(
+    value.output_contract.row_contract,
+    'row-contract',
+    ROW_CONTRACT_FIELDS,
+    'BLUEPRINT_INVALID'
+  );
+  assertLiteral(
+    value.output_contract.row_contract.layer_count,
+    EVALUATED_LAYERS.length,
+    'BLUEPRINT_INVALID',
+    'layer-row-count'
+  );
+  assertExactArray(
+    value.output_contract.row_contract.layer_order,
+    EVALUATED_LAYERS,
+    'BLUEPRINT_INVALID',
+    'layer-row-order'
+  );
+  assertLiteral(
+    value.output_contract.row_contract.rule_count,
+    value.rules.length,
+    'BLUEPRINT_INVALID',
+    'rule-row-count'
+  );
+  assertExactArray(
+    value.output_contract.row_contract.rule_order,
+    value.rules.map((rule) => rule.rule_id),
+    'BLUEPRINT_INVALID',
+    'rule-row-order'
+  );
+  assertExactArray(
+    value.output_contract.row_contract.immutable_rule_fields,
+    IMMUTABLE_RULE_FIELDS,
+    'BLUEPRINT_INVALID',
+    'immutable-rule-fields'
+  );
+  assertExactObject(
+    value.output_contract.reference_contract,
+    'reference-contract',
+    REFERENCE_CONTRACT_FIELDS,
+    'BLUEPRINT_INVALID'
+  );
+  assertLiteral(
+    value.output_contract.reference_contract.unique,
+    true,
+    'BLUEPRINT_INVALID',
+    'unique-references'
+  );
+  assertLiteral(
+    value.output_contract.reference_contract.canonical_order,
+    true,
+    'BLUEPRINT_INVALID',
+    'canonical-reference-order'
+  );
+  assertLiteral(
+    value.output_contract.reference_contract.layer_rule_membership,
+    'same-layer-assessments',
+    'BLUEPRINT_INVALID',
+    'layer-rule-membership'
+  );
+  assertLiteral(
+    value.output_contract.reference_contract.rule_fact_membership,
+    'same-rule-prompt-field',
+    'BLUEPRINT_INVALID',
+    'rule-fact-membership'
+  );
+  assertLiteral(
+    value.output_contract.reference_contract.overall_unknown_membership,
+    'prompt-exposed-unknown-assessments',
+    'BLUEPRINT_INVALID',
+    'overall-unknown-membership'
+  );
+  assertExactArray(
+    value.output_contract.reference_contract.overall_unknown_order,
+    OVERALL_UNKNOWN_ORDER,
+    'BLUEPRINT_INVALID',
+    'overall-unknown-order'
+  );
+  assertExactObject(
+    value.output_contract.render_contract,
+    'render-contract',
+    RENDER_CONTRACT_FIELDS,
+    'BLUEPRINT_INVALID'
+  );
+  assertLiteral(
+    value.output_contract.render_contract.format,
+    'authoritative-reference-indexes.v1',
+    'BLUEPRINT_INVALID',
+    'render-format'
+  );
+  assertLiteral(
+    value.output_contract.render_contract.maximum_explanation_code_points,
+    MAX_EXPLANATION_CODE_POINTS,
+    'BLUEPRINT_INVALID',
+    'maximum-explanation-code-points'
+  );
   if (review !== undefined) validatePromptReviewAuthority(value, validateReview(review));
   return deepFreeze(value);
 }
@@ -322,7 +437,7 @@ export function validateLlmCandidate(candidate, review, promptPacket) {
     );
     return {
       layer,
-      selected_rule_ids: indexes.map((selectedIndex) => authoritativeIds[selectedIndex])
+      selected_rule_indexes: indexes
     };
   });
 
@@ -354,22 +469,19 @@ export function validateLlmCandidate(candidate, review, promptPacket) {
       rule_id: assessment.rule_id,
       status: assessment.status,
       repair_operation_id: assessment.repair_operation_id,
-      selected_observations: normalizeCandidateReferences(
+      selected_observation_indexes: normalizeCandidateReferenceIndexes(
         selection.selected_observations,
         promptRule.observations,
-        assessment.observations,
         'observation-reference'
       ),
-      selected_missing_signals: normalizeCandidateReferences(
+      selected_missing_signal_indexes: normalizeCandidateReferenceIndexes(
         selection.selected_missing_signals,
         promptRule.missing_signals,
-        assessment.missing_signals,
         'missing-signal-reference'
       ),
-      selected_unknown_ids: normalizeCandidateReferences(
+      selected_unknown_id_indexes: normalizeCandidateReferenceIndexes(
         selection.selected_unknown_ids,
         promptRule.unknown_ids,
-        assessment.unknown_ids,
         'unknown-id-reference'
       )
     };
@@ -397,18 +509,18 @@ export function validateLlmCandidate(candidate, review, promptPacket) {
 }
 
 export function renderLlmLayerExplanation(selection) {
-  const text = `${selection.layer}：rule_ids=${JSON.stringify(selection.selected_rule_ids)}`;
+  const text = `${selection.layer}：rule_indexes=${JSON.stringify(selection.selected_rule_indexes)}`;
   assertRenderedExplanationLength(text);
   return text;
 }
 
 export function renderLlmRuleExplanation(selection) {
-  const references = {
-    observations: selection.selected_observations,
-    missing_signals: selection.selected_missing_signals,
-    unknown_ids: selection.selected_unknown_ids
+  const referenceIndexes = {
+    observations: selection.selected_observation_indexes,
+    missing_signals: selection.selected_missing_signal_indexes,
+    unknown_ids: selection.selected_unknown_id_indexes
   };
-  const text = `${selection.status}：references=${JSON.stringify(references)}`;
+  const text = `${selection.status}：reference_indexes=${JSON.stringify(referenceIndexes)}`;
   assertRenderedExplanationLength(text);
   return text;
 }
@@ -608,43 +720,66 @@ function validateMockContentAuthority(value, review) {
 function validateRenderedLlmAuthority(value, review) {
   for (const [index, item] of value.layer_explanations.entries()) {
     const layer = EVALUATED_LAYERS[index];
-    const selectedRuleIds = parseCanonicalJsonSuffix(item.explanation, `${layer}：rule_ids=`);
-    assertCandidateStrings(selectedRuleIds, 'rendered-layer-rule-ids', MAX_LAYER_RULE_REFERENCES);
-    const authoritativeIds = review.assessments
+    const selectedRuleIndexes = parseCanonicalJsonSuffix(
+      item.explanation,
+      `${layer}：rule_indexes=`
+    );
+    const authoritativeRuleCount = review.assessments
       .filter((assessment) => assessment.design_layer === layer)
-      .map((assessment) => assessment.rule_id);
-    canonicalSubsetIndexes(selectedRuleIds, authoritativeIds, 'rendered-layer-rule-reference');
+      .length;
+    assertCanonicalIndexes(
+      selectedRuleIndexes,
+      authoritativeRuleCount,
+      MAX_LAYER_RULE_REFERENCES,
+      'rendered-layer-rule-reference'
+    );
+    const rendered = renderLlmLayerExplanation({
+      layer,
+      selected_rule_indexes: selectedRuleIndexes
+    });
+    if (item.explanation !== rendered) {
+      fail('LLM_AUTHORITY_VIOLATION', 'rendered-layer-explanation');
+    }
   }
 
   for (const [index, item] of value.rule_explanations.entries()) {
     const assessment = review.assessments[index];
-    const references = parseCanonicalJsonSuffix(
+    const referenceIndexes = parseCanonicalJsonSuffix(
       item.explanation,
-      `${assessment.status}：references=`
+      `${assessment.status}：reference_indexes=`
     );
-    assertExactObject(references, 'rendered-rule-references', [
+    assertExactObject(referenceIndexes, 'rendered-rule-references', [
       'observations', 'missing_signals', 'unknown_ids'
     ], 'LLM_AUTHORITY_VIOLATION');
     for (const field of ['observations', 'missing_signals', 'unknown_ids']) {
-      assertCandidateStrings(references[field], `rendered-${field}`, MAX_RULE_FACT_REFERENCES);
-      canonicalSubsetIndexes(
-        references[field],
-        assessment[field].slice(0, MAX_RULE_FACT_REFERENCES),
-        `rendered-${field}-reference`
+      assertCanonicalIndexes(
+        referenceIndexes[field],
+        Math.min(assessment[field].length, MAX_RULE_FACT_REFERENCES),
+        MAX_RULE_FACT_REFERENCES,
+        `rendered-${field}-reference`,
+        selectablePromptReferenceIndexes(assessment[field])
       );
+    }
+    const rendered = renderLlmRuleExplanation({
+      status: assessment.status,
+      selected_observation_indexes: referenceIndexes.observations,
+      selected_missing_signal_indexes: referenceIndexes.missing_signals,
+      selected_unknown_id_indexes: referenceIndexes.unknown_ids
+    });
+    if (item.explanation !== rendered) {
+      fail('LLM_AUTHORITY_VIOLATION', 'rendered-rule-explanation');
     }
   }
 
   canonicalSubsetIndexes(
     value.overall_unknowns,
-    allReviewUnknowns(review),
+    promptBoundedReviewUnknowns(review),
     'overall-unknown-authority'
   );
 }
 
-function normalizeCandidateReferences(selected, promptValues, reviewValues, detail) {
-  const indexes = canonicalSubsetIndexes(selected, promptValues, detail);
-  return indexes.map((index) => reviewValues[index]);
+function normalizeCandidateReferenceIndexes(selected, promptValues, detail) {
+  return canonicalSubsetIndexes(selected, promptValues, detail);
 }
 
 function authoritativeUnknownReferences(review, packet) {
@@ -666,6 +801,24 @@ function authoritativeUnknownReferences(review, packet) {
 
 function stableReviewUnknowns(review) {
   return allReviewUnknowns(review).slice(0, MAX_OVERALL_UNKNOWN_REFERENCES);
+}
+
+function promptBoundedReviewUnknowns(review) {
+  const values = [];
+  const seenPromptValues = new Set();
+  for (const assessment of review.assessments) {
+    if (assessment.status !== 'unknown') continue;
+    for (const field of ['unknown_ids', 'missing_signals']) {
+      const promptValues = promptReferenceValues(assessment[field]);
+      for (const [index, promptValue] of promptValues.entries()) {
+        if (seenPromptValues.has(promptValue)) continue;
+        seenPromptValues.add(promptValue);
+        const bounded = capText(assessment[field][index], MAX_EXPLANATION_CODE_POINTS);
+        if (!values.includes(bounded)) values.push(bounded);
+      }
+    }
+  }
+  return values;
 }
 
 function allReviewUnknowns(review) {
@@ -690,6 +843,35 @@ function canonicalSubsetIndexes(selected, authoritative, detail) {
     const index = authoritative.indexOf(value);
     if (index < 0 || index <= previous) fail('LLM_AUTHORITY_VIOLATION', detail);
     previous = index;
+    indexes.push(index);
+  }
+  return indexes;
+}
+
+function assertCanonicalIndexes(value, authoritativeLength, maximum, detail, selectableIndexes) {
+  if (!Array.isArray(value) || value.length > maximum) {
+    fail('LLM_AUTHORITY_VIOLATION', detail);
+  }
+  const selectable = selectableIndexes === undefined ? null : new Set(selectableIndexes);
+  let previous = -1;
+  for (const index of value) {
+    if (
+      !Number.isInteger(index)
+      || index < 0
+      || index >= authoritativeLength
+      || (selectable !== null && !selectable.has(index))
+      || index <= previous
+    ) fail('LLM_AUTHORITY_VIOLATION', detail);
+    previous = index;
+  }
+}
+
+function selectablePromptReferenceIndexes(values) {
+  const indexes = [];
+  const seen = new Set();
+  for (const [index, value] of promptReferenceValues(values).entries()) {
+    if (seen.has(value)) continue;
+    seen.add(value);
     indexes.push(index);
   }
   return indexes;
