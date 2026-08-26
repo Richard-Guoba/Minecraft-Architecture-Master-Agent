@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "school_id": "heihui-jileniao",
+  "pilot_episode_count": 6,
+  "unknowns": [
+    {
+      "unknown_id": "unknown:massing-ratio-thresholds",
+      "question": "主体、次体和连接体之间需要多大的尺寸差，才能稳定形成主次？",
+      "blocked_parameters": ["primary_secondary_volume_ratio", "height_ratio", "screen_area_ratio"],
+      "next_evidence": "从同一作者更多住宅案例中标注体块包围盒，并做成对比较。"
+    },
+    {
+      "unknown_id": "unknown:blank-plane-threshold",
+      "question": "多大的墙面或屋面连续屏幕面积应触发分割？",
+      "blocked_parameters": ["max_blank_facade_area", "max_continuous_roof_area"],
+      "next_evidence": "采集作者明确评价为过空、合适和过碎的正反例。"
+    },
+    {
+      "unknown_id": "unknown:repetition-limit",
+      "question": "完整墙间连续重复多少次会产生审美疲劳？",
+      "blocked_parameters": ["max_identical_adjacent_bays"],
+      "next_evidence": "对多个尺度的连续墙间进行同作者成对评价。"
+    },
+    {
+      "unknown_id": "unknown:roof-slope-table",
+      "question": "建筑跨度、总高和屋顶坡度之间的可执行映射是什么？",
+      "blocked_parameters": ["roof_run_per_rise", "ridge_height_ratio"],
+      "next_evidence": "从屋顶系列抽取逐层放置步骤和最终跨度。"
+    },
+    {
+      "unknown_id": "unknown:medieval-scale-generalization",
+      "question": "一至两格外挑、斜撑尺度和石基高度能否跨建筑尺度泛化？",
+      "blocked_parameters": ["overhang_depth", "brace_span", "stone_base_height"],
+      "next_evidence": "至少收集小型、中型和大型民居各三例。"
+    },
+    {
+      "unknown_id": "unknown:aesthetic-evaluator",
+      "question": "如何把主次、层次、统一与变化组合成不压制简单美感的评价器？",
+      "blocked_parameters": ["metric_weights", "viewpoint_aggregation", "style_conditioning"],
+      "next_evidence": "用成对偏好而非单一总分评测灰模、结构、屋顶和立面各阶段。"
+    },
+    {
+      "unknown_id": "unknown:cross-author-validity",
+      "question": "这些规则哪些属于该作者流派，哪些能跨作者与风格成立？",
+      "blocked_parameters": ["school_scope", "style_scope"],
+      "next_evidence": "保持作者隔离，引入第二教学体系后只在冲突层比较，不直接合并。"
+    }
+  ]
+}

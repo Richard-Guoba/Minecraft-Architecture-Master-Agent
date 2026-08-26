@@ -53,9 +53,7 @@ export async function runConstructionWorkflow({
   conceptStrategy = 'select',
   critics = true,
   neuralRetrieval = false,
-  coarseVoxelMode = 'off', coarseVoxelProvider = 'baseline', coarseVoxelPlan,
-  coarseVoxelCheckpoint, coarseVoxelCheckpointManifest, coarseVoxelPythonExecutable,
-  coarseVoxelPythonInvoke
+  coarseVoxelMode = 'off', coarseVoxelProvider = 'baseline', coarseVoxelPlan
 }) {
   if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
 
@@ -110,10 +108,6 @@ export async function runConstructionWorkflow({
     mode: coarseVoxelMode,
     provider: coarseVoxelProvider,
     artifactPath: coarseVoxelPlan,
-    checkpointPath: coarseVoxelCheckpoint,
-    manifestPath: coarseVoxelCheckpointManifest,
-    pythonExecutable: coarseVoxelPythonExecutable,
-    pythonInvoke: coarseVoxelPythonInvoke,
     prompt,
     seed,
     architecture,

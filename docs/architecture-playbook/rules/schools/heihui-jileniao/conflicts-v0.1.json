@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "school_id": "heihui-jileniao",
+  "conflicts": [
+    {
+      "schema_version": 1,
+      "conflict_id": "conflict:motif-unity-vs-bay-repetition",
+      "primary_school": "heihui-jileniao",
+      "rule_ids": [
+        "rule:case.repeat-motif-for-unity",
+        "rule:facade.break-repetitive-bays"
+      ],
+      "evidence_ids": [
+        "ev:bv1jbduycejg:repeat-window-motif",
+        "ev:bv1htcay6edt:break-repeated-bays"
+      ],
+      "resolution": "conditional-difference",
+      "condition_note": "重复小尺度母题用于统一风格；避免复制的是完整墙间的宽高、开口、支撑和细节组合。Agent 必须分别比较 motif_signature 与 bay_signature。",
+      "review_status": "draft"
+    }
+  ]
+}

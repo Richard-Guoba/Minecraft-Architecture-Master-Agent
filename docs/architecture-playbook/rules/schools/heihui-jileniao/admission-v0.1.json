@@ -1,0 +1,620 @@
+{
+  "schema_version": 1,
+  "playbook_version": "0.1.0",
+  "school_id": "heihui-jileniao",
+  "created_at": "2026-08-25T12:00:00.000Z",
+  "chapters": [
+    {
+      "chapter_id": "method-and-boundaries",
+      "title": "方法与边界",
+      "order": 1,
+      "introduction": "说明秘籍的证据来源、建议权限和未执行边界。"
+    },
+    {
+      "chapter_id": "massing-foundations",
+      "title": "体块基础",
+      "order": 2,
+      "introduction": "组织少量体块，并观察连续空白面和体块关系。"
+    },
+    {
+      "chapter_id": "hierarchy-and-structure",
+      "title": "主次与结构",
+      "order": 3,
+      "introduction": "建立主体、次体和辅助体之间的可读层级。"
+    },
+    {
+      "chapter_id": "roof-form",
+      "title": "屋顶形态",
+      "order": 4,
+      "introduction": "整理屋顶包边、坡度、平面变化和方向关系。"
+    },
+    {
+      "chapter_id": "facade-layers",
+      "title": "立面层次",
+      "order": 5,
+      "introduction": "以框架、墙芯、墙间、开口和进深组织立面。"
+    },
+    {
+      "chapter_id": "medieval-residence",
+      "title": "中世纪民居",
+      "order": 6,
+      "introduction": "整理外挑、承托、屋顶朝向和石质基座的课程规则。"
+    },
+    {
+      "chapter_id": "complete-case",
+      "title": "完整案例",
+      "order": 7,
+      "introduction": "将单个完整案例中的模式保留为人工示例，不提升为通用程序。"
+    },
+    {
+      "chapter_id": "failure-and-repair",
+      "title": "失败与修复",
+      "order": 8,
+      "introduction": "索引可观察失败和对应的惰性修复建议。"
+    },
+    {
+      "chapter_id": "agent-workflow",
+      "title": "未来 Agent 工作流",
+      "order": 9,
+      "introduction": "界定未来 Agent 的只读匹配、提议、观察和建议流程。"
+    },
+    {
+      "chapter_id": "unknowns-and-coverage",
+      "title": "未知项与覆盖",
+      "order": 10,
+      "introduction": "公开未解决术语、未知参数和九层覆盖边界。"
+    }
+  ],
+  "rule_admissions": [
+    {
+      "rule_id": "rule:structure.compose-three-volumes",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["massing-foundations"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["brief.prompt", "massing.volumes"],
+        "proposal_fields": ["massing.primary_volume_id", "massing.secondary_volume_ids", "massing.volume_relations"],
+        "observable_checks": ["check:massing:three-volume-composition"],
+        "repair_operations": ["repair:massing:resize-or-reposition-volume"],
+        "invalidates_layers": ["structure", "roof", "facade"]
+      },
+      "editorial_note": "作为体块章节的核心程序；投影只描述未来建议边界。"
+    },
+    {
+      "rule_id": "rule:structure.layer-volumes-to-reduce-blankness",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["massing-foundations", "failure-and-repair"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["brief.primary_viewpoint", "massing.volumes", "massing.blank_plane_regions"],
+        "proposal_fields": ["massing.volume_relations"],
+        "observable_checks": ["check:massing:continuous-blank-plane"],
+        "repair_operations": ["repair:massing:adjust-volume-overlap"],
+        "invalidates_layers": ["structure", "roof", "facade"]
+      },
+      "editorial_note": "同时索引到失败与修复章节；投影不执行体块变更。"
+    },
+    {
+      "rule_id": "rule:structure.create-primary-secondary-hierarchy",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["hierarchy-and-structure"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["massing.volumes"],
+        "proposal_fields": ["massing.primary_volume_id", "massing.secondary_volume_ids"],
+        "observable_checks": ["check:massing:primary-secondary-hierarchy"],
+        "repair_operations": ["repair:massing:strengthen-primary-volume"],
+        "invalidates_layers": ["structure", "roof", "facade"]
+      },
+      "editorial_note": "作为主次章节的核心程序；不生成未给出的比例阈值。"
+    },
+    {
+      "rule_id": "rule:structure.keep-support-volumes-subordinate",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["hierarchy-and-structure"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["massing.primary_volume_id", "massing.secondary_volume_ids"],
+        "proposal_fields": ["massing.volume_relations"],
+        "observable_checks": ["check:massing:subordinate-support-volume"],
+        "repair_operations": ["repair:massing:reduce-support-volume-prominence"],
+        "invalidates_layers": ["structure", "roof", "facade"]
+      },
+      "editorial_note": "与主体和次体规则并列讲解；不引入体积数值。"
+    },
+    {
+      "rule_id": "rule:roof.border-with-material-contrast",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["roof-form"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["roof.profile", "roof.surface_regions"],
+        "proposal_fields": ["roof.border_role"],
+        "observable_checks": ["check:roof:border-readability"],
+        "repair_operations": ["repair:roof:restore-continuous-border"],
+        "invalidates_layers": ["facade"]
+      },
+      "editorial_note": "保留相对对比关系，不把具体材料提升为政策。"
+    },
+    {
+      "rule_id": "rule:roof.scale-slope-to-massing",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["roof-form"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["massing.volumes", "roof.span"],
+        "proposal_fields": ["roof.slope_pattern", "roof.profile"],
+        "observable_checks": ["check:roof:slope-massing-fit"],
+        "repair_operations": ["repair:roof:change-run-rise-pattern"],
+        "invalidates_layers": ["facade"]
+      },
+      "editorial_note": "作为屋顶核心程序；坡度表仍保持未知。"
+    },
+    {
+      "rule_id": "rule:roof.break-large-flat-plane",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["roof-form", "failure-and-repair"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["roof.surface_regions", "massing.volume_relations"],
+        "proposal_fields": ["roof.secondary_roofs", "roof.profile"],
+        "observable_checks": ["check:roof:large-flat-plane"],
+        "repair_operations": ["repair:roof:add-structural-roof-break"],
+        "invalidates_layers": ["facade"]
+      },
+      "editorial_note": "同时索引失败模式；不规定空白面积阈值。"
+    },
+    {
+      "rule_id": "rule:facade.frame-before-openings",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["facade-layers"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["structure.frames", "facade.bay_grid"],
+        "proposal_fields": ["facade.openings"],
+        "observable_checks": ["check:facade:opening-inside-frame"],
+        "repair_operations": ["repair:facade:rebuild-bay-before-opening"],
+        "invalidates_layers": []
+      },
+      "editorial_note": "作为立面步骤顺序的核心程序；投影仅供未来匹配。"
+    },
+    {
+      "rule_id": "rule:facade.offset-frame-for-depth",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["facade-layers"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["facade.bay_grid", "facade.frame_depth", "facade.infill_depth"],
+        "proposal_fields": ["facade.frame_depth", "facade.infill_depth"],
+        "observable_checks": ["check:facade:frame-infill-depth"],
+        "repair_operations": ["repair:facade:offset-frame-or-infill"],
+        "invalidates_layers": []
+      },
+      "editorial_note": "保留进深关系，不生成具体格数参数。"
+    },
+    {
+      "rule_id": "rule:facade.partition-large-wall",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["facade-layers"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["structure.frames", "facade.bay_grid"],
+        "proposal_fields": ["facade.bay_grid", "facade.openings"],
+        "observable_checks": ["check:facade:large-wall-partition"],
+        "repair_operations": ["repair:facade:align-partition-to-structure"],
+        "invalidates_layers": []
+      },
+      "editorial_note": "作为大墙分区程序；不规定触发面积。"
+    },
+    {
+      "rule_id": "rule:facade.break-repetitive-bays",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["facade-layers", "failure-and-repair"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["facade.bay_grid", "facade.motif_signatures"],
+        "proposal_fields": ["facade.variation_axes"],
+        "observable_checks": ["check:facade:repetitive-bay-signature"],
+        "repair_operations": ["repair:facade:vary-bay-preserve-motif"],
+        "invalidates_layers": []
+      },
+      "editorial_note": "与母题统一案例保持条件差异，不规定重复次数。"
+    },
+    {
+      "rule_id": "rule:medieval.extend-only-needed-facades",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["medieval-residence"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["brief.prompt", "structure.overhangs", "massing.volumes"],
+        "proposal_fields": ["structure.overhangs", "structure.support_paths"],
+        "observable_checks": ["check:structure:purposeful-overhang"],
+        "repair_operations": ["repair:structure:remove-or-support-overhang"],
+        "invalidates_layers": ["roof", "facade"]
+      },
+      "editorial_note": "作为中世纪民居核心程序；外挑尺度仍保持未知。"
+    },
+    {
+      "rule_id": "rule:medieval.show-load-path",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["medieval-residence", "failure-and-repair"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["structure.frames", "structure.load_paths", "structure.overhangs"],
+        "proposal_fields": ["structure.support_paths"],
+        "observable_checks": ["check:structure:visible-load-path"],
+        "repair_operations": ["repair:structure:connect-support-path"],
+        "invalidates_layers": ["roof", "facade"]
+      },
+      "editorial_note": "同时索引失败与修复；不声称现实结构验算。"
+    },
+    {
+      "rule_id": "rule:medieval.align-roof-with-overhang",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["medieval-residence", "roof-form"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["structure.overhangs", "structure.support_paths", "roof.ridge_axis"],
+        "proposal_fields": ["roof.ridge_axis", "roof.profile"],
+        "observable_checks": ["check:roof:overhang-axis-alignment"],
+        "repair_operations": ["repair:roof:realign-ridge-or-support"],
+        "invalidates_layers": ["facade"]
+      },
+      "editorial_note": "跨中世纪民居与屋顶章节编排；保持建议权限。"
+    },
+    {
+      "rule_id": "rule:medieval.use-stone-base-for-height",
+      "decision": "admitted-advisory",
+      "teaching_role": "core-procedure",
+      "chapter_ids": ["medieval-residence"],
+      "runtime_projection": {
+        "coverage_status": "advisory-partial",
+        "input_signals": ["massing.volumes", "structure.load_paths"],
+        "proposal_fields": ["structure.base_strategy", "structure.support_paths"],
+        "observable_checks": ["check:structure:tall-timber-base-weight"],
+        "repair_operations": ["repair:structure:add-or-widen-base"],
+        "invalidates_layers": ["roof", "facade"]
+      },
+      "editorial_note": "保留石质基座关系，不发明高度或材料参数。"
+    },
+    {
+      "rule_id": "rule:case.join-crossed-massing-with-tower",
+      "decision": "admitted-advisory",
+      "teaching_role": "case-pattern",
+      "chapter_ids": ["complete-case"],
+      "runtime_projection": {
+        "coverage_status": "manual-example-only",
+        "input_signals": ["massing.volumes", "massing.volume_relations"],
+        "proposal_fields": ["massing.volume_relations", "massing.primary_volume_id"],
+        "observable_checks": ["check:massing:tower-joint-continuity"],
+        "repair_operations": ["repair:massing:move-tower-to-joint"],
+        "invalidates_layers": []
+      },
+      "editorial_note": "仅作为完整案例模式讲解，不升级为通用程序。"
+    },
+    {
+      "rule_id": "rule:case.repeat-motif-for-unity",
+      "decision": "admitted-advisory",
+      "teaching_role": "case-pattern",
+      "chapter_ids": ["complete-case", "failure-and-repair"],
+      "runtime_projection": {
+        "coverage_status": "manual-example-only",
+        "input_signals": ["facade.bay_grid", "facade.motif_signatures"],
+        "proposal_fields": ["facade.motif_signatures", "facade.variation_axes"],
+        "observable_checks": ["check:facade:motif-unity-with-bay-variation"],
+        "repair_operations": ["repair:facade:separate-motif-from-bay-template"],
+        "invalidates_layers": []
+      },
+      "editorial_note": "保留案例身份，并与墙间重复冲突条件共同说明。"
+    },
+    {
+      "rule_id": "rule:case.use-greenery-as-composition",
+      "decision": "admitted-advisory",
+      "teaching_role": "case-pattern",
+      "chapter_ids": ["complete-case"],
+      "runtime_projection": {
+        "coverage_status": "manual-example-only",
+        "input_signals": ["brief.primary_viewpoint", "facade.vegetation_path"],
+        "proposal_fields": ["facade.vegetation_path"],
+        "observable_checks": ["check:facade:connected-vegetation-path"],
+        "repair_operations": ["repair:facade:connect-or-prune-vegetation"],
+        "invalidates_layers": []
+      },
+      "editorial_note": "仅记录案例中的连续路径观察，不接管场景生成。"
+    },
+    {
+      "rule_id": "rule:case.allocate-detail-by-viewpoint",
+      "decision": "admitted-advisory",
+      "teaching_role": "case-pattern",
+      "chapter_ids": ["complete-case", "agent-workflow"],
+      "runtime_projection": {
+        "coverage_status": "manual-example-only",
+        "input_signals": ["brief.primary_viewpoint", "brief.detail_budget"],
+        "proposal_fields": ["brief.detail_budget"],
+        "observable_checks": ["check:brief:viewpoint-detail-allocation"],
+        "repair_operations": ["repair:brief:move-detail-budget-to-primary-view"],
+        "invalidates_layers": []
+      },
+      "editorial_note": "作为案例和未来只读工作流示例，不生成预算数值。"
+    },
+    {
+      "rule_id": "rule:case.balance-warm-mass-with-dark-roof",
+      "decision": "admitted-advisory",
+      "teaching_role": "case-pattern",
+      "chapter_ids": ["complete-case"],
+      "runtime_projection": {
+        "coverage_status": "manual-example-only",
+        "input_signals": ["roof.surface_regions", "facade.motif_signatures"],
+        "proposal_fields": ["roof.border_role", "roof.surface_regions"],
+        "observable_checks": ["check:roof:warm-dark-visual-balance"],
+        "repair_operations": ["repair:roof:reduce-dark-secondary-area"],
+        "invalidates_layers": []
+      },
+      "editorial_note": "仅保留案例中的相对色彩观察，不建立材料系统。"
+    },
+    {
+      "rule_id": "rule:case.compose-context-depth",
+      "decision": "admitted-advisory",
+      "teaching_role": "case-pattern",
+      "chapter_ids": ["complete-case"],
+      "runtime_projection": {
+        "coverage_status": "manual-example-only",
+        "input_signals": ["brief.primary_viewpoint", "brief.scene_intent"],
+        "proposal_fields": ["brief.scene_intent"],
+        "observable_checks": ["check:brief:foreground-background-intent"],
+        "repair_operations": ["repair:brief:restore-unobstructed-scene-depth"],
+        "invalidates_layers": []
+      },
+      "editorial_note": "仅记录案例构图意图，不声明 scene 层覆盖。"
+    }
+  ],
+  "terminology": {
+    "resolved_terms": [
+      {
+        "term_id": "term:massing",
+        "display_name": "体块",
+        "definition": "在细节和材料之前，用轮廓、尺度、位置和相交关系表达的建筑形体单元。",
+        "aliases": ["建筑体量"],
+        "rule_ids": ["rule:structure.compose-three-volumes", "rule:structure.layer-volumes-to-reduce-blankness"],
+        "scope_note": "仅按课程中的灰模和组合关系使用。"
+      },
+      {
+        "term_id": "term:primary-volume",
+        "display_name": "主体",
+        "definition": "在一组体块中承担主要视觉中心的体块。",
+        "aliases": ["主体体块"],
+        "rule_ids": ["rule:structure.create-primary-secondary-hierarchy"],
+        "scope_note": "不包含固定体积或高度比例。"
+      },
+      {
+        "term_id": "term:secondary-volume",
+        "display_name": "次体",
+        "definition": "与主体共同构图、但在至少一个可观察维度上保持从属的体块。",
+        "aliases": ["次级体块"],
+        "rule_ids": ["rule:structure.create-primary-secondary-hierarchy", "rule:structure.keep-support-volumes-subordinate"],
+        "scope_note": "从属关系保留为观察，不生成阈值。"
+      },
+      {
+        "term_id": "term:connector-volume",
+        "display_name": "连接体",
+        "definition": "位于其他体块之间并建立可读接触或过渡关系的体块。",
+        "aliases": ["衔接体"],
+        "rule_ids": ["rule:structure.compose-three-volumes", "rule:case.join-crossed-massing-with-tower"],
+        "scope_note": "连接体可以同时承担焦点，但案例模式不泛化。"
+      },
+      {
+        "term_id": "term:primary-secondary-hierarchy",
+        "display_name": "主次",
+        "definition": "观察者能区分主要体块和从属体块的组织关系。",
+        "aliases": ["主次关系"],
+        "rule_ids": ["rule:structure.create-primary-secondary-hierarchy", "rule:structure.keep-support-volumes-subordinate"],
+        "scope_note": "不等同于数值评分。"
+      },
+      {
+        "term_id": "term:frame",
+        "display_name": "框架",
+        "definition": "在墙芯和开口之前建立的柱、横向构件和边界组织。",
+        "aliases": ["外框"],
+        "rule_ids": ["rule:facade.frame-before-openings", "rule:medieval.show-load-path"],
+        "scope_note": "描述 Minecraft 可见构件关系，不作现实结构验算。"
+      },
+      {
+        "term_id": "term:wall-infill",
+        "display_name": "墙芯",
+        "definition": "位于立面框架边界内、与外框可形成进深差的填充区域。",
+        "aliases": ["填墙"],
+        "rule_ids": ["rule:facade.frame-before-openings", "rule:facade.offset-frame-for-depth"],
+        "scope_note": "只描述框内区域和相对进深。"
+      },
+      {
+        "term_id": "term:facade-bay",
+        "display_name": "墙间",
+        "definition": "由相邻框架边界划分、可独立安排墙芯和开口的立面单元。",
+        "aliases": ["墙面分区"],
+        "rule_ids": ["rule:facade.partition-large-wall", "rule:facade.break-repetitive-bays"],
+        "scope_note": "墙间数量和尺寸没有固定参数。"
+      },
+      {
+        "term_id": "term:roof-border",
+        "display_name": "包边",
+        "definition": "沿屋顶边缘连续组织、用于保持轮廓可读性的屋顶角色。",
+        "aliases": ["屋顶边框"],
+        "rule_ids": ["rule:roof.border-with-material-contrast"],
+        "scope_note": "只保留连续性和相对对比，不锁定材料。"
+      },
+      {
+        "term_id": "term:roof-slope",
+        "display_name": "坡度",
+        "definition": "屋面水平推进与逐层上升形成的可观察轮廓节奏。",
+        "aliases": ["屋面坡度"],
+        "rule_ids": ["rule:roof.scale-slope-to-massing"],
+        "scope_note": "跨度到坡度的可执行映射仍未知。"
+      },
+      {
+        "term_id": "term:overhang",
+        "display_name": "外挑",
+        "definition": "上层体量或框架相对下层边界向外延伸的关系。",
+        "aliases": ["上层外推"],
+        "rule_ids": ["rule:medieval.extend-only-needed-facades", "rule:medieval.align-roof-with-overhang"],
+        "scope_note": "外挑尺度不在 P3 中数值化。"
+      },
+      {
+        "term_id": "term:horizontal-support",
+        "display_name": "横架",
+        "definition": "在外挑或屋顶端部下方形成可见承接关系的横向构件。",
+        "aliases": ["横向承托"],
+        "rule_ids": ["rule:medieval.show-load-path", "rule:medieval.align-roof-with-overhang"],
+        "scope_note": "名称按讲义重组，不扩展现实建筑史术语。"
+      },
+      {
+        "term_id": "term:diagonal-brace",
+        "display_name": "斜撑",
+        "definition": "连接上下或内外节点、参与可见支撑路径表达的斜向构件。",
+        "aliases": ["斜向支撑"],
+        "rule_ids": ["rule:medieval.show-load-path"],
+        "scope_note": "只记录可见路径，具体跨度仍未知。"
+      },
+      {
+        "term_id": "term:stone-base",
+        "display_name": "石质基座",
+        "definition": "位于高木构下部、以独立体块关系表达较重下部的石质区域。",
+        "aliases": ["石基"],
+        "rule_ids": ["rule:medieval.use-stone-base-for-height"],
+        "scope_note": "不锁定方块名称或基座高度。"
+      },
+      {
+        "term_id": "term:primary-viewpoint",
+        "display_name": "主要观景面",
+        "definition": "在案例中承担主要观看优先级并影响细节分配的建筑方向或视角。",
+        "aliases": ["主要视角", "主观景面"],
+        "rule_ids": ["rule:case.allocate-detail-by-viewpoint", "rule:case.use-greenery-as-composition", "rule:case.compose-context-depth"],
+        "scope_note": "只保留优先级关系，不生成相机或预算参数。"
+      }
+    ],
+    "unresolved_terms": [
+      {
+        "term_group_id": "unresolved:composition-framework-author-wording",
+        "display_name": "构图框架的作者原词",
+        "impact": "公开证据不足以确定作者用于总体构图框架的稳定原词。",
+        "handling_policy": "不生成数值或材料参数，仅保留体块、主次和框架的可观察关系。",
+        "rule_ids": ["rule:structure.compose-three-volumes", "rule:structure.create-primary-secondary-hierarchy"]
+      },
+      {
+        "term_group_id": "unresolved:parallel-volume-relation-term",
+        "display_name": "并列体块关系的精确作者术语",
+        "impact": "无法把并列、相交和层叠关系归并为作者确认的单一术语。",
+        "handling_policy": "不生成数值或材料参数，仅保存体块关系和可观察主次。",
+        "rule_ids": ["rule:structure.layer-volumes-to-reduce-blankness", "rule:case.join-crossed-massing-with-tower"]
+      },
+      {
+        "term_group_id": "unresolved:conical-roof-component-name",
+        "display_name": "锥形屋顶局部构件名称",
+        "impact": "局部构件名称无法从公开讲义中可靠消歧。",
+        "handling_policy": "不生成数值或材料参数，仅保留屋顶轮廓、表面区域和边缘角色。",
+        "rule_ids": ["rule:roof.break-large-flat-plane", "rule:case.balance-warm-mass-with-dark-roof"]
+      },
+      {
+        "term_group_id": "unresolved:slatted-wall-and-block-name",
+        "display_name": "板条墙和具体方块名称",
+        "impact": "墙面构件与具体 Minecraft 方块名称未形成可靠对应。",
+        "handling_policy": "不生成数值或材料参数，仅保留框架、墙芯、墙间和进深关系。",
+        "rule_ids": ["rule:facade.frame-before-openings", "rule:facade.offset-frame-for-depth"]
+      },
+      {
+        "term_group_id": "unresolved:asr-trapdoor-fence-gate-confusion",
+        "display_name": "活板门、栅栏门等 ASR 混淆",
+        "impact": "自动语音识别可能混淆小构件名称，不能支撑确定材料选择。",
+        "handling_policy": "不生成数值或材料参数，仅保留开口、母题和支撑的可观察关系。",
+        "rule_ids": ["rule:facade.frame-before-openings", "rule:case.repeat-motif-for-unity"]
+      }
+    ]
+  },
+  "coverage": [
+    {
+      "layer": "brief",
+      "status": "advisory-partial",
+      "rule_ids": ["rule:case.allocate-detail-by-viewpoint", "rule:case.compose-context-depth"],
+      "known_capabilities": ["主要视角优先级", "细节预算意图", "前中后景意图"],
+      "unknown_ids": ["unknown:aesthetic-evaluator", "unknown:cross-author-validity"],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "massing",
+      "status": "advisory-partial",
+      "rule_ids": ["rule:structure.compose-three-volumes", "rule:structure.layer-volumes-to-reduce-blankness", "rule:structure.create-primary-secondary-hierarchy", "rule:case.join-crossed-massing-with-tower"],
+      "known_capabilities": ["体块组合", "主次关系", "连接关系", "连续空白面观察"],
+      "unknown_ids": ["unknown:massing-ratio-thresholds", "unknown:blank-plane-threshold"],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "space",
+      "status": "not-covered",
+      "rule_ids": [],
+      "known_capabilities": [],
+      "unknown_ids": [],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "structure",
+      "status": "advisory-partial",
+      "rule_ids": ["rule:structure.keep-support-volumes-subordinate", "rule:medieval.extend-only-needed-facades", "rule:medieval.show-load-path", "rule:medieval.align-roof-with-overhang", "rule:medieval.use-stone-base-for-height"],
+      "known_capabilities": ["辅助体从属", "外挑意图", "可见承托路径", "石质基座关系"],
+      "unknown_ids": ["unknown:medieval-scale-generalization", "unknown:cross-author-validity"],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "roof",
+      "status": "advisory-partial",
+      "rule_ids": ["rule:roof.border-with-material-contrast", "rule:roof.scale-slope-to-massing", "rule:roof.break-large-flat-plane", "rule:case.balance-warm-mass-with-dark-roof"],
+      "known_capabilities": ["屋顶包边", "坡度关系", "大平面打断", "屋顶方向和相对色彩观察"],
+      "unknown_ids": ["unknown:roof-slope-table", "unknown:blank-plane-threshold"],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "facade",
+      "status": "advisory-partial",
+      "rule_ids": ["rule:facade.frame-before-openings", "rule:facade.offset-frame-for-depth", "rule:facade.partition-large-wall", "rule:facade.break-repetitive-bays", "rule:case.repeat-motif-for-unity", "rule:case.use-greenery-as-composition"],
+      "known_capabilities": ["框架与墙芯", "立面进深", "墙面分区", "重复与母题关系", "绿植路径观察"],
+      "unknown_ids": ["unknown:blank-plane-threshold", "unknown:repetition-limit"],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "materials",
+      "status": "not-covered",
+      "rule_ids": [],
+      "known_capabilities": [],
+      "unknown_ids": ["unknown:cross-author-validity"],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "interior",
+      "status": "not-covered",
+      "rule_ids": [],
+      "known_capabilities": [],
+      "unknown_ids": [],
+      "runtime_authority": "none"
+    },
+    {
+      "layer": "scene",
+      "status": "not-covered",
+      "rule_ids": [],
+      "known_capabilities": [],
+      "unknown_ids": ["unknown:aesthetic-evaluator"],
+      "runtime_authority": "none"
+    }
+  ]
+}

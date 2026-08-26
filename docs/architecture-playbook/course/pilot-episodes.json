@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "pilot_id": "heihui-jileniao-six-episode-v0.1",
+  "created_at": "2026-08-25T12:00:00.000Z",
+  "school_id": "heihui-jileniao",
+  "source_manifest_id": "bilibili-ugc-season-4369851",
+  "source_snapshot_sha256": "18ac639c11ab68ba7cfaea59f3efefeb029f4968afa857a642531df95ebab98c",
+  "episode_count": 6,
+  "total_duration_seconds": 7381,
+  "episodes": [
+    {
+      "pilot_order": 1,
+      "course_order": 8,
+      "bvid": "BV1fNkgYBEyy",
+      "cid": 27418560409,
+      "curriculum_title": "1.1结构入门",
+      "duration_seconds": 587,
+      "metadata_fingerprint_sha256": "ce0e4cc091e393333317e882c614569e5fdc0283f7e170a0d14b9055304e2c6a",
+      "pilot_role": "structure-foundations"
+    },
+    {
+      "pilot_order": 2,
+      "course_order": 9,
+      "bvid": "BV1HhEuzZEyZ",
+      "cid": 29903029909,
+      "curriculum_title": "1.2结构主次",
+      "duration_seconds": 781,
+      "metadata_fingerprint_sha256": "7b5c63d1b2ab64f4a61782ed9c24565302ea6c26242ed9c34e381e121b85b42e",
+      "pilot_role": "structure-hierarchy"
+    },
+    {
+      "pilot_order": 3,
+      "course_order": 13,
+      "bvid": "BV1WhkbYeE5k",
+      "cid": 27454801403,
+      "curriculum_title": "2.1屋顶入门",
+      "duration_seconds": 1239,
+      "metadata_fingerprint_sha256": "1e8e082b7f627bc9d925d3b0f8b1d47192675ecc5767d5af637822fabfe5022f",
+      "pilot_role": "roof-foundations"
+    },
+    {
+      "pilot_order": 4,
+      "course_order": 16,
+      "bvid": "BV1HTCaY6EDt",
+      "cid": 27575124287,
+      "curriculum_title": "3.1墙面入门",
+      "duration_seconds": 1067,
+      "metadata_fingerprint_sha256": "df381dd8db5478abe93fc52984dc80d8411e9f02a5765cdbd427292883e59c49",
+      "pilot_role": "facade-foundations"
+    },
+    {
+      "pilot_order": 5,
+      "course_order": 44,
+      "bvid": "BV1WsZcYZEMQ",
+      "cid": 29129180211,
+      "curriculum_title": "【中世纪1.1】民居结构",
+      "duration_seconds": 1073,
+      "metadata_fingerprint_sha256": "0bb5faf8eb4974e1afebd1eae27b2b69be24af8a3e005f406ee60dd48cbb8a0e",
+      "pilot_role": "medieval-house-structure"
+    },
+    {
+      "pilot_order": 6,
+      "course_order": 45,
+      "bvid": "BV1jbdUYCEjG",
+      "cid": 29354033993,
+      "curriculum_title": "【中世纪1.2】民居范例",
+      "duration_seconds": 2634,
+      "metadata_fingerprint_sha256": "76af2f78176f1fae1c79bc73039ba02b4671cf92f38b3bc2121a4e32254ab95e",
+      "pilot_role": "medieval-house-case"
+    }
+  ]
+}

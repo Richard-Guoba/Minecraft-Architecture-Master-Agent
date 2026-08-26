@@ -1,0 +1,274 @@
+{
+  "schema_version": 1,
+  "playbook_version": "0.1.0",
+  "school_id": "heihui-jileniao",
+  "resolved_terms": [
+    {
+      "term_id": "term:massing",
+      "display_name": "体块",
+      "definition": "在细节和材料之前，用轮廓、尺度、位置和相交关系表达的建筑形体单元。",
+      "aliases": [
+        "建筑体量"
+      ],
+      "rule_ids": [
+        "rule:structure.compose-three-volumes",
+        "rule:structure.layer-volumes-to-reduce-blankness"
+      ],
+      "scope_note": "仅按课程中的灰模和组合关系使用。"
+    },
+    {
+      "term_id": "term:primary-volume",
+      "display_name": "主体",
+      "definition": "在一组体块中承担主要视觉中心的体块。",
+      "aliases": [
+        "主体体块"
+      ],
+      "rule_ids": [
+        "rule:structure.create-primary-secondary-hierarchy"
+      ],
+      "scope_note": "不包含固定体积或高度比例。"
+    },
+    {
+      "term_id": "term:secondary-volume",
+      "display_name": "次体",
+      "definition": "与主体共同构图、但在至少一个可观察维度上保持从属的体块。",
+      "aliases": [
+        "次级体块"
+      ],
+      "rule_ids": [
+        "rule:structure.create-primary-secondary-hierarchy",
+        "rule:structure.keep-support-volumes-subordinate"
+      ],
+      "scope_note": "从属关系保留为观察，不生成阈值。"
+    },
+    {
+      "term_id": "term:connector-volume",
+      "display_name": "连接体",
+      "definition": "位于其他体块之间并建立可读接触或过渡关系的体块。",
+      "aliases": [
+        "衔接体"
+      ],
+      "rule_ids": [
+        "rule:structure.compose-three-volumes",
+        "rule:case.join-crossed-massing-with-tower"
+      ],
+      "scope_note": "连接体可以同时承担焦点，但案例模式不泛化。"
+    },
+    {
+      "term_id": "term:primary-secondary-hierarchy",
+      "display_name": "主次",
+      "definition": "观察者能区分主要体块和从属体块的组织关系。",
+      "aliases": [
+        "主次关系"
+      ],
+      "rule_ids": [
+        "rule:structure.create-primary-secondary-hierarchy",
+        "rule:structure.keep-support-volumes-subordinate"
+      ],
+      "scope_note": "不等同于数值评分。"
+    },
+    {
+      "term_id": "term:frame",
+      "display_name": "框架",
+      "definition": "在墙芯和开口之前建立的柱、横向构件和边界组织。",
+      "aliases": [
+        "外框"
+      ],
+      "rule_ids": [
+        "rule:facade.frame-before-openings",
+        "rule:medieval.show-load-path"
+      ],
+      "scope_note": "描述 Minecraft 可见构件关系，不作现实结构验算。"
+    },
+    {
+      "term_id": "term:wall-infill",
+      "display_name": "墙芯",
+      "definition": "位于立面框架边界内、与外框可形成进深差的填充区域。",
+      "aliases": [
+        "填墙"
+      ],
+      "rule_ids": [
+        "rule:facade.frame-before-openings",
+        "rule:facade.offset-frame-for-depth"
+      ],
+      "scope_note": "只描述框内区域和相对进深。"
+    },
+    {
+      "term_id": "term:facade-bay",
+      "display_name": "墙间",
+      "definition": "由相邻框架边界划分、可独立安排墙芯和开口的立面单元。",
+      "aliases": [
+        "墙面分区"
+      ],
+      "rule_ids": [
+        "rule:facade.partition-large-wall",
+        "rule:facade.break-repetitive-bays"
+      ],
+      "scope_note": "墙间数量和尺寸没有固定参数。"
+    },
+    {
+      "term_id": "term:roof-border",
+      "display_name": "包边",
+      "definition": "沿屋顶边缘连续组织、用于保持轮廓可读性的屋顶角色。",
+      "aliases": [
+        "屋顶边框"
+      ],
+      "rule_ids": [
+        "rule:roof.border-with-material-contrast"
+      ],
+      "scope_note": "只保留连续性和相对对比，不锁定材料。"
+    },
+    {
+      "term_id": "term:roof-slope",
+      "display_name": "坡度",
+      "definition": "屋面水平推进与逐层上升形成的可观察轮廓节奏。",
+      "aliases": [
+        "屋面坡度"
+      ],
+      "rule_ids": [
+        "rule:roof.scale-slope-to-massing"
+      ],
+      "scope_note": "跨度到坡度的可执行映射仍未知。"
+    },
+    {
+      "term_id": "term:overhang",
+      "display_name": "外挑",
+      "definition": "上层体量或框架相对下层边界向外延伸的关系。",
+      "aliases": [
+        "上层外推"
+      ],
+      "rule_ids": [
+        "rule:medieval.extend-only-needed-facades",
+        "rule:medieval.align-roof-with-overhang"
+      ],
+      "scope_note": "外挑尺度不在 P3 中数值化。"
+    },
+    {
+      "term_id": "term:horizontal-support",
+      "display_name": "横架",
+      "definition": "在外挑或屋顶端部下方形成可见承接关系的横向构件。",
+      "aliases": [
+        "横向承托"
+      ],
+      "rule_ids": [
+        "rule:medieval.show-load-path",
+        "rule:medieval.align-roof-with-overhang"
+      ],
+      "scope_note": "名称按讲义重组，不扩展现实建筑史术语。"
+    },
+    {
+      "term_id": "term:diagonal-brace",
+      "display_name": "斜撑",
+      "definition": "连接上下或内外节点、参与可见支撑路径表达的斜向构件。",
+      "aliases": [
+        "斜向支撑"
+      ],
+      "rule_ids": [
+        "rule:medieval.show-load-path"
+      ],
+      "scope_note": "只记录可见路径，具体跨度仍未知。"
+    },
+    {
+      "term_id": "term:stone-base",
+      "display_name": "石质基座",
+      "definition": "位于高木构下部、以独立体块关系表达较重下部的石质区域。",
+      "aliases": [
+        "石基"
+      ],
+      "rule_ids": [
+        "rule:medieval.use-stone-base-for-height"
+      ],
+      "scope_note": "不锁定方块名称或基座高度。"
+    },
+    {
+      "term_id": "term:primary-viewpoint",
+      "display_name": "主要观景面",
+      "definition": "在案例中承担主要观看优先级并影响细节分配的建筑方向或视角。",
+      "aliases": [
+        "主要视角",
+        "主观景面"
+      ],
+      "rule_ids": [
+        "rule:case.allocate-detail-by-viewpoint",
+        "rule:case.use-greenery-as-composition",
+        "rule:case.compose-context-depth"
+      ],
+      "scope_note": "只保留优先级关系，不生成相机或预算参数。"
+    }
+  ],
+  "unresolved_terms": [
+    {
+      "term_group_id": "unresolved:composition-framework-author-wording",
+      "display_name": "构图框架的作者原词",
+      "impact": "公开证据不足以确定作者用于总体构图框架的稳定原词。",
+      "handling_policy": "不生成数值或材料参数，仅保留体块、主次和框架的可观察关系。",
+      "rule_ids": [
+        "rule:structure.compose-three-volumes",
+        "rule:structure.create-primary-secondary-hierarchy"
+      ]
+    },
+    {
+      "term_group_id": "unresolved:parallel-volume-relation-term",
+      "display_name": "并列体块关系的精确作者术语",
+      "impact": "无法把并列、相交和层叠关系归并为作者确认的单一术语。",
+      "handling_policy": "不生成数值或材料参数，仅保存体块关系和可观察主次。",
+      "rule_ids": [
+        "rule:structure.layer-volumes-to-reduce-blankness",
+        "rule:case.join-crossed-massing-with-tower"
+      ]
+    },
+    {
+      "term_group_id": "unresolved:conical-roof-component-name",
+      "display_name": "锥形屋顶局部构件名称",
+      "impact": "局部构件名称无法从公开讲义中可靠消歧。",
+      "handling_policy": "不生成数值或材料参数，仅保留屋顶轮廓、表面区域和边缘角色。",
+      "rule_ids": [
+        "rule:roof.break-large-flat-plane",
+        "rule:case.balance-warm-mass-with-dark-roof"
+      ]
+    },
+    {
+      "term_group_id": "unresolved:slatted-wall-and-block-name",
+      "display_name": "板条墙和具体方块名称",
+      "impact": "墙面构件与具体 Minecraft 方块名称未形成可靠对应。",
+      "handling_policy": "不生成数值或材料参数，仅保留框架、墙芯、墙间和进深关系。",
+      "rule_ids": [
+        "rule:facade.frame-before-openings",
+        "rule:facade.offset-frame-for-depth"
+      ]
+    },
+    {
+      "term_group_id": "unresolved:asr-trapdoor-fence-gate-confusion",
+      "display_name": "活板门、栅栏门等 ASR 混淆",
+      "impact": "自动语音识别可能混淆小构件名称，不能支撑确定材料选择。",
+      "handling_policy": "不生成数值或材料参数，仅保留开口、母题和支撑的可观察关系。",
+      "rule_ids": [
+        "rule:facade.frame-before-openings",
+        "rule:case.repeat-motif-for-unity"
+      ]
+    }
+  ],
+  "source_rule_ids": [
+    "rule:structure.compose-three-volumes",
+    "rule:structure.layer-volumes-to-reduce-blankness",
+    "rule:structure.create-primary-secondary-hierarchy",
+    "rule:structure.keep-support-volumes-subordinate",
+    "rule:roof.border-with-material-contrast",
+    "rule:roof.scale-slope-to-massing",
+    "rule:roof.break-large-flat-plane",
+    "rule:facade.frame-before-openings",
+    "rule:facade.offset-frame-for-depth",
+    "rule:facade.partition-large-wall",
+    "rule:facade.break-repetitive-bays",
+    "rule:medieval.extend-only-needed-facades",
+    "rule:medieval.show-load-path",
+    "rule:medieval.align-roof-with-overhang",
+    "rule:medieval.use-stone-base-for-height",
+    "rule:case.join-crossed-massing-with-tower",
+    "rule:case.repeat-motif-for-unity",
+    "rule:case.use-greenery-as-composition",
+    "rule:case.allocate-detail-by-viewpoint",
+    "rule:case.balance-warm-mass-with-dark-roof",
+    "rule:case.compose-context-depth"
+  ]
+}

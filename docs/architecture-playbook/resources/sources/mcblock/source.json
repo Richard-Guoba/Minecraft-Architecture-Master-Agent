@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "source_id": "mcblock",
+  "title": "MCBlock 建筑库",
+  "canonical_url": "https://mcblock.top/buildings",
+  "alternate_urls": [],
+  "registered_at": "2026-08-25T00:00:00.000Z",
+  "last_checked_at": "2026-08-25T00:00:00.000Z",
+  "source_type": "case-catalog",
+  "operator": {
+    "name": "MCBlock",
+    "url": "https://mcblock.top/",
+    "basis": "direct-page"
+  },
+  "publisher": {
+    "name": "MCBlock",
+    "url": "https://mcblock.top/",
+    "basis": "direct-page"
+  },
+  "creator_model": "multi-creator",
+  "platform_is_school": false,
+  "content_hierarchy": [
+    "建筑目录",
+    "建筑案例"
+  ],
+  "content_unit_types": [
+    "建筑投影案例"
+  ],
+  "representation_modes": [
+    "列表卡片",
+    "动态三维预览（站点声明）",
+    "逐层视图（站点声明）",
+    "结构化元数据"
+  ],
+  "access_methods": [
+    "公开网页浏览"
+  ],
+  "requires_login": "unknown",
+  "client_rendered": true,
+  "robots_observation": {
+    "status": "not-reviewed",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "本次只读探针没有完成 robots 与自动访问规则审查。"
+  },
+  "api_access": {
+    "status": "not-reviewed",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "未审查公开 API、接口条款、速率限制或返回结构。"
+  },
+  "artifact_access": {
+    "status": "unknown",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "站点提及导出格式，但探针未核验登录、操作条件或具体制品可用性。"
+  },
+  "availability_status": "partial-js-render",
+  "access_notes": [
+    "建筑列表可见，详情字段依赖 JavaScript 且五个页面可读程度不一致。",
+    "三维预览、逐层学习、数量和导出格式仅记为站点能力声明。",
+    "未保存相互矛盾且易变的站点总量。"
+  ],
+  "styles": [
+    "国风",
+    "曲面与配色",
+    "中世纪",
+    "现代"
+  ],
+  "building_types": [
+    "茶坊",
+    "咖啡厅",
+    "庄园",
+    "办公楼",
+    "小屋"
+  ],
+  "difficulty_levels": [
+    "新手",
+    "高级",
+    "大师"
+  ],
+  "scale_range": [
+    "小型",
+    "中型",
+    "超大体量"
+  ],
+  "game_editions": [
+    "未核验"
+  ],
+  "game_versions": [
+    "未核验"
+  ],
+  "game_modes": [
+    "未核验"
+  ],
+  "design_layers": [
+    "外观案例",
+    "逐层施工视图（站点声明）"
+  ],
+  "knowledge_modes": [
+    "construction-sequence",
+    "reference-case",
+    "materials",
+    "visual-evaluation"
+  ],
+  "public_access": {
+    "status": "observed-allowed",
+    "evidence_url": "https://mcblock.top/buildings",
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "建筑列表在本次观察中公开可读；这不扩展为下载、训练或再发布许可。"
+  },
+  "local_analysis": {
+    "status": "not-reviewed",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "除短元数据与原创摘要外的本地分析权利尚未审查。"
+  },
+  "automated_retrieval": {
+    "status": "not-reviewed",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "自动检索条款、速率限制与 robots 边界均未审查。"
+  },
+  "artifact_download": {
+    "status": "unknown",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "站点的免费或导出声明不能证明允许下载任何模型、投影或逐层制品。"
+  },
+  "model_training": {
+    "status": "unknown",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "未发现可支持模型训练的明确许可。"
+  },
+  "external_redistribution": {
+    "status": "unknown",
+    "evidence_url": null,
+    "checked_at": "2026-08-25T00:00:00.000Z",
+    "note": "未发现允许再发布页面内容、媒体、模型或逐层数据的明确许可。"
+  },
+  "extractable_fields": [
+    "标题",
+    "明确作者字段",
+    "难度",
+    "尺寸或高度",
+    "近似方块量",
+    "标签"
+  ],
+  "suitable_ai_operations": [
+    "只读元数据比较",
+    "人工复核的来源评估"
+  ],
+  "prohibited_operations": [
+    "批量抓取或下载",
+    "直接生成课程或规则",
+    "模型训练",
+    "外部再发布"
+  ],
+  "adapter_requirements": [
+    "获批后仅使用站点专用只读元数据或逐层查看器适配器。",
+    "分别审查速率、登录、权利和导出边界。",
+    "不得直接向课程、规则或训练流程供给内容。"
+  ],
+  "risk_flags": [
+    "rights-unknown",
+    "partial-js-render",
+    "creator-attribution-partial"
+  ],
+  "lifecycle_status": "assessed",
+  "assessment": {
+    "path": "sources/mcblock/assessment.md",
+    "sha256": "c1852bb8878144f91031068c63b06da6b452c6e7433b8d34eb0c0fc7ba16eff7",
+    "completed_at": "2026-08-25T00:00:00.000Z",
+    "probe_ids": [
+      "mcblock-cinnamoroll-cafe-7583ff98",
+      "mcblock-modern-office-four-06941222",
+      "mcblock-sakura-witch-house-5f3aff4d",
+      "mcblock-teahouse-c8db481c",
+      "mcblock-victorian-manor-6e5b406e"
+    ],
+    "recommendation": "recommend-defer",
+    "ratings": {
+      "principles": {
+        "value": 1,
+        "reason": "探针主要展示案例和操作入口，设计理由说明有限。"
+      },
+      "construction_sequence": {
+        "value": 4,
+        "reason": "站点明确以三维逐层学习为核心，但多数样本的详情数据尚未稳定直读。"
+      },
+      "reference_case": {
+        "value": 4,
+        "reason": "五个样本覆盖风格、难度和体量差异，案例参考价值高。"
+      },
+      "materials": {
+        "value": 3,
+        "reason": "站点声明提供方块数量或材料信息，详情可见性仍不一致。"
+      },
+      "survival_constraints": {
+        "value": "unknown",
+        "reason": "现有探针不足以确认生存模式成本或施工约束。"
+      },
+      "evaluation": {
+        "value": 2,
+        "reason": "难度、尺寸和方块量可辅助比较，但未观察到系统设计评价。"
+      },
+      "provenance": {
+        "value": 2,
+        "reason": "部分案例有作者字段，另一些作者未知且页面字段不稳定。"
+      },
+      "access_stability": {
+        "value": 2,
+        "reason": "列表可见但详情依赖动态渲染，五个页面的可读程度不一致。"
+      },
+      "rights_clarity": {
+        "value": "unknown",
+        "reason": "免费和可导出声明不能证明训练、批量下载或再发布权利。"
+      }
+    },
+    "risk_flags": [
+      "rights-unknown",
+      "partial-js-render",
+      "creator-attribution-partial"
+    ]
+  },
+  "decision_history": []
+}

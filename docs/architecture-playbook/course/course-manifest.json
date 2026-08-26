@@ -1,0 +1,1226 @@
+{
+  "schema_version": 1,
+  "manifest_id": "bilibili-ugc-season-4369851",
+  "captured_at": "2026-08-25T08:29:41.000Z",
+  "source_snapshot_sha256": "18ac639c11ab68ba7cfaea59f3efefeb029f4968afa857a642531df95ebab98c",
+  "course": {
+    "platform": "bilibili",
+    "season_id": 4369851,
+    "title": "极乐鸟的建筑课堂",
+    "primary_school": "heihui-jileniao",
+    "canonical_url": "https://www.bilibili.com/video/BV1HhEuzZEyZ/",
+    "author": {
+      "platform_user_id": 351448296,
+      "name": "黑辉极乐鸟"
+    },
+    "declared_episode_count": 50
+  },
+  "rights": {
+    "public_access_observed": true,
+    "local_analysis_status": "project-authorized",
+    "training_status": "not-reviewed",
+    "external_release_status": "not-authorized"
+  },
+  "episodes": [
+    {
+      "order": 1,
+      "episode_id": "bilibili:BV1guoPYkExk",
+      "bvid": "BV1guoPYkExk",
+      "aid": 114345568637864,
+      "cid": 29440478157,
+      "season_episode_id": 125768650,
+      "curriculum_title": "0学习目标 新罗马",
+      "published_title": "【我的世界】中世纪建筑群 新罗马 正式发布",
+      "duration_seconds": 205,
+      "published_at": "2025-04-30T09:00:00.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1guoPYkExk/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "f6e8fbeae57aacbf478dff3484ebdd163deec9bc5fcf0c7dddbec9ec45d2600b",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 2,
+      "episode_id": "bilibili:BV1aBV1zwELe",
+      "bvid": "BV1aBV1zwELe",
+      "aid": 114459603505304,
+      "cid": 29817176566,
+      "season_episode_id": 123228882,
+      "curriculum_title": "0.1建筑工具",
+      "published_title": "光影、材质、建筑模组？一个视频搞定！附教程和整合包",
+      "duration_seconds": 1635,
+      "published_at": "2025-05-06T09:05:00.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1aBV1zwELe/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "b2c5cb97220e41cba2f9fa88df88628508fff6a76b1e58916a67f18de8007a5b",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 3,
+      "episode_id": "bilibili:BV1SwdfBHEx5",
+      "bvid": "BV1SwdfBHEx5",
+      "aid": 116430339119195,
+      "cid": 37634836596,
+      "season_episode_id": 190009233,
+      "curriculum_title": "0.1.1高版本建筑包",
+      "published_title": "这才是真正的创造模式！1.21.11建筑党整合包",
+      "duration_seconds": 372,
+      "published_at": "2026-04-19T08:08:17.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1SwdfBHEx5/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "4cab658c975232f326be8ffa6a6847bd5c85ba12ec3ac044c9cde11124a19aaa",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 4,
+      "episode_id": "bilibili:BV1SG6GY9ETe",
+      "bvid": "BV1SG6GY9ETe",
+      "aid": 113740548674124,
+      "cid": 27607697154,
+      "season_episode_id": 100868499,
+      "curriculum_title": "0.2快捷键",
+      "published_title": "【快捷键】建筑玩家必学！",
+      "duration_seconds": 656,
+      "published_at": "2024-12-30T09:13:47.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1SG6GY9ETe/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "cc942a30e6e0ab0646a32495fbf61acefe765cf43a5bf65598fba681eb3d31dc",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 5,
+      "episode_id": "bilibili:BV1iVLbzcEfG",
+      "bvid": "BV1iVLbzcEfG",
+      "aid": 114385917842881,
+      "cid": 29565124686,
+      "season_episode_id": 121020332,
+      "curriculum_title": "0.3认识方块",
+      "published_title": "【MC建筑教程】01认识方块",
+      "duration_seconds": 642,
+      "published_at": "2025-04-23T09:00:00.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1iVLbzcEfG/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "3fabe347aa237986d938e0b66790251c053b14eb05a5c40a373368fe66fd5323",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 6,
+      "episode_id": "bilibili:BV1cLJtz1ELx",
+      "bvid": "BV1cLJtz1ELx",
+      "aid": 114539211333576,
+      "cid": 30054744577,
+      "season_episode_id": 125668965,
+      "curriculum_title": "0.4模块化建筑",
+      "published_title": "【MC建筑】用做预制菜的方法做建筑",
+      "duration_seconds": 1641,
+      "published_at": "2025-05-20T08:45:57.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1cLJtz1ELx/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "a0fc0ec28819bbf14ebdb4be4822ae22ad2ab7208fde00d032eade63d6c582cc",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 7,
+      "episode_id": "bilibili:BV14XMtzFEzb",
+      "bvid": "BV14XMtzFEzb",
+      "aid": 114686716551083,
+      "cid": 30510550070,
+      "season_episode_id": 129964436,
+      "curriculum_title": "0.5材质与配色",
+      "published_title": "【MC建筑】如何选择建筑材质与配色？",
+      "duration_seconds": 1074,
+      "published_at": "2025-06-20T10:40:08.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV14XMtzFEzb/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "0ffbd24869f1099d79b54a339da99ae5c5bf78661880c15c237211e86411d2ad",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 8,
+      "episode_id": "bilibili:BV1fNkgYBEyy",
+      "bvid": "BV1fNkgYBEyy",
+      "aid": 113678489818718,
+      "cid": 27418560409,
+      "season_episode_id": 98652025,
+      "curriculum_title": "1.1结构入门",
+      "published_title": "结构为王【萌新也能学会的建筑教程01】",
+      "duration_seconds": 587,
+      "published_at": "2024-12-19T08:17:52.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1fNkgYBEyy/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "ce0e4cc091e393333317e882c614569e5fdc0283f7e170a0d14b9055304e2c6a",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 9,
+      "episode_id": "bilibili:BV1HhEuzZEyZ",
+      "bvid": "BV1HhEuzZEyZ",
+      "aid": 114487721991793,
+      "cid": 29903029909,
+      "season_episode_id": 124086363,
+      "curriculum_title": "1.2结构主次",
+      "published_title": "还在做这样的火柴盒？结构主次很重要！",
+      "duration_seconds": 781,
+      "published_at": "2025-05-11T06:27:45.000Z",
+      "rights": {
+        "api_download_flag": true,
+        "no_reprint_flag": true,
+        "observation_source": "direct-view"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1HhEuzZEyZ/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "7b5c63d1b2ab64f4a61782ed9c24565302ea6c26242ed9c34e381e121b85b42e",
+      "processing": {
+        "role": "technical-probe",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 10,
+      "episode_id": "bilibili:BV1ecj4zsE27",
+      "bvid": "BV1ecj4zsE27",
+      "aid": 114561625628460,
+      "cid": 30123885142,
+      "season_episode_id": 126300636,
+      "curriculum_title": "1.3结构的加法",
+      "published_title": "【MC建筑】做点加法，让你的建筑丰富起来！",
+      "duration_seconds": 1181,
+      "published_at": "2025-05-24T07:35:20.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1ecj4zsE27/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "5d875c20982df2985b618e79dbbd00c60a513fad63682aa50904c9c0ec812380",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 11,
+      "episode_id": "bilibili:BV1Mp7UzyE3P",
+      "bvid": "BV1Mp7UzyE3P",
+      "aid": 114612611784577,
+      "cid": 30282416561,
+      "season_episode_id": 127775755,
+      "curriculum_title": "1.4结构的减法",
+      "published_title": "【MC建筑】做点减法，让建筑更灵动",
+      "duration_seconds": 799,
+      "published_at": "2025-06-02T07:38:04.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1Mp7UzyE3P/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "23043453a85346f47c73610f4ee56162838c9d9bdaadcba81215c2079c440b23",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 12,
+      "episode_id": "bilibili:BV1MA7Bz2EE1",
+      "bvid": "BV1MA7Bz2EE1",
+      "aid": 114623952983075,
+      "cid": 30314856697,
+      "season_episode_id": 128104825,
+      "curriculum_title": "1.5支撑结构",
+      "published_title": "【MC建筑】没有支撑结构的建筑等于火柴盒！",
+      "duration_seconds": 967,
+      "published_at": "2025-06-04T07:44:31.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1MA7Bz2EE1/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "8d7a569529955a03316c9ceaaa9d0a0d7f53154bcaf92d4d88b02c10ee6bc620",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 13,
+      "episode_id": "bilibili:BV1WhkbYeE5k",
+      "bvid": "BV1WhkbYeE5k",
+      "aid": 113689948722306,
+      "cid": 27454801403,
+      "season_episode_id": 99043979,
+      "curriculum_title": "2.1屋顶入门",
+      "published_title": "摆脱火柴盒！【萌新也能学会的建筑教程01】",
+      "duration_seconds": 1239,
+      "published_at": "2024-12-21T09:14:14.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1WhkbYeE5k/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "1e8e082b7f627bc9d925d3b0f8b1d47192675ecc5767d5af637822fabfe5022f",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 14,
+      "episode_id": "bilibili:BV1h1keYbEMd",
+      "bvid": "BV1h1keYbEMd",
+      "aid": 113695099264997,
+      "cid": 27470270264,
+      "season_episode_id": 99233612,
+      "curriculum_title": "2.2屋顶变例",
+      "published_title": "一个视频教你做屋顶",
+      "duration_seconds": 1282,
+      "published_at": "2024-12-22T07:00:23.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1h1keYbEMd/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "61df587498c2e07ed457533c24ae6a32d4895bc3a2c3a84d32fdf3f417a8aba1",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 15,
+      "episode_id": "bilibili:BV1unj9z4EnW",
+      "bvid": "BV1unj9z4EnW",
+      "aid": 114578772008296,
+      "cid": 30176968876,
+      "season_episode_id": 126804496,
+      "curriculum_title": "2.3屋顶优化",
+      "published_title": "【MC建筑】还在用楼梯做屋顶？",
+      "duration_seconds": 1350,
+      "published_at": "2025-05-27T08:17:15.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1unj9z4EnW/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "dfd2ce3f89b074c456f282c57dabdb14aacfa7d5a89d2df6aa0f35c13660c1ee",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 16,
+      "episode_id": "bilibili:BV1HTCaY6EDt",
+      "bvid": "BV1HTCaY6EDt",
+      "aid": 113729693815114,
+      "cid": 27575124287,
+      "season_episode_id": 100313850,
+      "curriculum_title": "3.1墙面入门",
+      "published_title": "【胎教级建筑教程01】如何处理墙面？",
+      "duration_seconds": 1067,
+      "published_at": "2024-12-28T09:26:47.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1HTCaY6EDt/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "df381dd8db5478abe93fc52984dc80d8411e9f02a5765cdbd427292883e59c49",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 17,
+      "episode_id": "bilibili:BV1ZJTLzgEdm",
+      "bvid": "BV1ZJTLzgEdm",
+      "aid": 114640948369393,
+      "cid": 30367484239,
+      "season_episode_id": 128601791,
+      "curriculum_title": "3.2墙面雕花",
+      "published_title": "【MC建筑】别让雕花毁了你的建筑！",
+      "duration_seconds": 1338,
+      "published_at": "2025-06-07T07:52:29.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1ZJTLzgEdm/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "a855694cb545a5658190bcfe5aa34d445e5a2301471d948339856d9602f8c225",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 18,
+      "episode_id": "bilibili:BV1XtGvzPEFR",
+      "bvid": "BV1XtGvzPEFR",
+      "aid": 114431400877610,
+      "cid": 29732310486,
+      "season_episode_id": 128723129,
+      "curriculum_title": "3.3墙面装饰",
+      "published_title": "1,000种mc建筑技巧！墙面篇",
+      "duration_seconds": 1153,
+      "published_at": "2025-05-01T07:36:18.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1XtGvzPEFR/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "dd8c8bbb9761989a912ed7d9dfc958d5139320fa3c109a8cdffc68a70c4a62da",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 19,
+      "episode_id": "bilibili:BV1nCJJzWEHH",
+      "bvid": "BV1nCJJzWEHH",
+      "aid": 114550334558372,
+      "cid": 30088758450,
+      "season_episode_id": 128723128,
+      "curriculum_title": "3.4门",
+      "published_title": "1000种mc建筑手法！门篇",
+      "duration_seconds": 858,
+      "published_at": "2025-05-22T07:41:07.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1nCJJzWEHH/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "1ac0b1fa0a08c02669992b3881402bbde8c348ca07e7963443409773e5da2c4e",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 20,
+      "episode_id": "bilibili:BV1FrPazJEFD",
+      "bvid": "BV1FrPazJEFD",
+      "aid": 116187253971154,
+      "cid": 36523935658,
+      "season_episode_id": 180826450,
+      "curriculum_title": "3.5构筑大型墙面",
+      "published_title": "【MC建筑】如何装饰空白墙面？",
+      "duration_seconds": 1078,
+      "published_at": "2026-03-07T09:51:05.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1FrPazJEFD/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "e79e755f383563ae00498dde81967265a68385f47f8ae6a7a460bf14c84a0952",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 21,
+      "episode_id": "bilibili:BV1HRVnzVEFa",
+      "bvid": "BV1HRVnzVEFa",
+      "aid": 114442960376816,
+      "cid": 29767766003,
+      "season_episode_id": 122706814,
+      "curriculum_title": "4.1造景概述",
+      "published_title": "mc玩家必学的空地美化法！（造景/庭院/房前屋后）",
+      "duration_seconds": 842,
+      "published_at": "2025-05-03T08:41:12.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1HRVnzVEFa/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "d5e12bded183844d24877b102ec03e84ab472be083c77f8e3c13520d9eba8625",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 22,
+      "episode_id": "bilibili:BV1rx6yYNEYr",
+      "bvid": "BV1rx6yYNEYr",
+      "aid": 113762744933083,
+      "cid": 27675199917,
+      "season_episode_id": 101411014,
+      "curriculum_title": "4.2铺路入门",
+      "published_title": "萌新也能学会的铺路方法！",
+      "duration_seconds": 1987,
+      "published_at": "2025-01-03T05:45:46.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1rx6yYNEYr/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "f6de9db3be39d93befe630189655ca6e25291df2e4f4662b212e9be7aa254ce6",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 23,
+      "episode_id": "bilibili:BV1KN91Y1ELG",
+      "bvid": "BV1KN91Y1ELG",
+      "aid": 114119965416481,
+      "cid": 28736752294,
+      "season_episode_id": 112873893,
+      "curriculum_title": "4.3树入门",
+      "published_title": "【MC造景入门01】种一棵树！",
+      "duration_seconds": 1437,
+      "published_at": "2025-03-07T07:36:25.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1KN91Y1ELG/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "33d3c8523e43d0963a8e2a13d9e5b8504b7a24c43a9550edc5c29ae844a38f82",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 24,
+      "episode_id": "bilibili:BV1xtXKYYEF2",
+      "bvid": "BV1xtXKYYEF2",
+      "aid": 114193734835258,
+      "cid": 28966519230,
+      "season_episode_id": 115168837,
+      "curriculum_title": "4.4桥入门",
+      "published_title": "萌新也能学会的简单桥梁！",
+      "duration_seconds": 798,
+      "published_at": "2025-03-20T08:21:13.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1xtXKYYEF2/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "0d146d3dcef725367625b377c72216de6431734598872ee6b478faf4497bca96",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 25,
+      "episode_id": "bilibili:BV1Hy5pzQE5n",
+      "bvid": "BV1Hy5pzQE5n",
+      "aid": 114362949833775,
+      "cid": 29495397263,
+      "season_episode_id": 120309610,
+      "curriculum_title": "4.5水体美化",
+      "published_title": "mc玩家必学的水体美化方法！",
+      "duration_seconds": 882,
+      "published_at": "2025-04-19T09:00:00.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1Hy5pzQE5n/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "d9b9d24a0a07530119f30d01939126a693402cdd22d294fc0d230cace09bb384",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 26,
+      "episode_id": "bilibili:BV1oFJPzqE9k",
+      "bvid": "BV1oFJPzqE9k",
+      "aid": 114522333386326,
+      "cid": 30005330481,
+      "season_episode_id": 125149882,
+      "curriculum_title": "4.6地形衔接",
+      "published_title": "【mc建筑】如何衔接地形与建筑？",
+      "duration_seconds": 885,
+      "published_at": "2025-05-17T09:14:45.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1oFJPzqE9k/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "468597fdacb3e2fc338b74f0895739fb02a4d51255f0ad4c798799d4e080a28d",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 27,
+      "episode_id": "bilibili:BV1i2JBzPE8m",
+      "bvid": "BV1i2JBzPE8m",
+      "aid": 114544999404071,
+      "cid": 30072899814,
+      "season_episode_id": 125831567,
+      "curriculum_title": "4.7房屋衔接",
+      "published_title": "【mc建筑】如何连接两栋房屋？",
+      "duration_seconds": 739,
+      "published_at": "2025-05-21T09:09:33.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1i2JBzPE8m/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "c99ab057dbd380796eb17cc260918385d8df912e47ab9940b36ab743eedbb923",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 28,
+      "episode_id": "bilibili:BV1Cm7VzzEXd",
+      "bvid": "BV1Cm7VzzEXd",
+      "aid": 114589895302663,
+      "cid": 30209476476,
+      "season_episode_id": 127106630,
+      "curriculum_title": "4.8山谷设计",
+      "published_title": "【MC建筑】如何处理山间谷地？",
+      "duration_seconds": 667,
+      "published_at": "2025-05-29T09:20:00.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1Cm7VzzEXd/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "82a56f08c499c9d98fbbc6dad8b1a969f19d02bf8b93505f7c09fad5ee3ec4ec",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 29,
+      "episode_id": "bilibili:BV1a5TDzhE9M",
+      "bvid": "BV1a5TDzhE9M",
+      "aid": 114646400964551,
+      "cid": 30384456974,
+      "season_episode_id": 128766851,
+      "curriculum_title": "4.9海滩设计",
+      "published_title": "【MC建筑】如何处理海边空地？",
+      "duration_seconds": 825,
+      "published_at": "2025-06-08T06:55:20.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1a5TDzhE9M/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "270d3efd45336938e229bea5cbe3df4aea5ee9531a1c7653520a6529868653b4",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 30,
+      "episode_id": "bilibili:BV1DkPVexESz",
+      "bvid": "BV1DkPVexESz",
+      "aid": 114068526473177,
+      "cid": 28598535553,
+      "season_episode_id": 111294970,
+      "curriculum_title": "5.1内饰概述",
+      "published_title": "【保姆级教程】萌新也能做内饰！",
+      "duration_seconds": 1852,
+      "published_at": "2025-02-28T03:20:00.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1DkPVexESz/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "3986d637e506bd21277fc5e18c06f7f58088baf38a2d67b3002300acee90e297",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 31,
+      "episode_id": "bilibili:BV1ux2sBvECk",
+      "bvid": "BV1ux2sBvECk",
+      "aid": 115671019035210,
+      "cid": 34540945862,
+      "season_episode_id": 162161301,
+      "curriculum_title": "5.1.1空间划分",
+      "published_title": "【MC建筑】如何划分内饰空间？",
+      "duration_seconds": 1080,
+      "published_at": "2025-12-06T05:45:03.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1ux2sBvECk/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "55c730770d62b0bccb3d09db14f98ded92440f409fe738f79cf087c57e05d7c0",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 32,
+      "episode_id": "bilibili:BV1VULRzAE3x",
+      "bvid": "BV1VULRzAE3x",
+      "aid": 114403282261608,
+      "cid": 29622207035,
+      "season_episode_id": 128723130,
+      "curriculum_title": "5.2内饰手法",
+      "published_title": "1000种mc建筑手法！内饰篇",
+      "duration_seconds": 555,
+      "published_at": "2025-04-26T08:25:11.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1VULRzAE3x/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "f2e29a6952eb8b58a1f0864e1baed01a23741215c67d85a1dcc4d09f7110c383",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 33,
+      "episode_id": "bilibili:BV1Rf7nz5Eic",
+      "bvid": "BV1Rf7nz5Eic",
+      "aid": 114595851148856,
+      "cid": 30227826860,
+      "season_episode_id": 127273252,
+      "curriculum_title": "5.2.1灯",
+      "published_title": "【MC建筑】一个视频教你制作所有灯",
+      "duration_seconds": 1622,
+      "published_at": "2025-05-30T08:40:43.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1Rf7nz5Eic/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "656453495474e643347a76eaf8470dafced5897bb308ba4d49d135537196f596",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 34,
+      "episode_id": "bilibili:BV1tepJz3EuZ",
+      "bvid": "BV1tepJz3EuZ",
+      "aid": 115196509099501,
+      "cid": 32356959768,
+      "season_episode_id": 146805071,
+      "curriculum_title": "5.2.2椅子",
+      "published_title": "【MC建筑】教你制作一万种椅子！",
+      "duration_seconds": 1038,
+      "published_at": "2025-09-13T10:35:17.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1tepJz3EuZ/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "bdd1657e5cadaf4539809af275014ead0e5b47a75e42c4bfbad9c8cd01e09351",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 35,
+      "episode_id": "bilibili:BV1TUHHz1ECZ",
+      "bvid": "BV1TUHHz1ECZ",
+      "aid": 115297725978675,
+      "cid": 32785958414,
+      "season_episode_id": 149938807,
+      "curriculum_title": "5.2.3桌子",
+      "published_title": "【mc建筑】内饰篇之无敌桌子大王！",
+      "duration_seconds": 797,
+      "published_at": "2025-10-01T07:31:08.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1TUHHz1ECZ/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "ca8b0ca3c520c4fbb4f7bc7d44426347daf6fe5cd8578858686f2f2fa56a2a4d",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 36,
+      "episode_id": "bilibili:BV1YNLnzeEx3",
+      "bvid": "BV1YNLnzeEx3",
+      "aid": 114397762557238,
+      "cid": 29603399849,
+      "season_episode_id": 121369929,
+      "curriculum_title": "5.3山顶洞人",
+      "published_title": "教你在mc里当山顶洞人！",
+      "duration_seconds": 2145,
+      "published_at": "2025-04-25T09:01:55.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1YNLnzeEx3/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "aa728e92dc2c079e9d9716dd96f6a18304b183be0c49187a10b48bbcbb953dbc",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 37,
+      "episode_id": "bilibili:BV1JcQ3YYEg5",
+      "bvid": "BV1JcQ3YYEg5",
+      "aid": 114160096516789,
+      "cid": 28859957937,
+      "season_episode_id": 125806138,
+      "curriculum_title": "【进阶1】做旧",
+      "published_title": "mc建筑的做旧【进阶教程01】",
+      "duration_seconds": 780,
+      "published_at": "2025-03-14T09:44:41.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1JcQ3YYEg5/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "86c1533f5e69188782ad46cf466a11382fd02a0cf42f347fbed34e86c510e259",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 38,
+      "episode_id": "bilibili:BV1j7QSYKEHA",
+      "bvid": "BV1j7QSYKEHA",
+      "aid": 114165767214686,
+      "cid": 28877065249,
+      "season_episode_id": 125806153,
+      "curriculum_title": "【进阶2】大型建筑",
+      "published_title": "【MC建筑进阶01】如何建造大型建筑？",
+      "duration_seconds": 1178,
+      "published_at": "2025-03-15T09:51:35.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1j7QSYKEHA/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "cd57af57f81839456b0b6d733e593a9cea9e96660edf6edebbadfdebcef64db6",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 39,
+      "episode_id": "bilibili:BV1yHEtz2EJh",
+      "bvid": "BV1yHEtz2EJh",
+      "aid": 114517149225707,
+      "cid": 29990258103,
+      "season_episode_id": 125806209,
+      "curriculum_title": "【进阶3】建筑群规划",
+      "published_title": "如何在mc中规划自己的建筑群？",
+      "duration_seconds": 875,
+      "published_at": "2025-05-16T11:11:40.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1yHEtz2EJh/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "47b97d4244b551f17a169fcf05d19b165f8a55ab7b1647fdde1ffee6637846cb",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 40,
+      "episode_id": "bilibili:BV1SNdSBtErf",
+      "bvid": "BV1SNdSBtErf",
+      "aid": 116442720638282,
+      "cid": 37695455387,
+      "season_episode_id": 190486852,
+      "curriculum_title": "【进阶3.1】前景",
+      "published_title": "【mc建筑】不好看？遮起来就完事了！",
+      "duration_seconds": 1114,
+      "published_at": "2026-04-21T12:40:04.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1SNdSBtErf/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "c05b3cc099fc1ccd6019b9f50d1968a9162ae160fda49a19a0fd725f09559e39",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 41,
+      "episode_id": "bilibili:BV1LxjEzKEH7",
+      "bvid": "BV1LxjEzKEH7",
+      "aid": 114555938151284,
+      "cid": 30105338983,
+      "season_episode_id": 126131148,
+      "curriculum_title": "【进阶4】降低重复感",
+      "published_title": "【MC建筑】为什么你的建筑看起来单调乏味？",
+      "duration_seconds": 858,
+      "published_at": "2025-05-23T07:27:59.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1LxjEzKEH7/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "c16447dbc7e7e2e30a04ccecf325cf5b8a3805e84513d6c39671cc15a53768c0",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 42,
+      "episode_id": "bilibili:BV17QjvzpEuA",
+      "bvid": "BV17QjvzpEuA",
+      "aid": 114584073543322,
+      "cid": 30192242202,
+      "season_episode_id": 126946299,
+      "curriculum_title": "【进阶5】斜向建筑",
+      "published_title": "【MC建筑】如何建造斜向建筑？",
+      "duration_seconds": 1025,
+      "published_at": "2025-05-28T09:00:00.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV17QjvzpEuA/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "4a3c355943020c1339f165685672de7236b7e73ce38f3d1ea0b2562d407daf49",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 43,
+      "episode_id": "bilibili:BV1K1oXYGEm2",
+      "bvid": "BV1K1oXYGEm2",
+      "aid": 114239368861290,
+      "cid": 29112140692,
+      "season_episode_id": 125806370,
+      "curriculum_title": "【中世纪0】导论",
+      "published_title": "mc中世纪建筑到底是什么？",
+      "duration_seconds": 332,
+      "published_at": "2025-03-28T09:37:19.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1K1oXYGEm2/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "65590dbbc3b5b61fbf3324d5e825bd287f2574b6a361962778b824a409279a72",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 44,
+      "episode_id": "bilibili:BV1WsZcYZEMQ",
+      "bvid": "BV1WsZcYZEMQ",
+      "aid": 114244804678853,
+      "cid": 29129180211,
+      "season_episode_id": 125806369,
+      "curriculum_title": "【中世纪1.1】民居结构",
+      "published_title": "【萌新向】mc中世纪建筑教程 结构（01民居篇）",
+      "duration_seconds": 1073,
+      "published_at": "2025-03-29T08:48:55.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1WsZcYZEMQ/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "0bb5faf8eb4974e1afebd1eae27b2b69be24af8a3e005f406ee60dd48cbb8a0e",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 45,
+      "episode_id": "bilibili:BV1jbdUYCEjG",
+      "bvid": "BV1jbdUYCEjG",
+      "aid": 114318624429767,
+      "cid": 29354033993,
+      "season_episode_id": 127611623,
+      "curriculum_title": "【中世纪1.2】民居范例",
+      "published_title": "【微肝】mc中世纪民居建筑教程",
+      "duration_seconds": 2634,
+      "published_at": "2025-04-11T09:44:05.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1jbdUYCEjG/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "76af2f78176f1fae1c79bc73039ba02b4671cf92f38b3bc2121a4e32254ab95e",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 46,
+      "episode_id": "bilibili:BV1bWX6YPEsG",
+      "bvid": "BV1bWX6YPEsG",
+      "aid": 114199774632519,
+      "cid": 28987559214,
+      "season_episode_id": 125806371,
+      "curriculum_title": "【中世纪2.1】城堡上",
+      "published_title": "【中世纪建筑教程】城堡（上）",
+      "duration_seconds": 802,
+      "published_at": "2025-03-21T09:56:24.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1bWX6YPEsG/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "e65ea267311bf7c821a15b8e64e561f3afda9334489aec001a0f3a8a488b179c",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 47,
+      "episode_id": "bilibili:BV1JT5ez2EjF",
+      "bvid": "BV1JT5ez2EjF",
+      "aid": 114352044646207,
+      "cid": 29461645202,
+      "season_episode_id": 125806734,
+      "curriculum_title": "【中世纪2.2】城堡下",
+      "published_title": "如何在mc中搭建城堡",
+      "duration_seconds": 934,
+      "published_at": "2025-04-17T09:10:00.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1JT5ez2EjF/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "0bbfee29742b6789605f2586508578c52d3ab1f43fb479358e863cc83b1a63b7",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 48,
+      "episode_id": "bilibili:BV1267wzyErC",
+      "bvid": "BV1267wzyErC",
+      "aid": 114601421184493,
+      "cid": 30245585165,
+      "season_episode_id": 127432717,
+      "curriculum_title": "【现代1.1】现代别墅",
+      "published_title": "【MC建筑】如何设计现代别墅？",
+      "duration_seconds": 998,
+      "published_at": "2025-05-31T08:16:19.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1267wzyErC/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "6ecc84c01965d11274f52b46d51085b86a6202e1d6f5e89de7e078572763ec21",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 49,
+      "episode_id": "bilibili:BV1ifomBqEJJ",
+      "bvid": "BV1ifomBqEJJ",
+      "aid": 116463289572262,
+      "cid": 37805424780,
+      "season_episode_id": 191210516,
+      "curriculum_title": "【MC建筑】一个视频教你搭圆形！",
+      "published_title": "【MC建筑】一个视频教你搭圆形！",
+      "duration_seconds": 505,
+      "published_at": "2026-04-25T03:50:35.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1ifomBqEJJ/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "39106599f9a5be23e7b77e1ff60541a71e43314a7b7c86d26c41dd7743566ced",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    },
+    {
+      "order": 50,
+      "episode_id": "bilibili:BV1SN9xBWEmF",
+      "bvid": "BV1SN9xBWEmF",
+      "aid": 116488791005423,
+      "cid": 37952815530,
+      "season_episode_id": 192207525,
+      "curriculum_title": "【MC建筑】看完还不会做尖顶我就从屏幕里爬出来打你",
+      "published_title": "【MC建筑】看完还不会做尖顶我就从屏幕里爬出来打你",
+      "duration_seconds": 828,
+      "published_at": "2026-04-30T09:00:00.000Z",
+      "rights": {
+        "api_download_flag": null,
+        "no_reprint_flag": null,
+        "observation_source": "season-summary-unverified"
+      },
+      "canonical_url": "https://www.bilibili.com/video/BV1SN9xBWEmF/",
+      "source_status": "public",
+      "metadata_fingerprint_sha256": "e5ade694be2224fa8b94234fa7527ec01779c03b0f3e4bbe8f72cdafbb88face",
+      "processing": {
+        "role": "course",
+        "status": "metadata-ready"
+      }
+    }
+  ]
+}
