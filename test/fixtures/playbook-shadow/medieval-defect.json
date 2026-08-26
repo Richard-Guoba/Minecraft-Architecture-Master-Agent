@@ -1,0 +1,35 @@
+{
+  "workflow": "construction_method_v1",
+  "seed": 41002,
+  "prompt": "存在体块与承托缺陷的中世纪民居",
+  "architecture": {
+    "style": "西方中世纪",
+    "style_family": "medieval",
+    "typology": "house",
+    "volumes": [
+      { "id": "a", "shape": "box", "scale": [1, 1, 1], "placement": { "relation": "detached-west" }, "purpose": "main-building-envelope", "tags": ["primary-mass"] },
+      { "id": "b", "shape": "box", "scale": [1, 1, 1], "placement": { "relation": "detached-center" }, "purpose": "main-building-envelope", "tags": ["primary-mass"] },
+      { "id": "c", "shape": "box", "scale": [1, 1, 1], "placement": { "relation": "detached-east" }, "purpose": "side-wing", "tags": ["secondary-mass"] }
+    ]
+  },
+  "structure": {
+    "system": "timber-frame",
+    "structural_intent": { "floor_count": 3, "supports": "unresolved" },
+    "foundation": { "strategy": "narrow-timber-foot", "material": "minecraft:oak_planks" },
+    "load_paths": [],
+    "support_elements": []
+  },
+  "roof": {
+    "style": "gable",
+    "profile": "single-unresolved-gable",
+    "materials": { "roof": "minecraft:dark_oak_stairs", "trim": "minecraft:dark_oak_stairs" },
+    "elements": [],
+    "overhang": 2
+  },
+  "facade": {
+    "composition_strategy": { "source": "original-p4-fixture" },
+    "facade_depth_layers": ["wall-plane"],
+    "facade_elements": ["repeated-window"],
+    "window_system": { "rhythm": "identical-bays", "width": 2, "height": 2, "spacing": 3 }
+  }
+}

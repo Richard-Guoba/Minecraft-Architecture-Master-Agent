@@ -1,0 +1,40 @@
+{
+  "workflow": "construction_method_v1",
+  "seed": 41001,
+  "prompt": "中世纪木框石基民居",
+  "architecture": {
+    "style": "西方中世纪",
+    "style_family": "medieval",
+    "typology": "house",
+    "volumes": [
+      { "id": "main", "shape": "box", "scale": [1, 1, 1], "placement": { "relation": "center" }, "purpose": "main-building-envelope", "tags": ["primary-mass"] },
+      { "id": "wing", "shape": "box", "scale": [0.65, 0.75, 0.6], "placement": { "relation": "attached-east", "attach_to": "main" }, "purpose": "side-wing", "tags": ["secondary-mass"] },
+      { "id": "porch", "shape": "box", "scale": [0.35, 0.4, 0.3], "placement": { "relation": "attached-south", "attach_to": "main" }, "purpose": "entry-support", "tags": ["support-volume"] }
+    ]
+  },
+  "structure": {
+    "system": "timber-frame-on-stone-base",
+    "structural_intent": { "floor_count": 2, "supports": "visible-timber-frame" },
+    "foundation": { "strategy": "stone-plinth", "material": "minecraft:stone_bricks" },
+    "load_paths": [
+      { "id": "roof-main-base", "from": "roof-frame", "through": "main-posts", "to": "stone-plinth" },
+      { "id": "wing-main-base", "from": "wing-frame", "through": "corner-posts", "to": "stone-plinth" }
+    ],
+    "support_elements": [
+      { "id": "main-posts", "kind": "timber-post-grid", "target": "main", "priority": "primary" }
+    ]
+  },
+  "roof": {
+    "style": "gable",
+    "profile": "steep-gable",
+    "materials": { "roof": "minecraft:dark_oak_stairs", "trim": "minecraft:spruce_stairs" },
+    "elements": [{ "id": "main-gable", "kind": "primary-roof" }],
+    "overhang": 1
+  },
+  "facade": {
+    "composition_strategy": { "source": "original-p4-fixture" },
+    "facade_depth_layers": ["wall-plane", "timber-frame", "window-trim"],
+    "facade_elements": ["timber-frame", "wall-infill", "window-trim"],
+    "window_system": { "rhythm": "varied-bays", "width": 2, "height": 3, "spacing": 4 }
+  }
+}

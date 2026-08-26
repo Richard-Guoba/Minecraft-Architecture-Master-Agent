@@ -103,7 +103,7 @@ function readonlyMap(entries) {
           (value, key) => callback.call(thisArg, value, key, immutable)
         );
       }
-      const value = Reflect.get(target, property, target);
+      const value = target[property];
       return typeof value === 'function' ? value.bind(target) : value;
     }
   });

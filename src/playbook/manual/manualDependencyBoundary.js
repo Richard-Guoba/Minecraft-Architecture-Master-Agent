@@ -14,31 +14,61 @@ const RESOLVER_IMPLEMENTATION_PATH = await fs.realpath(fileURLToPath(
 ));
 
 export async function auditManualDependencyBoundary({ projectRoot }) {
+  const audit = await auditPlaybookSourceBoundary({
+    projectRoot,
+    entryPaths: ['src/playbook/manual'],
+    forbiddenPaths: ['src/construction'],
+    factNamespace: 'MANUAL'
+  });
+  return freezeAudit({
+    import_boundary_violation_count: audit.import_boundary_violation_count,
+    import_boundary_unresolved_count: audit.import_boundary_unresolved_count,
+    manual_construction_imports: audit.forbidden_dependency_imports,
+    unresolved_manual_dependencies: audit.unresolved_dependencies,
+    resolved_manual_dependency_paths: audit.resolved_dependency_paths
+  });
+}
+
+export async function auditPlaybookSourceBoundary({
+  projectRoot,
+  entryPaths,
+  forbiddenPaths,
+  factNamespace
+}) {
   const root = path.resolve(projectRoot);
-  const manualRoot = path.join(root, 'src/playbook/manual');
-  const constructionRoot = path.join(root, 'src/construction');
-  const constructionRoots = new Set([constructionRoot]);
+  const namespace = String(factNamespace).toUpperCase();
+  const forbiddenRoots = new Set();
   const violations = new Set();
   const unresolved = new Set();
   const visitedModules = new Set();
   const queuedModules = [];
   const trustedBuiltinModulesImportPath = RESOLVER_IMPLEMENTATION_PATH;
 
-  try {
-    constructionRoots.add(await fs.realpath(constructionRoot));
-  } catch {
-    // A missing construction root cannot receive a resolved dependency edge.
+  for (const forbiddenPath of forbiddenPaths) {
+    const forbiddenRoot = path.resolve(root, forbiddenPath);
+    forbiddenRoots.add(forbiddenRoot);
+    try {
+      forbiddenRoots.add(await fs.realpath(forbiddenRoot));
+    } catch {
+      // A missing forbidden root cannot receive a resolved dependency edge.
+    }
   }
 
-  try {
-    queuedModules.push(...await listManualEntries({
-      directoryPath: manualRoot,
-      projectRoot: root,
-      unresolved,
-      visitedDirectories: new Set()
-    }));
-  } catch {
-    unresolved.add('src/playbook/manual:MANUAL_ROOT_UNAVAILABLE');
+  const visitedDirectories = new Set();
+  for (const entryPath of entryPaths) {
+    const absoluteEntryPath = path.resolve(root, entryPath);
+    try {
+      queuedModules.push(...await listSourceEntries({
+        entryPath: absoluteEntryPath,
+        projectRoot: root,
+        unresolved,
+        visitedDirectories
+      }));
+    } catch {
+      unresolved.add(
+        `${safeRelative(root, absoluteEntryPath)}:${namespace}_ROOT_UNAVAILABLE`
+      );
+    }
   }
 
   while (queuedModules.length > 0) {
@@ -50,8 +80,8 @@ export async function auditManualDependencyBoundary({ projectRoot }) {
       unresolved.add(`${safeRelative(root, logicalPath)}:MODULE_UNAVAILABLE`);
       continue;
     }
-    if (isConstructionPath(realPath, constructionRoots)) {
-      violations.add(constructionEdgeFact(root, logicalPath, realPath));
+    if (isForbiddenPath(realPath, forbiddenRoots)) {
+      violations.add(dependencyEdgeFact(root, logicalPath, realPath));
       continue;
     }
     if (!isWithin(realPath, root)) {
@@ -100,8 +130,8 @@ export async function auditManualDependencyBoundary({ projectRoot }) {
         );
         continue;
       }
-      if (isConstructionPath(resolvedReal, constructionRoots)) {
-        violations.add(constructionEdgeFact(root, realPath, resolvedReal));
+      if (isForbiddenPath(resolvedReal, forbiddenRoots)) {
+        violations.add(dependencyEdgeFact(root, realPath, resolvedReal));
         continue;
       }
       if (!isWithin(resolvedReal, root)) {
@@ -120,20 +150,41 @@ export async function auditManualDependencyBoundary({ projectRoot }) {
     }
   }
 
-  const manualConstructionImports = [...violations].sort();
-  const unresolvedManualDependencies = [...unresolved].sort();
+  const forbiddenDependencyImports = [...violations].sort();
+  const unresolvedDependencies = [...unresolved].sort();
   return freezeAudit({
-    import_boundary_violation_count: manualConstructionImports.length,
-    import_boundary_unresolved_count: unresolvedManualDependencies.length,
-    manual_construction_imports: manualConstructionImports,
-    unresolved_manual_dependencies: unresolvedManualDependencies,
-    resolved_manual_dependency_paths: [...visitedModules]
+    import_boundary_violation_count: forbiddenDependencyImports.length,
+    import_boundary_unresolved_count: unresolvedDependencies.length,
+    forbidden_dependency_imports: forbiddenDependencyImports,
+    unresolved_dependencies: unresolvedDependencies,
+    resolved_dependency_paths: [...visitedModules]
       .map((modulePath) => safeRelative(root, modulePath))
       .sort()
   });
 }
 
-async function listManualEntries({
+async function listSourceEntries(context) {
+  if (MODULE_EXTENSION_SET.has(path.extname(context.entryPath))) {
+    try {
+      const stat = await fs.stat(context.entryPath);
+      if (!stat.isFile()) throw new Error('not a source file');
+      return [context.entryPath];
+    } catch {
+      context.unresolved.add(
+        `${safeRelative(context.projectRoot, context.entryPath)}:MODULE_UNAVAILABLE`
+      );
+      return [];
+    }
+  }
+  return listSourceDirectory({
+    directoryPath: context.entryPath,
+    projectRoot: context.projectRoot,
+    unresolved: context.unresolved,
+    visitedDirectories: context.visitedDirectories
+  });
+}
+
+async function listSourceDirectory({
   directoryPath,
   projectRoot,
   unresolved,
@@ -161,7 +212,7 @@ async function listManualEntries({
   for (const entry of entries) {
     const entryPath = path.join(directoryPath, entry.name);
     if (entry.isDirectory()) {
-      modules.push(...await listManualEntries({
+      modules.push(...await listSourceDirectory({
         directoryPath: entryPath,
         projectRoot,
         unresolved,
@@ -178,7 +229,7 @@ async function listManualEntries({
         continue;
       }
       if (stat.isDirectory()) {
-        modules.push(...await listManualEntries({
+        modules.push(...await listSourceDirectory({
           directoryPath: entryPath,
           projectRoot,
           unresolved,
@@ -1009,8 +1060,8 @@ async function resolveSupportedFile(resolvedPath) {
   return null;
 }
 
-function isConstructionPath(candidate, constructionRoots) {
-  return [...constructionRoots].some((root) => isWithin(candidate, root));
+function isForbiddenPath(candidate, forbiddenRoots) {
+  return [...forbiddenRoots].some((root) => isWithin(candidate, root));
 }
 
 function isWithin(candidate, root) {
@@ -1027,7 +1078,7 @@ function safeRelative(projectRoot, candidate) {
   return path.relative(projectRoot, candidate).split(path.sep).join('/');
 }
 
-function constructionEdgeFact(projectRoot, importerPath, targetPath) {
+function dependencyEdgeFact(projectRoot, importerPath, targetPath) {
   return `${safeRelative(projectRoot, importerPath)} -> `
     + safeRelative(projectRoot, targetPath);
 }

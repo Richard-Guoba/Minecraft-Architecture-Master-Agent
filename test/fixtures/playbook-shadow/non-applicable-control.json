@@ -1,0 +1,33 @@
+{
+  "workflow": "construction_method_v1",
+  "seed": 41003,
+  "prompt": "现代单体纪念碑",
+  "architecture": {
+    "style": "现代极简",
+    "style_family": "modern",
+    "typology": "monument",
+    "volumes": [
+      { "id": "monolith", "shape": "box", "scale": [1, 2, 1], "placement": { "relation": "center" }, "purpose": "monument", "tags": ["single-monolith"] }
+    ]
+  },
+  "structure": {
+    "system": "reinforced-monolith",
+    "structural_intent": { "floor_count": 1, "supports": "solid-core" },
+    "foundation": { "strategy": "slab", "material": "minecraft:smooth_stone" },
+    "load_paths": [{ "id": "core-base", "from": "monolith", "through": "solid-core", "to": "slab" }],
+    "support_elements": []
+  },
+  "roof": {
+    "style": "flat",
+    "profile": "flat-cap",
+    "materials": { "roof": "minecraft:smooth_stone", "trim": "minecraft:smooth_stone" },
+    "elements": [],
+    "overhang": 0
+  },
+  "facade": {
+    "composition_strategy": { "source": "original-p4-fixture" },
+    "facade_depth_layers": ["wall-plane"],
+    "facade_elements": [],
+    "window_system": { "rhythm": "none", "width": 0, "height": 0, "spacing": 0 }
+  }
+}
