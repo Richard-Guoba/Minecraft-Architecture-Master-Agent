@@ -103,7 +103,8 @@ function stableUnknowns(review) {
   for (const assessment of review.assessments) {
     if (assessment.status !== 'unknown') continue;
     for (const value of [...assessment.unknown_ids, ...assessment.missing_signals]) {
-      if (!unknowns.includes(value)) unknowns.push(capText(value, MAX_EXPLANATION_CODE_POINTS));
+      const bounded = capText(value, MAX_EXPLANATION_CODE_POINTS);
+      if (!unknowns.includes(bounded)) unknowns.push(bounded);
       if (unknowns.length === MAX_UNKNOWN_ITEMS) return unknowns;
     }
   }

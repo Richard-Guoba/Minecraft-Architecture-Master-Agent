@@ -30,6 +30,20 @@ test('mock explanation is deterministic and never creates a client', async () =>
   assert.equal(first.provider, 'mock');
 });
 
+test('mock explanation deduplicates unknown IDs after bounding their text', async () => {
+  const fixture = await explanationFixture();
+  const review = structuredClone(fixture.review);
+  const unknownAssessments = review.assessments.filter((assessment) => assessment.status === 'unknown');
+  const cappedUnknown = `unknown:${'a'.repeat(2040)}`;
+  unknownAssessments[0].unknown_ids = [`${cappedUnknown}-first`];
+  unknownAssessments[1].unknown_ids = [`${cappedUnknown}-second`];
+
+  const result = await explainReview({ mode: 'mock', review });
+
+  assert.equal(result.status, 'available');
+  assert.equal(result.overall_unknowns.filter((item) => item === cappedUnknown).length, 1);
+});
+
 test('valid LLM explanation is accepted', async () => {
   const fixture = await explanationFixture();
   const result = await explainReview({

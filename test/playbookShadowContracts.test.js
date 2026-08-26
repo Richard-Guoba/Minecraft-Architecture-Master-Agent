@@ -44,6 +44,17 @@ test('review contract accepts only the fixed blueprint.json input path', () => {
   }
 });
 
+test('review contract permits distinct unknown IDs longer than explanation text limits', () => {
+  const review = validReviewFixture();
+  const cappedUnknown = `unknown:${'a'.repeat(2040)}`;
+  review.assessments[2].unknown_ids = [`${cappedUnknown}-first`, `${cappedUnknown}-second`];
+
+  assert.deepEqual(validateReview(review).assessments[2].unknown_ids, [
+    `${cappedUnknown}-first`,
+    `${cappedUnknown}-second`
+  ]);
+});
+
 test('explanation must preserve review hash, rule order, status, and repair IDs', () => {
   const review = validateReview(validReviewFixture());
   const explanation = validExplanationFixture(review);
