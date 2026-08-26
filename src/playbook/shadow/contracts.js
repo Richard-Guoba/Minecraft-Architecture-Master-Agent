@@ -53,7 +53,7 @@ const PROMPT_RULE_FIELDS = Object.freeze([
 const MANIFEST_FIELDS = Object.freeze([
   'schema_version', 'evaluator_version', 'playbook_version', 'school_id',
   'blueprint_sha256', 'rule_corpus_sha256', 'mode', 'explanation_status',
-  'managed_files', 'file_sha256'
+  'managed_paths', 'file_sha256'
 ]);
 const FILE_SHA256_FIELDS = Object.freeze([
   'review.json', 'prompt-packet.json', 'explanation.json', 'report.md'
@@ -107,6 +107,10 @@ export function validateReview(value) {
     validateAssessment(item, index);
     if (ruleIds.has(item.rule_id)) fail('PLAYBOOK_CORPUS_INVALID', 'duplicate-rule-id');
     ruleIds.add(item.rule_id);
+  }
+  const coreRuleCount = value.assessments.filter((item) => item.teaching_role === 'core-procedure').length;
+  if (coreRuleCount !== 15 || value.assessments.length - coreRuleCount !== 6) {
+    fail('PLAYBOOK_CORPUS_INVALID', 'assessment-role-count');
   }
   validateSummary(value.summary, value.assessments);
   return deepFreeze(value);
@@ -188,7 +192,7 @@ export function validateManifest(value) {
   if (!['available', 'unavailable'].includes(value.explanation_status)) {
     fail('SHADOW_OUTPUT_OWNERSHIP', 'explanation-status');
   }
-  assertExactArray(value.managed_files, SHADOW_OUTPUT_FILES, 'SHADOW_OUTPUT_OWNERSHIP', 'managed-files');
+  assertExactArray(value.managed_paths, SHADOW_OUTPUT_FILES, 'SHADOW_OUTPUT_OWNERSHIP', 'managed-paths');
   assertExactObject(value.file_sha256, 'manifest-hashes', FILE_SHA256_FIELDS, 'SHADOW_OUTPUT_OWNERSHIP');
   for (const file of FILE_SHA256_FIELDS) assertSha256(value.file_sha256[file], 'SHADOW_OUTPUT_OWNERSHIP');
   return deepFreeze(value);
@@ -210,7 +214,7 @@ function validateAssessment(item, index) {
     (item.teaching_role === 'case-pattern')
     !== (item.admission_status === 'manual-example-only')
   ) fail('PLAYBOOK_CORPUS_INVALID', 'admission-role-mismatch');
-  assertLayer(item.design_layer, 'PLAYBOOK_CORPUS_INVALID', 'design-layer');
+  assertEvaluatedLayer(item.design_layer, 'PLAYBOOK_CORPUS_INVALID', 'design-layer');
   assertId(item.check_id, CHECK_ID, 'PLAYBOOK_CORPUS_INVALID', 'check-id');
   if (!['structural', 'evidence-required'].includes(item.checker_kind)) {
     fail('PLAYBOOK_CORPUS_INVALID', 'checker-kind');
@@ -239,6 +243,12 @@ function validateAssessment(item, index) {
     if (item.repair_target_layer === null) fail('PLAYBOOK_CORPUS_INVALID', 'repair-target-layer');
   } else if (item.repair_operation_id !== null || item.repair_target_layer !== null) {
     fail('PLAYBOOK_CORPUS_INVALID', 'repair-on-non-violation');
+  }
+  if (
+    item.invalidates_layers.length > 0
+    && (item.status !== 'violated' || item.teaching_role !== 'core-procedure')
+  ) {
+    fail('PLAYBOOK_CORPUS_INVALID', 'invalidations-without-core-violation');
   }
   if (item.status === 'unknown' && item.missing_signals.length + item.unknown_ids.length === 0) {
     fail('PLAYBOOK_CORPUS_INVALID', 'unknown-without-missing-evidence');
@@ -331,6 +341,10 @@ function assertStatus(value, code) {
 
 function assertLayer(value, code, detail) {
   if (!LAYER_ORDER.includes(value)) fail(code, detail);
+}
+
+function assertEvaluatedLayer(value, code, detail) {
+  if (!EVALUATED_LAYERS.includes(value)) fail(code, detail);
 }
 
 function assertOrderedLayers(value, code, detail) {

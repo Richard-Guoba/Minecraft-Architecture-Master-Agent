@@ -43,7 +43,7 @@ test('explanation must preserve review hash, rule order, status, and repair IDs'
   );
 });
 
-test('prompt packets and manifests reject unmanaged paths and unknown fields', () => {
+test('manifest accepts only the fixed managed_paths field', () => {
   const review = validateReview(validReviewFixture());
   const promptPacket = validPromptPacketFixture(review);
   const manifest = validManifestFixture();
@@ -53,10 +53,38 @@ test('prompt packets and manifests reject unmanaged paths and unknown fields', (
     () => validatePromptPacket({ ...promptPacket, blueprint_path: '/tmp/blueprint.json' }),
     /BLUEPRINT_INVALID/u
   );
-  assert.throws(
-    () => validateManifest({ ...manifest, extra: true }),
-    /SHADOW_OUTPUT_OWNERSHIP/u
-  );
+  const legacyManifest = { ...manifest, managed_files: manifest.managed_paths };
+  delete legacyManifest.managed_paths;
+  assert.throws(() => validateManifest(legacyManifest), /SHADOW_OUTPUT_OWNERSHIP/u);
+});
+
+test('review rejects invalidated layers on non-violated assessments', () => {
+  const review = validReviewFixture();
+  review.assessments[0].invalidates_layers = ['roof'];
+  assert.throws(() => validateReview(review), /PLAYBOOK_CORPUS_INVALID/u);
+});
+
+test('review requires exactly fifteen core procedures and six case patterns', () => {
+  const review = validReviewFixture();
+  review.assessments[0].teaching_role = 'case-pattern';
+  review.assessments[0].admission_status = 'manual-example-only';
+  review.assessments[0].status = 'unknown';
+  review.assessments[0].observations = [];
+  review.assessments[0].missing_signals = ['visual-evidence'];
+  review.summary.by_layer.brief = counts(2, 0, 3);
+  review.summary.global = counts(12, 1, 8);
+  review.summary.core_rule_count = 14;
+  review.summary.case_pattern_count = 7;
+  review.summary.missing_evidence_count = 8;
+  assert.throws(() => validateReview(review), /PLAYBOOK_CORPUS_INVALID/u);
+});
+
+test('review rejects even violated rules assigned to non-covered layers', () => {
+  const review = validReviewFixture();
+  review.assessments[1].design_layer = 'space';
+  review.summary.by_layer.massing = counts(2, 0, 1);
+  review.summary.by_layer.space = counts(0, 1, 0);
+  assert.throws(() => validateReview(review), /PLAYBOOK_CORPUS_INVALID/u);
 });
 
 function validReviewFixture() {
@@ -65,7 +93,7 @@ function validReviewFixture() {
     const violated = index === 1;
     const unknown = casePattern || index === 2;
     const status = violated ? 'violated' : unknown ? 'unknown' : 'satisfied';
-    const layer = LAYERS[index % 5];
+    const layer = ['brief', 'massing', 'structure', 'roof', 'facade'][index % 5];
     return {
       rule_id: `rule:${String(index + 1).padStart(2, '0')}`,
       rule_version: 1,
@@ -107,10 +135,10 @@ function validReviewFixture() {
       by_layer: {
         brief: counts(3, 0, 2),
         massing: counts(2, 1, 1),
-        space: counts(2, 0, 2),
-        structure: counts(3, 0, 1),
+        space: counts(),
+        structure: counts(2, 0, 2),
         roof: counts(3, 0, 1),
-        facade: counts(),
+        facade: counts(3, 0, 1),
         materials: counts(),
         interior: counts(),
         scene: counts()
@@ -179,7 +207,7 @@ function validManifestFixture() {
     rule_corpus_sha256: HASH,
     mode: 'mock',
     explanation_status: 'available',
-    managed_files: [
+    managed_paths: [
       'manifest.json', 'review.json', 'prompt-packet.json', 'explanation.json', 'report.md'
     ],
     file_sha256: {
