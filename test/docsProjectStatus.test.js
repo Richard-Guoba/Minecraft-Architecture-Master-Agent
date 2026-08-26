@@ -39,6 +39,8 @@ test('architecture playbook docs describe the strict P4 boundary', () => {
   assert.match(report, /没有视觉输入/u);
   assert.match(report, /没有修改建筑/u);
   assert.match(report, /不证明.*质量提升/u);
-  assert.match(report, /P5/u);
+  assert.match(readme, /P5 是下一阶段.*新的设计获批前仍未开放/u);
+  assert.match(report, /P5 是下一阶段.*新的设计获批前仍未开放/u);
+  assert.doesNotMatch(`${readme}\n${report}`, /P5 已开放|开放 P5/u);
   assert.doesNotMatch(report, /P6 已开放|已改善建筑审美/u);
 });

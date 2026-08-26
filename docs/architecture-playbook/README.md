@@ -17,7 +17,7 @@
 - P3 已把 21 条候选规则确定性编译为 15 条核心程序和 6 条案例模式；五层知识为 `advisory-partial`，四层为 `not-covered`，九层运行时权限全部为 `none`。
 - P3 自动门禁已通过；它验证受管字节快照、Git 跟踪、基于 AST 与 Node 解析语义的实际依赖图，以及 `not-covered` 双重声明。P3 本身没有生成住宅、没有视觉改善住宅，也没有接入生产建造流水线。
 - P4 影子指导门禁已通过：`npm run playbook:shadow -- --run <out/run-directory> --mode mock` 对已有 `blueprint.json` 进行只读、确定性、可解释的审查，且不改变建筑或主生成流水线。
-- P4 没有视觉输入、没有候选生成、没有建筑修改、没有设计层返工、没有审美评分，也没有质量提升证据。P5 已开放，用于在新的设计批准后研究候选选择和有限设计层控制；P6 仍保留固定多视角、视觉模型、人工盲选和审美效果证据。
+- P4 没有视觉输入、没有候选生成、没有建筑修改、没有设计层返工、没有审美评分，也没有质量提升证据。P5 是下一阶段，但在新的设计获批前仍未开放；P6 仍未开放，并保留固定多视角、视觉模型、人工盲选和审美效果证据。
 - 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[九层覆盖矩阵](manual/coverage-v0.1.json)、[P3 门禁报告](reports/p3-playbook-v0.1.md)、[P4 影子指导报告](reports/p4-shadow-guidance.md)、[P4 正式设计](../superpowers/specs/2026-08-26-architecture-playbook-p4-shadow-guidance-design.md)和 [影子指导 CLI](../../src/runArchitecturePlaybookShadow.js)。
 
 ## 规划空间
