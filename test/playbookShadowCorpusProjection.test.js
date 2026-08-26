@@ -96,6 +96,39 @@ test('projection treats circular whitelist data as unavailable JSON facts', () =
   assert.equal(projected.massing.volumes, null);
 });
 
+test('projection treats object facts with hidden own properties as unavailable JSON facts', () => {
+  const blueprint = minimalBlueprintFixture();
+  const symbolBackedBounds = { valid: true, [Symbol('private')]: true };
+  const nonEnumerableFoundation = { valid: true };
+  const accessorBackedMaterials = { valid: true };
+  Object.defineProperty(nonEnumerableFoundation, 'private', {
+    value: true,
+    enumerable: false
+  });
+  Object.defineProperty(accessorBackedMaterials, 'private', {
+    enumerable: true,
+    get: () => true
+  });
+  blueprint.bounds = symbolBackedBounds;
+  blueprint.structure.foundation = nonEnumerableFoundation;
+  blueprint.roof.materials = accessorBackedMaterials;
+
+  const projected = projectBlueprint(blueprint);
+
+  assert.equal(projected.massing.bounds, null);
+  assert.equal(projected.structure.foundation, null);
+  assert.equal(projected.roof.materials, null);
+});
+
+test('projection treats unclonable object facts as unavailable JSON facts', () => {
+  const blueprint = minimalBlueprintFixture();
+  blueprint.bounds = new Proxy({ valid: true }, {});
+
+  const projected = projectBlueprint(blueprint);
+
+  assert.equal(projected.massing.bounds, null);
+});
+
 test('projection rejects a non-construction blueprint with a stable error', () => {
   assert.throws(
     () => projectBlueprint({ workflow: 'other' }),

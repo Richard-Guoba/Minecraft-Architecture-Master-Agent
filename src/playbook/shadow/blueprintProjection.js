@@ -51,31 +51,73 @@ function finiteNumberOrNull(value) {
 }
 
 function arrayOrNull(value) {
-  return Array.isArray(value) && isJsonValue(value) ? structuredClone(value) : null;
+  return Array.isArray(value) && isJsonValue(value) ? cloneJsonOrNull(value) : null;
 }
 
 function objectOrNull(value) {
-  return isPlainObject(value) && isJsonValue(value) ? structuredClone(value) : null;
+  return isPlainObject(value) && isJsonValue(value) ? cloneJsonOrNull(value) : null;
+}
+
+function cloneJsonOrNull(value) {
+  try {
+    return structuredClone(value);
+  } catch {
+    return null;
+  }
 }
 
 function isPlainObject(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  } catch {
+    return false;
+  }
 }
 
 function isJsonValue(value) {
-  return isJsonValueWithin(value, new WeakSet());
+  try {
+    return isJsonValueWithin(value, new WeakSet());
+  } catch {
+    return false;
+  }
 }
 
 function isJsonValueWithin(value, ancestors) {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
   if (typeof value === 'number') return Number.isFinite(value);
-  if (!Array.isArray(value) && !isPlainObject(value)) return false;
+  if (Array.isArray(value)) return isJsonArray(value, ancestors);
+  if (!isPlainObject(value)) return false;
   if (ancestors.has(value)) return false;
   ancestors.add(value);
-  const children = Array.isArray(value) ? value : Object.values(value);
-  const valid = children.every((child) => isJsonValueWithin(child, ancestors));
+  const valid = Reflect.ownKeys(value).every((key) => {
+    if (typeof key !== 'string') return false;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor?.enumerable === true
+      && Object.hasOwn(descriptor, 'value')
+      && isJsonValueWithin(descriptor.value, ancestors);
+  });
+  ancestors.delete(value);
+  return valid;
+}
+
+function isJsonArray(value, ancestors) {
+  if (ancestors.has(value)) return false;
+  ancestors.add(value);
+  const keys = Reflect.ownKeys(value);
+  const valid = keys.length === value.length + 1 && keys.every((key) => {
+    if (key === 'length') return true;
+    if (typeof key !== 'string') return false;
+    const index = Number(key);
+    if (!Number.isInteger(index) || index < 0 || index >= value.length || String(index) !== key) {
+      return false;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor?.enumerable === true
+      && Object.hasOwn(descriptor, 'value')
+      && isJsonValueWithin(descriptor.value, ancestors);
+  });
   ancestors.delete(value);
   return valid;
 }
