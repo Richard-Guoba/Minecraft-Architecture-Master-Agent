@@ -984,6 +984,49 @@ test('equivalent Function constructors execute but reflection fails closed', asy
       'module.exports = fn[key](\'filename\', body)(__filename);',
       ''
     ].join('\n')],
+    ['constructed aliased computed constructor', [
+      'const fn = () => {};',
+      "const key = 'constructor';",
+      `const body = ${JSON.stringify(body)};`,
+      'module.exports = new fn[key](\'filename\', body)(__filename);',
+      ''
+    ].join('\n')],
+    ['call-wrapped aliased computed constructor', [
+      'const fn = () => {};',
+      "const key = 'constructor';",
+      `const body = ${JSON.stringify(body)};`,
+      "module.exports = fn[key].call(null, 'filename', body)(__filename);",
+      ''
+    ].join('\n')],
+    ['apply-wrapped aliased computed constructor', [
+      'const fn = () => {};',
+      "const key = 'constructor';",
+      `const body = ${JSON.stringify(body)};`,
+      "module.exports = fn[key].apply(null, ['filename', body])(__filename);",
+      ''
+    ].join('\n')],
+    ['bind-wrapped aliased computed constructor', [
+      'const fn = () => {};',
+      "const key = 'constructor';",
+      `const body = ${JSON.stringify(body)};`,
+      "module.exports = fn[key].bind(null, 'filename', body)()(__filename);",
+      ''
+    ].join('\n')],
+    ['sequence-wrapped aliased computed constructor', [
+      'const fn = () => {};',
+      "const key = 'constructor';",
+      `const body = ${JSON.stringify(body)};`,
+      "module.exports = (0, fn[key])('filename', body)(__filename);",
+      ''
+    ].join('\n')],
+    ['extracted aliased computed constructor', [
+      'const fn = () => {};',
+      "const key = 'constructor';",
+      `const body = ${JSON.stringify(body)};`,
+      'const Constructor = fn[key];',
+      "module.exports = Constructor('filename', body)(__filename);",
+      ''
+    ].join('\n')],
     ['aliased global Reflect', [
       'const R = Reflect;',
       `const body = ${JSON.stringify(body)};`,
@@ -1013,6 +1056,37 @@ test('equivalent Function constructors execute but reflection fails closed', asy
       ]);
     });
   }
+
+  await t.test('tagged aliased computed constructor', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.cjs';
+    const projectRoot = await temporaryRoot(t, 'playbook-dependency-');
+    const importerPath = path.join(projectRoot, entryPath);
+    const taggedBody =
+      "return process.getBuiltinModule('node:module').createRequire("
+        + `${JSON.stringify(importerPath)}`
+        + ")('../../construction/target.cjs')";
+    await writeFixtureFiles(projectRoot, {
+      [entryPath]: [
+        'const fn = () => {};',
+        "const key = 'constructor';",
+        `module.exports = fn[key]\`${taggedBody}\`();`,
+        ''
+      ].join('\n'),
+      'src/construction/target.cjs':
+        "module.exports = 'construction-executed';\n"
+    });
+
+    assert.equal(
+      requireDefault(path.join(projectRoot, entryPath)),
+      'construction-executed'
+    );
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.deepEqual(audit.unresolved_manual_dependencies, [
+      `${entryPath}:DYNAMIC_FUNCTION_CAPABILITY`
+    ]);
+  });
 
   await t.test('provable own constructor data stays ordinary', async (t) => {
     const entryPath = 'src/playbook/manual/entry.cjs';
@@ -1108,6 +1182,21 @@ test('equivalent Function constructors execute but reflection fails closed', asy
     const projectRoot = await dependencyFixture(t, {
       [entryPath]:
         "module.exports = Reflect.apply((value) => value, null, ['safe']);\n"
+    });
+
+    assert.equal(requireDefault(path.join(projectRoot, entryPath)), 'safe');
+    const audit = await playbookCompiler.auditManualDependencyBoundary({
+      projectRoot
+    });
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+  });
+
+  await t.test('literal-computed Reflect apply stays ordinary', async (t) => {
+    const entryPath = 'src/playbook/manual/entry.cjs';
+    const projectRoot = await dependencyFixture(t, {
+      [entryPath]:
+        "module.exports = Reflect['apply']((value) => value, null, ['safe']);\n"
     });
 
     assert.equal(requireDefault(path.join(projectRoot, entryPath)), 'safe');

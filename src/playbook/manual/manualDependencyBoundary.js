@@ -659,14 +659,8 @@ function isDynamicFunctionConstructorSource(node, parent, lexical) {
     && propertyName === null
     && (
       isSyntacticFunctionValue(node.object)
-      || isDirectConstFunctionMemberCall(node, parent, lexical)
+      || lexical.isConstFunctionBinding(node.object)
     );
-}
-
-function isDirectConstFunctionMemberCall(node, parent, lexical) {
-  return parent?.type === 'CallExpression'
-    && parent.callee === node
-    && lexical.isConstFunctionBinding(node.object);
 }
 
 function isReflectValueReference(node, parent) {
@@ -674,7 +668,7 @@ function isReflectValueReference(node, parent) {
     && !(
       parent?.type === 'MemberExpression'
       && parent.object === node
-      && !parent.computed
+      && memberPropertyName(parent) !== null
     );
 }
 
