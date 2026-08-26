@@ -60,9 +60,9 @@ const OUTPUT_CONTRACT_FIELDS = Object.freeze(['format', 'permitted_rule_fields']
 const MANIFEST_FIELDS = Object.freeze([
   'schema_version', 'evaluator_version', 'playbook_version', 'school_id',
   'blueprint_sha256', 'rule_corpus_sha256', 'mode', 'explanation_status',
-  'managed_paths', 'file_sha256'
+  'managed_paths', 'artifact_hashes'
 ]);
-const FILE_SHA256_FIELDS = Object.freeze([
+const ARTIFACT_HASH_FIELDS = Object.freeze([
   'review.json', 'prompt-packet.json', 'explanation.json', 'report.md'
 ]);
 const SAFE_CODES = new Set([...FATAL_SHADOW_ERROR_CODES, ...LLM_DEGRADATION_CODES]);
@@ -218,8 +218,8 @@ export function validateManifest(value) {
     fail('SHADOW_OUTPUT_OWNERSHIP', 'explanation-status');
   }
   assertExactArray(value.managed_paths, SHADOW_OUTPUT_FILES, 'SHADOW_OUTPUT_OWNERSHIP', 'managed-paths');
-  assertExactObject(value.file_sha256, 'manifest-hashes', FILE_SHA256_FIELDS, 'SHADOW_OUTPUT_OWNERSHIP');
-  for (const file of FILE_SHA256_FIELDS) assertSha256(value.file_sha256[file], 'SHADOW_OUTPUT_OWNERSHIP');
+  assertExactObject(value.artifact_hashes, 'manifest-hashes', ARTIFACT_HASH_FIELDS, 'SHADOW_OUTPUT_OWNERSHIP');
+  for (const file of ARTIFACT_HASH_FIELDS) assertSha256(value.artifact_hashes[file], 'SHADOW_OUTPUT_OWNERSHIP');
   return deepFreeze(value);
 }
 

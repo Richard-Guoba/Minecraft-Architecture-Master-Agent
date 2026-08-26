@@ -78,6 +78,10 @@ test('manifest accepts only the fixed managed_paths field', () => {
   const legacyManifest = { ...manifest, managed_files: manifest.managed_paths };
   delete legacyManifest.managed_paths;
   assert.throws(() => validateManifest(legacyManifest), /SHADOW_OUTPUT_OWNERSHIP/u);
+
+  const legacyHashField = { ...manifest, file_sha256: manifest.artifact_hashes };
+  delete legacyHashField.artifact_hashes;
+  assert.throws(() => validateManifest(legacyHashField), /SHADOW_OUTPUT_OWNERSHIP/u);
 });
 
 test('review rejects invalidated layers on non-violated assessments', () => {
@@ -212,7 +216,7 @@ function validManifestFixture() {
     managed_paths: [
       'manifest.json', 'review.json', 'prompt-packet.json', 'explanation.json', 'report.md'
     ],
-    file_sha256: {
+    artifact_hashes: {
       'review.json': HASH,
       'prompt-packet.json': HASH,
       'explanation.json': HASH,
