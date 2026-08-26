@@ -103,7 +103,7 @@ export function validateReview(value) {
   assertBlueprintPath(value.input.blueprint_path, 'BLUEPRINT_INVALID');
   assertSha256(value.input.blueprint_sha256, 'BLUEPRINT_INVALID');
   if (value.input.workflow !== 'construction_method_v1') fail('BLUEPRINT_INVALID', 'workflow');
-  if (!Number.isInteger(value.input.seed) || value.input.seed < 0) fail('BLUEPRINT_INVALID', 'seed');
+  if (!Number.isInteger(value.input.seed)) fail('BLUEPRINT_INVALID', 'seed');
   assertSha256(value.rule_corpus_sha256, 'PLAYBOOK_CORPUS_INVALID');
   validateCoverage(value.coverage);
   if (!Array.isArray(value.assessments) || value.assessments.length !== 21) {

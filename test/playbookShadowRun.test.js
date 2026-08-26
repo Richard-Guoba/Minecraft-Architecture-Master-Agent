@@ -107,10 +107,29 @@ test('admitted orchestration installs an immutable summary under the run only', 
   assert.equal(await fs.readFile(path.join(fixture.runPath, 'blueprint.json'), 'utf8'), fixture.blueprintBytes.toString('utf8'));
 });
 
-function blueprintBytesFor(prompt) {
+test('admitted orchestration reviews a generator-compatible negative seed', async (t) => {
+  const fixture = await runFixture(t, -7);
+
+  const result = await runShadowReview({
+    projectRoot: fixture.root,
+    runArg: 'out/run',
+    mode: 'mock',
+    fsImpl: fs
+  });
+  const review = JSON.parse(await fs.readFile(
+    path.join(fixture.runPath, 'playbook-shadow', 'review.json'),
+    'utf8'
+  ));
+
+  assert.equal(result.status, 'created');
+  assert.equal(review.input.seed, -7);
+  assert.equal(await fs.readFile(path.join(fixture.runPath, 'blueprint.json'), 'utf8'), fixture.blueprintBytes.toString('utf8'));
+});
+
+function blueprintBytesFor(prompt, seed = 7) {
   return Buffer.from(JSON.stringify({
     workflow: 'construction_method_v1',
-    seed: 7,
+    seed,
     prompt,
     architecture: {
       style: 'medieval',
@@ -164,12 +183,12 @@ function explanatoryClient() {
   };
 }
 
-async function runFixture(t) {
+async function runFixture(t, seed = 7) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-shadow-run-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const runPath = path.join(root, 'out', 'run');
   await fs.mkdir(runPath, { recursive: true });
-  const blueprintBytes = blueprintBytesFor('A compact medieval timber house.');
+  const blueprintBytes = blueprintBytesFor('A compact medieval timber house.', seed);
   await fs.writeFile(path.join(runPath, 'blueprint.json'), blueprintBytes);
   for (const relativePath of [
     'docs/architecture-playbook/rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl',
