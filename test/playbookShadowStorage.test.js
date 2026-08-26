@@ -357,7 +357,7 @@ test('rollback failure is sanitized and leaves the verified backup recoverable',
   assertArtifactBytes(await readNamedDirectory(fixture.runPath, generated[0]), oldFiles);
 });
 
-test('backup cleanup failure preserves the complete installed output', async (t) => {
+test('backup cleanup failure restores the old canonical output without residue', async (t) => {
   const fixture = await storageFixture(t);
   const oldFiles = validArtifactFiles('old');
   const newFiles = validArtifactFiles('new');
@@ -379,11 +379,8 @@ test('backup cleanup failure preserves the complete installed output', async (t)
     installShadowArtifacts({ authority, files: newFiles, fsImpl }),
     'RAW_BACKUP_CLEANUP_FAILURE'
   );
-  assertArtifactBytes(await readArtifactDirectory(fixture.runPath), newFiles);
-  const generated = await generatedEntries(fixture.runPath);
-  assert.equal(generated.length, 1);
-  assert.match(generated[0], /^\.playbook-shadow\.backup-/u);
-  assertArtifactBytes(await readNamedDirectory(fixture.runPath, generated[0]), oldFiles);
+  assertArtifactBytes(await readArtifactDirectory(fixture.runPath), oldFiles);
+  assert.deepEqual(await generatedEntries(fixture.runPath), []);
 });
 
 test('no-replace install preserves an empty final-output collision', async (t) => {

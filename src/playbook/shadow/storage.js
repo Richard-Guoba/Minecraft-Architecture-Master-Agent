@@ -197,14 +197,20 @@ export async function installShadowArtifacts({ authority, files, fsImpl } = {}) 
       );
       oldMoved = false;
     } catch (error) {
-      // Installation is committed once the complete new directory is verified.
-      // A destructive backup cleanup cannot safely re-enter rollback.
       try {
         await recoverVerifiedBackup(
           internal, ops, backupName, existing.identity, existing.files
         );
+        await removeVerifiedDirectory(
+          internal, ops, OUTPUT_BASENAME, stage.identity, artifactFiles,
+          { requireComplete: true, verifyBytes: true }
+        );
+        newInstalled = false;
+        await rollbackBackup(internal, ops, backupName, existing);
+        oldMoved = false;
       } catch {
-        // The complete installed output remains authoritative if recovery itself fails.
+        // An actual rollback failure preserves the reconstructed backup when possible.
+        throw shadowError('SHADOW_INSTALL_FAILED');
       }
       throw externalError(error, 'SHADOW_INSTALL_FAILED');
     }
