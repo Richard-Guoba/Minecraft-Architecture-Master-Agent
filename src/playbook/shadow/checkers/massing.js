@@ -148,7 +148,9 @@ function isAttachedTo(volume, primaryId) {
 function attachmentState(volume) {
   if (!isObject(volume?.placement) || typeof volume.placement.relation !== 'string') return null;
   if (volume.placement.relation.startsWith('attached-')) {
-    return typeof volume.placement.attach_to === 'string' && volume.placement.attach_to.length > 0;
+    return typeof volume.placement.attach_to === 'string' && volume.placement.attach_to.trim().length > 0
+      ? true
+      : null;
   }
   return false;
 }

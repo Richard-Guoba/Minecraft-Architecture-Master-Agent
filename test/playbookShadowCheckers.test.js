@@ -87,6 +87,27 @@ test('primary-secondary hierarchy is unknown when an attached volume lacks role 
   assert.ok(result.missing_signals.includes('massing.secondary_volume_ids'));
 });
 
+test('subordinate support is unknown when an attached relation lacks a valid target', async (t) => {
+  for (const [name, attachTo] of [
+    ['missing', undefined],
+    ['empty', ''],
+    ['non-string', 42]
+  ]) {
+    await t.test(name, () => {
+      const placement = { relation: 'attached-west' };
+      if (attachTo !== undefined) placement.attach_to = attachTo;
+      const result = runChecker('check:massing:subordinate-support-volume', projected({
+        massing: {
+          volumes: [volume('wing', [0.4, 0.6, 0.5], placement, ['secondary-mass'])]
+        }
+      }));
+
+      assert.equal(result.status, 'unknown');
+      assert.deepEqual(result.missing_signals, ['massing.volume_relations']);
+    });
+  }
+});
+
 test('every evidence-required checker returns its explicit unknown evidence', () => {
   const registry = createCheckerRegistry();
   const evidenceRequired = [...registry.values()].filter((checker) => checker.kind === 'evidence-required');
