@@ -1,21 +1,25 @@
 import { createLlmClient } from '../../llm/createLlmClient.js';
 import { deepFreeze } from './canonical.js';
 import { EVALUATED_LAYERS, SHADOW_SCHEMA_VERSION } from './constants.js';
-import { shadowError, validateExplanation, validatePromptPacket, validateReview } from './contracts.js';
+import {
+  renderLlmLayerExplanation,
+  renderLlmRuleExplanation,
+  shadowError,
+  validateExplanation,
+  validateLlmCandidate,
+  validatePromptPacket,
+  validateReview
+} from './contracts.js';
 import { reviewHash } from './evaluateReview.js';
 
 const MAX_EXPLANATION_CODE_POINTS = 2048;
 const MAX_UNKNOWN_ITEMS = 64;
 const MAX_PROVIDER_CODE_POINTS = 128;
-const LLM_CANDIDATE_FIELDS = Object.freeze([
-  'review_hash', 'layer_explanations', 'rule_explanations', 'overall_unknowns'
-]);
-
 const SYSTEM_INSTRUCTION = [
-  'Explain the supplied deterministic architecture review.',
-  'Do not change any rule id, rule order, status, repair operation id, or review hash.',
-  'Do not add coordinates, block ids, patches, scores, thresholds, or other fields.',
-  'Return JSON with exactly review_hash, layer_explanations, rule_explanations, and overall_unknowns.'
+  'Select authoritative references from the supplied deterministic architecture review.',
+  'Return no explanation prose and copy only exact rule or fact references present in the packet.',
+  'Preserve every required row, rule id, rule order, status, repair operation id, and review hash.',
+  'Follow output_contract exactly and do not add fields.'
 ].join(' ');
 
 const defaultFactory = () => createLlmClient();
@@ -25,7 +29,7 @@ export async function explainReview({ mode, review, promptPacket, createClient =
   if (mode === 'mock') return validateExplanation(mockExplanation(authoritativeReview), authoritativeReview);
   if (mode !== 'llm') throw shadowError('INVALID_ARGUMENT');
 
-  const packet = validatePromptPacket(promptPacket);
+  const packet = validatePromptPacket(promptPacket, authoritativeReview);
   if (packet.review_hash !== reviewHash(authoritativeReview)) throw shadowError('BLUEPRINT_INVALID');
 
   let client;
@@ -45,16 +49,24 @@ export async function explainReview({ mode, review, promptPacket, createClient =
   }
 
   try {
-    const content = validateLlmCandidateShape(candidate);
+    const selection = validateLlmCandidate(candidate, authoritativeReview, packet);
     return validateExplanation(deepFreeze({
       schema_version: SHADOW_SCHEMA_VERSION,
-      review_hash: content.review_hash,
+      review_hash: selection.review_hash,
       mode: 'llm',
       provider,
       status: 'available',
-      layer_explanations: content.layer_explanations,
-      rule_explanations: content.rule_explanations,
-      overall_unknowns: content.overall_unknowns,
+      layer_explanations: selection.layer_selections.map((item) => ({
+        layer: item.layer,
+        explanation: renderLlmLayerExplanation(item)
+      })),
+      rule_explanations: selection.rule_selections.map((item) => ({
+        rule_id: item.rule_id,
+        status: item.status,
+        repair_operation_id: item.repair_operation_id,
+        explanation: renderLlmRuleExplanation(item)
+      })),
+      overall_unknowns: selection.overall_unknowns,
       error_code: null
     }), authoritativeReview);
   } catch (error) {
@@ -109,19 +121,6 @@ function stableUnknowns(review) {
     }
   }
   return unknowns;
-}
-
-function validateLlmCandidateShape(candidate) {
-  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
-    throw shadowError('LLM_OUTPUT_INVALID');
-  }
-  const keys = Object.keys(candidate);
-  if (
-    keys.length !== LLM_CANDIDATE_FIELDS.length
-    || keys.some((key) => !LLM_CANDIDATE_FIELDS.includes(key))
-    || LLM_CANDIDATE_FIELDS.some((key) => !Object.hasOwn(candidate, key))
-  ) throw shadowError('LLM_OUTPUT_INVALID');
-  return candidate;
 }
 
 function unavailable(review, errorCode, provider) {

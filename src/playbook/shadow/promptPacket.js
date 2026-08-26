@@ -1,6 +1,17 @@
 import { deepFreeze } from './canonical.js';
 import { EVALUATED_LAYERS, PLAYBOOK_VERSION, SCHOOL_ID, SHADOW_SCHEMA_VERSION } from './constants.js';
-import { shadowError, validatePromptPacket, validateReview } from './contracts.js';
+import {
+  LLM_CANDIDATE_FIELDS,
+  LLM_LAYER_SELECTION_FIELDS,
+  LLM_RULE_SELECTION_FIELDS,
+  MAX_LAYER_RULE_REFERENCES,
+  MAX_OVERALL_UNKNOWN_REFERENCES,
+  MAX_RULE_FACT_REFERENCES,
+  promptReferenceValues,
+  shadowError,
+  validatePromptPacket,
+  validateReview
+} from './contracts.js';
 import { reviewHash } from './evaluateReview.js';
 
 const MAX_PROSE_CODE_POINTS = 800;
@@ -33,20 +44,27 @@ export function buildPromptPacket({ review, cards, blueprintPrompt } = {}) {
     },
     rules: cards.map((card, index) => rulePacket(card, authoritativeReview.assessments[index])),
     output_contract: {
-      format: 'explanation.json.v1',
-      permitted_rule_fields: ['rule_id', 'status', 'repair_operation_id', 'explanation']
+      format: 'explanation-reference-selection.v1',
+      candidate_fields: [...LLM_CANDIDATE_FIELDS],
+      layer_selection_fields: [...LLM_LAYER_SELECTION_FIELDS],
+      rule_selection_fields: [...LLM_RULE_SELECTION_FIELDS],
+      maximum_layer_rule_references: MAX_LAYER_RULE_REFERENCES,
+      maximum_rule_references_per_field: MAX_RULE_FACT_REFERENCES,
+      maximum_overall_unknown_references: MAX_OVERALL_UNKNOWN_REFERENCES
     }
   };
-  return validatePromptPacket(deepFreeze(packet));
+  return validatePromptPacket(deepFreeze(packet), authoritativeReview);
 }
 
 function rulePacket(card, assessment) {
   return {
     rule_id: assessment.rule_id,
+    design_layer: assessment.design_layer,
     status: assessment.status,
     repair_operation_id: assessment.repair_operation_id,
-    observations: capArray(assessment.observations),
-    missing_signals: capArray(assessment.missing_signals),
+    observations: promptReferenceValues(assessment.observations),
+    missing_signals: promptReferenceValues(assessment.missing_signals),
+    unknown_ids: promptReferenceValues(assessment.unknown_ids),
     applicability: capArray(card.applicability),
     exclusions: capArray(card.exclusions),
     intent: capText(card.intent, MAX_PROSE_CODE_POINTS),

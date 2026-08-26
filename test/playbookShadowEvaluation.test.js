@@ -135,6 +135,26 @@ test('prompt packet clamps untrusted prose by Unicode code point and fixes its a
   assert.deepEqual(packet.authority.prohibited_additions, [
     'coordinates', 'block_ids', 'patches', 'scores', 'thresholds'
   ]);
+  assert.deepEqual(packet.rules.map((rule) => rule.design_layer), review.assessments.map(
+    (assessment) => assessment.design_layer
+  ));
+  assert.deepEqual(packet.rules.map((rule) => rule.unknown_ids), review.assessments.map(
+    (assessment) => assessment.unknown_ids
+  ));
+  assert.deepEqual(packet.output_contract, {
+    format: 'explanation-reference-selection.v1',
+    candidate_fields: [
+      'review_hash', 'layer_selections', 'rule_selections', 'overall_unknown_references'
+    ],
+    layer_selection_fields: ['layer', 'selected_rule_ids'],
+    rule_selection_fields: [
+      'rule_id', 'status', 'repair_operation_id', 'selected_observations',
+      'selected_missing_signals', 'selected_unknown_ids'
+    ],
+    maximum_layer_rule_references: 21,
+    maximum_rule_references_per_field: 12,
+    maximum_overall_unknown_references: 64
+  });
 });
 
 async function completedEvaluationFixture() {

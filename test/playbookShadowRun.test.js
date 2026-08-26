@@ -59,17 +59,50 @@ test('LLM failure changes no authoritative review or prompt bytes', async () => 
   assert.doesNotMatch(failed['report.md'].toString('utf8'), /provider failure secret/u);
 });
 
-test('report does not turn accepted LLM prose into a new report claim', async () => {
+test('invalid LLM prose candidates preserve authority artifacts and persist none of their text', async () => {
+  const blueprintBytes = blueprintBytesFor('A compact medieval timber house.');
+  const mock = await buildShadowArtifacts({
+    projectRoot: ROOT, blueprintBytes, blueprintRelativePath: 'blueprint.json', mode: 'mock'
+  });
+  for (const prose of [
+    '12, 64, -3',
+    'Replace /architecture/volumes/0 with a wider mass.',
+    'rate this 9 out of 10',
+    'wider than 12 blocks',
+    'arbitrary invented natural-language prose',
+    'minecraft:diamond_block at /architecture/invented/path'
+  ]) {
+    const failed = await buildShadowArtifacts({
+      projectRoot: ROOT,
+      blueprintBytes,
+      blueprintRelativePath: 'blueprint.json',
+      mode: 'llm',
+      createClient: () => proseClient(prose)
+    });
+    const explanation = JSON.parse(failed['explanation.json']);
+
+    assert.deepEqual(failed['review.json'], mock['review.json']);
+    assert.deepEqual(failed['prompt-packet.json'], mock['prompt-packet.json']);
+    assert.equal(explanation.status, 'unavailable');
+    assert.equal(explanation.error_code, 'LLM_OUTPUT_INVALID');
+    assert.equal(failed['explanation.json'].includes(prose), false);
+  }
+});
+
+test('report does not promote accepted LLM reference selections into a new report claim', async () => {
   const files = await buildShadowArtifacts({
     projectRoot: ROOT,
     blueprintBytes: blueprintBytesFor('A compact medieval timber house.'),
     blueprintRelativePath: 'blueprint.json',
     mode: 'llm',
-    createClient: () => explanatoryClient()
+    createClient: () => selectingClient()
   });
 
-  assert.equal(JSON.parse(files['explanation.json']).status, 'available');
-  assert.doesNotMatch(files['report.md'].toString('utf8'), /UNTRUSTEDTEXT/u);
+  const explanation = JSON.parse(files['explanation.json']);
+  assert.equal(explanation.status, 'available');
+  assert.match(explanation.rule_explanations[0].explanation, /references=/u);
+  assert.doesNotMatch(files['explanation.json'].toString('utf8'), /A compact medieval timber house/u);
+  assert.doesNotMatch(files['report.md'].toString('utf8'), /references=/u);
 });
 
 test('orchestration rejects malformed blueprint bytes before producing artifacts', async () => {
@@ -162,21 +195,46 @@ function rejectingClient() {
   };
 }
 
-function explanatoryClient() {
+function selectingClient() {
   return {
     name: 'fixture-llm',
     isConfigured: () => true,
     chatJson: async ({ user }) => ({
       review_hash: user.review_hash,
-      layer_explanations: user.allowed_layers.map((layer) => ({
+      layer_selections: user.allowed_layers.map((layer) => ({
         layer,
-        explanation: 'UNTRUSTEDTEXT'
+        selected_rule_ids: user.rules
+          .filter((rule) => rule.design_layer === layer)
+          .slice(0, 1)
+          .map((rule) => rule.rule_id)
       })),
+      rule_selections: user.rules.map((rule) => ({
+        rule_id: rule.rule_id,
+        status: rule.status,
+        repair_operation_id: rule.repair_operation_id,
+        selected_observations: rule.observations.slice(0, 1),
+        selected_missing_signals: rule.observations.length === 0
+          ? rule.missing_signals.slice(0, 1)
+          : [],
+        selected_unknown_ids: []
+      })),
+      overall_unknown_references: []
+    })
+  };
+}
+
+function proseClient(prose) {
+  return {
+    name: 'fixture-llm',
+    isConfigured: () => true,
+    chatJson: async ({ user }) => ({
+      review_hash: user.review_hash,
+      layer_explanations: user.allowed_layers.map((layer) => ({ layer, explanation: prose })),
       rule_explanations: user.rules.map((rule) => ({
         rule_id: rule.rule_id,
         status: rule.status,
         repair_operation_id: rule.repair_operation_id,
-        explanation: 'UNTRUSTEDTEXT'
+        explanation: prose
       })),
       overall_unknowns: []
     })

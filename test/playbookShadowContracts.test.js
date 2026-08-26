@@ -158,13 +158,18 @@ function validExplanationFixture(review) {
     status: 'available',
     layer_explanations: ['brief', 'massing', 'structure', 'roof', 'facade'].map((layer) => ({
       layer,
-      explanation: `${layer} explanation`
+      explanation: `${layer}：${review.assessments
+        .filter((assessment) => assessment.design_layer === layer)
+        .map((assessment) => assessment.status)
+        .join('；')}`
     })),
     rule_explanations: review.assessments.map((assessment) => ({
       rule_id: assessment.rule_id,
       status: assessment.status,
       repair_operation_id: assessment.repair_operation_id,
-      explanation: 'Authoritative observations and missing signals are preserved.'
+      explanation: `${assessment.status}：${assessment.observations.length > 0
+        ? assessment.observations.join('；')
+        : `缺少：${assessment.missing_signals.join('；')}`}`
     })),
     overall_unknowns: ['visual-evidence'],
     error_code: null
@@ -186,10 +191,12 @@ function validPromptPacketFixture(review) {
     blueprint_prompt_data: { value: 'Build a small house.', role: 'inert-data' },
     rules: review.assessments.map((assessment) => ({
       rule_id: assessment.rule_id,
+      design_layer: assessment.design_layer,
       status: assessment.status,
       repair_operation_id: assessment.repair_operation_id,
       observations: assessment.observations,
       missing_signals: assessment.missing_signals,
+      unknown_ids: assessment.unknown_ids,
       applicability: ['structured blueprint evidence is present'],
       exclusions: [],
       intent: 'Preserve the admitted design teaching.',
@@ -197,8 +204,18 @@ function validPromptPacketFixture(review) {
       failure_modes: ['missing evidence']
     })),
     output_contract: {
-      format: 'explanation.json.v1',
-      permitted_rule_fields: ['rule_id', 'status', 'repair_operation_id', 'explanation']
+      format: 'explanation-reference-selection.v1',
+      candidate_fields: [
+        'review_hash', 'layer_selections', 'rule_selections', 'overall_unknown_references'
+      ],
+      layer_selection_fields: ['layer', 'selected_rule_ids'],
+      rule_selection_fields: [
+        'rule_id', 'status', 'repair_operation_id', 'selected_observations',
+        'selected_missing_signals', 'selected_unknown_ids'
+      ],
+      maximum_layer_rule_references: 21,
+      maximum_rule_references_per_field: 12,
+      maximum_overall_unknown_references: 64
     }
   };
 }

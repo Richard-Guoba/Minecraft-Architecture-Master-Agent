@@ -49,14 +49,32 @@ const PROMPT_PACKET_FIELDS = Object.freeze([
   'output_contract'
 ]);
 const PROMPT_RULE_FIELDS = Object.freeze([
-  'rule_id', 'status', 'observations', 'missing_signals', 'repair_operation_id',
-  'applicability', 'exclusions', 'intent', 'positive_signs', 'failure_modes'
+  'rule_id', 'design_layer', 'status', 'observations', 'missing_signals',
+  'unknown_ids', 'repair_operation_id', 'applicability', 'exclusions', 'intent',
+  'positive_signs', 'failure_modes'
 ]);
 const PROMPT_AUTHORITY_FIELDS = Object.freeze([
   'immutable_fields', 'prohibited_additions', 'blueprint_prompt_role'
 ]);
 const PROMPT_DATA_FIELDS = Object.freeze(['value', 'role']);
-const OUTPUT_CONTRACT_FIELDS = Object.freeze(['format', 'permitted_rule_fields']);
+const OUTPUT_CONTRACT_FIELDS = Object.freeze([
+  'format', 'candidate_fields', 'layer_selection_fields', 'rule_selection_fields',
+  'maximum_layer_rule_references', 'maximum_rule_references_per_field',
+  'maximum_overall_unknown_references'
+]);
+export const LLM_CANDIDATE_FIELDS = Object.freeze([
+  'review_hash', 'layer_selections', 'rule_selections', 'overall_unknown_references'
+]);
+export const LLM_LAYER_SELECTION_FIELDS = Object.freeze(['layer', 'selected_rule_ids']);
+export const LLM_RULE_SELECTION_FIELDS = Object.freeze([
+  'rule_id', 'status', 'repair_operation_id', 'selected_observations',
+  'selected_missing_signals', 'selected_unknown_ids'
+]);
+export const MAX_LAYER_RULE_REFERENCES = 21;
+export const MAX_RULE_FACT_REFERENCES = 12;
+export const MAX_OVERALL_UNKNOWN_REFERENCES = 64;
+const MAX_PROMPT_REFERENCE_CODE_POINTS = 800;
+const MAX_EXPLANATION_CODE_POINTS = 2048;
 const MANIFEST_FIELDS = Object.freeze([
   'schema_version', 'evaluator_version', 'playbook_version', 'school_id',
   'blueprint_sha256', 'rule_corpus_sha256', 'mode', 'explanation_status',
@@ -72,13 +90,6 @@ const CHECK_ID = /^check:[a-z0-9][a-z0-9:-]*$/u;
 const REPAIR_ID = /^repair:[a-z0-9][a-z0-9:-]*$/u;
 const UNKNOWN_ID = /^unknown:[a-z0-9][a-z0-9:-]*$/u;
 const SAFE_DETAIL = /^[a-z][a-z0-9-]{0,79}$/u;
-const IDENTIFIER_LIKE = /\b[a-z][a-z0-9.-]*:[a-z0-9][a-z0-9:._/-]*\b/giu;
-const MINECRAFT_BLOCK_ID = /\bminecraft:[a-z0-9_./-]+\b/iu;
-const COORDINATE_TRIPLE = /(?:\(|\[)\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*,\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*,\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*(?:\)|\])/u;
-const AXIS_COORDINATES = /\bx\s*[:=]\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)[,;\s]+y\s*[:=]\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)[,;\s]+z\s*[:=]\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)/iu;
-const PATCH_CONTENT = /(?:\b(?:apply[_ -]?patch|patch|diff --git|git apply)\b|(?:^|\n)@@\s|"op"\s*:\s*"(?:add|remove|replace|move|copy|test)"|补丁)/iu;
-const SCORE_CONTENT = /(?:\b(?:score|rating|grade)\s*(?:is\s*)?[:=]?\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:\s*\/\s*\d+|\s*%)?|(?:评分|得分|分数)\s*[:=为]?\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)|[+-]?(?:\d+(?:\.\d+)?|\.\d+)\s*%)/iu;
-const THRESHOLD_CONTENT = /(?:\b(?:threshold|cutoff|minimum|maximum|min|max)\s*(?:is|of)?\s*[:=]?\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)|(?:阈值|门槛|至少|至多|超过|低于|高于)\s*[:=为]?\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+)|(?:>=|<=|>|<)\s*[+-]?(?:\d+(?:\.\d+)?|\.\d+))/iu;
 
 export class ArchitecturePlaybookShadowError extends Error {
   constructor(code, detailCode) {
@@ -131,7 +142,7 @@ export function validateReview(value) {
   return deepFreeze(value);
 }
 
-export function validatePromptPacket(value) {
+export function validatePromptPacket(value, review) {
   assertExactObject(value, 'prompt-packet', PROMPT_PACKET_FIELDS, 'BLUEPRINT_INVALID');
   if (value.schema_version !== SHADOW_SCHEMA_VERSION) fail('BLUEPRINT_INVALID', 'schema-version');
   assertSha256(value.review_hash, 'BLUEPRINT_INVALID');
@@ -145,12 +156,17 @@ export function validatePromptPacket(value) {
     assertId(rule.rule_id, RULE_ID, 'BLUEPRINT_INVALID', 'rule-id');
     if (seen.has(rule.rule_id)) fail('BLUEPRINT_INVALID', 'duplicate-rule-id');
     seen.add(rule.rule_id);
+    assertEvaluatedLayer(rule.design_layer, 'BLUEPRINT_INVALID', 'design-layer');
     assertStatus(rule.status, 'BLUEPRINT_INVALID');
     assertNullableId(rule.repair_operation_id, REPAIR_ID, 'BLUEPRINT_INVALID', 'repair-operation-id');
     for (const field of [
       'observations', 'missing_signals', 'applicability', 'exclusions',
       'positive_signs', 'failure_modes'
     ]) assertStrings(rule[field], 'BLUEPRINT_INVALID', field, 12, false, 800);
+    assertStrings(rule.unknown_ids, 'BLUEPRINT_INVALID', 'unknown-ids', 12, false, 800);
+    for (const unknownId of rule.unknown_ids) {
+      assertId(unknownId, UNKNOWN_ID, 'BLUEPRINT_INVALID', 'unknown-id');
+    }
     assertString(rule.intent, 'BLUEPRINT_INVALID', 'intent', 0, 800);
   }
   assertExactObject(value.authority, 'prompt-authority', PROMPT_AUTHORITY_FIELDS, 'BLUEPRINT_INVALID');
@@ -165,10 +181,49 @@ export function validatePromptPacket(value) {
   assertString(value.blueprint_prompt_data.value, 'BLUEPRINT_INVALID', 'blueprint-prompt', 0, 2000);
   assertLiteral(value.blueprint_prompt_data.role, 'inert-data', 'BLUEPRINT_INVALID', 'blueprint-prompt-role');
   assertExactObject(value.output_contract, 'output-contract', OUTPUT_CONTRACT_FIELDS, 'BLUEPRINT_INVALID');
-  assertLiteral(value.output_contract.format, 'explanation.json.v1', 'BLUEPRINT_INVALID', 'output-format');
-  assertExactArray(value.output_contract.permitted_rule_fields, [
-    'rule_id', 'status', 'repair_operation_id', 'explanation'
-  ], 'BLUEPRINT_INVALID', 'permitted-rule-fields');
+  assertLiteral(
+    value.output_contract.format,
+    'explanation-reference-selection.v1',
+    'BLUEPRINT_INVALID',
+    'output-format'
+  );
+  assertExactArray(
+    value.output_contract.candidate_fields,
+    LLM_CANDIDATE_FIELDS,
+    'BLUEPRINT_INVALID',
+    'candidate-fields'
+  );
+  assertExactArray(
+    value.output_contract.layer_selection_fields,
+    LLM_LAYER_SELECTION_FIELDS,
+    'BLUEPRINT_INVALID',
+    'layer-selection-fields'
+  );
+  assertExactArray(
+    value.output_contract.rule_selection_fields,
+    LLM_RULE_SELECTION_FIELDS,
+    'BLUEPRINT_INVALID',
+    'rule-selection-fields'
+  );
+  assertLiteral(
+    value.output_contract.maximum_layer_rule_references,
+    MAX_LAYER_RULE_REFERENCES,
+    'BLUEPRINT_INVALID',
+    'maximum-layer-rule-references'
+  );
+  assertLiteral(
+    value.output_contract.maximum_rule_references_per_field,
+    MAX_RULE_FACT_REFERENCES,
+    'BLUEPRINT_INVALID',
+    'maximum-rule-references-per-field'
+  );
+  assertLiteral(
+    value.output_contract.maximum_overall_unknown_references,
+    MAX_OVERALL_UNKNOWN_REFERENCES,
+    'BLUEPRINT_INVALID',
+    'maximum-overall-unknown-references'
+  );
+  if (review !== undefined) validatePromptReviewAuthority(value, validateReview(review));
   return deepFreeze(value);
 }
 
@@ -212,10 +267,150 @@ export function validateExplanation(value, review) {
       || explanation.repair_operation_id !== assessment.repair_operation_id
     ) fail('LLM_AUTHORITY_VIOLATION', 'rule-authority');
   }
-  if (value.mode === 'llm' && value.status === 'available') {
-    validateLlmContentAuthority(value, authoritativeReview);
+  if (value.status === 'available') {
+    if (value.mode === 'mock') validateMockContentAuthority(value, authoritativeReview);
+    else validateRenderedLlmAuthority(value, authoritativeReview);
   }
   return deepFreeze(value);
+}
+
+export function validateLlmCandidate(candidate, review, promptPacket) {
+  const authoritativeReview = validateReview(review);
+  const packet = validatePromptPacket(promptPacket, authoritativeReview);
+  assertExactObject(candidate, 'llm-candidate', LLM_CANDIDATE_FIELDS, 'LLM_OUTPUT_INVALID');
+  assertSha256(candidate.review_hash, 'LLM_OUTPUT_INVALID');
+  assertCandidateArray(candidate.layer_selections, 'layer-selections');
+  assertCandidateArray(candidate.rule_selections, 'rule-selections');
+  assertCandidateStrings(
+    candidate.overall_unknown_references,
+    'overall-unknown-references',
+    MAX_OVERALL_UNKNOWN_REFERENCES
+  );
+
+  if (candidate.review_hash !== sha256(stableJson(authoritativeReview))) {
+    fail('LLM_AUTHORITY_VIOLATION', 'review-hash');
+  }
+  if (candidate.layer_selections.length !== EVALUATED_LAYERS.length) {
+    fail('LLM_AUTHORITY_VIOLATION', 'layer-count');
+  }
+  if (candidate.rule_selections.length !== authoritativeReview.assessments.length) {
+    fail('LLM_AUTHORITY_VIOLATION', 'rule-count');
+  }
+
+  const layerSelections = candidate.layer_selections.map((selection, index) => {
+    assertExactObject(
+      selection,
+      'layer-selection',
+      LLM_LAYER_SELECTION_FIELDS,
+      'LLM_OUTPUT_INVALID'
+    );
+    assertCandidateString(selection.layer, 'layer');
+    assertCandidateStrings(
+      selection.selected_rule_ids,
+      'selected-rule-ids',
+      MAX_LAYER_RULE_REFERENCES
+    );
+    const layer = EVALUATED_LAYERS[index];
+    if (selection.layer !== layer) fail('LLM_AUTHORITY_VIOLATION', 'layer-order');
+    const authoritativeIds = authoritativeReview.assessments
+      .filter((assessment) => assessment.design_layer === layer)
+      .map((assessment) => assessment.rule_id);
+    const indexes = canonicalSubsetIndexes(
+      selection.selected_rule_ids,
+      authoritativeIds,
+      'layer-rule-reference'
+    );
+    return {
+      layer,
+      selected_rule_ids: indexes.map((selectedIndex) => authoritativeIds[selectedIndex])
+    };
+  });
+
+  const ruleSelections = candidate.rule_selections.map((selection, index) => {
+    assertExactObject(
+      selection,
+      'rule-selection',
+      LLM_RULE_SELECTION_FIELDS,
+      'LLM_OUTPUT_INVALID'
+    );
+    assertCandidateString(selection.rule_id, 'rule-id');
+    assertCandidateString(selection.status, 'status');
+    if (selection.repair_operation_id !== null) {
+      assertCandidateString(selection.repair_operation_id, 'repair-operation-id');
+    }
+    for (const field of [
+      'selected_observations', 'selected_missing_signals', 'selected_unknown_ids'
+    ]) assertCandidateStrings(selection[field], field, MAX_RULE_FACT_REFERENCES);
+
+    const assessment = authoritativeReview.assessments[index];
+    const promptRule = packet.rules[index];
+    if (
+      selection.rule_id !== assessment.rule_id
+      || selection.status !== assessment.status
+      || selection.repair_operation_id !== assessment.repair_operation_id
+    ) fail('LLM_AUTHORITY_VIOLATION', 'rule-authority');
+
+    return {
+      rule_id: assessment.rule_id,
+      status: assessment.status,
+      repair_operation_id: assessment.repair_operation_id,
+      selected_observations: normalizeCandidateReferences(
+        selection.selected_observations,
+        promptRule.observations,
+        assessment.observations,
+        'observation-reference'
+      ),
+      selected_missing_signals: normalizeCandidateReferences(
+        selection.selected_missing_signals,
+        promptRule.missing_signals,
+        assessment.missing_signals,
+        'missing-signal-reference'
+      ),
+      selected_unknown_ids: normalizeCandidateReferences(
+        selection.selected_unknown_ids,
+        promptRule.unknown_ids,
+        assessment.unknown_ids,
+        'unknown-id-reference'
+      )
+    };
+  });
+
+  const unknownReferences = authoritativeUnknownReferences(authoritativeReview, packet);
+  const unknownIndexes = canonicalSubsetIndexes(
+    candidate.overall_unknown_references,
+    unknownReferences.map((reference) => reference.prompt_value),
+    'overall-unknown-reference'
+  );
+  const overallUnknowns = uniqueValues(unknownIndexes.map(
+    (selectedIndex) => capText(unknownReferences[selectedIndex].review_value, MAX_EXPLANATION_CODE_POINTS)
+  ));
+  if (overallUnknowns.length !== unknownIndexes.length) {
+    fail('LLM_AUTHORITY_VIOLATION', 'overall-unknown-reference');
+  }
+
+  return deepFreeze({
+    review_hash: candidate.review_hash,
+    layer_selections: layerSelections,
+    rule_selections: ruleSelections,
+    overall_unknowns: overallUnknowns
+  });
+}
+
+export function renderLlmLayerExplanation(selection) {
+  const text = `${selection.layer}：rule_ids=${JSON.stringify(selection.selected_rule_ids)}`;
+  assertRenderedExplanationLength(text);
+  return text;
+}
+
+export function renderLlmRuleExplanation(selection) {
+  const references = {
+    observations: selection.selected_observations,
+    missing_signals: selection.selected_missing_signals,
+    unknown_ids: selection.selected_unknown_ids
+  };
+  const text = `${selection.status}：references=${JSON.stringify(references)}`;
+  assertRenderedExplanationLength(text);
+  return text;
 }
 
 export function validateManifest(value) {
@@ -365,42 +560,186 @@ function validateLayerExplanations(value, status) {
   }
 }
 
-function validateLlmContentAuthority(value, review) {
-  const authoritativeUnknowns = new Set(review.assessments
-    .filter((assessment) => assessment.status === 'unknown')
-    .flatMap((assessment) => [...assessment.unknown_ids, ...assessment.missing_signals]));
-  if (value.overall_unknowns.some((item) => !authoritativeUnknowns.has(item))) {
-    fail('LLM_AUTHORITY_VIOLATION', 'overall-unknown-authority');
+function validatePromptReviewAuthority(packet, review) {
+  if (packet.review_hash !== sha256(stableJson(review))) fail('BLUEPRINT_INVALID', 'review-hash');
+  if (packet.rules.length !== review.assessments.length) fail('BLUEPRINT_INVALID', 'prompt-rule-count');
+  for (const [index, assessment] of review.assessments.entries()) {
+    const rule = packet.rules[index];
+    if (
+      rule.rule_id !== assessment.rule_id
+      || rule.design_layer !== assessment.design_layer
+      || rule.status !== assessment.status
+      || rule.repair_operation_id !== assessment.repair_operation_id
+      || !sameStrings(rule.observations, promptReferenceValues(assessment.observations))
+      || !sameStrings(rule.missing_signals, promptReferenceValues(assessment.missing_signals))
+      || !sameStrings(rule.unknown_ids, promptReferenceValues(assessment.unknown_ids))
+    ) fail('BLUEPRINT_INVALID', 'prompt-rule-authority');
   }
+}
 
-  const authoritativeIdentifiers = new Set(review.assessments.flatMap((assessment) => [
-    assessment.rule_id,
-    assessment.check_id,
-    assessment.repair_operation_id,
-    ...assessment.unknown_ids
-  ].filter((item) => typeof item === 'string')));
-  for (const row of review.coverage) {
-    for (const unknownId of row.unknown_ids) authoritativeIdentifiers.add(unknownId);
-  }
-
-  const prose = [
-    ...value.layer_explanations.map((item) => item.explanation),
-    ...value.rule_explanations.map((item) => item.explanation)
-  ];
-  for (const text of prose) {
-    if (MINECRAFT_BLOCK_ID.test(text)) fail('LLM_AUTHORITY_VIOLATION', 'block-id');
-    if (COORDINATE_TRIPLE.test(text) || AXIS_COORDINATES.test(text)) {
-      fail('LLM_AUTHORITY_VIOLATION', 'coordinates');
+function validateMockContentAuthority(value, review) {
+  const expectedLayers = EVALUATED_LAYERS.map((layer) => {
+    const statuses = review.assessments
+      .filter((assessment) => assessment.design_layer === layer)
+      .map((assessment) => assessment.status);
+    return capText(`${layer}：${statuses.join('；')}`, MAX_EXPLANATION_CODE_POINTS);
+  });
+  const expectedRules = review.assessments.map((assessment) => {
+    const evidence = assessment.observations.length > 0
+      ? assessment.observations.join('；')
+      : `缺少：${assessment.missing_signals.join('；')}`;
+    return capText(`${assessment.status}：${evidence}`, MAX_EXPLANATION_CODE_POINTS);
+  });
+  for (const [index, item] of value.layer_explanations.entries()) {
+    if (item.explanation !== expectedLayers[index]) {
+      fail('LLM_AUTHORITY_VIOLATION', 'mock-layer-rendering');
     }
-    if (PATCH_CONTENT.test(text)) fail('LLM_AUTHORITY_VIOLATION', 'patch');
-    if (SCORE_CONTENT.test(text)) fail('LLM_AUTHORITY_VIOLATION', 'score');
-    if (THRESHOLD_CONTENT.test(text)) fail('LLM_AUTHORITY_VIOLATION', 'threshold');
-    for (const match of text.matchAll(IDENTIFIER_LIKE)) {
-      if (!authoritativeIdentifiers.has(match[0])) {
-        fail('LLM_AUTHORITY_VIOLATION', 'invented-identifier');
+  }
+  for (const [index, item] of value.rule_explanations.entries()) {
+    if (item.explanation !== expectedRules[index]) {
+      fail('LLM_AUTHORITY_VIOLATION', 'mock-rule-rendering');
+    }
+  }
+  if (!sameStrings(value.overall_unknowns, stableReviewUnknowns(review))) {
+    fail('LLM_AUTHORITY_VIOLATION', 'mock-overall-unknowns');
+  }
+}
+
+function validateRenderedLlmAuthority(value, review) {
+  for (const [index, item] of value.layer_explanations.entries()) {
+    const layer = EVALUATED_LAYERS[index];
+    const selectedRuleIds = parseCanonicalJsonSuffix(item.explanation, `${layer}：rule_ids=`);
+    assertCandidateStrings(selectedRuleIds, 'rendered-layer-rule-ids', MAX_LAYER_RULE_REFERENCES);
+    const authoritativeIds = review.assessments
+      .filter((assessment) => assessment.design_layer === layer)
+      .map((assessment) => assessment.rule_id);
+    canonicalSubsetIndexes(selectedRuleIds, authoritativeIds, 'rendered-layer-rule-reference');
+  }
+
+  for (const [index, item] of value.rule_explanations.entries()) {
+    const assessment = review.assessments[index];
+    const references = parseCanonicalJsonSuffix(
+      item.explanation,
+      `${assessment.status}：references=`
+    );
+    assertExactObject(references, 'rendered-rule-references', [
+      'observations', 'missing_signals', 'unknown_ids'
+    ], 'LLM_AUTHORITY_VIOLATION');
+    for (const field of ['observations', 'missing_signals', 'unknown_ids']) {
+      assertCandidateStrings(references[field], `rendered-${field}`, MAX_RULE_FACT_REFERENCES);
+      canonicalSubsetIndexes(
+        references[field],
+        assessment[field].slice(0, MAX_RULE_FACT_REFERENCES),
+        `rendered-${field}-reference`
+      );
+    }
+  }
+
+  canonicalSubsetIndexes(
+    value.overall_unknowns,
+    allReviewUnknowns(review),
+    'overall-unknown-authority'
+  );
+}
+
+function normalizeCandidateReferences(selected, promptValues, reviewValues, detail) {
+  const indexes = canonicalSubsetIndexes(selected, promptValues, detail);
+  return indexes.map((index) => reviewValues[index]);
+}
+
+function authoritativeUnknownReferences(review, packet) {
+  const references = [];
+  for (const [index, assessment] of review.assessments.entries()) {
+    if (assessment.status !== 'unknown') continue;
+    const promptRule = packet.rules[index];
+    for (const field of ['unknown_ids', 'missing_signals']) {
+      for (const [referenceIndex, promptValue] of promptRule[field].entries()) {
+        references.push({
+          prompt_value: promptValue,
+          review_value: assessment[field][referenceIndex]
+        });
       }
     }
   }
+  return references;
+}
+
+function stableReviewUnknowns(review) {
+  return allReviewUnknowns(review).slice(0, MAX_OVERALL_UNKNOWN_REFERENCES);
+}
+
+function allReviewUnknowns(review) {
+  const values = [];
+  for (const assessment of review.assessments) {
+    if (assessment.status !== 'unknown') continue;
+    for (const value of [...assessment.unknown_ids, ...assessment.missing_signals]) {
+      const bounded = capText(value, MAX_EXPLANATION_CODE_POINTS);
+      if (!values.includes(bounded)) values.push(bounded);
+    }
+  }
+  return values;
+}
+
+function canonicalSubsetIndexes(selected, authoritative, detail) {
+  const seen = new Set();
+  const indexes = [];
+  let previous = -1;
+  for (const value of selected) {
+    if (seen.has(value)) fail('LLM_AUTHORITY_VIOLATION', detail);
+    seen.add(value);
+    const index = authoritative.indexOf(value);
+    if (index < 0 || index <= previous) fail('LLM_AUTHORITY_VIOLATION', detail);
+    previous = index;
+    indexes.push(index);
+  }
+  return indexes;
+}
+
+function parseCanonicalJsonSuffix(text, prefix) {
+  if (!text.startsWith(prefix)) fail('LLM_AUTHORITY_VIOLATION', 'rendered-explanation');
+  const encoded = text.slice(prefix.length);
+  try {
+    const value = JSON.parse(encoded);
+    if (JSON.stringify(value) !== encoded) fail('LLM_AUTHORITY_VIOLATION', 'rendered-explanation');
+    return value;
+  } catch {
+    fail('LLM_AUTHORITY_VIOLATION', 'rendered-explanation');
+  }
+}
+
+function assertCandidateArray(value, detail) {
+  if (!Array.isArray(value)) fail('LLM_OUTPUT_INVALID', detail);
+}
+
+function assertCandidateStrings(value, detail, maximum) {
+  if (!Array.isArray(value)) fail('LLM_OUTPUT_INVALID', detail);
+  for (const item of value) assertCandidateString(item, detail);
+  if (new Set(value).size !== value.length) fail('LLM_AUTHORITY_VIOLATION', detail);
+  if (value.length > maximum) fail('LLM_OUTPUT_INVALID', detail);
+}
+
+function assertCandidateString(value, detail) {
+  assertString(value, 'LLM_OUTPUT_INVALID', detail, 1, MAX_EXPLANATION_CODE_POINTS);
+}
+
+function assertRenderedExplanationLength(text) {
+  if (Array.from(text).length > MAX_EXPLANATION_CODE_POINTS) {
+    fail('LLM_OUTPUT_INVALID', 'rendered-explanation-length');
+  }
+}
+
+function uniqueValues(values) {
+  return [...new Set(values)];
+}
+
+function sameStrings(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+export function promptReferenceValues(values) {
+  return values
+    .slice(0, MAX_RULE_FACT_REFERENCES)
+    .map((value) => capText(value, MAX_PROMPT_REFERENCE_CODE_POINTS));
 }
 
 function assertExplanationText(value, status, detail) {
@@ -512,6 +851,10 @@ function assertBlueprintPath(value, code) {
 function assertString(value, code, detail, minimum = 1, maximum = 512) {
   const length = typeof value === 'string' ? Array.from(value).length : 0;
   if (typeof value !== 'string' || length < minimum || length > maximum) fail(code, detail);
+}
+
+function capText(value, limit) {
+  return Array.from(value).slice(0, limit).join('');
 }
 
 function countsFor(assessments) {

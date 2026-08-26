@@ -264,7 +264,7 @@ facade / materials / interior / scene
 
 - `review_hash`；
 - 学派、秘籍版本和允许解释的五层；
-- 每条规则的 ID、权威状态、结构化观察、缺失信号和已有修复 ID；
+- 每条规则的 ID、层、权威状态、结构化观察、缺失信号、已有 unknown ID 和已有修复 ID；
 - 规则的适用条件、排除条件、意图、正向信号和失败模式；
 - 明确的权限说明和输出 schema；
 - blueprint 原始 prompt 的数据副本，并明确标为不可执行数据。
@@ -289,17 +289,19 @@ error_code
 
 `status` 只能是 `available` 或 `unavailable`。
 
-每条规则解释只能原样引用权威 `rule_id / status / repair_operation_id`，并解释已有观察或缺证。模型不得新增规则、坐标、方块 ID、patch、分数、阈值或修复操作。
+模型候选不包含解释文本，只能提交严格的权威引用选择：五个固定层行选择该层已有规则 ID，21 个固定规则行原样保留 `rule_id / status / repair_operation_id` 并选择该 assessment 已有的 observations、missing signals 和 unknown IDs，整体 unknown 也只能选择权威 unknown assessment 中已有的 unknown ID 或 missing signal。所有选择都必须唯一、按权威顺序排列并满足提示包声明的数量上限。
+
+wrapper 验证选择后，才由本地确定性代码生成公开 `layer_explanations[] / rule_explanations[] / overall_unknowns[]`。因此模型能够选择强调哪些权威事实，但不能向 `explanation.json` 提供新的词、数字、ID、坐标、路径、方块、patch、分数、阈值或 unknown。
 
 ### 7.3 输出验证与降级
 
 LLM 输出必须满足：
 
 - `review_hash` 精确一致；
-- 规则 ID 集合、顺序、状态和修复 ID 与权威 review 一致；
-- 没有未知字段或未知 ID；
-- 没有遗漏规则或额外规则；
-- 文本字段满足固定数量和长度上限。
+- 五个层选择行与 21 个规则选择行的集合、顺序、状态和修复 ID 与权威 review 一致；
+- 每个引用都属于对应层或对应 assessment，且选择是唯一、权威顺序的有界子集；
+- 没有未知字段、未知引用、遗漏行或额外行；
+- 公开解释文本严格等于本地 wrapper 对已验证引用的确定性渲染。
 
 任一条件失败，整份模型解释作废。工具写出 `status=unavailable` 和稳定 `error_code`，但仍保留确定性 review、prompt packet 和报告。
 

@@ -35,7 +35,7 @@ npm run playbook:shadow -- --run <out/run-directory> --mode llm
 
 ## LLM 权限与降级
 
-确定性引擎是唯一裁判。提示包仅携带权威状态、允许的规则事实、已有修复 ID 和不可执行的原始 prompt 数据；不含完整 blueprint、私有证据、绝对路径或 API 配置。LLM 输出须严格匹配权威 review 的哈希、规则集合、顺序、状态与修复 ID。任何越权或无效输出整份作废，并记录稳定的 `LLM_UNCONFIGURED`、`LLM_REQUEST_FAILED`、`LLM_OUTPUT_INVALID` 或 `LLM_AUTHORITY_VIOLATION` 类别。
+确定性引擎是唯一裁判。提示包仅携带权威状态、允许的规则事实、已有 unknown/修复 ID 和不可执行的原始 prompt 数据；不含完整 blueprint、私有证据、绝对路径或 API 配置。LLM 候选不含自由解释文本，只能在固定五层和 21 条规则行中选择已提供且属于对应层或 assessment 的权威引用；所有选择必须唯一、有界并保持权威顺序。wrapper 验证选择后才由本地确定性代码渲染 `explanation.json`。任何越权或无效输出整份作废，并记录稳定的 `LLM_UNCONFIGURED`、`LLM_REQUEST_FAILED`、`LLM_OUTPUT_INVALID` 或 `LLM_AUTHORITY_VIOLATION` 类别。
 
 ## 路径、所有权与原子事务
 
