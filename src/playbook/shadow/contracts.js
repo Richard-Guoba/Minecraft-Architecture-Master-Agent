@@ -176,16 +176,19 @@ export function validateExplanation(value, review) {
   if (value.status === 'unavailable' && !LLM_DEGRADATION_CODES.includes(value.error_code)) {
     fail('LLM_OUTPUT_INVALID', 'unavailable-error');
   }
-  validateLayerExplanations(value.layer_explanations);
+  validateLayerExplanations(value.layer_explanations, value.status);
   if (!Array.isArray(value.rule_explanations)) fail('LLM_OUTPUT_INVALID', 'rule-explanations');
   for (const item of value.rule_explanations) {
     assertExactObject(item, 'rule-explanation', RULE_EXPLANATION_FIELDS, 'LLM_OUTPUT_INVALID');
     assertId(item.rule_id, RULE_ID, 'LLM_OUTPUT_INVALID', 'rule-id');
     assertStatus(item.status, 'LLM_OUTPUT_INVALID');
     assertNullableId(item.repair_operation_id, REPAIR_ID, 'LLM_OUTPUT_INVALID', 'repair-operation-id');
-    assertString(item.explanation, 'LLM_OUTPUT_INVALID', 'explanation', 1, 2048);
+    assertExplanationText(item.explanation, value.status, 'explanation');
   }
   assertStrings(value.overall_unknowns, 'LLM_OUTPUT_INVALID', 'overall-unknowns', 64, true);
+  if (value.status === 'unavailable' && value.overall_unknowns.length !== 0) {
+    fail('LLM_OUTPUT_INVALID', 'unavailable-unknowns');
+  }
 
   const authoritativeReview = validateReview(review);
   if (value.review_hash !== sha256(stableJson(authoritativeReview))) {
@@ -341,15 +344,23 @@ function assertCounts(value, label) {
   }
 }
 
-function validateLayerExplanations(value) {
+function validateLayerExplanations(value, status) {
   if (!Array.isArray(value) || value.length !== EVALUATED_LAYERS.length) {
     fail('LLM_OUTPUT_INVALID', 'layer-explanations');
   }
   for (const [index, item] of value.entries()) {
     assertExactObject(item, 'layer-explanation', LAYER_EXPLANATION_FIELDS, 'LLM_OUTPUT_INVALID');
     if (item.layer !== EVALUATED_LAYERS[index]) fail('LLM_OUTPUT_INVALID', 'layer-order');
-    assertString(item.explanation, 'LLM_OUTPUT_INVALID', 'layer-explanation', 1, 2048);
+    assertExplanationText(item.explanation, status, 'layer-explanation');
   }
+}
+
+function assertExplanationText(value, status, detail) {
+  if (status === 'unavailable') {
+    if (value !== '') fail('LLM_OUTPUT_INVALID', `unavailable-${detail}`);
+    return;
+  }
+  assertString(value, 'LLM_OUTPUT_INVALID', detail, 1, 2048);
 }
 
 function assertSchemaHeader(value, code) {
