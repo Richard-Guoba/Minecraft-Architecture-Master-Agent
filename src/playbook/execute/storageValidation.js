@@ -5,6 +5,10 @@ import {
   validateChainManifest,
   validateCheckpointPayload,
   validateExecuteSelectionManifest,
+  validateRepairEvidenceRequest,
+  validateRepairEvidenceResult,
+  validateRepairTransaction,
+  validateReplayFailureEvidence,
   validateSelectionRecord
 } from './contracts.js';
 
@@ -20,6 +24,10 @@ const CHECKPOINT_PATH = new RegExp(`^checkpoints/(${LAYERS.join('|')})/r(${REVIS
 const CHAIN_PATH = new RegExp(`^chains/chain-(${REVISION})\\.json$`, 'u');
 const HARD_QA_PATH = new RegExp(`^reviews/chain-(${REVISION})-hard-qa\\.json$`, 'u');
 const REVIEW_PATH = new RegExp(`^reviews/chain-(${REVISION})-review\\.json$`, 'u');
+const REPAIR_REQUEST_PATH = 'repairs/attempt-01-request.json';
+const REPAIR_PATCH_PATH = 'repairs/attempt-01-patch.json';
+const REPAIR_RESULT_PATH = 'repairs/attempt-01-result.json';
+const FAILURE_PATH = 'failures/attempt-01.json';
 
 export function normalizeCandidateSnapshot({ candidateId, files, currentChain }) {
   assertCandidateId(candidateId);
@@ -66,6 +74,14 @@ function normalizeCandidateFileMap(files) {
       throw executeError('P5_AUTHORITY_INVALID');
     }
     if (!isAllowedImmutablePath(name) || !Buffer.isBuffer(descriptor.value)) {
+      throw executeError('P5_AUTHORITY_INVALID');
+    }
+    try {
+      if (name === REPAIR_REQUEST_PATH) parseCanonicalValidatedJson(descriptor.value, validateRepairEvidenceRequest);
+      if (name === REPAIR_PATCH_PATH) parseCanonicalValidatedJson(descriptor.value, validateRepairTransaction);
+      if (name === REPAIR_RESULT_PATH) parseCanonicalValidatedJson(descriptor.value, validateRepairEvidenceResult);
+      if (name === FAILURE_PATH) parseCanonicalValidatedJson(descriptor.value, validateReplayFailureEvidence);
+    } catch {
       throw executeError('P5_AUTHORITY_INVALID');
     }
     normalized[name] = Buffer.from(descriptor.value);
@@ -118,7 +134,17 @@ export function validateCandidateFiles(candidateId, files, code) {
         chainsByRevision.set(revision, { chain, bytes, hash: sha256(bytes), name });
         continue;
       }
-      parseCanonicalJson(bytes, code);
+      if (name === REPAIR_REQUEST_PATH) {
+        parseCanonicalValidatedJson(bytes, validateRepairEvidenceRequest);
+      } else if (name === REPAIR_PATCH_PATH) {
+        parseCanonicalValidatedJson(bytes, validateRepairTransaction);
+      } else if (name === REPAIR_RESULT_PATH) {
+        parseCanonicalValidatedJson(bytes, validateRepairEvidenceResult);
+      } else if (name === FAILURE_PATH) {
+        parseCanonicalValidatedJson(bytes, validateReplayFailureEvidence);
+      } else {
+        parseCanonicalJson(bytes, code);
+      }
     }
 
     if (chainsByRevision.size !== current.chain_revision) throw executeError(code);
@@ -196,6 +222,7 @@ export function validateCandidateFiles(candidateId, files, code) {
     }
     const currentStored = chainsByRevision.get(current.chain_revision);
     if (!currentStored.bytes.equals(files[CURRENT_CHAIN_BASENAME])) throw executeError(code);
+    validateReplayEvidence(files, current, checkpointByHash, code);
     return Object.freeze({
       currentChainSha256: currentStored.hash,
       current,
@@ -322,7 +349,41 @@ function parseCanonicalJson(bytes, code) {
 function isAllowedImmutablePath(value) {
   return typeof value === 'string'
     && !UNSAFE_PATH_CHARACTER.test(value)
-    && (CHECKPOINT_PATH.test(value) || CHAIN_PATH.test(value) || HARD_QA_PATH.test(value) || REVIEW_PATH.test(value));
+    && (CHECKPOINT_PATH.test(value) || CHAIN_PATH.test(value) || HARD_QA_PATH.test(value) || REVIEW_PATH.test(value)
+      || [REPAIR_REQUEST_PATH, REPAIR_PATCH_PATH, REPAIR_RESULT_PATH, FAILURE_PATH].includes(value));
+}
+
+function validateReplayEvidence(files, current, checkpointByHash, code) {
+  const repairNames = [REPAIR_REQUEST_PATH, REPAIR_PATCH_PATH, REPAIR_RESULT_PATH];
+  const count = repairNames.filter((name) => files[name]).length;
+  if (count !== 0 && count !== repairNames.length) throw executeError(code);
+  if (count === repairNames.length) {
+    const request = parseCanonicalValidatedJson(files[REPAIR_REQUEST_PATH], validateRepairEvidenceRequest);
+    const transaction = parseCanonicalValidatedJson(files[REPAIR_PATCH_PATH], validateRepairTransaction);
+    const result = parseCanonicalValidatedJson(files[REPAIR_RESULT_PATH], validateRepairEvidenceResult);
+    if (sha256(files[REPAIR_PATCH_PATH]) !== request.repair_transaction_sha256
+      || sha256(files[REPAIR_PATCH_PATH]) !== result.repair_transaction_sha256
+      || sha256(files[REPAIR_REQUEST_PATH]) !== result.repair_request_sha256
+      || request.candidate_id !== current.candidate_id || transaction.candidate_id !== current.candidate_id || result.candidate_id !== current.candidate_id
+      || request.base_chain_sha256 !== transaction.base_chain_sha256 || result.base_chain_sha256 !== transaction.base_chain_sha256
+      || request.requests.length !== transaction.operations.length
+      || request.requests.some((item, index) => !sameRequestProjection(item, transaction.operations[index]))
+      || current.repair_transaction_sha256 !== result.repair_transaction_sha256
+      || current.blueprint_sha256 !== result.blueprint_sha256 || current.hard_qa_sha256 !== result.hard_qa_sha256
+      || current.p4_review_sha256 !== result.p4_review_sha256
+      || checkpointByHash.get(current.checkpoint_hashes[4].checkpoint_sha256)?.checkpoint.compiled_artifact_hashes.repair_result_sha256 !== sha256(files[REPAIR_RESULT_PATH])
+      || stableJson(current.eligibility) !== stableJson(result.eligibility)) throw executeError(code);
+  }
+  if (files[FAILURE_PATH]) {
+    const failure = parseCanonicalValidatedJson(files[FAILURE_PATH], validateReplayFailureEvidence);
+    if (failure.candidate_id !== current.candidate_id || failure.current_chain_sha256 !== sha256(files[CURRENT_CHAIN_BASENAME])) throw executeError(code);
+  }
+}
+
+function sameRequestProjection(request, patch) {
+  return request.schema_version === patch.schema_version && request.candidate_id === patch.candidate_id
+    && request.rule_id === patch.rule_id && request.repair_operation_id === patch.repair_operation_id
+    && request.variant_id === patch.variant_id && request.base_checkpoint_sha256 === patch.base_checkpoint_sha256;
 }
 
 function sameLayerHashes(left, right) {

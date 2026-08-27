@@ -66,6 +66,19 @@ const REPAIR_TRANSACTION_FIELDS = Object.freeze([
   'schema_version', 'compiler_version', 'candidate_id', 'base_chain_sha256',
   'repair_budget', 'earliest_target_layer', 'operations', 'invalidates_layers'
 ]);
+const REPAIR_EVIDENCE_REQUEST_FIELDS = Object.freeze([
+  'schema_version', 'candidate_id', 'attempt', 'base_chain_sha256',
+  'repair_transaction_sha256', 'requests'
+]);
+const REPAIR_EVIDENCE_RESULT_FIELDS = Object.freeze([
+  'schema_version', 'candidate_id', 'attempt', 'base_chain_sha256',
+  'repair_request_sha256', 'repair_transaction_sha256', 'blueprint_sha256',
+  'hard_qa_sha256', 'p4_review_sha256', 'eligibility'
+]);
+const REPLAY_FAILURE_FIELDS = Object.freeze([
+  'schema_version', 'candidate_id', 'attempt', 'code', 'base_chain_sha256',
+  'repair_transaction_sha256', 'current_chain_sha256'
+]);
 const PRECONDITION_FIELDS = Object.freeze(['kind', 'id', 'sha256']);
 const ENVELOPE_FIELDS = Object.freeze(['checkpoint_sha256', 'checkpoint']);
 const SELECTION_FIELDS = Object.freeze([
@@ -304,6 +317,44 @@ export function validateRepairTransaction(value) {
   }
   const expectedInvalidations = DESIGN_LAYER_ORDER.filter((layer) => data.operations.some((patch) => patch.invalidates_layers.includes(layer)));
   assertExactArray(data.invalidates_layers, expectedInvalidations, 'P5_REPAIR_INVALID');
+  return data;
+}
+
+export function validateRepairEvidenceRequest(value) {
+  const data = canonicalObject(value, REPAIR_EVIDENCE_REQUEST_FIELDS, 'P5_REPAIR_INVALID');
+  assertSchemaVersion(data, 'P5_REPAIR_INVALID');
+  assertCandidateId(data.candidate_id, 'P5_REPAIR_INVALID');
+  if (data.attempt !== 1) fail('P5_REPAIR_INVALID');
+  assertHash(data.base_chain_sha256, 'P5_REPAIR_INVALID');
+  assertHash(data.repair_transaction_sha256, 'P5_REPAIR_INVALID');
+  assertArray(data.requests, 'P5_REPAIR_INVALID');
+  if (data.requests.length === 0) fail('P5_REPAIR_INVALID');
+  data.requests.forEach(validateRepairRequest);
+  return data;
+}
+
+export function validateRepairEvidenceResult(value) {
+  const data = canonicalObject(value, REPAIR_EVIDENCE_RESULT_FIELDS, 'P5_REPAIR_INVALID');
+  assertSchemaVersion(data, 'P5_REPAIR_INVALID');
+  assertCandidateId(data.candidate_id, 'P5_REPAIR_INVALID');
+  if (data.attempt !== 1) fail('P5_REPAIR_INVALID');
+  for (const field of ['base_chain_sha256', 'repair_request_sha256', 'repair_transaction_sha256', 'blueprint_sha256', 'hard_qa_sha256', 'p4_review_sha256']) {
+    assertHash(data[field], 'P5_REPAIR_INVALID');
+  }
+  validateEligibilityRecord(data.eligibility);
+  if (data.eligibility.repair_budget_used !== 1) fail('P5_REPAIR_INVALID');
+  return data;
+}
+
+export function validateReplayFailureEvidence(value) {
+  const data = canonicalObject(value, REPLAY_FAILURE_FIELDS, 'P5_REPLAY_FAILED');
+  assertSchemaVersion(data, 'P5_REPLAY_FAILED');
+  assertCandidateId(data.candidate_id, 'P5_REPLAY_FAILED');
+  if (data.attempt !== 1 || !P5_ERROR_CODES.includes(data.code)) fail('P5_REPLAY_FAILED');
+  assertHash(data.base_chain_sha256, 'P5_REPLAY_FAILED');
+  assertHash(data.repair_transaction_sha256, 'P5_REPLAY_FAILED');
+  assertHash(data.current_chain_sha256, 'P5_REPLAY_FAILED');
+  if (data.current_chain_sha256 !== data.base_chain_sha256) fail('P5_REPLAY_FAILED');
   return data;
 }
 

@@ -122,7 +122,7 @@ test('compileDesignLayers compiles structure, roof, facade in order with exact l
   }
 });
 
-test('compileDesignLayers rejects non-empty effects until the typed applicator exists', async () => {
+test('compileDesignLayers rejects naked non-empty effects that are not complete resolved operations', async () => {
   const root = path.resolve('.tmp', `construction-layer-effects-${Date.now()}-${Math.random()}`);
   try {
     const prepared = await prepareConstructionDesign({ prompt: PROMPT, mode: 'mock', outputDir: root, seed: 424242 });

@@ -17,9 +17,10 @@ import { ConceptFusionAgent } from './agents/conceptFusionAgent.js';
 import { runCoarseSemanticVoxelShadow } from './learning/coarseSemanticVoxelShadow.js';
 import { createLlmClient } from '../llm/createLlmClient.js';
 import { ensureDir } from '../lib/fs.js';
-import { validateFrozenGeneratorContext, executeError } from '../playbook/execute/contracts.js';
+import { executeError, validateFrozenGeneratorContext, validateResolvedPatch } from '../playbook/execute/contracts.js';
 import { DESIGN_LAYER_ORDER } from '../playbook/execute/constants.js';
 import { deriveBuildSpec } from './buildSpec.js';
+import { applyLayerEffects } from '../playbook/execute/repairTransaction.js';
 
 export async function prepareConstructionDesign({
   prompt,
@@ -220,8 +221,7 @@ export function compileDesignLayers({ prepared, layerPayloads, resolvedEffectsBy
 }
 
 export function compileBriefLayer({ prepared, previousLayer, effects = [] }) {
-  rejectUnsupportedEffects(effects);
-  const payload = validateLayerPayload(previousLayer || {
+  let payload = validateLayerPayload(previousLayer || {
     prompt: prepared.prompt,
     typology: prepared.architecture.typology,
     style_family: prepared.architecture.style_family,
@@ -231,6 +231,7 @@ export function compileBriefLayer({ prepared, previousLayer, effects = [] }) {
     rejected_rule_ids: prepared.frozenDesign?.rejected_rule_ids || [],
     repair_variant_preferences: prepared.frozenDesign?.repair_variant_preferences || []
   });
+  payload = applyResolvedOperations('brief', payload, effects);
   return {
     payload,
     runtime: {
@@ -242,14 +243,14 @@ export function compileBriefLayer({ prepared, previousLayer, effects = [] }) {
 }
 
 export function compileMassingLayer({ prepared, brief, previousLayer, effects = [] }) {
-  rejectUnsupportedEffects(effects);
-  const payload = validateLayerPayload(previousLayer || {
+  let payload = validateLayerPayload(previousLayer || {
     volumes: brief.runtime.architecture.volumes,
     build_spec: prepared.buildSpec
   });
+  payload = applyResolvedOperations('massing', payload, effects);
   return {
     payload,
-    runtime: previousLayer
+    runtime: previousLayer || effects.length > 0
       ? {
           architecture: { ...brief.runtime.architecture, volumes: payload.volumes },
           buildSpec: payload.build_spec
@@ -262,43 +263,48 @@ export function compileMassingLayer({ prepared, brief, previousLayer, effects = 
 }
 
 export function compileStructureLayer({ prepared, brief, massing, previousLayer, effects = [] }) {
-  rejectUnsupportedEffects(effects);
-  const runtime = previousLayer || new StructureAgent().run(
+  let runtime = validateLayerPayload(previousLayer || new StructureAgent().run(
     massing.runtime.architecture,
     massing.runtime.buildSpec,
     brief.runtime.topology
-  );
-  return { payload: validateLayerPayload(runtime), runtime };
+  ));
+  runtime = applyResolvedOperations('structure', runtime, effects);
+  return { payload: runtime, runtime };
 }
 
 export function compileRoofLayer({ prepared, brief, massing, structure, previousLayer, effects = [] }) {
-  rejectUnsupportedEffects(effects);
-  const runtime = previousLayer || new RoofAgent().run(
+  let runtime = validateLayerPayload(previousLayer || new RoofAgent().run(
     prepared.prompt,
     massing.runtime.architecture,
     massing.runtime.buildSpec,
     structure.runtime,
     prepared.materialPalette,
     prepared.stylePreset
-  );
-  return { payload: validateLayerPayload(runtime), runtime };
+  ));
+  runtime = applyResolvedOperations('roof', runtime, effects);
+  return { payload: runtime, runtime };
 }
 
 export function compileFacadeLayer({ prepared, brief, massing, structure, roof, previousLayer, effects = [] }) {
-  rejectUnsupportedEffects(effects);
-  const runtime = previousLayer || new FacadeAgent().run(
+  let runtime = validateLayerPayload(previousLayer || new FacadeAgent().run(
     prepared.prompt,
     massing.runtime.architecture,
     massing.runtime.buildSpec,
     brief.runtime.topology,
     prepared.materialPalette,
     prepared.stylePreset
-  );
-  return { payload: validateLayerPayload(runtime), runtime };
+  ));
+  runtime = applyResolvedOperations('facade', runtime, effects);
+  return { payload: runtime, runtime };
 }
 
-function rejectUnsupportedEffects(effects) {
-  if (!Array.isArray(effects) || effects.length !== 0) throw executeError('P5_REPAIR_INVALID');
+function applyResolvedOperations(layer, payload, operations) {
+  if (!Array.isArray(operations)) throw executeError('P5_REPAIR_INVALID');
+  if (operations.length === 0) return payload;
+  if (operations.some((operation) => validateResolvedPatch(operation).target_layer !== layer)) {
+    throw executeError('P5_REPAIR_INVALID');
+  }
+  return applyLayerEffects({ payload, operations });
 }
 
 function validateResolvedEffectsByLayer(value) {
@@ -315,13 +321,13 @@ function validateResolvedEffectsByLayer(value) {
       throw executeError('P5_REPAIR_INVALID');
     }
     const effects = descriptor.value;
-    if (!Array.isArray(effects) || Object.getPrototypeOf(effects) !== Array.prototype || effects.length !== 0) {
+    if (!Array.isArray(effects) || Object.getPrototypeOf(effects) !== Array.prototype) {
       throw executeError('P5_REPAIR_INVALID');
     }
-    if (Object.getOwnPropertySymbols(effects).length !== 0 || Object.getOwnPropertyNames(effects).length !== 1) {
+    if (Object.getOwnPropertySymbols(effects).length !== 0 || Object.getOwnPropertyNames(effects).length !== effects.length + 1) {
       throw executeError('P5_REPAIR_INVALID');
     }
-    output[key] = Object.freeze([]);
+    output[key] = Object.freeze(effects.map((effect) => validateResolvedPatch(effect)));
   }
   return Object.freeze(output);
 }
