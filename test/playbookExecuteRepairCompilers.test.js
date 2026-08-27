@@ -144,11 +144,12 @@ test('all six variants compile and apply against Task 3 payloads while changing 
   const differentiatePatch = compileMassingRepair({ request: request('repair:massing:resize-or-reposition-volume', 'differentiate-equal-secondary-scale'), layerPayload: equal });
   assert.equal(checkThreeVolumeComposition(project(applyLayerEffects({ payload: equal, operations: [differentiatePatch] }))).status, 'satisfied');
 
-  const roleless = { volumes: productionVolumes([1, 1, 1], [0.8, 0.8, 0.8], [0.6, 0.6, 0.6]) };
-  for (const volume of roleless.volumes) { volume.role = 'architect-label'; volume.tags = []; delete volume.purpose; }
-  assert.equal(checkPrimarySecondaryHierarchy(project(roleless)).status, 'unknown');
-  const promotePatch = compileMassingRepair({ request: request('repair:massing:strengthen-primary-volume', 'promote-largest-stable', 'rule:structure.create-primary-secondary-hierarchy'), layerPayload: roleless });
-  const promoted = applyLayerEffects({ payload: roleless, operations: [promotePatch] });
+  const multiplePrimary = { volumes: productionVolumes([1, 1, 1], [0.8, 0.8, 0.8], [0.6, 0.6, 0.6]) };
+  multiplePrimary.volumes[1].role = 'primary-mass';
+  multiplePrimary.volumes[1].tags = ['primary-mass'];
+  assert.equal(checkPrimarySecondaryHierarchy(project(multiplePrimary)).status, 'violated');
+  const promotePatch = compileMassingRepair({ request: request('repair:massing:strengthen-primary-volume', 'promote-largest-stable', 'rule:structure.create-primary-secondary-hierarchy'), layerPayload: multiplePrimary });
+  const promoted = applyLayerEffects({ payload: multiplePrimary, operations: [promotePatch] });
   assert.equal(checkPrimarySecondaryHierarchy(project(promoted)).status, 'satisfied');
   assert.deepEqual(promoted.volumes[0].tags, ['primary-mass']);
   assert.equal(promoted.volumes[0].purpose, 'main-building-envelope');
