@@ -5,9 +5,11 @@ import {
   validateChainManifest,
   validateCheckpointPayload,
   validateExecuteSelectionManifest,
+  validateEligibilityRecord,
   validateInitialCandidateFailure,
   validateRepairEvidenceRequest,
   validateRepairEvidenceResult,
+  validateRepairPlanningFailureEvidence,
   validateRepairTransaction,
   validateReplayFailureEvidence,
   validateSelectionRecord
@@ -29,6 +31,7 @@ const REPAIR_REQUEST_PATH = 'repairs/attempt-01-request.json';
 const REPAIR_PATCH_PATH = 'repairs/attempt-01-patch.json';
 const REPAIR_RESULT_PATH = 'repairs/attempt-01-result.json';
 const FAILURE_PATH = 'failures/attempt-01.json';
+const REPAIR_PLANNING_FAILURE_PATH = 'failures/repair-attempt-01.json';
 const INITIAL_FAILURE_PATH = 'failures/initial.json';
 const INITIAL_HARD_QA_PATH = 'reviews/initial-hard-qa.json';
 const INITIAL_REVIEW_PATH = 'reviews/initial-review.json';
@@ -125,6 +128,7 @@ function normalizeCandidateFileMap(files) {
       if (name === REPAIR_PATCH_PATH) parseCanonicalValidatedJson(descriptor.value, validateRepairTransaction);
       if (name === REPAIR_RESULT_PATH) parseCanonicalValidatedJson(descriptor.value, validateRepairEvidenceResult);
       if (name === FAILURE_PATH) parseCanonicalValidatedJson(descriptor.value, validateReplayFailureEvidence);
+      if (name === REPAIR_PLANNING_FAILURE_PATH) parseCanonicalValidatedJson(descriptor.value, validateRepairPlanningFailureEvidence);
     } catch {
       throw executeError('P5_AUTHORITY_INVALID');
     }
@@ -186,6 +190,8 @@ export function validateCandidateFiles(candidateId, files, code) {
         parseCanonicalValidatedJson(bytes, validateRepairEvidenceResult);
       } else if (name === FAILURE_PATH) {
         parseCanonicalValidatedJson(bytes, validateReplayFailureEvidence);
+      } else if (name === REPAIR_PLANNING_FAILURE_PATH) {
+        parseCanonicalValidatedJson(bytes, validateRepairPlanningFailureEvidence);
       } else {
         parseCanonicalJson(bytes, code);
       }
@@ -290,9 +296,10 @@ export function normalizeSelectionFiles(files) {
     normalized[name] = Buffer.from(descriptor.value);
   }
   let manifest;
+  let selection;
   try {
     manifest = parseCanonicalValidatedJson(normalized['manifest.json'], validateExecuteSelectionManifest);
-    parseCanonicalValidatedJson(normalized['selection.json'], validateSelectionRecord);
+    selection = parseCanonicalValidatedJson(normalized['selection.json'], validateSelectionRecord);
   } catch {
     throw executeError('P5_AUTHORITY_INVALID');
   }
@@ -301,6 +308,7 @@ export function normalizeSelectionFiles(files) {
   }
   return Object.freeze({
     files: Object.freeze(normalized),
+    selection,
     artifactHashes: Object.freeze({
       'selection.json': manifest.artifact_hashes['selection.json'],
       'selection-report.md': manifest.artifact_hashes['selection-report.md']
@@ -394,7 +402,7 @@ function isAllowedImmutablePath(value) {
   return typeof value === 'string'
     && !UNSAFE_PATH_CHARACTER.test(value)
     && (CHECKPOINT_PATH.test(value) || CHAIN_PATH.test(value) || HARD_QA_PATH.test(value) || REVIEW_PATH.test(value)
-      || [REPAIR_REQUEST_PATH, REPAIR_PATCH_PATH, REPAIR_RESULT_PATH, FAILURE_PATH].includes(value));
+      || [REPAIR_REQUEST_PATH, REPAIR_PATCH_PATH, REPAIR_RESULT_PATH, FAILURE_PATH, REPAIR_PLANNING_FAILURE_PATH].includes(value));
 }
 
 function validateReplayEvidence(files, current, checkpointByHash, code) {
@@ -426,6 +434,70 @@ function validateReplayEvidence(files, current, checkpointByHash, code) {
     const failure = parseCanonicalValidatedJson(files[FAILURE_PATH], validateReplayFailureEvidence);
     if (failure.candidate_id !== current.candidate_id || failure.current_chain_sha256 !== sha256(files[CURRENT_CHAIN_BASENAME])) throw executeError(code);
   }
+  if (files[REPAIR_PLANNING_FAILURE_PATH]) {
+    const failure = parseCanonicalValidatedJson(files[REPAIR_PLANNING_FAILURE_PATH], validateRepairPlanningFailureEvidence);
+    if (failure.candidate_id !== current.candidate_id || failure.current_chain_sha256 !== sha256(files[CURRENT_CHAIN_BASENAME])
+      || count !== 0 || files[FAILURE_PATH] || current.repair_transaction_sha256 !== null) throw executeError(code);
+  }
+  if (count === repairNames.length && (files[FAILURE_PATH] || files[REPAIR_PLANNING_FAILURE_PATH])) throw executeError(code);
+}
+
+export function selectionProjectionForCandidateEvidence(candidateId, files, { requireCurrentReviews = false } = {}) {
+  const validated = validateCandidateEvidence(candidateId, files, 'P5_OUTPUT_OWNERSHIP');
+  if (validated.kind === 'initial-failed') {
+    const hardQaBody = files[INITIAL_HARD_QA_PATH] ? parseCanonicalJson(files[INITIAL_HARD_QA_PATH], 'P5_OUTPUT_OWNERSHIP') : null;
+    return Object.freeze({
+      kind: 'initial-failed', current_chain_sha256: null, hard_qa_sha256: null, p4_review_sha256: null,
+      eligibility: Object.freeze({
+        status: validated.failure.stage === 'hard-qa' || validated.failure.code === 'P5_HARD_QA_FAILED' ? 'hard-qa-failed' : 'replay-failed',
+        hard_qa_ok: hardQaBody?.ok === true,
+        unresolved_violated_core_rule_ids: Object.freeze([]), neutral_unknown_rule_ids: Object.freeze([]),
+        neutral_not_applicable_rule_ids: Object.freeze([]), repair_budget_used: 0
+      }),
+      repair_attempt_count: 0
+    });
+  }
+  const current = validated.current;
+  const currentHash = validated.currentChainSha256;
+  if (requireCurrentReviews) {
+    const revision = padRevision(current.chain_revision);
+    const hardQaPath = `reviews/chain-${revision}-hard-qa.json`;
+    const reviewPath = `reviews/chain-${revision}-review.json`;
+    if (!files[hardQaPath] || !files[reviewPath]
+      || sha256(files[hardQaPath]) !== current.hard_qa_sha256
+      || sha256(files[reviewPath]) !== current.p4_review_sha256) throw executeError('P5_OUTPUT_OWNERSHIP');
+    parseCanonicalJson(files[hardQaPath], 'P5_OUTPUT_OWNERSHIP');
+    parseCanonicalJson(files[reviewPath], 'P5_OUTPUT_OWNERSHIP');
+  }
+  let eligibility = current.eligibility;
+  let repairAttemptCount = current.repair_transaction_sha256 === null ? current.eligibility.repair_budget_used : 1;
+  if (files[REPAIR_PLANNING_FAILURE_PATH]) {
+    const failure = parseCanonicalValidatedJson(files[REPAIR_PLANNING_FAILURE_PATH], validateRepairPlanningFailureEvidence);
+    if (failure.current_chain_sha256 !== currentHash) throw executeError('P5_OUTPUT_OWNERSHIP');
+    eligibility = deriveFailureEligibilityOverlay(current.eligibility, { kind: 'repair-planning', code: failure.code });
+    repairAttemptCount = 1;
+  } else if (files[FAILURE_PATH]) {
+    const failure = parseCanonicalValidatedJson(files[FAILURE_PATH], validateReplayFailureEvidence);
+    if (failure.current_chain_sha256 !== currentHash) throw executeError('P5_OUTPUT_OWNERSHIP');
+    eligibility = deriveFailureEligibilityOverlay(current.eligibility, { kind: 'replay', code: failure.code });
+    repairAttemptCount = 1;
+  }
+  return Object.freeze({ kind: 'accepted', current_chain_sha256: currentHash,
+    hard_qa_sha256: current.hard_qa_sha256, p4_review_sha256: current.p4_review_sha256,
+    eligibility, repair_attempt_count: repairAttemptCount });
+}
+
+export function deriveFailureEligibilityOverlay(chainEligibility, { kind, code } = {}) {
+  const eligibility = validateEligibilityRecord(chainEligibility);
+  const status = kind === 'repair-planning'
+    ? 'repair-invalid'
+    : kind === 'replay' && ['P5_REPAIR_INVALID', 'P5_REPAIR_CONFLICT'].includes(code)
+      ? 'repair-invalid'
+      : kind === 'replay'
+        ? 'replay-failed'
+        : null;
+  if (!status) throw executeError('P5_AUTHORITY_INVALID');
+  return Object.freeze({ ...eligibility, status, repair_budget_used: 1 });
 }
 
 function sameRequestProjection(request, patch) {

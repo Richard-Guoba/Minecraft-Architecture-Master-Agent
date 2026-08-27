@@ -84,6 +84,10 @@ const INITIAL_FAILURE_FIELDS = Object.freeze([
   'frozen_generator_context_sha256', 'blueprint_sha256', 'hard_qa_sha256',
   'p4_review_sha256', 'artifact_hashes'
 ]);
+const REPAIR_PLANNING_FAILURE_FIELDS = Object.freeze([
+  'schema_version', 'candidate_id', 'attempt', 'code', 'base_chain_sha256',
+  'repair_transaction_sha256', 'current_chain_sha256'
+]);
 const PRECONDITION_FIELDS = Object.freeze(['kind', 'id', 'sha256']);
 const ENVELOPE_FIELDS = Object.freeze(['checkpoint_sha256', 'checkpoint']);
 const SELECTION_FIELDS = Object.freeze([
@@ -385,6 +389,18 @@ export function validateInitialCandidateFailure(value) {
     && data.artifact_hashes['reviews/initial-hard-qa.json'] !== data.hard_qa_sha256) fail('P5_AUTHORITY_INVALID');
   if (data.p4_review_sha256 !== null
     && data.artifact_hashes['reviews/initial-review.json'] !== data.p4_review_sha256) fail('P5_AUTHORITY_INVALID');
+  return deepFreeze(data);
+}
+
+export function validateRepairPlanningFailureEvidence(value) {
+  const data = canonicalObject(value, REPAIR_PLANNING_FAILURE_FIELDS, 'P5_REPAIR_INVALID');
+  assertSchemaVersion(data, 'P5_REPAIR_INVALID');
+  assertCandidateId(data.candidate_id, 'P5_REPAIR_INVALID');
+  if (data.attempt !== 1 || !['P5_REPAIR_INVALID', 'P5_REPAIR_CONFLICT', 'P5_STALE_BASE'].includes(data.code)
+    || data.repair_transaction_sha256 !== null) fail('P5_REPAIR_INVALID');
+  assertHash(data.base_chain_sha256, 'P5_REPAIR_INVALID');
+  assertHash(data.current_chain_sha256, 'P5_REPAIR_INVALID');
+  if (data.base_chain_sha256 !== data.current_chain_sha256) fail('P5_REPAIR_INVALID');
   return deepFreeze(data);
 }
 

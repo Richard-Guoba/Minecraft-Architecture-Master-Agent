@@ -32,8 +32,10 @@ const INVALIDATES = Object.freeze({
 const STAGE_PREFIX = '.playbook-execute.stage-';
 const BACKUP_PREFIX = '.playbook-execute.backup-';
 const ARTIFACT_HASH = 'a'.repeat(64);
-const QA_HASH = 'b'.repeat(64);
-const REVIEW_HASH = 'c'.repeat(64);
+const QA_BYTES = canonicalBytes({ ok: true, source: 'storage-fixture' });
+const REVIEW_BYTES = canonicalBytes({ schema_version: 1, source: 'storage-fixture' });
+const QA_HASH = testHash(QA_BYTES);
+const REVIEW_HASH = testHash(REVIEW_BYTES);
 const DESIGN_HASH = 'd'.repeat(64);
 const CONTEXT_HASH = 'e'.repeat(64);
 const BLUEPRINT_HASH = 'f'.repeat(64);
@@ -1280,7 +1282,7 @@ test('selection installs only after all candidates and exact manifest hashes val
 
   await assertP5Failure(
     installExecuteSelection({ authority, files }),
-    'P5_AUTHORITY_INVALID',
+    'P5_INSTALL_FAILED',
     fixture.root
   );
   for (const candidateId of ['candidate-01', 'candidate-02']) {
@@ -1288,7 +1290,7 @@ test('selection installs only after all candidates and exact manifest hashes val
   }
   await assertP5Failure(
     installExecuteSelection({ authority, files }),
-    'P5_AUTHORITY_INVALID',
+    'P5_INSTALL_FAILED',
     fixture.root
   );
   await installCandidateSnapshot({
@@ -1637,7 +1639,7 @@ test('selection rejects file-map, manifest, hash, and existing ownership drift',
     const before = await snapshotTree(fixture.root);
     await assertP5Failure(
       installExecuteSelection({ authority: fixture.authority, files: selectionFiles('replacement') }),
-      'P5_OUTPUT_OWNERSHIP',
+      'P5_INSTALL_FAILED',
       fixture.root,
       'provider-secret'
     );
@@ -1685,7 +1687,11 @@ function initialSnapshot(candidateId = 'candidate-01') {
   }));
   const currentChain = chainManifestBytes(chain);
   return {
-    files: checkpointFileMap(envelopes),
+    files: {
+      ...checkpointFileMap(envelopes),
+      'reviews/chain-0001-hard-qa.json': Buffer.from(QA_BYTES),
+      'reviews/chain-0001-review.json': Buffer.from(REVIEW_BYTES)
+    },
     currentChain,
     chain,
     chainHash: chainManifestHash(chain),
@@ -1706,7 +1712,7 @@ function replaySnapshot(initial) {
   const currentChain = chainManifestBytes(chain);
   return {
     files: {
-      ...checkpointFileMap(initial.envelopes),
+      ...cloneBuffers(initial.files),
       [`chains/chain-${padRevision(initial.chain.chain_revision)}.json`]: Buffer.from(initial.currentChain),
       ...checkpointFileMap(envelopes)
     },
@@ -1823,28 +1829,22 @@ function expectedInstalledFiles(snapshot) {
 }
 
 function selectionFiles(marker = 'selected') {
+  const snapshots = ['candidate-01', 'candidate-02', 'candidate-03'].map((candidateId) => initialSnapshot(candidateId));
   const selection = canonicalBytes({
     schema_version: 1,
     mode: 'execute',
     candidate_count: 3,
-    candidates: ['candidate-01', 'candidate-02', 'candidate-03'].map((candidate_id, index) => ({
-      candidate_id,
+    candidates: snapshots.map((snapshot, index) => ({
+      candidate_id: snapshot.chain.candidate_id,
       seed: 11 + index,
-      current_chain_sha256: null,
-      hard_qa_sha256: null,
-      p4_review_sha256: null,
-      eligibility: {
-        status: 'hard-qa-failed',
-        hard_qa_ok: false,
-        unresolved_violated_core_rule_ids: [],
-        neutral_unknown_rule_ids: [],
-        neutral_not_applicable_rule_ids: [],
-        repair_budget_used: 0
-      },
+      current_chain_sha256: snapshot.chainHash,
+      hard_qa_sha256: snapshot.chain.hard_qa_sha256,
+      p4_review_sha256: snapshot.chain.p4_review_sha256,
+      eligibility: snapshot.chain.eligibility,
       repair_attempt_count: 0
     })),
-    selected_candidate_id: null,
-    selected_chain_sha256: null,
+    selected_candidate_id: 'candidate-01',
+    selected_chain_sha256: snapshots[0].chainHash,
     repair_attempt_count: 0,
     ranker_result: { marker }
   });

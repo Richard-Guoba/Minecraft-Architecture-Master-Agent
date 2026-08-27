@@ -17,7 +17,8 @@ import { evaluateExecuteEligibility, executableViolations } from './eligibility.
 import { buildRepairTransaction } from './repairTransaction.js';
 import { replayCandidate } from './replay.js';
 import { renderExecuteSelectionReport } from './report.js';
-import { admitExecuteRun, inspectCandidateEvidence, installCandidateSnapshot, installExecuteSelection, installInitialCandidateFailure, readCurrentCandidateSnapshot } from './storage.js';
+import { admitExecuteRun, appendCandidateRepairPlanningFailureEvidence, inspectCandidateEvidence, installCandidateSnapshot, installExecuteSelection, installInitialCandidateFailure, readCurrentCandidateSnapshot } from './storage.js';
+import { selectionProjectionForCandidateEvidence } from './storageValidation.js';
 import { buildDeterministicShadowReview } from '../shadow/runShadowReview.js';
 import { loadShadowCorpus } from '../shadow/corpus.js';
 import { sha256, stableJson } from '../shadow/canonical.js';
@@ -125,13 +126,25 @@ async function executeCandidate({ index, normalized, seedPlan, runDir, projectRo
     return acceptedRecord(candidateId, seed, repairAttempts, current);
   } catch (error) {
     if (['P5_AUTHORITY_INVALID', 'P5_OUTPUT_OWNERSHIP'].includes(error?.code)) throw error;
+    if (['P5_REPAIR_INVALID', 'P5_REPAIR_CONFLICT', 'P5_STALE_BASE'].includes(error?.code)) {
+      try {
+        const accepted = await inspectCandidateEvidence({ authority, candidateId });
+        if (accepted.kind === 'accepted') {
+          await appendCandidateRepairPlanningFailureEvidence({ authority, candidateId,
+            expectedCurrentChainSha256: accepted.current_chain_sha256,
+            evidence: { schema_version: 1, candidate_id: candidateId, attempt: 1, code: error.code,
+              base_chain_sha256: accepted.current_chain_sha256, repair_transaction_sha256: null,
+              current_chain_sha256: accepted.current_chain_sha256 } });
+        }
+      } catch {}
+    }
     try {
       const existing = await inspectCandidateEvidence({ authority, candidateId });
       if (existing.kind === 'accepted') {
         const chain = JSON.parse(existing.current_chain.toString('utf8'));
-        const failedStatus = ['P5_REPAIR_INVALID', 'P5_REPAIR_CONFLICT'].includes(error?.code) ? 'repair-invalid' : 'replay-failed';
-        return acceptedRecord(candidateId, seed, 1, { chain, chainSha256: existing.current_chain_sha256, result,
-          hardQa, review, eligibility: { ...chain.eligibility, status: failedStatus, repair_budget_used: 1 } });
+        const projection = selectionProjectionForCandidateEvidence(candidateId, existing.files);
+        return acceptedRecord(candidateId, seed, projection.repair_attempt_count,
+          { chain, chainSha256: existing.current_chain_sha256, result, hardQa, review, eligibility: projection.eligibility });
       }
     } catch {}
     const stage = frozenDesignSha256 === null ? 'design' : contextSha256 === null || result === undefined ? 'compile' : hardQaSha256 === null ? 'hard-qa' : 'p4-review';
@@ -180,13 +193,20 @@ function createSelection(records, selected, ranked) { return validateSelectionRe
   selected_chain_sha256: selected?.currentChainSha256 ?? null, repair_attempt_count: records.reduce((sum, row) => sum + row.repairAttempts, 0),
   ranker_result: JSON.parse(JSON.stringify(ranked)) }); }
 async function revalidateSelected({ authority, selected }) {
-  const reopened = await readCurrentCandidateSnapshot({ authority, candidateId: selected.candidateId });
-  if (reopened.current_chain_sha256 !== selected.currentChainSha256) installFailed();
-  const current = JSON.parse(reopened.current_chain.toString('utf8')); const facadeHash = current.checkpoint_hashes.at(-1).checkpoint_sha256;
-  const facadePath = Object.keys(reopened.files).find((name) => name.startsWith('checkpoints/facade/') && sha256(reopened.files[name]) === facadeHash);
-  if (!facadePath || sha256(await fs.readFile(selected.result.artifacts.blueprint)) !== current.blueprint_sha256) installFailed();
-  const facade = JSON.parse(reopened.files[facadePath].toString('utf8')); const hashes = await hashReplayArtifacts({ compiledResult: selected.result });
-  for (const [key, value] of Object.entries(hashes)) if (facade.compiled_artifact_hashes[key] !== value) installFailed();
+  try {
+    const reopened = await readCurrentCandidateSnapshot({ authority, candidateId: selected.candidateId });
+    if (reopened.current_chain_sha256 !== selected.currentChainSha256) installFailed();
+    const projection = selectionProjectionForCandidateEvidence(selected.candidateId, reopened.files, { requireCurrentReviews: true });
+    if (projection.kind !== 'accepted' || projection.eligibility.status !== 'eligible'
+      || projection.hard_qa_sha256 !== selected.hardQaSha256 || projection.p4_review_sha256 !== selected.reviewSha256) installFailed();
+    const current = JSON.parse(reopened.current_chain.toString('utf8')); const facadeHash = current.checkpoint_hashes.at(-1).checkpoint_sha256;
+    const facadePath = Object.keys(reopened.files).find((name) => name.startsWith('checkpoints/facade/') && sha256(reopened.files[name]) === facadeHash);
+    if (!facadePath || sha256(await fs.readFile(selected.result.artifacts.blueprint)) !== current.blueprint_sha256) installFailed();
+    const facade = JSON.parse(reopened.files[facadePath].toString('utf8')); const hashes = await hashReplayArtifacts({ compiledResult: selected.result });
+    for (const [key, value] of Object.entries(hashes)) if (facade.compiled_artifact_hashes[key] !== value) installFailed();
+  } catch {
+    installFailed();
+  }
 }
 function resolveDependencies(input) { if (!input || Object.getPrototypeOf(input) !== Object.prototype || Reflect.ownKeys(input).some((key) => typeof key !== 'string' || !DEPENDENCY_KEYS.includes(key))) throw executeError('P5_AUTHORITY_INVALID');
   const value = { ...DEFAULT_DEPENDENCIES, ...input }; if (Object.values(value).some((item) => typeof item !== 'function')) throw executeError('P5_AUTHORITY_INVALID'); return Object.freeze(value); }

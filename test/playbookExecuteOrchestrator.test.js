@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { chmodSync, constants as fsConstants, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,15 +9,18 @@ import test from 'node:test';
 import { runExecutablePlaybookPipeline } from '../src/playbook/execute/orchestrator.js';
 import { runPipeline } from '../src/pipeline.js';
 import { stableJson } from '../src/playbook/shadow/canonical.js';
-import { validateInitialCandidateFailure } from '../src/playbook/execute/contracts.js';
+import { validateInitialCandidateFailure, validateRepairPlanningFailureEvidence } from '../src/playbook/execute/contracts.js';
 import { CandidateSelectionAgent } from '../src/construction/agents/candidateSelectionAgent.js';
 import { buildFrozenGeneratorContext, prepareConstructionDesign } from '../src/construction/designStages.js';
 import { compilePreparedConstruction } from '../src/construction/workflow.js';
 import { buildDeterministicShadowReview } from '../src/playbook/shadow/runShadowReview.js';
 import { createFrozenDesignEnvelope } from '../src/playbook/execute/designEnvelope.js';
+import { deriveFailureEligibilityOverlay } from '../src/playbook/execute/storageValidation.js';
 import {
   admitExecuteRun,
+  appendCandidateRepairPlanningFailureEvidence,
   inspectCandidateEvidence,
+  installExecuteSelection,
   installInitialCandidateFailure
 } from '../src/playbook/execute/storage.js';
 
@@ -112,6 +116,43 @@ test('initial failure contract rejects extra fields, broken provenance, and arti
   }
 });
 
+test('accepted failure overlays preserve chain evidence and map exact failure classes', () => {
+  const chain = { status: 'unresolved-core-violation', hard_qa_ok: true,
+    unresolved_violated_core_rule_ids: ['rule:structure.compose-three-volumes'],
+    neutral_unknown_rule_ids: ['rule:roof.border-with-material-contrast'],
+    neutral_not_applicable_rule_ids: [], repair_budget_used: 0 };
+  for (const [kind, code, status] of [
+    ['repair-planning', 'P5_REPAIR_INVALID', 'repair-invalid'],
+    ['replay', 'P5_REPAIR_INVALID', 'repair-invalid'],
+    ['replay', 'P5_REPAIR_CONFLICT', 'repair-invalid'],
+    ['replay', 'P5_REPLAY_FAILED', 'replay-failed'],
+    ['replay', 'P5_INSTALL_FAILED', 'replay-failed']
+  ]) {
+    const overlay = deriveFailureEligibilityOverlay(chain, { kind, code });
+    assert.equal(overlay.status, status);
+    assert.equal(overlay.repair_budget_used, 1);
+    assert.equal(overlay.hard_qa_ok, true);
+    assert.deepEqual(overlay.unresolved_violated_core_rule_ids, chain.unresolved_violated_core_rule_ids);
+    assert.deepEqual(overlay.neutral_unknown_rule_ids, chain.neutral_unknown_rule_ids);
+  }
+});
+
+test('pretransaction repair failure accepts only the fixed null-transaction schema', () => {
+  const valid = { schema_version: 1, candidate_id: 'candidate-01', attempt: 1, code: 'P5_REPAIR_INVALID',
+    base_chain_sha256: '1'.repeat(64), repair_transaction_sha256: null, current_chain_sha256: '1'.repeat(64) };
+  assert.deepEqual(validateRepairPlanningFailureEvidence(valid), valid);
+  for (const mutate of [
+    (value) => { value.extra = true; },
+    (value) => { value.attempt = 2; },
+    (value) => { value.code = 'P5_REPLAY_FAILED'; },
+    (value) => { value.repair_transaction_sha256 = '2'.repeat(64); },
+    (value) => { value.current_chain_sha256 = '3'.repeat(64); }
+  ]) {
+    const changed = structuredClone(valid); mutate(changed);
+    assert.throws(() => validateRepairPlanningFailureEvidence(changed), { code: 'P5_REPAIR_INVALID' });
+  }
+});
+
 test('pipeline rejects execute option drift before creating output', async (t) => {
   const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-option-boundary-'));
   t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
@@ -150,10 +191,110 @@ test('real mock execution creates exactly three five-layer evidence trees and on
       assert.equal(chain.checkpoint_hashes.length, 5);
     }
   }
+  for (const id of ['candidate-01', 'candidate-02']) {
+    const failure = JSON.parse(await fs.readFile(path.join(result.outputDir, 'playbook-execute/candidates', id, 'failures/repair-attempt-01.json')));
+    assert.deepEqual(Object.keys(failure), ['attempt', 'base_chain_sha256', 'candidate_id', 'code', 'current_chain_sha256', 'repair_transaction_sha256', 'schema_version']);
+    assert.equal(failure.repair_transaction_sha256, null);
+    assert.equal(failure.base_chain_sha256, failure.current_chain_sha256);
+  }
   assert.deepEqual(Object.keys(result.artifacts).filter((key) => key.startsWith('playbookExecution')).sort(),
     ['playbookExecutionManifest', 'playbookExecutionReport', 'playbookExecutionSelection']);
   const report = await fs.readFile(result.artifacts.playbookExecutionReport, 'utf8');
   assert.equal(/playbook_score|quality_improvement|quality claim/iu.test(report), false);
+  assert.match(report, /P5 creates no playbook score/iu);
+});
+
+test('selection installation binds candidate rows and selected current review bodies', async (t) => {
+  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-selection-binding-'));
+  t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+  const result = await runPipeline({ prompt: 'Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base',
+    mode: 'mock', outRoot, seed: 424242, playbook: 'execute' });
+  const authority = await admitExecuteRun({ runDir: result.outputDir }); t.after(() => authority.close());
+  const selection = JSON.parse(await fs.readFile(result.artifacts.playbookExecutionSelection));
+  const reportBytes = await fs.readFile(result.artifacts.playbookExecutionReport);
+  for (const [name, mutate] of [
+    ['invented hash', (value) => { value.candidates[0].current_chain_sha256 = 'f'.repeat(64); }],
+    ['attempt mismatch', (value) => { value.candidates[0].repair_attempt_count = 0; }],
+    ['eligibility mismatch', (value) => { value.candidates[0].eligibility.status = 'replay-failed'; }],
+    ['candidate authority swap', (value) => {
+      for (const key of ['current_chain_sha256', 'hard_qa_sha256', 'p4_review_sha256']) {
+        [value.candidates[0][key], value.candidates[1][key]] = [value.candidates[1][key], value.candidates[0][key]];
+      }
+    }],
+    ['select ineligible accepted root', (value) => {
+      const row = value.candidates[0];
+      row.eligibility = { ...row.eligibility, status: 'eligible', unresolved_violated_core_rule_ids: [], repair_budget_used: 1 };
+      value.selected_candidate_id = row.candidate_id; value.selected_chain_sha256 = row.current_chain_sha256;
+    }]
+  ]) {
+    const changed = structuredClone(selection); mutate(changed);
+    const selectionBytes = Buffer.from(stableJson(changed));
+    const manifestBytes = Buffer.from(stableJson({ schema_version: 1,
+      managed_paths: ['manifest.json', 'selection.json', 'selection-report.md'],
+      artifact_hashes: { 'selection.json': sha256ForTest(selectionBytes), 'selection-report.md': sha256ForTest(reportBytes) } }));
+    await assert.rejects(installExecuteSelection({ authority, files: {
+      'manifest.json': manifestBytes, 'selection.json': selectionBytes, 'selection-report.md': reportBytes
+    } }), { code: /P5_(?:INSTALL_FAILED|AUTHORITY_INVALID)/u }, name);
+  }
+
+  const selectedId = selection.selected_candidate_id;
+  const selectedRow = selection.candidates.find((row) => row.candidate_id === selectedId);
+  const selectedRoot = path.join(result.outputDir, 'playbook-execute/candidates', selectedId);
+  const current = JSON.parse(await fs.readFile(path.join(selectedRoot, 'current-chain.json')));
+
+  const pointerPath = path.join(selectedRoot, 'current-chain.json');
+  const pointerBefore = await fs.readFile(pointerPath);
+  const pointerIdentityBefore = await fs.stat(pointerPath);
+  await assert.rejects(appendCandidateRepairPlanningFailureEvidence({ authority, candidateId: selectedId,
+    expectedCurrentChainSha256: selectedRow.current_chain_sha256,
+    evidence: { schema_version: 1, candidate_id: selectedId, attempt: 1, code: 'P5_REPAIR_INVALID',
+      base_chain_sha256: selectedRow.current_chain_sha256, repair_transaction_sha256: null,
+      current_chain_sha256: selectedRow.current_chain_sha256 },
+    fsImpl: { async open(target, flags, ...args) {
+      if ((flags & fsConstants.O_WRONLY) !== 0) throw new Error('controlled failure evidence write fault');
+      return fs.open(target, flags, ...args);
+    } }
+  }), { code: 'P5_INSTALL_FAILED' });
+  const pointerIdentityAfter = await fs.stat(pointerPath);
+  assert.deepEqual(await fs.readFile(pointerPath), pointerBefore);
+  assert.equal(pointerIdentityAfter.dev, pointerIdentityBefore.dev);
+  assert.equal(pointerIdentityAfter.ino, pointerIdentityBefore.ino);
+  await assert.rejects(fs.access(path.join(selectedRoot, 'failures/repair-attempt-01.json')), { code: 'ENOENT' });
+
+  const candidatesRoot = path.join(result.outputDir, 'playbook-execute/candidates');
+  const firstRoot = path.join(candidatesRoot, 'candidate-01');
+  const secondRoot = path.join(candidatesRoot, 'candidate-02');
+  const swapRoot = path.join(candidatesRoot, '.test-swap');
+  let currentChainOpens = 0;
+  let swapped = false;
+  const swapCandidates = async () => {
+    await fs.rename(firstRoot, swapRoot);
+    await fs.rename(secondRoot, firstRoot);
+    await fs.rename(swapRoot, secondRoot);
+  };
+  try {
+    await assert.rejects(installExecuteSelection({ authority, files: {
+      'manifest.json': await fs.readFile(result.artifacts.playbookExecutionManifest),
+      'selection.json': await fs.readFile(result.artifacts.playbookExecutionSelection),
+      'selection-report.md': await fs.readFile(result.artifacts.playbookExecutionReport)
+    }, fsImpl: { async open(target, flags, ...args) {
+      if (path.basename(String(target)) === 'current-chain.json' && ++currentChainOpens === 4) {
+        await swapCandidates(); swapped = true;
+      }
+      return fs.open(target, flags, ...args);
+    } } }), { code: 'P5_INSTALL_FAILED' });
+  } finally {
+    if (swapped) await swapCandidates();
+  }
+
+  const revision = String(current.chain_revision).padStart(4, '0');
+  await fs.unlink(path.join(selectedRoot, `reviews/chain-${revision}-review.json`));
+  await assert.rejects(installExecuteSelection({ authority, files: {
+    'manifest.json': await fs.readFile(result.artifacts.playbookExecutionManifest),
+    'selection.json': await fs.readFile(result.artifacts.playbookExecutionSelection),
+    'selection-report.md': await fs.readFile(result.artifacts.playbookExecutionReport)
+  } }), { code: 'P5_INSTALL_FAILED' });
+  assert.equal(selectedRow.eligibility.status, 'eligible');
 });
 
 test('no eligible candidate retains three immutable failures and never installs or publishes selection', async (t) => {
@@ -180,6 +321,45 @@ test('no eligible candidate retains three immutable failures and never installs 
   await assert.rejects(fs.access(path.join(executeRoot, 'selection.json')), { code: 'ENOENT' });
 });
 
+test('selection publication accepts an exact mixed accepted and initial-failed candidate set', async (t) => {
+  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-mixed-roots-'));
+  t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+  let calls = 0;
+  const result = await runExecutablePlaybookPipeline({ playbook: 'execute',
+    prompt: 'Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base',
+    mode: 'mock', outRoot, cwd: path.resolve(import.meta.dirname, '..'), seed: 424242, critics: true }, {
+    createEnvelope: async (input) => {
+      calls += 1;
+      if (calls === 1) throw new Error('candidate-local-design-failure');
+      return createFrozenDesignEnvelope(input);
+    }
+  });
+  assert.equal(result.playbookExecution.candidates[0].current_chain_sha256, null);
+  assert.equal(result.playbookExecution.candidates[0].repair_attempt_count, 0);
+  assert.equal(result.playbookExecution.candidates[0].eligibility.status, 'replay-failed');
+  assert.notEqual(result.playbookExecution.selected_candidate_id, 'candidate-01');
+  await fs.access(result.artifacts.playbookExecutionSelection);
+
+  const authority = await admitExecuteRun({ runDir: result.outputDir }); t.after(() => authority.close());
+  const selectedFailed = JSON.parse(await fs.readFile(result.artifacts.playbookExecutionSelection));
+  const failedRow = selectedFailed.candidates[0];
+  failedRow.current_chain_sha256 = 'f'.repeat(64);
+  failedRow.hard_qa_sha256 = 'e'.repeat(64);
+  failedRow.p4_review_sha256 = 'd'.repeat(64);
+  failedRow.eligibility.status = 'eligible';
+  failedRow.eligibility.hard_qa_ok = true;
+  selectedFailed.selected_candidate_id = failedRow.candidate_id;
+  selectedFailed.selected_chain_sha256 = failedRow.current_chain_sha256;
+  const selectionBytes = Buffer.from(stableJson(selectedFailed));
+  const reportBytes = await fs.readFile(result.artifacts.playbookExecutionReport);
+  const manifestBytes = Buffer.from(stableJson({ schema_version: 1,
+    managed_paths: ['manifest.json', 'selection.json', 'selection-report.md'],
+    artifact_hashes: { 'selection.json': sha256ForTest(selectionBytes), 'selection-report.md': sha256ForTest(reportBytes) } }));
+  await assert.rejects(installExecuteSelection({ authority, files: {
+    'manifest.json': manifestBytes, 'selection.json': selectionBytes, 'selection-report.md': reportBytes
+  } }), { code: 'P5_INSTALL_FAILED' });
+});
+
 test('selected build authority drift fails before the existing installer can change a world', async (t) => {
   const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-install-drift-'));
   t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
@@ -196,6 +376,39 @@ test('selected build authority drift fails before the existing installer can cha
     installSelected: async () => { installCalls += 1; }
   }), { code: 'P5_INSTALL_FAILED' });
   assert.equal(installCalls, 0);
+});
+
+test('selected current QA and P4 bodies reject delete mutation and swap before installation', async (t) => {
+  for (const kind of ['delete-hard-qa', 'delete-review', 'mutate-hard-qa', 'mutate-review', 'swap']) {
+    const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), `p5-review-drift-${kind}-`));
+    t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+    let installCalls = 0;
+    await assert.rejects(runExecutablePlaybookPipeline({ playbook: 'execute',
+      prompt: 'Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base',
+      mode: 'mock', outRoot, cwd: path.resolve(import.meta.dirname, '..'), seed: 424242, critics: true }, {
+      createSelectionAgent: () => ({ run(candidates, options) {
+        const ranked = new CandidateSelectionAgent().run(candidates, options);
+        const selected = candidates.find((row) => row.id === ranked.selected_candidate_id);
+        const root = path.join(selected.result.outputDir, '..', '..', 'playbook-execute', 'candidates', selected.id);
+        const current = JSON.parse(readFileSync(path.join(root, 'current-chain.json')));
+        const revision = String(current.chain_revision).padStart(4, '0');
+        const hardQaPath = path.join(root, `reviews/chain-${revision}-hard-qa.json`);
+        const reviewPath = path.join(root, `reviews/chain-${revision}-review.json`);
+        if (kind === 'delete-hard-qa') unlinkSync(hardQaPath);
+        if (kind === 'delete-review') unlinkSync(reviewPath);
+        if (kind === 'mutate-hard-qa') { chmodSync(hardQaPath, 0o600); writeFileSync(hardQaPath, '{}\n'); }
+        if (kind === 'mutate-review') { chmodSync(reviewPath, 0o600); writeFileSync(reviewPath, '{}\n'); }
+        if (kind === 'swap') {
+          const hardQa = readFileSync(hardQaPath); const review = readFileSync(reviewPath);
+          chmodSync(hardQaPath, 0o600); chmodSync(reviewPath, 0o600);
+          writeFileSync(hardQaPath, review); writeFileSync(reviewPath, hardQa);
+        }
+        return ranked;
+      } }),
+      installSelected: async () => { installCalls += 1; }
+    }), { code: 'P5_INSTALL_FAILED' }, kind);
+    assert.equal(installCalls, 0, kind);
+  }
 });
 
 test('controlled production semantics yield 01 eligible, 02 repaired, and 03 still ineligible after one replay', async (t) => {
@@ -281,4 +494,8 @@ function refreshReview(review) {
     status_counts: counts(review.assessments),
     layer_status_counts: review.coverage.map((row) => ({ layer: row.layer, ...counts(review.assessments.filter((item) => item.design_layer === row.layer)) })),
     missing_evidence_rule_count: review.assessments.filter((row) => row.status === 'unknown').length };
+}
+
+function sha256ForTest(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
 }

@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   executeError,
   sanitizeExecuteError,
+  validateRepairPlanningFailureEvidence,
   validateReplayFailureEvidence
 } from './contracts.js';
 import { sha256, stableJson } from '../shadow/canonical.js';
@@ -20,6 +21,7 @@ import {
   normalizeSelectionFiles,
   sameFileMap,
   SELECTION_PATHS,
+  selectionProjectionForCandidateEvidence,
   sortFileMap,
   validateCandidateEvidence,
   validateCandidateFiles
@@ -345,10 +347,21 @@ export async function installInitialCandidateFailure({ authority, candidateId, f
 }
 
 export async function appendCandidateFailureEvidence({ authority, candidateId, evidence, expectedCurrentChainSha256, fsImpl } = {}) {
-  const internal = authorityInternal(authority);
   const validated = validateReplayFailureEvidence(evidence);
+  return appendCandidateFailureRecord({ authority, candidateId, validated, expectedCurrentChainSha256,
+    fileName: 'attempt-01.json', fsImpl, validationCode: 'P5_REPLAY_FAILED' });
+}
+
+export async function appendCandidateRepairPlanningFailureEvidence({ authority, candidateId, evidence, expectedCurrentChainSha256, fsImpl } = {}) {
+  const validated = validateRepairPlanningFailureEvidence(evidence);
+  return appendCandidateFailureRecord({ authority, candidateId, validated, expectedCurrentChainSha256,
+    fileName: 'repair-attempt-01.json', fsImpl, validationCode: 'P5_REPAIR_INVALID' });
+}
+
+async function appendCandidateFailureRecord({ authority, candidateId, validated, expectedCurrentChainSha256, fileName, fsImpl, validationCode }) {
+  const internal = authorityInternal(authority);
   if (validated.candidate_id !== candidateId || validated.current_chain_sha256 !== expectedCurrentChainSha256) {
-    throw executeError('P5_REPLAY_FAILED');
+    throw executeError(validationCode);
   }
   const bytes = Buffer.from(stableJson(validated));
   const ops = fsOperations(fsImpl ?? internal.ops.source);
@@ -356,7 +369,9 @@ export async function appendCandidateFailureEvidence({ authority, candidateId, e
   try {
     tree = await openExecuteTree(internal, ops, { create: false });
     const existing = await inspectCandidate(internal, ops, tree, candidateId, { allowMissing: false });
-    if (existing.validated.currentChainSha256 !== expectedCurrentChainSha256 || existing.files['failures/attempt-01.json']) {
+    if (existing.validated.kind !== 'accepted' || existing.validated.currentChainSha256 !== expectedCurrentChainSha256
+      || Object.keys(existing.files).some((name) => name.startsWith('failures/'))
+      || Object.keys(existing.files).some((name) => name.startsWith('repairs/'))) {
       throw executeError('P5_STALE_BASE');
     }
     candidateHandle = await openDirectoryEntry(ops, tree.candidatesHandle, candidateId, 'P5_OUTPUT_OWNERSHIP', 'P5_OUTPUT_OWNERSHIP');
@@ -367,7 +382,7 @@ export async function appendCandidateFailureEvidence({ authority, candidateId, e
     stageIdentity = identity(await stageHandle.stat());
     let fileHandle;
     try {
-      fileHandle = await ops.open(descriptorEntryPath(stageHandle, 'attempt-01.json'), WRITE_FLAGS, 0o600);
+      fileHandle = await ops.open(descriptorEntryPath(stageHandle, fileName), WRITE_FLAGS, 0o600);
       await fileHandle.writeFile(bytes); await fileHandle.sync(); await fileHandle.chmod(0o400); await fileHandle.sync();
     } finally { await closeHandle(fileHandle); }
     await stageHandle.sync();
@@ -385,11 +400,11 @@ export async function appendCandidateFailureEvidence({ authority, candidateId, e
       afterMove: async () => { await candidateHandle.sync(); await tree.candidatesHandle.sync(); }
     });
     const checked = await inspectCandidate(internal, ops, tree, candidateId, { allowMissing: false });
-    if (!checked.files['failures/attempt-01.json']?.equals(bytes) || checked.validated.currentChainSha256 !== expectedCurrentChainSha256) {
+    if (!checked.files[`failures/${fileName}`]?.equals(bytes) || checked.validated.currentChainSha256 !== expectedCurrentChainSha256) {
       throw executeError('P5_INSTALL_FAILED');
     }
     committed = true;
-    return Object.freeze({ status: 'created', path: 'failures/attempt-01.json' });
+    return Object.freeze({ status: 'created', path: `failures/${fileName}` });
   } catch (error) {
     try {
       if (!committed && stageHandle && stageIdentity
@@ -415,9 +430,9 @@ export async function appendCandidateFailureEvidence({ authority, candidateId, e
       }
       if (!committed && stageHandle && stageBasename
         && await namedDirectoryHasIdentity(tree.candidatesHandle, ops, stageBasename, stageIdentity)) {
-        const read = await readRegularFile(ops, stageHandle, 'attempt-01.json', 'P5_INSTALL_FAILED');
+        const read = await readRegularFile(ops, stageHandle, fileName, 'P5_INSTALL_FAILED');
         if (!read.bytes.equals(bytes)) throw executeError('P5_INSTALL_FAILED');
-        await ops.unlink(descriptorEntryPath(stageHandle, 'attempt-01.json'));
+        await ops.unlink(descriptorEntryPath(stageHandle, fileName));
         await closeHandle(stageHandle); stageHandle = undefined;
         await ops.rmdir(descriptorEntryPath(tree.candidatesHandle, stageBasename));
         await tree.candidatesHandle.sync();
@@ -441,12 +456,37 @@ export async function installExecuteSelection({ authority, files, fsImpl } = {})
   let tree;
   try {
     tree = await openExecuteTree(internal, ops, { create: false });
+    const boundCandidates = [];
     for (const candidateId of CANDIDATE_IDS) {
       const candidate = await inspectCandidate(internal, ops, tree, candidateId, { allowMissing: true });
       if (!candidate) throw executeError('P5_AUTHORITY_INVALID');
+      const row = normalized.selection.candidates.find((item) => item.candidate_id === candidateId);
+      const projection = selectionProjectionForCandidateEvidence(candidateId, candidate.files, {
+        requireCurrentReviews: normalized.selection.selected_candidate_id === candidateId
+      });
+      if (!row || row.current_chain_sha256 !== projection.current_chain_sha256
+        || row.hard_qa_sha256 !== projection.hard_qa_sha256
+        || row.p4_review_sha256 !== projection.p4_review_sha256
+        || row.repair_attempt_count !== projection.repair_attempt_count
+        || stableJson(row.eligibility) !== stableJson(projection.eligibility)
+        || normalized.selection.selected_candidate_id === candidateId
+          && (projection.kind !== 'accepted' || projection.eligibility.status !== 'eligible')) {
+        throw executeError('P5_INSTALL_FAILED');
+      }
+      boundCandidates.push({ candidateId, identity: candidate.identity, files: candidate.files });
     }
+    const assertBoundCandidates = async () => {
+      for (const bound of boundCandidates) {
+        const current = await inspectCandidate(internal, ops, tree, bound.candidateId, { allowMissing: false });
+        if (!sameIdentity(current.identity, bound.identity) || !sameFileMap(current.files, bound.files)) {
+          throw executeError('P5_INSTALL_FAILED');
+        }
+      }
+    };
+    await assertBoundCandidates();
     const existing = tree.selection;
     if (existing && sameFileMap(existing.files, normalized.files)) {
+      await assertBoundCandidates();
       return Object.freeze({ status: 'unchanged', artifact_hashes: normalized.artifactHashes });
     }
     await installSelectionGeneration({
@@ -454,14 +494,17 @@ export async function installExecuteSelection({ authority, files, fsImpl } = {})
       tree,
       files: normalized.files,
       existing,
-      assertAuthority: () => assertTreeAuthority(internal, ops, tree)
+      assertAuthority: async () => {
+        await assertTreeAuthority(internal, ops, tree);
+        await assertBoundCandidates();
+      }
     });
     return Object.freeze({
       status: existing ? 'replaced' : 'created',
       artifact_hashes: normalized.artifactHashes
     });
   } catch (error) {
-    throw publicError(error, 'P5_INSTALL_FAILED');
+    throw executeError('P5_INSTALL_FAILED');
   } finally {
     await closeExecuteTree(tree);
   }
