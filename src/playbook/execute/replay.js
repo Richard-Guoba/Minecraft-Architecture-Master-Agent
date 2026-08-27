@@ -18,7 +18,7 @@ import { evaluateExecuteEligibility } from './eligibility.js';
 import { buildRepairTransaction } from './repairTransaction.js';
 import {
   appendCandidateFailureEvidence, createReplayWorkspace, installCandidateSnapshot,
-  readCurrentCandidateSnapshot
+  readCurrentCandidateSnapshot, removeReplayWorkspace
 } from './storage.js';
 import { FROZEN_CONTEXT_PATH, FROZEN_DESIGN_PATH } from './storageValidation.js';
 import { buildDeterministicShadowReview } from '../shadow/runShadowReview.js';
@@ -225,7 +225,7 @@ export async function replayCandidate({
   } catch (error) {
     const publicError = sanitizeExecuteError(error, 'P5_REPLAY_FAILED');
     if (attemptDir) {
-      try { await fs.rm(attemptDir, { recursive: true, force: true }); } catch {}
+      try { await removeReplayWorkspace({ authority, workspacePath: attemptDir, fsImpl }); } catch {}
     }
     if (authority && candidateId && baseChainSha256 && transactionSha256) {
       try {

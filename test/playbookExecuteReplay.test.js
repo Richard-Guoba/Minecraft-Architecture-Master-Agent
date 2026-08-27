@@ -454,7 +454,8 @@ function replayStorageFs({ failCategory, failAt }) {
       });
     },
     async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
-      if (sourceName.startsWith('.playbook-execute.stage-') && destinationName !== 'current-chain.json') tick('bodyRename');
+      if (sourceName.startsWith('.playbook-execute.stage-') && destinationName === 'current-chain.json') tick('pointerRename');
+      else if (sourceName.startsWith('.playbook-execute.stage-')) tick('bodyRename');
       return next(sourceHandle, sourceName, destinationHandle, destinationName);
     },
     async link(source, destination) {

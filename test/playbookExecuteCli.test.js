@@ -67,6 +67,20 @@ test('execute CLI rejects malformed or incompatible P5 options before output', a
   }
 });
 
+test('execute CLI rejects an omitted prompt with only the stable P5 code and no output', async (t) => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-cli-empty-prompt-'));
+  t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const outRoot = path.join(parent, 'PRIVATE-empty-prompt-output');
+  const result = spawnSync(process.execPath, [
+    CLI, '--playbook', 'execute', '--out', outRoot
+  ], { cwd: ROOT, env: CHILD_ENV, encoding: 'utf8', timeout: 30000 });
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.equal(result.stderr, 'P5_OPTIONS_INCOMPATIBLE\n');
+  assert.doesNotMatch(result.stderr, /PRIVATE|\/home\/|\/tmp\//u);
+  await assert.rejects(fs.lstat(outRoot), { code: 'ENOENT' });
+});
+
 test('execute CLI rejects duplicate semantic singleton aliases before side effects', async (t) => {
   const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-cli-duplicate-'));
   t.after(() => fs.rm(outRoot, { recursive: true, force: true }));

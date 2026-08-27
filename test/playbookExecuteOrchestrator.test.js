@@ -21,7 +21,8 @@ import {
   appendCandidateRepairPlanningFailureEvidence,
   inspectCandidateEvidence,
   installExecuteSelection,
-  installInitialCandidateFailure
+  installInitialCandidateFailure,
+  pruneCandidateWorkspaces
 } from '../src/playbook/execute/storage.js';
 
 test('execute orchestration rejects unknown dependency authority before work', async () => {
@@ -40,10 +41,7 @@ test('outer execute boundary sanitizes every public stage and authority close', 
     ['corpus-load', 'P5_AUTHORITY_INVALID', { loadCorpus: async () => { throw new Error(secret); } }],
     ['selection-render', 'P5_INSTALL_FAILED', { renderSelection: () => { throw new Error(secret); } }],
     ['selection-publication', 'P5_INSTALL_FAILED', { publishSelection: async () => { throw new Error(secret); } }],
-    ['installer', 'P5_INSTALL_FAILED', { installSelected: async () => { throw new Error(secret); } }],
-    ['authority-close', 'P5_AUTHORITY_INVALID', {
-      closeAuthority: async (authority) => { await authority.close(); throw new Error(secret); }
-    }]
+    ['installer', 'P5_INSTALL_FAILED', { installSelected: async () => { throw new Error(secret); } }]
   ];
   for (const [name, code, dependencies] of cases) {
     await t.test(name, async (t) => {
@@ -66,6 +64,88 @@ test('outer execute boundary sanitizes every public stage and authority close', 
     runExecutablePlaybookPipeline({ playbook: 'execute', prompt, candidates: 2 }),
     { code: 'P5_OPTIONS_INCOMPATIBLE', message: 'P5_OPTIONS_INCOMPATIBLE' }
   );
+  const committedOutRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-boundary-authority-close-'));
+  t.after(() => fs.rm(committedOutRoot, { recursive: true, force: true }));
+  const committed = await runExecutablePlaybookPipeline({
+    playbook: 'execute', prompt, mode: 'mock', seed: 424242,
+    outRoot: committedOutRoot, cwd: projectRoot
+  }, {
+    closeAuthority: async (authority) => { await authority.close(); throw new Error(secret); }
+  });
+  assert.equal(committed.playbookExecution.mode, 'execute');
+});
+
+test('direct execute API rejects an empty prompt at the stable P5 boundary before output', async (t) => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-empty-prompt-'));
+  t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const outRoot = path.join(parent, 'PRIVATE-output-path-that-must-not-leak');
+  await assert.rejects(
+    runPipeline({ playbook: 'execute', prompt: ' \t\n', outRoot }),
+    (error) => {
+      assert.equal(error.code, 'P5_OPTIONS_INCOMPATIBLE');
+      assert.equal(error.message, 'P5_OPTIONS_INCOMPATIBLE');
+      assert.equal(JSON.stringify(error).includes(outRoot), false);
+      return true;
+    }
+  );
+  await assert.rejects(fs.lstat(outRoot), { code: 'ENOENT' });
+});
+
+test('execute precommit failures retain no selected candidate workspace', async (t) => {
+  const prompt = 'Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base';
+  for (const [name, dependency] of [
+    ['selection-publication', { publishSelection: async () => { throw new Error('private publication fault'); } }],
+    ['installer', { installSelected: async () => { throw new Error('private installer fault'); } }]
+  ]) {
+    await t.test(name, async (t) => {
+      const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), `p5-workspace-${name}-`));
+      t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+      await assert.rejects(runExecutablePlaybookPipeline({
+        playbook: 'execute', prompt, mode: 'mock', seed: 424242,
+        outRoot, cwd: path.resolve(import.meta.dirname, '..')
+      }, dependency), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
+      const [runName] = await fs.readdir(outRoot);
+      assert.deepEqual(await fs.readdir(path.join(outRoot, runName, 'candidate-work')), []);
+    });
+  }
+});
+
+test('workspace pruning is a pre-publication boundary and cannot run after install as a fatal transaction', async (t) => {
+  const prompt = 'Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base';
+  await t.test('preinstall prune failure prevents installation', async (t) => {
+    const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-preinstall-prune-'));
+    t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+    let installCalls = 0;
+    await assert.rejects(runExecutablePlaybookPipeline({
+      playbook: 'execute', prompt, mode: 'mock', seed: 424242,
+      outRoot, cwd: path.resolve(import.meta.dirname, '..')
+    }, {
+      pruneWorkspaces: async () => { throw new Error('private preinstall prune fault'); },
+      installSelected: async () => { installCalls += 1; return '/private/install'; }
+    }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
+    assert.equal(installCalls, 0);
+  });
+
+  await t.test('postinstall cleanup failure preserves reported committed success', async (t) => {
+    const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-postinstall-prune-'));
+    t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+    let installed = false;
+    let pruneCalls = 0;
+    const result = await runExecutablePlaybookPipeline({
+      playbook: 'execute', prompt, mode: 'mock', seed: 424242,
+      outRoot, cwd: path.resolve(import.meta.dirname, '..')
+    }, {
+      installSelected: async () => { installed = true; return undefined; },
+      pruneWorkspaces: async (input) => {
+        pruneCalls += 1;
+        await pruneCandidateWorkspaces(input);
+        if (installed) throw new Error('private postinstall prune fault');
+      }
+    });
+    assert.equal(result.playbookExecution.mode, 'execute');
+    assert.equal(installed, true);
+    assert.equal(pruneCalls, 2);
+  });
 });
 
 test('initial failure evidence installs once without an accepted-chain pointer', async (t) => {
@@ -258,19 +338,28 @@ test('reviewed corpus order survives the complete lifecycle and reversed order f
   }
 });
 
-test('real mock execution creates exactly three five-layer evidence trees and one selection', async (t) => {
+test('real production-authority mock input creates natural outcomes and installs into a disposable root', async (t) => {
+  const fixture = JSON.parse(await fs.readFile(path.join(
+    import.meta.dirname, 'fixtures/playbook-execute/natural-production-authority.json'
+  )));
   const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-three-candidates-'));
   t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
-  const result = await runPipeline({ prompt: 'Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base',
-    mode: 'mock', outRoot, seed: 424242, playbook: 'execute' });
+  const datapacksDir = path.join(outRoot, 'disposable-world', 'datapacks');
+  const result = await runPipeline({ prompt: fixture.prompt,
+    mode: 'mock', outRoot, seed: fixture.seed, playbook: 'execute', datapacksDir });
   assert.equal(result.playbookExecution.mode, 'execute');
   assert.equal(result.playbookExecution.candidate_count, 3);
   assert.deepEqual(result.playbookExecution.candidates.map((row) => row.seed), [1432164, 1440083, 1448002]);
   assert.ok(['candidate-01', 'candidate-02', 'candidate-03'].includes(result.playbookExecution.selected_candidate_id));
-  assert.deepEqual(result.playbookExecution.candidates.map((row) => row.repair_attempt_count), [1, 1, 0]);
-  assert.deepEqual(result.playbookExecution.candidates.map((row) => row.eligibility.status), ['repair-invalid', 'repair-invalid', 'eligible']);
+  assert.deepEqual(result.playbookExecution.candidates.map((row) => row.repair_attempt_count), fixture.expected_attempt_counts);
+  assert.deepEqual(result.playbookExecution.candidates.map((row) => row.eligibility.status), fixture.expected_statuses);
   assert.equal(result.playbookExecution.candidates.filter((row) => row.eligibility.status === 'eligible').length, 1);
-  assert.equal(result.playbookExecution.selected_candidate_id, 'candidate-03');
+  assert.equal(result.playbookExecution.selected_candidate_id, fixture.expected_selected_candidate_id);
+  assert.equal(result.artifacts.installedDatapackDir, path.join(datapacksDir, 'architect_datapack'));
+  assert.deepEqual(
+    await fileTreeBytes(result.artifacts.installedDatapackDir),
+    await fileTreeBytes(result.artifacts.datapackDir)
+  );
   for (const id of ['candidate-01', 'candidate-02', 'candidate-03']) {
     const root = path.join(result.outputDir, 'playbook-execute/candidates', id);
     const evidence = await fs.readdir(root);
@@ -602,4 +691,19 @@ function refreshReview(review) {
 
 function sha256ForTest(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
+}
+
+async function fileTreeBytes(root) {
+  const files = {};
+  await walk(root, '');
+  return files;
+  async function walk(current, prefix) {
+    for (const name of (await fs.readdir(current)).sort()) {
+      const target = path.join(current, name);
+      const relative = prefix ? `${prefix}/${name}` : name;
+      const stat = await fs.lstat(target);
+      if (stat.isDirectory()) await walk(target, relative);
+      else files[relative] = await fs.readFile(target);
+    }
+  }
 }

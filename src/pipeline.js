@@ -43,7 +43,6 @@ export async function runPipeline({
     if (coarseVoxelMode === 'shadow' && coarseVoxelProvider === 'artifact') {
       throw Object.assign(new Error('P5_OPTIONS_INCOMPATIBLE'), { code: 'P5_OPTIONS_INCOMPATIBLE' });
     }
-    if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
     return runExecutablePlaybookPipeline({
       prompt, mode, mcVersion, outRoot, seed,
       candidates: executeOptions.candidates,

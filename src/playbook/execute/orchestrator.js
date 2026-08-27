@@ -17,7 +17,7 @@ import { evaluateExecuteEligibility, executableViolations } from './eligibility.
 import { buildRepairTransaction } from './repairTransaction.js';
 import { replayCandidate } from './replay.js';
 import { renderExecuteSelectionReport } from './report.js';
-import { appendCandidateRepairPlanningFailureEvidence, createExecuteRun, inspectCandidateEvidence, installCandidateSnapshot, installExecuteSelection, installInitialCandidateFailure, pruneCandidateWorkspaces, readCurrentCandidateSnapshot } from './storage.js';
+import { appendCandidateRepairPlanningFailureEvidence, createCandidateWorkspace, createExecuteRun, inspectCandidateEvidence, installCandidateSnapshot, installExecuteSelection, installInitialCandidateFailure, pruneCandidateWorkspaces, readCurrentCandidateSnapshot } from './storage.js';
 import { FROZEN_CONTEXT_PATH, FROZEN_DESIGN_PATH, selectionProjectionForCandidateEvidence } from './storageValidation.js';
 import { buildDeterministicShadowReview } from '../shadow/runShadowReview.js';
 import { loadShadowCorpus } from '../shadow/corpus.js';
@@ -49,6 +49,7 @@ export async function runExecutablePlaybookPipeline(options = {}, dependencies =
   let failure;
   let outcome;
   let retainedWorkspace;
+  let externalCommitted = false;
   try {
     deps = resolveDependencies(dependencies);
     stage = 'options';
@@ -73,7 +74,6 @@ export async function runExecutablePlaybookPipeline(options = {}, dependencies =
     const targetScore = clampInt(normalized.candidateTargetScore, 0, 100, DEFAULT_TARGET_SCORE);
     const ranked = deps.createSelectionAgent().run(eligibleRecords.map((record) => record.rankerRecord), { targetScore, scope: 'playbook-execute' });
     const selected = records.find((record) => record.candidateId === ranked.selected_candidate_id);
-    retainedWorkspace = selected?.result?.outputDir;
     const selection = createSelection(records, selected, ranked);
     if (!selected) throw executeError('P5_NO_ELIGIBLE_CANDIDATE');
     const selectedArtifactHashes = await revalidateSelected({ authority, selected });
@@ -81,6 +81,8 @@ export async function runExecutablePlaybookPipeline(options = {}, dependencies =
     stage = 'selection-render';
     const reportBytes = Buffer.from(deps.renderSelection(selection));
     const manifest = { schema_version: 1, managed_paths: ['manifest.json', 'selection.json', 'selection-report.md'], artifact_hashes: { 'selection.json': sha256(selectionBytes), 'selection-report.md': sha256(reportBytes) } };
+    stage = 'workspace-prune';
+    await deps.pruneWorkspaces({ authority, keepPath: selected.result.outputDir });
     stage = 'selection-publication';
     const publication = await deps.publishSelection({ authority, files: { 'manifest.json': Buffer.from(stableJson(manifest)), 'selection.json': selectionBytes, 'selection-report.md': reportBytes } });
     stage = 'install';
@@ -88,6 +90,8 @@ export async function runExecutablePlaybookPipeline(options = {}, dependencies =
       minecraftDir: normalized.minecraftDir, world: normalized.world, datapacksDir: normalized.datapacksDir,
       expectedDatapackTreeSha256: selectedArtifactHashes.datapack_tree_sha256
     });
+    externalCommitted = true;
+    retainedWorkspace = selected.result.outputDir;
     const selectionGeneration = path.join(runDir, 'playbook-execute', publication.generation);
     const artifacts = { ...selected.result.artifacts,
       playbookExecutionManifest: path.join(selectionGeneration, 'manifest.json'),
@@ -103,10 +107,14 @@ export async function runExecutablePlaybookPipeline(options = {}, dependencies =
     failure = sanitizeExecuteError(error, executeStageFallback(stage));
   } finally {
     if (authority) {
-      try { await deps.pruneWorkspaces({ authority, keepPath: retainedWorkspace }); }
-      catch (error) { if (!failure) failure = sanitizeExecuteError(error, 'P5_INSTALL_FAILED'); }
+      try { await deps.pruneWorkspaces({ authority, keepPath: externalCommitted ? retainedWorkspace : null }); }
+      catch (error) {
+        if (!externalCommitted && !failure) failure = sanitizeExecuteError(error, 'P5_INSTALL_FAILED');
+      }
       try { await deps.closeAuthority(authority); }
-      catch (error) { if (!failure) failure = sanitizeExecuteError(error, 'P5_AUTHORITY_INVALID'); }
+      catch (error) {
+        if (!externalCommitted && !failure) failure = sanitizeExecuteError(error, 'P5_AUTHORITY_INVALID');
+      }
     }
   }
   if (failure) throw failure;
@@ -116,7 +124,7 @@ export async function runExecutablePlaybookPipeline(options = {}, dependencies =
 async function executeCandidate({ index, normalized, seedPlan, runDir, projectRoot, authority, cards, deps }) {
   const candidateId = `candidate-${String(index).padStart(2, '0')}`;
   const seed = candidateSeedFor(seedPlan.seed, 1, index);
-  const candidateDir = path.join(runDir, 'candidate-work', candidateId);
+  const candidateDir = await createCandidateWorkspace({ authority, candidateId });
   let frozenDesign; let prepared; let compiled; let result; let hardQa; let review;
   let frozenDesignSha256 = null; let contextSha256 = null; let blueprintSha256 = null; let hardQaSha256 = null; let reviewSha256 = null;
   try {
@@ -257,7 +265,7 @@ function clampInt(value, min, max, fallback) { const number = Number(value); ret
 function fallbackEligibility(hardQa, budget) { return { status: hardQa?.ok === false ? 'hard-qa-failed' : 'replay-failed', hard_qa_ok: Boolean(hardQa?.ok), unresolved_violated_core_rule_ids: [], neutral_unknown_rule_ids: [], neutral_not_applicable_rule_ids: [], repair_budget_used: budget }; }
 function executeStageFallback(stage) {
   if (stage === 'options') return 'P5_OPTIONS_INCOMPATIBLE';
-  if (['selection-render', 'selection-publication', 'install'].includes(stage)) return 'P5_INSTALL_FAILED';
+  if (['selection-render', 'workspace-prune', 'selection-publication', 'install'].includes(stage)) return 'P5_INSTALL_FAILED';
   return 'P5_AUTHORITY_INVALID';
 }
 function installFailed() { throw executeError('P5_INSTALL_FAILED'); }

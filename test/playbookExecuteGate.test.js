@@ -365,7 +365,7 @@ test('P5 dependency gate normalizes terminal conventional versions before author
   }
 });
 
-test('positive acceptance fixture produces exactly three eligible zero-repair five-layer candidates', async (t) => {
+test('controlled-seam positive fixture produces exactly three eligible zero-repair five-layer candidates', async (t) => {
   const fixture = JSON.parse(await fs.readFile(path.join(FIXTURES, 'medieval-positive.json')));
   assert.deepEqual(Object.keys(fixture), ['schema_version', 'prompt', 'seed', 'expected_candidate_count', 'expected_checkpoint_layers']);
   const roots = await acceptanceRoots(t, 'p5-accept-positive-');
@@ -392,7 +392,7 @@ test('positive acceptance fixture produces exactly three eligible zero-repair fi
   await roots.assertPreexistingUnchanged();
 });
 
-test('repairable acceptance fixture is provider-free and byte-identical across exact massing replays', async (t) => {
+test('controlled-seam repairable fixture is provider-free and byte-identical across exact massing replays', async (t) => {
   const repairable = JSON.parse(await fs.readFile(path.join(FIXTURES, 'medieval-repairable.json')));
   const runs = [];
   for (let index = 0; index < 2; index += 1) {
@@ -432,7 +432,7 @@ test('repairable acceptance fixture is provider-free and byte-identical across e
   assert.deepEqual(runs[1].evidence.deterministicBytes, runs[0].evidence.deterministicBytes);
 });
 
-test('no-eligible acceptance fixture exhausts one real repair for every unresolved candidate', async (t) => {
+test('controlled-seam no-eligible fixture exhausts one bounded replay for every unresolved candidate', async (t) => {
   const noEligible = JSON.parse(await fs.readFile(path.join(FIXTURES, 'medieval-no-eligible.json')));
   const roots = await acceptanceRoots(t, 'p5-accept-no-eligible-');
   const observed = { ranked: [], replays: [], installCount: 0, providerCalls: 0 };
@@ -468,7 +468,7 @@ test('no-eligible acceptance fixture exhausts one real repair for every unresolv
   await roots.assertPreexistingUnchanged();
 });
 
-test('injected real repair failure preserves accepted pointer inode and unrelated world bytes', async (t) => {
+test('controlled-seam injected repair failure preserves accepted pointer inode and unrelated world bytes', async (t) => {
   const fixture = JSON.parse(await fs.readFile(path.join(FIXTURES, 'medieval-repairable.json')));
   const outRoot = await temporaryRoot(t, 'p5-accept-rollback-out-');
   const worldRoot = await temporaryRoot(t, 'p5-accept-rollback-world-');
