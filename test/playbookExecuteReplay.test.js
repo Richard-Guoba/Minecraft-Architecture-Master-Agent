@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
@@ -9,6 +10,7 @@ import { chainManifestBytes, chainManifestHash, checkpointBytes, createChainMani
 import { evaluateExecuteEligibility } from '../src/playbook/execute/eligibility.js';
 import { validateRepairEvidenceRequest, validateRepairEvidenceResult, validateReplayFailureEvidence } from '../src/playbook/execute/contracts.js';
 import { buildRepairTransaction } from '../src/playbook/execute/repairTransaction.js';
+import { compileMassingRepair } from '../src/playbook/execute/repairCompilers/massing.js';
 import { replayCandidate } from '../src/playbook/execute/replay.js';
 import { admitExecuteRun, installCandidateSnapshot, readCurrentCandidateSnapshot } from '../src/playbook/execute/storage.js';
 import { buildDeterministicShadowReview } from '../src/playbook/shadow/runShadowReview.js';
@@ -36,6 +38,14 @@ test('massing replay preserves brief and replaces the exact target suffix once',
   assert.equal(result.current_chain_sha256, chainManifestHash(result.current_chain));
   assert.deepEqual(Object.keys(result.evidence), ['repair_request_sha256', 'repair_result_sha256']);
   assert.equal(result.checkpoint_envelopes[4].checkpoint.compiled_artifact_hashes.repair_result_sha256, result.evidence.repair_result_sha256);
+  assert.deepEqual(Object.keys(result.checkpoint_envelopes[4].checkpoint.compiled_artifact_hashes).sort(), [
+    'build_function_sha256', 'datapack_tree_sha256', 'layer_payload_sha256',
+    'operation_list_sha256', 'repair_result_sha256'
+  ]);
+  const artifactHashes = result.checkpoint_envelopes[4].checkpoint.compiled_artifact_hashes;
+  assert.equal(artifactHashes.operation_list_sha256, digest(result.compiled_result.blueprint.operations));
+  assert.equal(artifactHashes.build_function_sha256, await fileDigest(result.compiled_result.artifacts.buildFunction));
+  assert.equal(artifactHashes.datapack_tree_sha256, await authorityTreeDigest(result.compiled_result.artifacts.datapackDir));
   const installed = await readCurrentCandidateSnapshot({ authority: input.authority, candidateId: 'candidate-01' });
   assert.equal(installed.current_chain_sha256, result.current_chain_sha256);
   for (const name of ['repairs/attempt-01-request.json', 'repairs/attempt-01-patch.json', 'repairs/attempt-01-result.json']) assert.ok(installed.files[name]);
@@ -53,14 +63,15 @@ test('replay is provider-free and deterministic across roots', async (t) => {
   assert.equal(digest(a.compiled_result.blueprint.operations), digest(b.compiled_result.blueprint.operations));
   assert.equal(await fileDigest(a.compiled_result.artifacts.buildFunction), await fileDigest(b.compiled_result.artifacts.buildFunction));
   assert.equal(await treeDigest(a.compiled_result.artifacts.datapackDir), await treeDigest(b.compiled_result.artifacts.datapackDir));
+  for (const field of ['operation_list_sha256', 'build_function_sha256', 'datapack_tree_sha256']) {
+    assert.equal(a.checkpoint_envelopes[4].checkpoint.compiled_artifact_hashes[field], b.checkpoint_envelopes[4].checkpoint.compiled_artifact_hashes[field]);
+  }
 });
 
 test('structure replay preserves brief and massing bytes and replays only structure through facade', async (t) => {
-  const input = await fixture(t);
-  input.transaction = structuredClone(input.transaction);
-  input.transaction.operations = input.transaction.operations.filter((operation) => operation.target_layer === 'structure');
-  input.transaction.earliest_target_layer = 'structure';
-  input.transaction.invalidates_layers = ['roof', 'facade'];
+  const input = await fixture(t, { structureOnly: true });
+  assert.equal(input.transaction.earliest_target_layer, 'structure');
+  assert.deepEqual(input.transaction.operations.map((operation) => operation.target_layer), ['structure']);
   const result = await replayCandidate(input);
   assert.deepEqual(result.checkpoint_envelopes.slice(0, 2), input.candidate.checkpoint_envelopes.slice(0, 2));
   for (let index = 2; index < LAYERS.length; index += 1) {
@@ -78,8 +89,8 @@ test('default replay recompiles through the production provider-free downstream 
   assert.equal(result.current_chain.blueprint_sha256, await fileDigest(result.compiled_result.artifacts.blueprint));
 });
 
-test('pre-promotion replay faults preserve original pointer bytes and inode with sanitized evidence', async (t) => {
-  for (const boundary of ['apply-effects', 'compile-massing', 'compile-structure', 'compile-roof', 'compile-facade', 'downstream-compile', 'blueprint', 'hard-qa', 'p4-review', 'hashing', 'stage', 'write', 'sync', 'promote', 'pointer', 'cleanup']) {
+test('actual replay compiler applicator QA review and hash faults preserve the original pointer', async (t) => {
+  for (const boundary of ['apply-effects', 'compile-massing', 'compile-structure', 'compile-roof', 'compile-facade', 'downstream-compile', 'blueprint', 'hard-qa', 'p4-review', 'hashing']) {
     const input = await fixture(t);
     const currentPath = path.join(input.runDir, 'playbook-execute/candidates/candidate-01/current-chain.json');
     const beforeBytes = await fs.readFile(currentPath); const beforeStat = await fs.stat(currentPath);
@@ -94,6 +105,28 @@ test('pre-promotion replay faults preserve original pointer bytes and inode with
     assert.equal(failure.current_chain_sha256, failure.base_chain_sha256);
     assert.equal(JSON.stringify(failure).includes('secret:'), false);
   }
+});
+
+test('actual candidate storage precommit faults preserve the original pointer bytes and inode', async (t) => {
+  for (const category of ['exclusiveWrite', 'chmod', 'fileSync', 'directorySync', 'pointerWrite', 'backupRename', 'finalRename']) {
+    const input = await fixture(t);
+    const currentPath = path.join(input.runDir, 'playbook-execute/candidates/candidate-01/current-chain.json');
+    const beforeBytes = await fs.readFile(currentPath); const beforeStat = await fs.stat(currentPath);
+    input.fsImpl = replayStorageFs({ failCategory: category, failAt: 1 });
+    await assert.rejects(replayCandidate(input), { code: 'P5_INSTALL_FAILED' }, category);
+    assert.deepEqual(await fs.readFile(currentPath), beforeBytes, category);
+    assert.equal((await fs.stat(currentPath)).ino, beforeStat.ino, category);
+    assert.equal((await readCurrentCandidateSnapshot({ authority: input.authority, candidateId: 'candidate-01' })).current_chain_sha256, input.transaction.base_chain_sha256);
+  }
+});
+
+test('candidate retirement cleanup faults are postcommit and keep the replay generation authoritative', async (t) => {
+  const input = await fixture(t);
+  const result = await replayCandidate({ ...input, fsImpl: replayStorageFs({ failCategory: 'cleanup', failAt: 1 }) });
+  assert.equal(result.status, 'complete');
+  const current = await readCurrentCandidateSnapshot({ authority: input.authority, candidateId: 'candidate-01' });
+  assert.equal(current.current_chain_sha256, result.current_chain_sha256);
+  assert.notEqual(current.current_chain_sha256, input.transaction.base_chain_sha256);
 });
 
 test('functions clients and accessors in frozen context fail closed', async (t) => {
@@ -120,6 +153,26 @@ test('repair and failure evidence contracts reject every extra field and cross-h
   await assert.rejects(installCandidateSnapshot({ authority: input.authority, candidateId: 'candidate-01', files, currentChain: chainManifestBytes(result.current_chain), expectedPreviousChainSha256: result.current_chain_sha256 }), { code: /P5_(?:CHECKPOINT_INVALID|AUTHORITY_INVALID|REPAIR_INVALID)/u });
 });
 
+test('storage rejects missing extra and malformed facade artifact authority keys', async (t) => {
+  for (const mutate of [
+    (hashes) => { delete hashes.operation_list_sha256; },
+    (hashes) => { hashes.provider_hash = 'a'.repeat(64); },
+    (hashes) => { hashes.datapack_tree_sha256 = 'short'; }
+  ]) {
+    const input = await fixture(t); const result = await replayCandidate(input);
+    const installed = await readCurrentCandidateSnapshot({ authority: input.authority, candidateId: 'candidate-01' });
+    const files = Object.fromEntries(Object.entries(installed.files).filter(([name]) => name !== 'current-chain.json' && name !== 'chains/chain-0002.json'));
+    const facadePath = 'checkpoints/facade/r0002.json'; const facade = JSON.parse(files[facadePath]);
+    mutate(facade.compiled_artifact_hashes);
+    const facadeHash = digest(facade); files[facadePath] = Buffer.from(stable(facade));
+    const chain = structuredClone(result.current_chain); chain.checkpoint_hashes[4].checkpoint_sha256 = facadeHash;
+    await assert.rejects(installCandidateSnapshot({
+      authority: input.authority, candidateId: 'candidate-01', files,
+      currentChain: Buffer.from(stable(chain)), expectedPreviousChainSha256: result.current_chain_sha256
+    }), { code: /P5_(?:CHECKPOINT_INVALID|AUTHORITY_INVALID|REPAIR_INVALID)/u });
+  }
+});
+
 test('replay validates the exact candidate authority chain and transaction before compilation', async (t) => {
   for (const mutate of [
     (input) => { input.candidate.provider_patch = {}; },
@@ -132,7 +185,85 @@ test('replay validates the exact candidate authority chain and transaction befor
   }
 });
 
-async function fixture(t) {
+test('replay rejects a valid transaction that omits an authoritative executable violation', async (t) => {
+  const input = await fixture(t);
+  input.transaction = structuredClone(input.transaction);
+  input.transaction.operations.pop();
+  const invalidated = new Set(input.transaction.operations.flatMap((operation) => operation.invalidates_layers));
+  input.transaction.invalidates_layers = LAYERS.filter((layer) => invalidated.has(layer));
+  await assert.rejects(replayCandidate(input), { code: 'P5_REPAIR_INVALID' });
+});
+
+test('replay rejects a valid operation for a rule that is not violated by the authoritative review', async (t) => {
+  const input = await fixture(t);
+  const massing = input.candidate.checkpoint_envelopes[1].checkpoint.recipe_fragment.payload;
+  const operation = compileMassingRepair({ request: {
+    schema_version: 1, candidate_id: 'candidate-01',
+    rule_id: 'rule:structure.keep-support-volumes-subordinate',
+    repair_operation_id: 'repair:massing:reduce-support-volume-prominence',
+    variant_id: 'reduce-attached-support-scale',
+    base_checkpoint_sha256: input.candidate.current_chain.checkpoint_hashes[1].checkpoint_sha256
+  }, layerPayload: massing });
+  input.transaction = {
+    schema_version: 1, compiler_version: 1, candidate_id: 'candidate-01',
+    base_chain_sha256: input.transaction.base_chain_sha256, repair_budget: 1,
+    earliest_target_layer: 'massing', operations: [operation],
+    invalidates_layers: ['structure', 'roof', 'facade']
+  };
+  await assert.rejects(replayCandidate(input), { code: 'P5_REPAIR_INVALID' });
+});
+
+test('replay rejects a locally valid variant that drifts the frozen repair preference', async (t) => {
+  const input = await fixture(t);
+  const massing = input.candidate.checkpoint_envelopes[1].checkpoint.recipe_fragment.payload;
+  const operation = compileMassingRepair({ request: {
+    schema_version: 1, candidate_id: 'candidate-01',
+    rule_id: 'rule:structure.compose-three-volumes',
+    repair_operation_id: 'repair:massing:resize-or-reposition-volume',
+    variant_id: 'differentiate-equal-secondary-scale',
+    base_checkpoint_sha256: input.candidate.current_chain.checkpoint_hashes[1].checkpoint_sha256
+  }, layerPayload: massing });
+  input.transaction = {
+    schema_version: 1, compiler_version: 1, candidate_id: 'candidate-01',
+    base_chain_sha256: input.transaction.base_chain_sha256, repair_budget: 1,
+    earliest_target_layer: 'massing', operations: [operation],
+    invalidates_layers: ['structure', 'roof', 'facade']
+  };
+  await assert.rejects(replayCandidate(input), { code: 'P5_REPAIR_INVALID' });
+});
+
+test('artifact hashing rejects a datapack symlink swap before candidate promotion', async (t) => {
+  const input = await fixture(t); const original = input.compilePrepared; let compiled;
+  input.compilePrepared = async (options) => { compiled = await original(options); return compiled; };
+  input.faultInjector = async (boundary) => {
+    if (boundary !== 'hashing') return;
+    const target = path.join(compiled.artifacts.datapackDir, 'pack.mcmeta');
+    const outside = path.join(input.runDir, 'foreign-pack.mcmeta');
+    await fs.writeFile(outside, 'foreign'); await fs.unlink(target); await fs.symlink(outside, target);
+  };
+  const before = await readCurrentCandidateSnapshot({ authority: input.authority, candidateId: 'candidate-01' });
+  await assert.rejects(replayCandidate(input), { code: 'P5_REPLAY_FAILED' });
+  const after = await readCurrentCandidateSnapshot({ authority: input.authority, candidateId: 'candidate-01' });
+  assert.equal(after.current_chain_sha256, before.current_chain_sha256);
+});
+
+test('artifact hashing rejects blueprint object and byte mutations before candidate promotion', async (t) => {
+  for (const kind of ['object', 'bytes']) {
+    const input = await fixture(t); const original = input.compilePrepared; let compiled;
+    input.compilePrepared = async (options) => { compiled = await original(options); return compiled; };
+    input.faultInjector = async (boundary) => {
+      if (boundary !== 'hashing') return;
+      if (kind === 'object') compiled.blueprint.operations.push({ op: 'foreign-mutation' });
+      else await fs.writeFile(compiled.artifacts.blueprint, '{"foreign":"mutation"}\n');
+    };
+    const before = await readCurrentCandidateSnapshot({ authority: input.authority, candidateId: 'candidate-01' });
+    await assert.rejects(replayCandidate(input), { code: 'P5_REPLAY_FAILED' }, kind);
+    const after = await readCurrentCandidateSnapshot({ authority: input.authority, candidateId: 'candidate-01' });
+    assert.equal(after.current_chain_sha256, before.current_chain_sha256, kind);
+  }
+});
+
+async function fixture(t, { structureOnly = false } = {}) {
   const root = path.join('/tmp', `p5-replay-${Date.now()}-${Math.random()}`); const runDir = path.join(root, 'run'); await fs.mkdir(runDir, { recursive: true }); t.after(() => fs.rm(root, { recursive: true, force: true }));
   const frozenDesign = { schema_version: 1, candidate_id: 'candidate-01', seed: 7, brief_intent: 'three-volume repair', layer_intents: LAYERS.map((layer) => ({ layer, intent: `preserve ${layer}` })), selected_rule_ids: [], rejected_rule_ids: [], repair_variant_preferences: [
     { repair_operation_id: 'repair:massing:resize-or-reposition-volume', variant_id: 'center-primary-and-reattach-secondaries' },
@@ -149,7 +280,12 @@ async function fixture(t) {
   ];
   prepared.frozen_generator_context = buildFrozenGeneratorContext({ schema_version: 1, candidate_id: 'candidate-01', seed: 7, frozen_design_sha256: frozenDesignHash, architecture: prepared.architecture, topology: prepared.topology, creative_design: prepared.creativeDesign, concept: prepared.conceptStudio?.selectedConcept || null, build_spec: prepared.buildSpec, style_preset: prepared.stylePreset, material_palette: prepared.materialPalette, template_knowledge: prepared.templateKnowledge });
   const compiled = compileDesignLayers({ prepared, resolvedEffectsByLayer: {} });
-  const blueprintBytes = await fs.readFile(path.join(ROOT, 'test/fixtures/playbook-shadow/medieval-defect.json')); const blueprint = JSON.parse(blueprintBytes);
+  let blueprintBytes = await fs.readFile(path.join(ROOT, `test/fixtures/playbook-shadow/${structureOnly ? 'medieval-positive' : 'medieval-defect'}.json`));
+  const blueprint = JSON.parse(blueprintBytes);
+  if (structureOnly) {
+    blueprint.structure.load_paths = [];
+    blueprintBytes = Buffer.from(`${JSON.stringify(blueprint, null, 2)}\n`);
+  }
   const hardQa = new BlueprintQAAgent().run(blueprint); const p4Review = await buildDeterministicShadowReview({ projectRoot: ROOT, blueprintBytes, blueprintRelativePath: 'blueprint.json' });
   const eligibility = evaluateExecuteEligibility({ review: p4Review, hardQa: { ok: hardQa.ok }, repairBudgetUsed: 0 }); const hardQaHash = digest(hardQa); const reviewHash = digest(p4Review);
   const envelopes = [];
@@ -161,7 +297,7 @@ async function fixture(t) {
   const compilePrepared = async ({ outputDir, compiledLayers, world, datapacksDir, minecraftDir }) => {
     assert.equal(world, undefined); assert.equal(datapacksDir, undefined); assert.equal(minecraftDir, undefined);
     assert.deepEqual(compiledLayers.runtime.architecture.volumes, compiledLayers.massing.volumes);
-    await fs.mkdir(path.join(outputDir, 'architect_datapack/data/architect/function'), { recursive: true }); const repairedBlueprint = structuredClone(blueprint); repairedBlueprint.replay_massing = compiledLayers.massing;
+    await fs.mkdir(path.join(outputDir, 'architect_datapack/data/architect/function'), { recursive: true }); const repairedBlueprint = structuredClone(blueprint); repairedBlueprint.operations ||= []; repairedBlueprint.replay_massing = compiledLayers.massing;
     const blueprintPath = path.join(outputDir, 'blueprint.json'); const buildFunction = path.join(outputDir, 'architect_datapack/data/architect/function/build.mcfunction');
     await fs.writeFile(blueprintPath, `${JSON.stringify(repairedBlueprint, null, 2)}\n`); await fs.writeFile(buildFunction, `${JSON.stringify(compiledLayers.massing)}\n`); await fs.writeFile(path.join(outputDir, 'architect_datapack/pack.mcmeta'), '{"pack":{"pack_format":48,"description":"replay"}}\n');
     return { blueprint: repairedBlueprint, validation: new BlueprintQAAgent().run(repairedBlueprint), artifacts: { blueprint: blueprintPath, buildFunction, datapackDir: path.join(outputDir, 'architect_datapack') } };
@@ -174,3 +310,34 @@ function digestBytes(value) { return createHash('sha256').update(value).digest('
 function stable(value) { const sort = (item) => Array.isArray(item) ? item.map(sort) : item && typeof item === 'object' ? Object.fromEntries(Object.keys(item).sort().map((key) => [key, sort(item[key])])) : item; return `${JSON.stringify(sort(value), null, 2)}\n`; }
 async function fileDigest(filename) { return digestBytes(await fs.readFile(filename)); }
 async function treeDigest(root) { const names = []; async function walk(current, prefix = '') { for (const entry of (await fs.readdir(current, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) { const relative = prefix ? `${prefix}/${entry.name}` : entry.name; if (entry.isDirectory()) await walk(path.join(current, entry.name), relative); else names.push(`${relative}:${await fileDigest(path.join(current, entry.name))}`); } } await walk(root); return digest(names); }
+async function authorityTreeDigest(root) { const rows = []; async function walk(current, prefix = '') { for (const entry of (await fs.readdir(current, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) { const relative = prefix ? `${prefix}/${entry.name}` : entry.name; if (entry.isDirectory()) await walk(path.join(current, entry.name), relative); else rows.push({ path: `architect_datapack/${relative}`, sha256: await fileDigest(path.join(current, entry.name)) }); } } await walk(root); return digest(rows); }
+
+function replayStorageFs({ failCategory, failAt }) {
+  const counts = {};
+  const tick = (category) => {
+    counts[category] = (counts[category] ?? 0) + 1;
+    if (category === failCategory && counts[category] === failAt) throw new Error(`RAW_REPLAY_STORAGE_${category}`);
+  };
+  return fsWith({
+    async open(target, flags, ...args) {
+      const targetText = String(target); const inStage = await pathContainsGeneratedName(targetText, '.playbook-execute.stage-');
+      if (inStage && (flags & constants.O_WRONLY) !== 0) tick('exclusiveWrite');
+      const handle = await fs.open(target, flags, ...args); const isDirectory = (await handle.stat()).isDirectory();
+      return wrapFileHandle(handle, {
+        async chmod(...chmodArgs) { if (inStage) tick('chmod'); return handle.chmod(...chmodArgs); },
+        async writeFile(...writeArgs) { if (inStage && path.basename(targetText) === 'current-chain.json') tick('pointerWrite'); return handle.writeFile(...writeArgs); },
+        async sync(...syncArgs) { if (inStage) tick(isDirectory ? 'directorySync' : 'fileSync'); return handle.sync(...syncArgs); }
+      });
+    },
+    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
+      if (sourceName === 'candidate-01' && destinationName.startsWith('.playbook-execute.backup-')) tick('backupRename');
+      if (sourceName.startsWith('.playbook-execute.stage-') && destinationName === 'candidate-01') tick('finalRename');
+      return next(directoryHandle, sourceName, destinationName);
+    },
+    async unlink(target) { if (await pathContainsGeneratedName(String(target), '.playbook-execute.backup-')) tick('cleanup'); return fs.unlink(target); }
+  });
+}
+
+function fsWith(overrides) { return new Proxy(fs, { get(target, property) { return Object.hasOwn(overrides, property) ? overrides[property] : Reflect.get(target, property); } }); }
+function wrapFileHandle(handle, overrides) { return new Proxy(handle, { get(target, property) { if (Object.hasOwn(overrides, property)) return overrides[property]; const value = Reflect.get(target, property, target); return typeof value === 'function' ? value.bind(target) : value; } }); }
+async function pathContainsGeneratedName(target, prefix) { if (target.includes(prefix)) return true; const match = target.match(/^\/proc\/self\/fd\/(\d+)(?:\/|$)/u); if (!match) return false; try { return (await fs.readlink(`/proc/self/fd/${match[1]}`)).includes(prefix); } catch { return false; } }

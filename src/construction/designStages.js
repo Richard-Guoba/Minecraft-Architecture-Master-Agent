@@ -220,6 +220,46 @@ export function compileDesignLayers({ prepared, layerPayloads, resolvedEffectsBy
   };
 }
 
+export async function compileDesignLayersForReplay({
+  prepared, layerPayloads, resolvedEffectsByLayer = {}, replayStartLayer, faultInjector
+}) {
+  const resolved = validateResolvedEffectsByLayer(resolvedEffectsByLayer);
+  const start = DESIGN_LAYER_ORDER.indexOf(replayStartLayer);
+  if (start < 0 || faultInjector !== undefined && typeof faultInjector !== 'function') {
+    throw executeError('P5_REPAIR_INVALID');
+  }
+  const compile = async (layer, fn, args) => {
+    const index = DESIGN_LAYER_ORDER.indexOf(layer);
+    if (index >= start && faultInjector) await faultInjector(`compile-${layer}`, layer);
+    let result = fn({ ...args, effects: [] });
+    const operations = resolved[layer] || [];
+    if (operations.length > 0) {
+      if (index < start) throw executeError('P5_REPAIR_INVALID');
+      if (faultInjector) await faultInjector('apply-effects', layer);
+      const payload = applyLayerEffects({ payload: result.payload, operations });
+      if (layer === 'massing') {
+        result = { payload, runtime: { architecture: { ...args.brief.runtime.architecture, volumes: payload.volumes }, buildSpec: payload.build_spec } };
+      } else if (layer === 'structure') result = { payload, runtime: payload };
+      else throw executeError('P5_REPAIR_INVALID');
+    }
+    return result;
+  };
+  const brief = await compile('brief', compileBriefLayer, { prepared, previousLayer: layerPayloads?.brief });
+  const massing = await compile('massing', compileMassingLayer, { prepared, brief, previousLayer: layerPayloads?.massing });
+  const structure = await compile('structure', compileStructureLayer, { prepared, brief, massing, previousLayer: layerPayloads?.structure });
+  const roof = await compile('roof', compileRoofLayer, { prepared, brief, massing, structure, previousLayer: layerPayloads?.roof });
+  const facade = await compile('facade', compileFacadeLayer, { prepared, brief, massing, structure, roof, previousLayer: layerPayloads?.facade });
+  return {
+    brief: brief.payload, massing: massing.payload, structure: structure.payload,
+    roof: roof.payload, facade: facade.payload,
+    runtime: {
+      architecture: massing.runtime.architecture, topology: brief.runtime.topology,
+      creativeDesign: brief.runtime.creativeDesign, buildSpec: massing.runtime.buildSpec,
+      structure: structure.runtime, roof: roof.runtime, facade: facade.runtime
+    }
+  };
+}
+
 export function compileBriefLayer({ prepared, previousLayer, effects = [] }) {
   let payload = validateLayerPayload(previousLayer || {
     prompt: prepared.prompt,

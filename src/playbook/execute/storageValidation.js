@@ -361,7 +361,11 @@ function validateReplayEvidence(files, current, checkpointByHash, code) {
     const request = parseCanonicalValidatedJson(files[REPAIR_REQUEST_PATH], validateRepairEvidenceRequest);
     const transaction = parseCanonicalValidatedJson(files[REPAIR_PATCH_PATH], validateRepairTransaction);
     const result = parseCanonicalValidatedJson(files[REPAIR_RESULT_PATH], validateRepairEvidenceResult);
-    if (sha256(files[REPAIR_PATCH_PATH]) !== request.repair_transaction_sha256
+    const facadeArtifacts = checkpointByHash.get(current.checkpoint_hashes[4].checkpoint_sha256)?.checkpoint.compiled_artifact_hashes;
+    if (!sameStrings(Object.keys(facadeArtifacts || {}).sort(), [
+      'build_function_sha256', 'datapack_tree_sha256', 'layer_payload_sha256',
+      'operation_list_sha256', 'repair_result_sha256'
+    ]) || sha256(files[REPAIR_PATCH_PATH]) !== request.repair_transaction_sha256
       || sha256(files[REPAIR_PATCH_PATH]) !== result.repair_transaction_sha256
       || sha256(files[REPAIR_REQUEST_PATH]) !== result.repair_request_sha256
       || request.candidate_id !== current.candidate_id || transaction.candidate_id !== current.candidate_id || result.candidate_id !== current.candidate_id
@@ -371,7 +375,7 @@ function validateReplayEvidence(files, current, checkpointByHash, code) {
       || current.repair_transaction_sha256 !== result.repair_transaction_sha256
       || current.blueprint_sha256 !== result.blueprint_sha256 || current.hard_qa_sha256 !== result.hard_qa_sha256
       || current.p4_review_sha256 !== result.p4_review_sha256
-      || checkpointByHash.get(current.checkpoint_hashes[4].checkpoint_sha256)?.checkpoint.compiled_artifact_hashes.repair_result_sha256 !== sha256(files[REPAIR_RESULT_PATH])
+      || facadeArtifacts.repair_result_sha256 !== sha256(files[REPAIR_RESULT_PATH])
       || stableJson(current.eligibility) !== stableJson(result.eligibility)) throw executeError(code);
   }
   if (files[FAILURE_PATH]) {

@@ -336,27 +336,48 @@ export async function appendCandidateFailureEvidence({ authority, candidateId, e
       },
       moveForward: () => ops.renameNoReplaceBetween(tree.candidatesHandle, stageBasename, candidateHandle, 'failures'),
       moveReverse: () => ops.renameNoReplaceBetween(candidateHandle, 'failures', tree.candidatesHandle, stageBasename),
-      afterMove: async () => { committed = true; await candidateHandle.sync(); await tree.candidatesHandle.sync(); }
+      afterMove: async () => { await candidateHandle.sync(); await tree.candidatesHandle.sync(); }
     });
     const checked = await inspectCandidate(internal, ops, tree, candidateId, { allowMissing: false });
     if (!checked.files['failures/attempt-01.json']?.equals(bytes) || checked.validated.currentChainSha256 !== expectedCurrentChainSha256) {
       throw executeError('P5_INSTALL_FAILED');
     }
+    committed = true;
     return Object.freeze({ status: 'created', path: 'failures/attempt-01.json' });
   } catch (error) {
     try {
-      if (!committed && stageHandle && stageBasename) {
-        const current = await ops.lstat(descriptorEntryPath(tree.candidatesHandle, stageBasename));
-        if (!current.isSymbolicLink() && current.isDirectory() && sameIdentity(identity(current), stageIdentity)) {
-          if ((await ops.readdir(descriptorPath(stageHandle))).includes('attempt-01.json')) {
-            await ops.unlink(descriptorEntryPath(stageHandle, 'attempt-01.json'));
+      if (!committed && stageHandle && stageIdentity
+        && await namedDirectoryHasIdentity(candidateHandle, ops, 'failures', stageIdentity)) {
+        const rollbackBasename = await unusedTemporaryBasename(internal, ops, tree, tree.candidatesHandle, STAGE_PREFIX);
+        let reversed = false;
+        for (let attempt = 0; attempt < 2 && !reversed; attempt += 1) {
+          try {
+            await moveIdentityNoReplace({
+              ops, sourceHandle: candidateHandle, sourceName: 'failures', destinationHandle: tree.candidatesHandle,
+              destinationName: rollbackBasename, expectedIdentity: stageIdentity, expectedKind: 'directory',
+              moveForward: () => ops.renameNoReplaceBetween(candidateHandle, 'failures', tree.candidatesHandle, rollbackBasename),
+              moveReverse: () => ops.renameNoReplaceBetween(tree.candidatesHandle, rollbackBasename, candidateHandle, 'failures')
+            });
+            reversed = true;
+          } catch {
+            reversed = await namedDirectoryHasIdentity(tree.candidatesHandle, ops, rollbackBasename, stageIdentity);
           }
-          await closeHandle(stageHandle); stageHandle = undefined;
-          await ops.rmdir(descriptorEntryPath(tree.candidatesHandle, stageBasename));
         }
+        if (!reversed) throw executeError('P5_INSTALL_FAILED');
+        stageBasename = rollbackBasename;
+        await candidateHandle.sync(); await tree.candidatesHandle.sync();
+      }
+      if (!committed && stageHandle && stageBasename
+        && await namedDirectoryHasIdentity(tree.candidatesHandle, ops, stageBasename, stageIdentity)) {
+        const read = await readRegularFile(ops, stageHandle, 'attempt-01.json', 'P5_INSTALL_FAILED');
+        if (!read.bytes.equals(bytes)) throw executeError('P5_INSTALL_FAILED');
+        await ops.unlink(descriptorEntryPath(stageHandle, 'attempt-01.json'));
+        await closeHandle(stageHandle); stageHandle = undefined;
+        await ops.rmdir(descriptorEntryPath(tree.candidatesHandle, stageBasename));
+        await tree.candidatesHandle.sync();
       }
     } catch {}
-    throw publicError(error, 'P5_INSTALL_FAILED');
+    throw executeError(error?.code === 'P5_STALE_BASE' ? 'P5_STALE_BASE' : 'P5_INSTALL_FAILED');
   } finally {
     await closeHandles([stageHandle, candidateHandle]); await closeExecuteTree(tree);
   }

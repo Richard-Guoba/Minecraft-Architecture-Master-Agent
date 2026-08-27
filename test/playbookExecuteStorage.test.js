@@ -15,6 +15,7 @@ import {
 import { validateExecuteSelectionManifest } from '../src/playbook/execute/contracts.js';
 import {
   admitExecuteRun,
+  appendCandidateFailureEvidence,
   installCandidateSnapshot,
   installExecuteSelection,
   readCurrentCandidateSnapshot
@@ -37,6 +38,75 @@ const DESIGN_HASH = 'd'.repeat(64);
 const CONTEXT_HASH = 'e'.repeat(64);
 const BLUEPRINT_HASH = 'f'.repeat(64);
 const TRANSACTION_HASH = '9'.repeat(64);
+
+test('failure evidence append rolls back every precommit write sync move and inspection fault', async (t) => {
+  const cases = [
+    ['exclusiveWrite', 1], ['chmod', 1], ['fileSync', 1], ['fileSync', 2],
+    ['stageDirSync', 1], ['failureRename', 1], ['candidateSync', 1],
+    ['candidatesSync', 1], ['postAttachInspect', 1]
+  ];
+  for (const [category, failAt] of cases) await t.test(`${category}-${failAt}`, async (t) => {
+    const fixture = await installedFixture(t); const currentPath = path.join(candidateDirectory(fixture.runDir, 'candidate-01'), 'current-chain.json');
+    const before = await fs.stat(currentPath); const beforeBytes = await fs.readFile(currentPath);
+    await assert.rejects(appendCandidateFailureEvidence({
+      authority: fixture.authority, candidateId: 'candidate-01',
+      expectedCurrentChainSha256: fixture.initial.chainHash,
+      evidence: failureEvidence(fixture.initial.chainHash),
+      fsImpl: failureAppendFs({ failCategory: category, failAt })
+    }), { code: 'P5_INSTALL_FAILED' });
+    assert.deepEqual(await fs.readFile(currentPath), beforeBytes);
+    assert.equal((await fs.stat(currentPath)).ino, before.ino);
+    await assert.rejects(fs.lstat(path.join(candidateDirectory(fixture.runDir, 'candidate-01'), 'failures')), { code: 'ENOENT' });
+  });
+});
+
+test('failure evidence rollback cleanup faults retain only a generated sibling and never attach evidence', async (t) => {
+  const fixture = await installedFixture(t); const candidatePath = candidateDirectory(fixture.runDir, 'candidate-01');
+  const before = await fs.stat(path.join(candidatePath, 'current-chain.json'));
+  await assert.rejects(appendCandidateFailureEvidence({
+    authority: fixture.authority, candidateId: 'candidate-01', expectedCurrentChainSha256: fixture.initial.chainHash,
+    evidence: failureEvidence(fixture.initial.chainHash),
+    fsImpl: failureAppendFs({ failCategory: 'candidateSync', failAt: 1, failRollbackCleanup: true })
+  }), { code: 'P5_INSTALL_FAILED' });
+  await assert.rejects(fs.lstat(path.join(candidatePath, 'failures')), { code: 'ENOENT' });
+  assert.equal((await fs.stat(path.join(candidatePath, 'current-chain.json'))).ino, before.ino);
+  const siblings = await fs.readdir(path.dirname(candidatePath));
+  assert.ok(siblings.some((name) => name.startsWith(STAGE_PREFIX)));
+});
+
+test('failure evidence post-attach file identity swap is detached without deleting foreign data', async (t) => {
+  const fixture = await installedFixture(t); const candidatePath = candidateDirectory(fixture.runDir, 'candidate-01');
+  const currentPath = path.join(candidatePath, 'current-chain.json'); const before = await fs.stat(currentPath); const beforeBytes = await fs.readFile(currentPath);
+  let attached = false; let swapped = false;
+  const fsImpl = fsWith({
+    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+      const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
+      if (destinationName === 'failures') attached = true;
+      return result;
+    },
+    async readdir(target, ...args) {
+      const resolved = await descriptorTargetFromPath(String(target));
+      if (attached && !swapped && resolved.endsWith('/candidate-01/failures')) {
+        const canonical = path.join(resolved, 'attempt-01.json');
+        await fs.rename(canonical, path.join(resolved, 'attempt-01.original.json'));
+        await fs.writeFile(canonical, '{"foreign":"must-survive"}\n');
+        swapped = true;
+      }
+      return fs.readdir(target, ...args);
+    }
+  });
+  await assert.rejects(appendCandidateFailureEvidence({
+    authority: fixture.authority, candidateId: 'candidate-01', expectedCurrentChainSha256: fixture.initial.chainHash,
+    evidence: failureEvidence(fixture.initial.chainHash), fsImpl
+  }), { code: 'P5_INSTALL_FAILED' });
+  assert.equal(swapped, true);
+  assert.deepEqual(await fs.readFile(currentPath), beforeBytes); assert.equal((await fs.stat(currentPath)).ino, before.ino);
+  await assert.rejects(fs.lstat(path.join(candidatePath, 'failures')), { code: 'ENOENT' });
+  const generated = (await fs.readdir(path.dirname(candidatePath))).find((name) => name.startsWith(STAGE_PREFIX));
+  assert.ok(generated);
+  assert.equal(await fs.readFile(path.join(path.dirname(candidatePath), generated, 'attempt-01.json'), 'utf8'), '{"foreign":"must-survive"}\n');
+  assert.equal(JSON.parse(await fs.readFile(path.join(path.dirname(candidatePath), generated, 'attempt-01.original.json'))).candidate_id, 'candidate-01');
+});
 
 test('admits only an existing absolute non-symlink run and exposes no descriptor', async (t) => {
   const fixture = await storageFixture(t);
@@ -1894,6 +1964,66 @@ function instrumentedFs({ failCategory, failAt, counts = {} }) {
       return fs.rmdir(target);
     }
   });
+}
+
+function failureAppendFs({ failCategory, failAt, failRollbackCleanup = false }) {
+  const counts = {}; let attached = false;
+  const tick = (category) => {
+    counts[category] = (counts[category] ?? 0) + 1;
+    if (category === failCategory && counts[category] === failAt) throw new Error(`RAW_FAILURE_APPEND_${category}_${failAt}`);
+  };
+  return fsWith({
+    async open(target, flags, ...args) {
+      const targetText = String(target); const inStage = await pathContainsGeneratedName(targetText, STAGE_PREFIX);
+      if (inStage && (flags & constants.O_WRONLY) !== 0) tick('exclusiveWrite');
+      const handle = await fs.open(target, flags, ...args); const stat = await handle.stat();
+      const resolved = await descriptorTarget(handle);
+      return wrapFileHandle(handle, {
+        async chmod(...chmodArgs) { if (inStage) tick('chmod'); return handle.chmod(...chmodArgs); },
+        async sync(...syncArgs) {
+          if (stat.isDirectory()) {
+            if (inStage) tick('stageDirSync');
+            else if (resolved.endsWith('/candidate-01')) tick('candidateSync');
+            else if (resolved.endsWith('/candidates')) tick('candidatesSync');
+          } else if (inStage) tick('fileSync');
+          return handle.sync(...syncArgs);
+        }
+      });
+    },
+    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+      if (destinationName === 'failures') tick('failureRename');
+      const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
+      if (destinationName === 'failures') attached = true;
+      return result;
+    },
+    async readdir(target, ...args) {
+      const resolved = await descriptorTargetFromPath(String(target));
+      if (attached && resolved.includes('/candidate-01')) tick('postAttachInspect');
+      return fs.readdir(target, ...args);
+    },
+    async unlink(target) {
+      if (failRollbackCleanup && await pathContainsGeneratedName(String(target), STAGE_PREFIX)) throw new Error('RAW_ROLLBACK_CLEANUP');
+      return fs.unlink(target);
+    }
+  });
+}
+
+async function descriptorTarget(handle) {
+  try { return await fs.readlink(`/proc/self/fd/${handle.fd}`); } catch { return ''; }
+}
+
+async function descriptorTargetFromPath(target) {
+  const match = target.match(/^\/proc\/self\/fd\/(\d+)/u);
+  if (!match) return target;
+  try { return `${await fs.readlink(`/proc/self/fd/${match[1]}`)}${target.slice(match[0].length)}`; } catch { return target; }
+}
+
+function failureEvidence(chainHash) {
+  return {
+    schema_version: 1, candidate_id: 'candidate-01', attempt: 1, code: 'P5_REPLAY_FAILED',
+    base_chain_sha256: chainHash, repair_transaction_sha256: TRANSACTION_HASH,
+    current_chain_sha256: chainHash
+  };
 }
 
 async function pathContainsGeneratedName(target, prefix) {

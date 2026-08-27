@@ -2,9 +2,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { BlueprintQAAgent } from '../../construction/agents/blueprintQaAgent.js';
-import { compileDesignLayers } from '../../construction/designStages.js';
+import { compileDesignLayersForReplay } from '../../construction/designStages.js';
 import { compilePreparedConstruction } from '../../construction/workflow.js';
 import { DESIGN_LAYER_ORDER, EXECUTE_SCHEMA_VERSION } from './constants.js';
+import { hashReplayArtifacts } from './artifactAuthority.js';
 import {
   executeError, sanitizeExecuteError, validateChainManifest, validateCheckpointEnvelope,
   validateFrozenDesignEnvelope, validateFrozenGeneratorContext, validateRepairEvidenceRequest,
@@ -15,6 +16,7 @@ import {
   createCheckpointEnvelope
 } from './checkpoints.js';
 import { evaluateExecuteEligibility } from './eligibility.js';
+import { buildRepairTransaction } from './repairTransaction.js';
 import {
   appendCandidateFailureEvidence, installCandidateSnapshot, readCurrentCandidateSnapshot
 } from './storage.js';
@@ -41,13 +43,13 @@ export async function replayCandidate({ authority, candidate, transaction, proje
     ]));
     const effectsByLayer = {};
     for (const operation of transaction.operations) (effectsByLayer[operation.target_layer] ||= []).push(operation);
-    await hit(faultInjector, 'apply-effects');
-    for (const layer of DESIGN_LAYER_ORDER.slice(start)) await hit(faultInjector, `compile-${layer}`);
     const prepared = replayPrepared(candidate.prepared_design, validated.context, validated.frozenDesign, validated.envelopes[0].checkpoint.recipe_fragment.payload);
-    const compiledLayers = compileDesignLayers({
+    const compiledLayers = await compileDesignLayersForReplay({
       prepared,
       layerPayloads: upstreamPayloads,
-      resolvedEffectsByLayer: effectsByLayer
+      resolvedEffectsByLayer: effectsByLayer,
+      replayStartLayer: transaction.earliest_target_layer,
+      faultInjector
     });
 
     attemptDir = await fs.mkdtemp(path.join(os.tmpdir(), `p5-replay-${candidateId}-`));
@@ -66,6 +68,9 @@ export async function replayCandidate({ authority, candidate, transaction, proje
     const p4Review = await buildDeterministicShadowReview({ projectRoot, blueprintBytes, blueprintRelativePath: 'blueprint.json' });
     const playbookEligibility = evaluateExecuteEligibility({ review: p4Review, hardQa: { ok: hardQa.ok }, repairBudgetUsed: 1 });
     await hit(faultInjector, 'hashing');
+    const recheckedBlueprintBytes = await exactBlueprintBytes(compiledResult);
+    if (!recheckedBlueprintBytes.equals(blueprintBytes)) replayFailed();
+    const artifactHashes = await hashReplayArtifacts({ compiledResult });
     const blueprintSha256 = sha256(blueprintBytes); const hardQaBytes = bytes(hardQa); const p4ReviewBytes = bytes(p4Review);
     const hardQaSha256 = sha256(hardQaBytes); const p4ReviewSha256 = sha256(p4ReviewBytes);
     const requestEvidence = validateRepairEvidenceRequest({
@@ -93,7 +98,7 @@ export async function replayCandidate({ authority, candidate, transaction, proje
         design_intent: previous.design_intent, recipe_fragment: { layer, payload: compiledLayers[layer] },
         field_patches: [], compiled_artifact_hashes: {
           layer_payload_sha256: sha256(stableJson(compiledLayers[layer])),
-          ...(layer === 'facade' ? { repair_result_sha256: resultSha256 } : {})
+          ...(layer === 'facade' ? { repair_result_sha256: resultSha256, ...artifactHashes } : {})
         },
         hard_qa: { hard_qa_ok: hardQa.ok, hard_qa_sha256: hardQaSha256 },
         design_review: { p4_review_sha256: p4ReviewSha256 },
@@ -117,7 +122,6 @@ export async function replayCandidate({ authority, candidate, transaction, proje
     files['repairs/attempt-01-request.json'] = requestBytes;
     files['repairs/attempt-01-patch.json'] = bytes(transaction);
     files['repairs/attempt-01-result.json'] = resultBytes;
-    for (const boundary of ['stage', 'write', 'sync', 'promote', 'pointer', 'cleanup']) await hit(faultInjector, boundary);
     await installCandidateSnapshot({
       authority, candidateId, files, currentChain: chainManifestBytes(chain),
       expectedPreviousChainSha256: baseChainSha256, fsImpl
@@ -174,6 +178,13 @@ function validateInputs(candidate, transactionInput) {
         || row.checkpoint_sha256 !== envelopes[position].checkpoint_sha256))
     || transaction.operations.some((operation) => operation.base_checkpoint_sha256
       !== chain.checkpoint_hashes[DESIGN_LAYER_ORDER.indexOf(operation.target_layer)].checkpoint_sha256)) stale();
+  const rebuilt = buildRepairTransaction({
+    candidateId, review: candidate.p4_review, frozenDesign, baseChainSha256,
+    acceptedChain: chain, checkpointEnvelopes: envelopes
+  });
+  if (stableJson(rebuilt) !== stableJson(transaction) || sha256(stableJson(rebuilt)) !== transactionSha256) {
+    throw executeError('P5_REPAIR_INVALID');
+  }
   return { frozenDesign, context, chain, transaction, envelopes, candidateId, baseChainSha256, transactionSha256 };
 }
 
