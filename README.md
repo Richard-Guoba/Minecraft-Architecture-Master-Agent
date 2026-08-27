@@ -30,6 +30,7 @@ The LLM does not need to emit exact block coordinates. The Node.js runtime turns
 - On the untouched test split, the same checkpoint failed Gate 2 and phase two with macro-F1 `0.1620096727`, exposing a material source-level generalization gap.
 - The checkpoint remains experimental and is not part of primary generation. The LLM still describes the house; deterministic Node.js code still turns that intent into exact geometry and datapack commands.
 - Training artifacts remain local by default. A separate license and distribution review happens only before a concrete artifact is shared externally.
+- Architecture Playbook P5 is available as an opt-in, default-off deterministic design loop. It creates three candidates, validates five design layers, permits at most one reviewed repair per candidate, and filters eligibility before the existing ranker. It creates no playbook score and does not prove quality or aesthetic improvement. P6 visual evaluation and blind comparison remain closed.
 
 ## Residential learned renderer
 
@@ -43,6 +44,7 @@ Requirements: Node.js 20+ and npm.
 npm install
 npm test
 npm start -- --mode mock --seed 7101 "建一个湖边现代两层别墅，带大玻璃、水边平台和前景花园"
+npm run playbook:execute -- --mode mock --seed 424242 "Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base"
 ```
 
 Mock mode is the safest reproducible end-to-end check. For LLM mode, copy `.env.example` to `.env`, add provider credentials, then run:

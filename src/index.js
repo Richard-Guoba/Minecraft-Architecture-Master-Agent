@@ -25,6 +25,7 @@ function parseArgs(argv) {
     candidateRounds: 1,
     candidateTargetScore: 95,
     candidateForceRounds: false,
+    playbook: 'off',
     concepts: 0,
     conceptStrategy: 'select',
     critics: true,
@@ -43,6 +44,16 @@ function parseArgs(argv) {
     promptId: undefined
   };
   const promptParts = [];
+  let candidatesExplicit = false;
+  let candidateRoundsExplicit = false;
+  const playbookIndexes = argv.flatMap((arg, index) => arg === '--playbook' ? [index] : []);
+  if (playbookIndexes.length > 1) throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
+  if (playbookIndexes.length === 1) {
+    const value = argv[playbookIndexes[0] + 1];
+    if (value === undefined || value.startsWith('--')) throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
+    if (!['off', 'execute'].includes(value)) throw p5CliError('P5_MODE_INVALID');
+    options.playbook = value;
+  }
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -58,14 +69,22 @@ function parseArgs(argv) {
       if (!Number.isFinite(parsed)) throw new Error(`无效 seed: ${rawSeed}`);
       options.seed = Math.trunc(parsed);
     } else if (arg === '--candidates') {
+      candidatesExplicit = true;
       const parsed = Number(argv[++i]);
-      if (!Number.isFinite(parsed) || parsed < 1) throw new Error(`无效候选数量: ${parsed}`);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        if (options.playbook === 'execute') throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
+        throw new Error(`无效候选数量: ${parsed}`);
+      }
       options.candidates = Math.trunc(parsed);
     } else if (arg === '--auto-select') {
       options.candidates = Math.max(options.candidates, 3);
     } else if (arg === '--candidate-rounds') {
+      candidateRoundsExplicit = true;
       const parsed = Number(argv[++i]);
-      if (!Number.isFinite(parsed) || parsed < 1) throw new Error(`无效候选轮数: ${parsed}`);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        if (options.playbook === 'execute') throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
+        throw new Error(`无效候选轮数: ${parsed}`);
+      }
       options.candidateRounds = Math.trunc(parsed);
     } else if (arg === '--candidate-target-score') {
       const parsed = Number(argv[++i]);
@@ -73,6 +92,8 @@ function parseArgs(argv) {
       options.candidateTargetScore = Math.trunc(parsed);
     } else if (arg === '--candidate-force-rounds') {
       options.candidateForceRounds = true;
+    } else if (arg === '--playbook') {
+      i += 1;
     } else if (arg === '--concepts') {
       const parsed = Number(argv[++i]);
       if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`无效概念数量: ${parsed}`);
@@ -129,11 +150,31 @@ function parseArgs(argv) {
     }
   }
 
-  validateCoarseVoxelOptions(options);
+  if (options.playbook === 'execute') {
+    if (!candidatesExplicit) options.candidates = 3;
+    if (!candidateRoundsExplicit) options.candidateRounds = 1;
+    if (options.candidates !== 3 || options.candidateRounds !== 1 || options.candidateForceRounds) {
+      throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
+    }
+    try {
+      validateCoarseVoxelOptions(options);
+    } catch {
+      throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
+    }
+    if (options.coarseVoxelMode === 'shadow' && options.coarseVoxelProvider === 'artifact') {
+      throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
+    }
+  } else {
+    validateCoarseVoxelOptions(options);
+  }
   return {
     prompt: promptParts.join(' ').trim(),
     options
   };
+}
+
+function p5CliError(code) {
+  return Object.assign(new Error(code), { code });
 }
 
 function validateCoarseVoxelOptions(options) {
@@ -182,6 +223,7 @@ Options:
   --candidate-rounds <n>     Run up to n reflection rounds. Defaults to 1.
   --candidate-target-score <n> Stop reflection rounds when the selected candidate reaches this score. Defaults to 95.
   --candidate-force-rounds   Run all requested reflection rounds even if target score is already reached.
+  --playbook off|execute     Opt into the P5 executable design loop. Defaults to off; P6 remains closed.
   --minecraft-dir <dir>      Minecraft Java directory. Defaults to MINECRAFT_DIR or %APPDATA%\\.minecraft.
   --world <name|latest|dir>  Install the datapack into this save after generation.
   --datapacks-dir <dir>      Install directly into this world's datapacks directory. Can also use ARCHITECT_DATAPACKS_DIR.
@@ -240,6 +282,7 @@ async function main() {
   }
 
   if (!finalPrompt) {
+    if (options.playbook === 'execute') throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
     printHelp();
     process.exit(1);
   }
@@ -265,8 +308,23 @@ async function main() {
     minecraftDir: options.minecraftDir,
     world: options.world,
     datapacksDir: options.datapacksDir,
-    autoBuild: options.autoBuild
+    autoBuild: options.autoBuild,
+    playbook: options.playbook
   });
+
+  if (options.playbook === 'execute') {
+    const selected = result.playbookExecution.candidates.find((row) => row.candidate_id === result.playbookExecution.selected_candidate_id);
+    console.log([
+      'playbook_status=complete',
+      `candidate_count=${result.playbookExecution.candidate_count}`,
+      `selected_candidate_id=${result.playbookExecution.selected_candidate_id}`,
+      `selected_chain_sha256=${result.playbookExecution.selected_chain_sha256}`,
+      `selected_eligibility=${selected.eligibility.status}`,
+      `repair_attempt_count=${result.playbookExecution.repair_attempt_count}`,
+      'report=playbook-execute/selection-report.md'
+    ].join('\n'));
+    return;
+  }
 
   console.log('\n建筑智能体运行完成。');
   console.log(`工作流: ${result.workflow}`);
@@ -323,6 +381,16 @@ function printCuratedPromptList() {
 }
 
 main().catch((error) => {
+  if (typeof error?.code === 'string' && error.code.startsWith('P5_')) {
+    console.error(error.code);
+    process.exitCode = 1;
+    return;
+  }
+  if (process.argv.some((arg, index, argv) => arg === '--playbook' && argv[index + 1] === 'execute')) {
+    console.error('P5_OPTIONS_INCOMPATIBLE');
+    process.exitCode = 1;
+    return;
+  }
   console.error('运行失败:', error.message);
   if (process.env.DEBUG) console.error(error);
   process.exit(1);

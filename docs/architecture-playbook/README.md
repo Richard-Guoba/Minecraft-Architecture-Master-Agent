@@ -3,7 +3,7 @@
 这个目录是 Minecraft 建筑秘籍计划的稳定入口。计划同时建设两个闭环：
 
 1. 把同一作者的课程转化为有来源、可审阅、可版本化的建筑知识；
-2. 按已批准的阶段把知识接入生成器：P4 只做影子指导，P5 才研究候选选择和设计层控制，P6 才做视觉评价与盲选。
+2. 按已批准的阶段把知识接入生成器：P4 只做影子指导，P5 提供默认关闭的确定性设计层控制，P6 才做视觉评价与盲选。
 
 第一主学派固定为黑辉极乐鸟的《极乐鸟的建筑课堂》。其他作者只能作为明确标记的对照学派，不能静默改写主学派规则。
 
@@ -17,8 +17,21 @@
 - P3 已把 21 条候选规则确定性编译为 15 条核心程序和 6 条案例模式；五层知识为 `advisory-partial`，四层为 `not-covered`，九层运行时权限全部为 `none`。
 - P3 自动门禁已通过；它验证受管字节快照、Git 跟踪、基于 AST 与 Node 解析语义的实际依赖图，以及 `not-covered` 双重声明。P3 本身没有生成住宅、没有视觉改善住宅，也没有接入生产建造流水线。
 - P4 影子指导门禁已通过：`npm run playbook:shadow -- --run <out/run-directory> --mode mock` 对已有 `blueprint.json` 进行只读、确定性、可解释的审查，且不改变建筑或主生成流水线。
-- P4 没有视觉输入、没有候选生成、没有建筑修改、没有设计层返工、没有审美评分，也没有质量提升证据。P5 是下一阶段，但在新的设计获批前仍未开放；P6 仍未开放，并保留固定多视角、视觉模型、人工盲选和审美效果证据。
-- 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[九层覆盖矩阵](manual/coverage-v0.1.json)、[P3 门禁报告](reports/p3-playbook-v0.1.md)、[P4 影子指导报告](reports/p4-shadow-guidance.md)、[P4 正式设计](../superpowers/specs/2026-08-26-architecture-playbook-p4-shadow-guidance-design.md)和 [影子指导 CLI](../../src/runArchitecturePlaybookShadow.js)。
+- P5 可执行设计层已经实现，但保持 opt-in / 默认关闭（default-off）。它只证明最小、确定性的控制循环：固定生成三个候选、保存五层 checkpoint、最多执行一次白名单修复、先做硬 QA 与秘籍资格过滤，再调用原有排序器。它没有秘籍评分，不证明质量或审美改善。
+- P6 仍未开放；固定多视角渲染、视觉模型、人工盲选、审美评价与改进证据仍属于 P6。
+- 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[P4 影子指导报告](reports/p4-shadow-guidance.md)和 [P5 可执行设计层报告](reports/p5-executable-design-layer.md)。
+
+## P5 手动测试
+
+默认命令仍走 `playbook=off`，行为与 P4 基线兼容。使用本地 mock 模式进行可重复的 opt-in 测试：
+
+```bash
+npm run playbook:execute -- --mode mock --seed 424242 "Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base"
+```
+
+运行证据位于忽略的 `out/<run>/playbook-execute/`，包括三个候选目录、每个候选的五层 checkpoint、修复/失败证据、`selection.json` 和 `selection-report.md`。这些真实运行输出、provider transcript、生成数据包和世界文件不得提交。
+
+P5 v0.1 只有四个可执行操作：`resize-or-reposition-volume`、`strengthen-primary-volume`、`reduce-support-volume-prominence` 和 `connect-support-path`。其余十一条核心程序仍要求证据；六条案例模式保持中立、非权威，不能影响资格或排序。
 
 ## 规划空间
 
