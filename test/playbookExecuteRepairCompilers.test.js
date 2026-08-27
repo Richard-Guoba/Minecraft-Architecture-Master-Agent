@@ -3,6 +3,10 @@ import test from 'node:test';
 import { compileMassingRepair } from '../src/playbook/execute/repairCompilers/massing.js';
 import { compileStructureRepair } from '../src/playbook/execute/repairCompilers/structure.js';
 import { applyLayerEffects } from '../src/playbook/execute/repairTransaction.js';
+import { checkPrimarySecondaryHierarchy, checkSubordinateSupportVolume, checkThreeVolumeComposition } from '../src/playbook/shadow/checkers/massing.js';
+import { checkVisibleLoadPath } from '../src/playbook/shadow/checkers/structure.js';
+import { compileMassingLayer } from '../src/construction/designStages.js';
+import { buildFallbackStructure } from '../src/construction/agents/structureAgent.js';
 
 const H = 'a'.repeat(64);
 const volumes = () => [
@@ -21,7 +25,7 @@ test('center variant preserves IDs, centers primary, and reattaches both seconda
   assert.deepEqual(patch.effects.map((effect) => [effect.type, effect.volume_id]), [
     ['set-volume-placement', 'main'], ['set-volume-placement', 'side-a'], ['set-volume-placement', 'side-b']
   ]);
-  const result = applyLayerEffects({ layer: 'massing', payload: layerPayload, effects: patch.effects, preconditionHashes: patch.precondition_hashes });
+  const result = applyLayerEffects({ payload: layerPayload, operations: [patch] });
   assert.deepEqual(result.volumes.map((volume) => volume.id), ['main', 'side-a', 'side-b']);
   assert.deepEqual(result.volumes.map((volume) => volume.placement), [
     { relation: 'center' },
@@ -45,6 +49,8 @@ test('hierarchy variants use stable tie-breaking and the first strictly smaller 
   const tied = volumes();
   tied[0].role = 'secondary-mass';
   tied[1].role = 'primary-mass';
+  tied[1].placement = { relation: 'attached-left', attach_to: 'main' };
+  tied[2].placement = { relation: 'attached-right', attach_to: 'main' };
   const promote = compileMassingRepair({
     request: request('repair:massing:strengthen-primary-volume', 'promote-largest-stable', 'rule:structure.create-primary-secondary-hierarchy'),
     layerPayload: { volumes: tied }
@@ -55,6 +61,8 @@ test('hierarchy variants use stable tie-breaking and the first strictly smaller 
   reduceVolumes[0].scale = [3, 3, 3];
   reduceVolumes[1].scale = [5, 3, 2];
   reduceVolumes[2].scale = [2, 2, 2];
+  reduceVolumes[1].placement = { relation: 'attached-left', attach_to: 'main' };
+  reduceVolumes[2].placement = { relation: 'attached-right', attach_to: 'main' };
   const reduce = compileMassingRepair({
     request: request('repair:massing:strengthen-primary-volume', 'reduce-nondominant-secondary', 'rule:structure.create-primary-secondary-hierarchy'),
     layerPayload: { volumes: reduceVolumes }
@@ -73,29 +81,104 @@ test('support reduction preserves attachment and reduces only an offending suppo
   assert.deepEqual(patch.effects, [{ type: 'set-volume-scale-axis', volume_id: 'side-a', axis: 'y', value: 3 }]);
 });
 
-test('structure repair accepts only the three exact semantic anchors', () => {
-  const structural_anchors = {
-    upper: { id: 'roof-main', hash: 'a'.repeat(64) },
-    frame: { id: 'frame-main', hash: 'b'.repeat(64) },
-    base: { id: 'foundation-main', hash: 'c'.repeat(64) }
-  };
+test('structure repair derives its only load path from exact production source paths', () => {
+  const layerPayload = { roof_frame: { strategy: 'roof-main' }, system: 'frame-main', foundation: { strategy: 'foundation-main' }, load_paths: [] };
   const patch = compileStructureRepair({
     request: request('repair:structure:connect-support-path', 'connect-known-structural-anchors', 'rule:medieval.show-load-path'),
-    layerPayload: { structural_anchors, load_paths: [] }
+    layerPayload
   });
   assert.deepEqual(patch.effects, [{ type: 'set-load-path', from: 'roof-main', through: 'frame-main', to: 'foundation-main' }]);
   for (const mutate of [
-    (x) => { delete x.upper; },
-    (x) => { x.frame = { ...x.upper }; },
-    (x) => { x.base.hash = 'd'.repeat(63); },
-    (x) => { x.upper.x = 1; }
+    (x) => { delete x.roof_frame.strategy; },
+    (x) => { x.system = x.roof_frame.strategy; },
+    (x) => { x.foundation.strategy = ''; },
+    (x) => { x.roof_frame.strategy = { x: 1 }; }
   ]) {
-    const bad = structuredClone(structural_anchors); mutate(bad);
-    assert.throws(() => compileStructureRepair({ request: request('repair:structure:connect-support-path', 'connect-known-structural-anchors', 'rule:medieval.show-load-path'), layerPayload: { structural_anchors: bad, load_paths: [] } }), { code: 'P5_REPAIR_INVALID' });
+    const bad = structuredClone(layerPayload); mutate(bad);
+    assert.throws(() => compileStructureRepair({ request: request('repair:structure:connect-support-path', 'connect-known-structural-anchors', 'rule:medieval.show-load-path'), layerPayload: bad }), { code: 'P5_REPAIR_INVALID' });
   }
-  const accessor = structuredClone(structural_anchors);
-  Object.defineProperty(accessor.upper, 'id', { enumerable: true, get: () => 'roof-main' });
-  assert.throws(() => compileStructureRepair({ request: request('repair:structure:connect-support-path', 'connect-known-structural-anchors', 'rule:medieval.show-load-path'), layerPayload: { structural_anchors: accessor, load_paths: [] } }), { code: 'P5_REPAIR_INVALID' });
+  for (const path of ['roof_frame', 'foundation']) {
+    const accessor = structuredClone(layerPayload);
+    Object.defineProperty(accessor, path, { enumerable: true, get: () => layerPayload[path] });
+    assert.throws(() => compileStructureRepair({ request: request('repair:structure:connect-support-path', 'connect-known-structural-anchors', 'rule:medieval.show-load-path'), layerPayload: accessor }), { code: 'P5_REPAIR_INVALID' });
+  }
+  const nestedAccessor = structuredClone(layerPayload);
+  Object.defineProperty(nestedAccessor.roof_frame, 'strategy', { enumerable: true, get: () => 'roof-main' });
+  assert.throws(() => compileStructureRepair({ request: request('repair:structure:connect-support-path', 'connect-known-structural-anchors', 'rule:medieval.show-load-path'), layerPayload: nestedAccessor }), { code: 'P5_REPAIR_INVALID' });
+});
+
+test('fractional Task 3 payloads compile through fixed-point units and change P4 outcomes', () => {
+  const composition = { volumes: productionVolumes([1, 1, 1], [0.8, 0.8, 0.8], [0.6, 0.6, 0.6]) };
+  composition.volumes[0].placement = { relation: 'offset' };
+  composition.volumes[1].placement = { relation: 'detached-east' };
+  composition.volumes[2].placement = { relation: 'detached-west' };
+  const centerPatch = compileMassingRepair({ request: request('repair:massing:resize-or-reposition-volume', 'center-primary-and-reattach-secondaries'), layerPayload: composition });
+  assert.equal(checkThreeVolumeComposition(project(applyLayerEffects({ payload: composition, operations: [centerPatch] }))).status, 'satisfied');
+
+  const equal = { volumes: productionVolumes([0.75, 0.75, 0.75], [0.75, 0.75, 0.75], [0.75, 0.75, 0.75]) };
+  const differentiatePatch = compileMassingRepair({ request: request('repair:massing:resize-or-reposition-volume', 'differentiate-equal-secondary-scale'), layerPayload: equal });
+  assert.equal(checkThreeVolumeComposition(project(applyLayerEffects({ payload: equal, operations: [differentiatePatch] }))).status, 'satisfied');
+
+  const roleless = { volumes: productionVolumes([1, 1, 1], [0.8, 0.8, 0.8], [0.6, 0.6, 0.6]) };
+  for (const volume of roleless.volumes) { volume.role = 'architect-label'; volume.tags = []; delete volume.purpose; }
+  const promotePatch = compileMassingRepair({ request: request('repair:massing:strengthen-primary-volume', 'promote-largest-stable', 'rule:structure.create-primary-secondary-hierarchy'), layerPayload: roleless });
+  const promoted = applyLayerEffects({ payload: roleless, operations: [promotePatch] });
+  assert.equal(checkPrimarySecondaryHierarchy(project(promoted)).status, 'satisfied');
+  assert.deepEqual(promoted.volumes[0].tags, ['primary-mass']);
+  assert.equal(promoted.volumes[0].purpose, 'main-building-envelope');
+
+  const hierarchy = { volumes: productionVolumes([1, 1, 1], [1, 1, 1], [0.4, 0.5, 0.6]) };
+  assert.equal(checkPrimarySecondaryHierarchy(project(hierarchy)).status, 'violated');
+  const hierarchyPatch = compileMassingRepair({ request: request('repair:massing:strengthen-primary-volume', 'reduce-nondominant-secondary', 'rule:structure.create-primary-secondary-hierarchy'), layerPayload: hierarchy });
+  assert.equal(Number.isInteger(hierarchyPatch.effects[0].value), true);
+  const repairedHierarchy = applyLayerEffects({ payload: hierarchy, operations: [hierarchyPatch] });
+  assert.equal(checkPrimarySecondaryHierarchy(project(repairedHierarchy)).status, 'satisfied');
+
+  const support = { volumes: productionVolumes([0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [0.2, 0.2, 0.2]) };
+  assert.equal(checkSubordinateSupportVolume(project(support)).status, 'violated');
+  const supportPatch = compileMassingRepair({ request: request('repair:massing:reduce-support-volume-prominence', 'reduce-attached-support-scale', 'rule:structure.keep-support-volumes-subordinate'), layerPayload: support });
+  assert.equal(checkSubordinateSupportVolume(project(applyLayerEffects({ payload: support, operations: [supportPatch] }))).status, 'satisfied');
+
+  const structure = { roof_frame: { strategy: 'roof-main' }, system: 'frame-main', foundation: { strategy: 'foundation-main' }, load_paths: [] };
+  const structurePatch = compileStructureRepair({ request: request('repair:structure:connect-support-path', 'connect-known-structural-anchors', 'rule:medieval.show-load-path'), layerPayload: structure });
+  const before = { brief: { style_family: 'medieval' }, structure: { ...structure, structural_intent: { floor_count: 2 } }, roof: { overhang: 1 } };
+  assert.equal(checkVisibleLoadPath(before).status, 'violated');
+  assert.equal(checkVisibleLoadPath({ ...before, structure: { ...before.structure, ...applyLayerEffects({ payload: structure, operations: [structurePatch] }) } }).status, 'satisfied');
+});
+
+test('application rejects invented effects and semantic invariant attacks', () => {
+  const layerPayload = { volumes: productionVolumes([1, 1, 1], [1, 1, 1], [0.4, 0.5, 0.6]) };
+  const patch = compileMassingRepair({ request: request('repair:massing:strengthen-primary-volume', 'reduce-nondominant-secondary', 'rule:structure.create-primary-secondary-hierarchy'), layerPayload });
+  for (const mutate of [
+    (x) => { x.effects = [{ type: 'set-volume-placement', volume_id: 'side-a', placement: { relation: 'attached-east', attach_to: 'invented' } }]; },
+    (x) => { x.effects = [{ type: 'set-volume-role', volume_id: 'side-a', role: 'primary-mass' }]; }
+  ]) {
+    const attack = structuredClone(patch); mutate(attack);
+    assert.throws(() => applyLayerEffects({ payload: layerPayload, operations: [attack] }), { code: 'P5_REPAIR_INVALID' });
+  }
+  const structure = { roof_frame: { strategy: 'roof-main' }, system: 'frame-main', foundation: { strategy: 'foundation-main' }, load_paths: [] };
+  const load = compileStructureRepair({ request: request('repair:structure:connect-support-path', 'connect-known-structural-anchors', 'rule:medieval.show-load-path'), layerPayload: structure });
+  const fake = structuredClone(load); fake.effects[0].through = 'invented-frame';
+  assert.throws(() => applyLayerEffects({ payload: structure, operations: [fake] }), { code: 'P5_REPAIR_INVALID' });
+});
+
+test('real Task 3 massing and fallback structure seams feed the reviewed compilers', () => {
+  const source = { volumes: productionVolumes([1, 1, 1], [1, 1, 1], [0.4, 0.5, 0.6]) };
+  const massing = compileMassingLayer({
+    prepared: { buildSpec: { floors: 2 } },
+    brief: { runtime: { architecture: source } },
+    effects: []
+  }).payload;
+  assert.doesNotThrow(() => compileMassingRepair({
+    request: request('repair:massing:strengthen-primary-volume', 'reduce-nondominant-secondary', 'rule:structure.create-primary-secondary-hierarchy'),
+    layerPayload: massing
+  }));
+  const fallback = buildFallbackStructure({ style_family: 'medieval', volumes: source.volumes }, { floors: 2, structural: { system: 'timber-frame' } }, {});
+  fallback.load_paths = [];
+  assert.doesNotThrow(() => compileStructureRepair({
+    request: request('repair:structure:connect-support-path', 'connect-known-structural-anchors', 'rule:medieval.show-load-path'),
+    layerPayload: fallback
+  }));
 });
 
 test('massing compilers reject malformed, detached, wrong-count, zero-scale, and non-repairable input', () => {
@@ -103,7 +186,17 @@ test('massing compilers reject malformed, detached, wrong-count, zero-scale, and
   cases[1][0].scale[0] = 0;
   cases[2][1].placement = { relation: 'attached-left', attach_to: 'missing' };
   cases[3].forEach((volume, index) => { volume.scale = [5 - index, 4, 3]; });
+  const excessivePrecision = volumes(); excessivePrecision[0].scale[0] = 1e-7; cases.push(excessivePrecision);
   for (const layerVolumes of cases) {
     assert.throws(() => compileMassingRepair({ request: request('repair:massing:resize-or-reposition-volume', 'differentiate-equal-secondary-scale'), layerPayload: { volumes: layerVolumes } }), { code: 'P5_REPAIR_INVALID' });
   }
 });
+
+function productionVolumes(primaryScale, firstScale, secondScale) {
+  return [
+    { id: 'main', role: '主体外壳', shape: 'box', scale: primaryScale, placement: { relation: 'center' }, boolean_mode: 'union', tags: ['primary-mass'], purpose: 'main-building-envelope' },
+    { id: 'side-a', role: '侧翼', shape: 'box', scale: firstScale, placement: { relation: 'attached-east', attach_to: 'main' }, boolean_mode: 'union', tags: ['secondary-mass'] },
+    { id: 'side-b', role: '辅助体', shape: 'box', scale: secondScale, placement: { relation: 'attached-west', attach_to: 'main' }, boolean_mode: 'union', tags: ['secondary-mass'] }
+  ];
+}
+function project(massing) { return { brief: { typology: 'house' }, massing, pointers: {} }; }

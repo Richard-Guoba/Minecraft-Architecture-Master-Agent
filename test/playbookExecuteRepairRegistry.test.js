@@ -54,6 +54,15 @@ test('registry rejects missing, extra, duplicate, replaced, or wrongly bound aut
   const caseCards = structuredClone(corpus.cards);
   caseCards[0].teaching_role = 'case-pattern';
   assert.throws(() => validateExecutableRepairRegistry({ cards: caseCards, checkerDefinitions: definitions, registry: rows }), { code: 'P5_AUTHORITY_INVALID' });
+  const reordered = structuredClone(corpus.cards);
+  [reordered[4], reordered[5]] = [reordered[5], reordered[4]];
+  assert.throws(() => validateExecutableRepairRegistry({ cards: reordered, checkerDefinitions: definitions, registry: rows }), { code: 'P5_AUTHORITY_INVALID' });
+  const nonExecutableDrift = structuredClone(corpus.cards);
+  nonExecutableDrift[4].runtime_projection.repair_operations[0] = 'repair:roof:invented';
+  assert.throws(() => validateExecutableRepairRegistry({ cards: nonExecutableDrift, checkerDefinitions: definitions, registry: rows }), { code: 'P5_AUTHORITY_INVALID' });
+  const nonExecutableProjectionDrift = structuredClone(corpus.cards);
+  nonExecutableProjectionDrift[4].runtime_projection.coverage_status = 'manual-example-only';
+  assert.throws(() => validateExecutableRepairRegistry({ cards: nonExecutableProjectionDrift, checkerDefinitions: definitions, registry: rows }), { code: 'P5_AUTHORITY_INVALID' });
 });
 
 test('registry map methods cannot mutate or leak the backing map', () => {

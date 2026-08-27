@@ -12,6 +12,21 @@ const LAYER_INTENT_FIELDS = Object.freeze(['layer', 'intent']);
 const PREFERENCE_FIELDS = Object.freeze(['repair_operation_id', 'variant_id']);
 const REPAIR_ORDER = new Map(EXECUTABLE_REPAIR_ROWS.map((row, index) => [row.repair_operation_id, index]));
 const CASE_PATTERN_COUNT = 6;
+const REVIEWED_REPAIRS = Object.freeze([
+  ['repair:massing:resize-or-reposition-volume', ['structure', 'roof', 'facade']],
+  ['repair:massing:adjust-volume-overlap', ['structure', 'roof', 'facade']],
+  ['repair:massing:strengthen-primary-volume', ['structure', 'roof', 'facade']],
+  ['repair:massing:reduce-support-volume-prominence', ['structure', 'roof', 'facade']],
+  ['repair:roof:restore-continuous-border', ['facade']], ['repair:roof:change-run-rise-pattern', ['facade']],
+  ['repair:roof:add-structural-roof-break', ['facade']], ['repair:facade:rebuild-bay-before-opening', []],
+  ['repair:facade:offset-frame-or-infill', []], ['repair:facade:align-partition-to-structure', []],
+  ['repair:facade:vary-bay-preserve-motif', []], ['repair:structure:remove-or-support-overhang', ['roof', 'facade']],
+  ['repair:structure:connect-support-path', ['roof', 'facade']], ['repair:roof:realign-ridge-or-support', ['facade']],
+  ['repair:structure:add-or-widen-base', ['roof', 'facade']], ['repair:massing:move-tower-to-joint', []],
+  ['repair:facade:separate-motif-from-bay-template', []], ['repair:facade:connect-or-prune-vegetation', []],
+  ['repair:brief:move-detail-budget-to-primary-view', []], ['repair:roof:reduce-dark-secondary-area', []],
+  ['repair:brief:restore-unobstructed-scene-depth', []]
+]);
 
 export function buildDesignEnvelopePrompt(input = {}) {
   try {
@@ -102,19 +117,35 @@ function validateCandidate(value, candidateId, seed, reviewedRules) {
   return envelope;
 }
 
-function reviewedRulesFrom(cards) {
+export function validateReviewedCards(cards) {
   const safeCards = clonePlainData(cards);
   const definitions = createCheckerDefinitions();
   if (!Array.isArray(safeCards) || safeCards.length !== definitions.length) invalid();
-  return safeCards.map((card, index) => {
+  safeCards.forEach((card, index) => {
     if (!card || typeof card !== 'object' || Object.getPrototypeOf(card) !== Object.prototype) invalid();
     const expectedRole = index < definitions.length - CASE_PATTERN_COUNT
       ? 'core-procedure'
       : 'case-pattern';
-    if (card.rule_id !== definitions[index].rule_id || card.teaching_role !== expectedRole) invalid();
-    return { rule_id: card.rule_id, teaching_role: card.teaching_role };
+    const expectedCoverage = expectedRole === 'core-procedure'
+      ? 'advisory-partial'
+      : 'manual-example-only';
+    const projection = card.runtime_projection;
+    if (card.rule_id !== definitions[index].rule_id || card.teaching_role !== expectedRole
+      || card.design_layer !== definitions[index].design_layer || !projection
+      || projection.coverage_status !== expectedCoverage
+      || projection.observable_checks?.length !== 1 || projection.observable_checks[0] !== definitions[index].check_id
+      || projection.repair_operations?.length !== 1 || projection.repair_operations[0] !== REVIEWED_REPAIRS[index][0]
+      || !sameArray(projection.invalidates_layers, REVIEWED_REPAIRS[index][1])) invalid();
   });
+  return deepFreeze(safeCards);
 }
+
+function reviewedRulesFrom(cards) {
+  const safeCards = validateReviewedCards(cards);
+  return safeCards.map((card) => ({ rule_id: card.rule_id, teaching_role: card.teaching_role }));
+}
+
+function sameArray(left, right) { return Array.isArray(left) && left.length === right.length && left.every((value, index) => value === right[index]); }
 
 function clonePlainData(value) {
   const ancestors = new WeakSet();

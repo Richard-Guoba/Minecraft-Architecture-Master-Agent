@@ -3,6 +3,7 @@ import { executeError } from './contracts.js';
 import { compileMassingRepair, chooseDefaultMassingVariant } from './repairCompilers/massing.js';
 import { compileStructureRepair, chooseDefaultStructureVariant } from './repairCompilers/structure.js';
 import { createCheckerDefinitions } from '../shadow/checkerRegistry.js';
+import { validateReviewedCards } from './designEnvelope.js';
 
 const COMPILERS = Object.freeze({
   'repair:massing:resize-or-reposition-volume': compileMassingRepair,
@@ -30,6 +31,7 @@ export function createExecutableRepairRegistry() {
 export function validateExecutableRepairRegistry({ cards, checkerDefinitions, registry } = {}) {
   try {
     const supplied = rowsFrom(registry);
+    cards = validateReviewedCards(cards);
     const expectedCheckers = createCheckerDefinitions();
     if (!Array.isArray(cards) || cards.length !== expectedCheckers.length
       || !Array.isArray(checkerDefinitions) || checkerDefinitions.length !== expectedCheckers.length

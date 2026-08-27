@@ -587,19 +587,25 @@ function resolvedPatch() {
 
 function resolvedPatchFor(row) {
   const massing = row.repair_operation_id.startsWith('repair:massing:');
+  const variant = row.allowed_variant_ids[0];
+  const effects = !massing
+    ? [{ type: 'set-load-path', from: 'roof-main', through: 'frame-main', to: 'foundation-main' }]
+    : variant === 'center-primary-and-reattach-secondaries'
+      ? [{ type: 'set-volume-placement', volume_id: 'volume-01', placement: { relation: 'center' } }]
+      : variant === 'promote-largest-stable'
+        ? [{ type: 'set-volume-role', volume_id: 'volume-01', role: 'primary-mass' }]
+        : [{ type: 'set-volume-scale-axis', volume_id: 'volume-01', axis: 'x', value: 1 }];
   return {
     schema_version: 1,
     compiler_version: 1,
     candidate_id: 'candidate-01',
     rule_id: row.rule_id,
     repair_operation_id: row.repair_operation_id,
-    variant_id: row.allowed_variant_ids[0],
+    variant_id: variant,
     target_layer: massing ? 'massing' : row.design_layer,
     base_checkpoint_sha256: HASH,
     precondition_hashes: [{ kind: massing ? 'volume' : 'structural-anchor', id: massing ? 'volume-01' : 'roof-main', sha256: HASH }],
-    effects: massing
-      ? [{ type: 'set-volume-role', volume_id: 'volume-01', role: 'primary-mass' }]
-      : [{ type: 'set-load-path', from: 'roof-main', through: 'frame-main', to: 'foundation-main' }],
+    effects,
     invalidates_layers: row.invalidates_layers
   };
 }

@@ -258,6 +258,9 @@ export function validateResolvedPatch(value) {
   const expectedKind = data.target_layer === 'massing' ? 'volume' : 'structural-anchor';
   if (data.precondition_hashes.some((row) => row.kind !== expectedKind)) fail('P5_REPAIR_INVALID');
   assertRepairEffects(data.effects, data.target_layer, 'P5_REPAIR_INVALID');
+  assertVariantEffects(data.variant_id, data.effects, 'P5_REPAIR_INVALID');
+  const effectFields = data.effects.map(repairEffectField);
+  if (new Set(effectFields).size !== effectFields.length) fail('P5_REPAIR_CONFLICT');
   assertExactArray(data.invalidates_layers, row.invalidates_layers, 'P5_REPAIR_INVALID');
   return data;
 }
@@ -273,11 +276,17 @@ export function validateRepairTransaction(value) {
   assertArray(data.operations, 'P5_REPAIR_INVALID');
   if (data.operations.length === 0) fail('P5_REPAIR_INVALID');
   const seenOperations = new Set();
+  const seenFields = new Set();
   let previousOrder = -1;
   for (const patchValue of data.operations) {
     const patch = validateResolvedPatch(patchValue);
     if (patch.candidate_id !== data.candidate_id || seenOperations.has(patch.repair_operation_id)) fail('P5_REPAIR_INVALID');
     seenOperations.add(patch.repair_operation_id);
+    for (const effect of patch.effects) {
+      const field = repairEffectField(effect);
+      if (seenFields.has(field)) fail('P5_REPAIR_CONFLICT');
+      seenFields.add(field);
+    }
     const corpusOrder = EXECUTABLE_REPAIR_ROWS.findIndex((row) => row.repair_operation_id === patch.repair_operation_id);
     const order = DESIGN_LAYER_ORDER.indexOf(patch.target_layer) * EXECUTABLE_REPAIR_ROWS.length + corpusOrder;
     if (order <= previousOrder) fail('P5_REPAIR_INVALID');
@@ -534,6 +543,28 @@ function assertRepairEffects(value, targetLayer, code) {
       for (const field of ['from', 'through', 'to']) assertBoundedId(effect[field], code);
     } else fail(code);
   }
+}
+
+function assertVariantEffects(variant, effects, code) {
+  const types = effects.map((effect) => effect.type);
+  const only = (type) => types.every((value) => value === type);
+  if (variant === 'center-primary-and-reattach-secondaries') {
+    if (!only('set-volume-placement') || effects.length > 3) fail(code);
+  } else if (['differentiate-equal-secondary-scale', 'reduce-nondominant-secondary', 'reduce-attached-support-scale'].includes(variant)) {
+    if (effects.length !== 1 || !only('set-volume-scale-axis')) fail(code);
+  } else if (variant === 'promote-largest-stable') {
+    if (!only('set-volume-role') || effects.length > 3) fail(code);
+  } else if (variant === 'connect-known-structural-anchors') {
+    if (effects.length !== 1 || !only('set-load-path')) fail(code);
+  } else fail(code);
+}
+
+function repairEffectField(effect) {
+  if (effect.type === 'set-volume-role') return `massing:volumes:${effect.volume_id}:role`;
+  if (effect.type === 'set-volume-placement') return `massing:volumes:${effect.volume_id}:placement`;
+  if (effect.type === 'set-volume-scale-axis') return `massing:volumes:${effect.volume_id}:scale:${effect.axis}`;
+  if (effect.type === 'set-load-path') return 'structure:load_paths';
+  fail('P5_REPAIR_INVALID');
 }
 
 function assertBoundedId(value, code) {
