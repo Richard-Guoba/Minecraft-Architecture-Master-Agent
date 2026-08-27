@@ -3,6 +3,7 @@ import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { candidateSeedFor, runPipeline } from '../src/pipeline.js';
+import { candidateSeedFor as supportCandidateSeedFor } from '../src/construction/candidatePipelineSupport.js';
 
 test('candidate pipeline generates multiple rounds and selects the best aesthetic review', async () => {
   const root = path.resolve('.tmp', `architect-candidate-pipeline-${Date.now()}`);
@@ -49,6 +50,7 @@ test('candidate pipeline generates multiple rounds and selects the best aestheti
 });
 
 test('candidateSeedFor creates stable per-round candidate seeds', () => {
+  assert.equal(candidateSeedFor(10, 1, 1), supportCandidateSeedFor(10, 1, 1));
   assert.equal(candidateSeedFor(10, 1, 1), candidateSeedFor(10, 1, 1));
   assert.notEqual(candidateSeedFor(10, 1, 1), candidateSeedFor(10, 1, 2));
   assert.notEqual(candidateSeedFor(10, 1, 1), candidateSeedFor(10, 2, 1));

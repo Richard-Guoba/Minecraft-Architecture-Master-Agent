@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "prompt": "Build a medieval residence while retaining unresolved evidence-required architectural questions.",
+  "seed": 424242,
+  "expected_candidate_count": 3,
+  "expected_selected_candidate_id": null,
+  "expected_install_count": 0
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "prompt": "Build a two-story medieval residence with three attached volumes, readable primary-secondary hierarchy, a dark pitched roof, timber framing, and a stone base.",
+  "seed": 424242,
+  "expected_candidate_count": 3,
+  "repair_operation_id": "repair:massing:strengthen-primary-volume",
+  "variant_id": "reduce-nondominant-secondary",
+  "initial_massing": {
+    "volumes": [
+      { "id": "side-b", "role": "secondary-mass", "scale": [0.5, 0.5, 0.5], "placement": { "relation": "attached-right", "attach_to": "main" } },
+      { "id": "main", "role": "primary-mass", "scale": [0.4, 0.4, 0.4], "placement": { "relation": "center" } },
+      { "id": "side-a", "role": "secondary-mass", "scale": [0.3, 0.3, 0.3], "placement": { "relation": "attached-left", "attach_to": "main" } }
+    ]
+  },
+  "expected_attempt_counts": [0, 1, 1],
+  "expected_statuses": ["eligible", "eligible", "unresolved-core-violation"],
+  "expected_ranked_candidate_ids": ["candidate-01", "candidate-02"]
+}

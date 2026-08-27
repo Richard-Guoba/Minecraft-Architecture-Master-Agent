@@ -5,6 +5,7 @@ import {
   validateChainManifest,
   validateCheckpointPayload,
   validateExecuteSelectionManifest,
+  validateInitialCandidateFailure,
   validateRepairEvidenceRequest,
   validateRepairEvidenceResult,
   validateRepairTransaction,
@@ -28,6 +29,49 @@ const REPAIR_REQUEST_PATH = 'repairs/attempt-01-request.json';
 const REPAIR_PATCH_PATH = 'repairs/attempt-01-patch.json';
 const REPAIR_RESULT_PATH = 'repairs/attempt-01-result.json';
 const FAILURE_PATH = 'failures/attempt-01.json';
+const INITIAL_FAILURE_PATH = 'failures/initial.json';
+const INITIAL_HARD_QA_PATH = 'reviews/initial-hard-qa.json';
+const INITIAL_REVIEW_PATH = 'reviews/initial-review.json';
+
+export function normalizeInitialFailureFiles({ candidateId, files }) {
+  assertCandidateId(candidateId);
+  if (!isPlainObject(files)) throw executeError('P5_AUTHORITY_INVALID');
+  const names = Reflect.ownKeys(files);
+  if (names.some((name) => typeof name !== 'string') || !names.includes(INITIAL_FAILURE_PATH)
+    || names.some((name) => ![INITIAL_FAILURE_PATH, INITIAL_HARD_QA_PATH, INITIAL_REVIEW_PATH].includes(name))) {
+    throw executeError('P5_AUTHORITY_INVALID');
+  }
+  const normalized = {};
+  for (const name of names) {
+    const descriptor = Object.getOwnPropertyDescriptor(files, name);
+    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value') || !Buffer.isBuffer(descriptor.value)) {
+      throw executeError('P5_AUTHORITY_INVALID');
+    }
+    normalized[name] = Buffer.from(descriptor.value);
+  }
+  const failure = parseCanonicalValidatedJson(normalized[INITIAL_FAILURE_PATH], validateInitialCandidateFailure);
+  if (failure.candidate_id !== candidateId) throw executeError('P5_AUTHORITY_INVALID');
+  const expected = [INITIAL_FAILURE_PATH, ...Object.keys(failure.artifact_hashes)];
+  if (!sameStrings(Object.keys(normalized).sort(), expected.sort())) throw executeError('P5_AUTHORITY_INVALID');
+  for (const [name, hash] of Object.entries(failure.artifact_hashes)) {
+    if (sha256(normalized[name]) !== hash) throw executeError('P5_AUTHORITY_INVALID');
+    parseCanonicalJson(normalized[name], 'P5_AUTHORITY_INVALID');
+  }
+  return Object.freeze({ candidateId, files: Object.freeze(sortFileMap(normalized)), failure });
+}
+
+export function validateCandidateEvidence(candidateId, files, code) {
+  const hasCurrent = Buffer.isBuffer(files?.[CURRENT_CHAIN_BASENAME]);
+  const hasInitialFailure = Buffer.isBuffer(files?.[INITIAL_FAILURE_PATH]);
+  if (hasCurrent === hasInitialFailure) throw executeError(code);
+  if (hasCurrent) return Object.freeze({ kind: 'accepted', ...validateCandidateFiles(candidateId, files, code) });
+  try {
+    const normalized = normalizeInitialFailureFiles({ candidateId, files });
+    return Object.freeze({ kind: 'initial-failed', failure: normalized.failure, expectedDirectories: Object.freeze(expectedDirectoriesFor(files)) });
+  } catch {
+    throw executeError(code);
+  }
+}
 
 export function normalizeCandidateSnapshot({ candidateId, files, currentChain }) {
   assertCandidateId(candidateId);

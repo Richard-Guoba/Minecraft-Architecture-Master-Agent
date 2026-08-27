@@ -16,10 +16,12 @@ import {
   CURRENT_CHAIN_BASENAME,
   expectedDirectoriesFor,
   normalizeCandidateSnapshot,
+  normalizeInitialFailureFiles,
   normalizeSelectionFiles,
   sameFileMap,
   SELECTION_PATHS,
   sortFileMap,
+  validateCandidateEvidence,
   validateCandidateFiles
 } from './storageValidation.js';
 import {
@@ -285,6 +287,7 @@ export async function readCurrentCandidateSnapshot({ authority, candidateId, fsI
   try {
     tree = await openExecuteTree(internal, ops, { create: false });
     const candidate = await inspectCandidate(internal, ops, tree, candidateId, { allowMissing: false });
+    if (candidate.validated.kind !== 'accepted') throw executeError('P5_OUTPUT_OWNERSHIP');
     return Object.freeze({
       candidate_id: candidateId,
       current_chain_sha256: candidate.validated.currentChainSha256,
@@ -296,6 +299,49 @@ export async function readCurrentCandidateSnapshot({ authority, candidateId, fsI
   } finally {
     await closeExecuteTree(tree);
   }
+}
+
+export async function inspectCandidateEvidence({ authority, candidateId, fsImpl } = {}) {
+  const internal = authorityInternal(authority);
+  const ops = fsOperations(fsImpl ?? internal.ops.source);
+  let tree;
+  try {
+    tree = await openExecuteTree(internal, ops, { create: false });
+    const candidate = await inspectCandidate(internal, ops, tree, candidateId, { allowMissing: false });
+    return candidate.validated.kind === 'accepted'
+      ? Object.freeze({ kind: 'accepted', candidate_id: candidateId, current_chain_sha256: candidate.validated.currentChainSha256, current_chain: Buffer.from(candidate.files[CURRENT_CHAIN_BASENAME]), files: cloneFileMap(candidate.files) })
+      : Object.freeze({ kind: 'initial-failed', candidate_id: candidateId, failure: candidate.validated.failure, files: cloneFileMap(candidate.files) });
+  } catch (error) {
+    throw publicError(error, 'P5_OUTPUT_OWNERSHIP');
+  } finally { await closeExecuteTree(tree); }
+}
+
+export async function installInitialCandidateFailure({ authority, candidateId, files, fsImpl } = {}) {
+  const internal = authorityInternal(authority);
+  let incoming;
+  try { incoming = normalizeInitialFailureFiles({ candidateId, files }); }
+  catch (error) { throw publicError(error, 'P5_AUTHORITY_INVALID'); }
+  const ops = fsOperations(fsImpl ?? internal.ops.source);
+  let tree; let stage; let installed = false;
+  try {
+    tree = await openExecuteTree(internal, ops, { create: true });
+    if (await inspectCandidate(internal, ops, tree, candidateId, { allowMissing: true })) throw executeError('P5_OUTPUT_OWNERSHIP');
+    stage = await createCandidateStage(internal, ops, tree, incoming);
+    await renameExpectedDirectoryNoReplace(internal, ops, tree, tree.candidatesHandle, stage.basename, candidateId, stage.identity);
+    installed = true;
+    await closeHandle(stage.handle); stage.handle = undefined;
+    await syncDirectory(internal, ops, tree, tree.candidatesHandle);
+    await verifyCandidateDirectory(internal, ops, tree, candidateId, stage.identity, incoming.files, candidateId);
+    return Object.freeze({ status: 'created', candidate_id: candidateId });
+  } catch (error) {
+    await closeHandle(stage?.handle);
+    if (tree && stage) installed ||= await namedDirectoryHasIdentity(tree.candidatesHandle, ops, candidateId, stage.identity);
+    try {
+      if (tree && stage) await removeVerifiedDirectory(internal, ops, tree, tree.candidatesHandle,
+        installed ? candidateId : stage.basename, stage.identity, incoming.files, { requireComplete: true, verifyBytes: true });
+    } catch {}
+    throw publicError(error, error?.code === 'P5_OUTPUT_OWNERSHIP' ? 'P5_OUTPUT_OWNERSHIP' : 'P5_INSTALL_FAILED');
+  } finally { await closeExecuteTree(tree); }
 }
 
 export async function appendCandidateFailureEvidence({ authority, candidateId, evidence, expectedCurrentChainSha256, fsImpl } = {}) {
@@ -813,7 +859,7 @@ async function inspectCandidate(internal, ops, tree, candidateId, { allowMissing
       { allowMissing }
     );
     if (!directory) return null;
-    const validated = validateCandidateFiles(candidateId, directory.files, 'P5_OUTPUT_OWNERSHIP');
+    const validated = validateCandidateEvidence(candidateId, directory.files, 'P5_OUTPUT_OWNERSHIP');
     const expectedDirectories = expectedDirectoriesFor(directory.files);
     if (!sameStrings(directory.directories, expectedDirectories)) {
       throw executeError('P5_OUTPUT_OWNERSHIP');
@@ -1065,7 +1111,7 @@ async function verifyCandidateDirectory(
   if (!sameIdentity(directory.identity, expectedIdentity) || !sameFileMap(directory.files, expectedFiles)) {
     throw executeError('P5_INSTALL_FAILED');
   }
-  validateCandidateFiles(candidateId, directory.files, 'P5_INSTALL_FAILED');
+  validateCandidateEvidence(candidateId, directory.files, 'P5_INSTALL_FAILED');
   if (!sameStrings(directory.directories, expectedDirectoriesFor(expectedFiles))) {
     throw executeError('P5_INSTALL_FAILED');
   }

@@ -79,6 +79,11 @@ const REPLAY_FAILURE_FIELDS = Object.freeze([
   'schema_version', 'candidate_id', 'attempt', 'code', 'base_chain_sha256',
   'repair_transaction_sha256', 'current_chain_sha256'
 ]);
+const INITIAL_FAILURE_FIELDS = Object.freeze([
+  'schema_version', 'candidate_id', 'stage', 'code', 'frozen_design_sha256',
+  'frozen_generator_context_sha256', 'blueprint_sha256', 'hard_qa_sha256',
+  'p4_review_sha256', 'artifact_hashes'
+]);
 const PRECONDITION_FIELDS = Object.freeze(['kind', 'id', 'sha256']);
 const ENVELOPE_FIELDS = Object.freeze(['checkpoint_sha256', 'checkpoint']);
 const SELECTION_FIELDS = Object.freeze([
@@ -356,6 +361,31 @@ export function validateReplayFailureEvidence(value) {
   assertHash(data.current_chain_sha256, 'P5_REPLAY_FAILED');
   if (data.current_chain_sha256 !== data.base_chain_sha256) fail('P5_REPLAY_FAILED');
   return data;
+}
+
+export function validateInitialCandidateFailure(value) {
+  const data = canonicalObject(value, INITIAL_FAILURE_FIELDS, 'P5_AUTHORITY_INVALID');
+  assertSchemaVersion(data, 'P5_AUTHORITY_INVALID');
+  assertCandidateId(data.candidate_id, 'P5_AUTHORITY_INVALID');
+  if (!['design', 'compile', 'hard-qa', 'p4-review'].includes(data.stage)
+    || !P5_ERROR_CODES.includes(data.code)) fail('P5_AUTHORITY_INVALID');
+  for (const field of ['frozen_design_sha256', 'frozen_generator_context_sha256', 'blueprint_sha256', 'hard_qa_sha256', 'p4_review_sha256']) {
+    assertNullableHash(data[field], 'P5_AUTHORITY_INVALID');
+  }
+  if (data.frozen_generator_context_sha256 !== null && data.frozen_design_sha256 === null) fail('P5_AUTHORITY_INVALID');
+  if (data.blueprint_sha256 !== null && data.frozen_generator_context_sha256 === null) fail('P5_AUTHORITY_INVALID');
+  if (data.hard_qa_sha256 !== null && data.blueprint_sha256 === null) fail('P5_AUTHORITY_INVALID');
+  if (data.p4_review_sha256 !== null && data.hard_qa_sha256 === null) fail('P5_AUTHORITY_INVALID');
+  const expected = [];
+  if (data.hard_qa_sha256 !== null) expected.push('reviews/initial-hard-qa.json');
+  if (data.p4_review_sha256 !== null) expected.push('reviews/initial-review.json');
+  assertExactObject(data.artifact_hashes, expected, 'P5_AUTHORITY_INVALID');
+  for (const name of expected) assertHash(data.artifact_hashes[name], 'P5_AUTHORITY_INVALID');
+  if (data.hard_qa_sha256 !== null
+    && data.artifact_hashes['reviews/initial-hard-qa.json'] !== data.hard_qa_sha256) fail('P5_AUTHORITY_INVALID');
+  if (data.p4_review_sha256 !== null
+    && data.artifact_hashes['reviews/initial-review.json'] !== data.p4_review_sha256) fail('P5_AUTHORITY_INVALID');
+  return deepFreeze(data);
 }
 
 export function validateSelectionRecord(value) {

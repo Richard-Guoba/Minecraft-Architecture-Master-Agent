@@ -2,9 +2,12 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { randomInt } from 'node:crypto';
 import { createTimestamp, ensureDir, writeJson } from './lib/fs.js';
-import { resolveWorldDir } from './lib/minecraftWorlds.js';
 import { runConstructionWorkflow } from './construction/workflow.js';
 import { CandidateSelectionAgent } from './construction/agents/candidateSelectionAgent.js';
+import { candidateSeedFor, installSelectedDatapack } from './construction/candidatePipelineSupport.js';
+import { validateExecuteOptions, validatePlaybookMode } from './playbook/execute/contracts.js';
+import { runExecutablePlaybookPipeline } from './playbook/execute/orchestrator.js';
+export { candidateSeedFor } from './construction/candidatePipelineSupport.js';
 
 const MAX_RANDOM_SEED = 2147483647;
 const DEFAULT_CANDIDATE_TARGET_SCORE = 95;
@@ -15,8 +18,8 @@ export async function runPipeline({
   mcVersion = '1.21',
   outRoot,
   seed,
-  candidates = 1,
-  candidateRounds = 1,
+  candidates,
+  candidateRounds,
   candidateTargetScore = DEFAULT_CANDIDATE_TARGET_SCORE,
   candidateForceRounds = false,
   concepts = 0,
@@ -28,8 +31,29 @@ export async function runPipeline({
   minecraftDir,
   world,
   datapacksDir,
-  autoBuild = false
+  autoBuild = false,
+  playbook = 'off'
 }) {
+  validatePlaybookMode(playbook);
+  if (playbook === 'execute') {
+    const executeOptions = validateExecuteOptions({ playbook,
+      ...(candidates !== undefined ? { candidates } : {}),
+      ...(candidateRounds !== undefined ? { candidateRounds } : {}),
+      candidateForceRounds });
+    if (coarseVoxelMode === 'shadow' && coarseVoxelProvider === 'artifact') {
+      throw Object.assign(new Error('P5_OPTIONS_INCOMPATIBLE'), { code: 'P5_OPTIONS_INCOMPATIBLE' });
+    }
+    if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
+    return runExecutablePlaybookPipeline({
+      prompt, mode, mcVersion, outRoot, seed,
+      candidates: executeOptions.candidates,
+      candidateRounds: executeOptions.candidateRounds,
+      candidateTargetScore, candidateForceRounds: executeOptions.candidateForceRounds,
+      concepts, conceptStrategy, critics, neuralRetrieval,
+      coarseVoxelMode, coarseVoxelProvider, coarseVoxelPlan, cwd,
+      minecraftDir, world, datapacksDir, autoBuild, playbook: 'execute'
+    });
+  }
   if (!prompt || !prompt.trim()) {
     throw new Error('Prompt is required.');
   }
@@ -99,8 +123,8 @@ export async function runCandidatePipeline({
   mcVersion = '1.21',
   outRoot,
   seed,
-  candidates = 3,
-  candidateRounds = 1,
+  candidates,
+  candidateRounds,
   candidateTargetScore = DEFAULT_CANDIDATE_TARGET_SCORE,
   candidateForceRounds = false,
   concepts = 0,
@@ -308,24 +332,6 @@ export function resolveSeed(seed) {
     seed: Math.trunc(parsed),
     source: 'manual'
   };
-}
-
-export function candidateSeedFor(baseSeed, roundIndex = 1, candidateIndex = 1) {
-  const base = Number(baseSeed || 1);
-  const raw = Math.trunc(base + roundIndex * 1000003 + candidateIndex * 7919);
-  const normalized = ((raw % MAX_RANDOM_SEED) + MAX_RANDOM_SEED) % MAX_RANDOM_SEED;
-  return normalized || 1;
-}
-
-async function installSelectedDatapack(sourceDatapackDir, { minecraftDir, world, datapacksDir } = {}) {
-  if (!sourceDatapackDir || (!world && !datapacksDir)) return undefined;
-  const targetDir = datapacksDir
-    ? path.join(path.resolve(datapacksDir), 'architect_datapack')
-    : path.join(await resolveWorldDir({ minecraftDir, world }), 'datapacks', 'architect_datapack');
-  await fs.rm(targetDir, { recursive: true, force: true });
-  await ensureDir(path.dirname(targetDir));
-  await fs.cp(sourceDatapackDir, targetDir, { recursive: true });
-  return targetDir;
 }
 
 function compactCandidateSelection(selection = {}) {
