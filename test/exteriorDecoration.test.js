@@ -79,6 +79,24 @@ test('CSGBuilder renders restrained exterior details without covering window gla
   }
 });
 
+test('RoofAgent facade-free call preserves the legacy ignored-facade output', () => {
+  const prompt = REPRESENTATIVE_HOUSE_PROMPTS[0][1];
+  let architecture = buildFallbackArchitecture(prompt);
+  const stylePreset = new StylePresetMemoryAgent().run(prompt, architecture);
+  const materialPalette = new MaterialPaletteAgent().run(prompt, architecture, stylePreset);
+  architecture = { ...architecture, materials: materialPalette.materials };
+  const buildSpec = deriveBuildSpec(prompt, architecture);
+  const topology = buildFallbackTopology(prompt, architecture, buildSpec);
+  const structure = new StructureAgent().run(architecture, buildSpec, topology);
+  const facade = new FacadeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
+  const agent = new RoofAgent();
+
+  const legacy = agent.run(prompt, architecture, buildSpec, structure, facade, materialPalette, stylePreset);
+  const facadeFree = agent.run(prompt, architecture, buildSpec, structure, materialPalette, stylePreset);
+
+  assert.deepEqual(facadeFree, legacy);
+});
+
 function buildAgentContext(prompt) {
   let architecture = buildFallbackArchitecture(prompt);
   const stylePreset = new StylePresetMemoryAgent().run(prompt, architecture);
@@ -88,7 +106,7 @@ function buildAgentContext(prompt) {
   const topology = buildFallbackTopology(prompt, architecture, buildSpec);
   const structure = new StructureAgent().run(architecture, buildSpec, topology);
   const facade = new FacadeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
-  const roof = new RoofAgent().run(prompt, architecture, buildSpec, structure, facade, materialPalette, stylePreset);
+  const roof = new RoofAgent().run(prompt, architecture, buildSpec, structure, materialPalette, stylePreset);
   const site = new SiteLandscapeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
   const shell = new CSGBuilder(buildSpec, architecture.materials).generateShell(architecture, { structure, facade, roof, site });
   return { architecture, buildSpec, topology, structure, facade, roof, site, shell };

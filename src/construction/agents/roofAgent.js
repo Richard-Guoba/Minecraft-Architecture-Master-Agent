@@ -1,5 +1,9 @@
 export class RoofAgent {
-  run(prompt = '', architecture = {}, buildSpec = {}, structure = {}, facade = {}, materialPalette = {}, stylePreset = {}) {
+  run(prompt = '', architecture = {}, buildSpec = {}, structure = {}, materialPalette = {}, stylePreset = {}, legacyStylePreset) {
+    if (legacyStylePreset !== undefined) {
+      materialPalette = stylePreset;
+      stylePreset = legacyStylePreset;
+    }
     const family = String(architecture.style_family || buildSpec.style_family || 'general');
     const rules = architecture.roof_rules || {};
     const design = architecture.design_directives?.roof || {};

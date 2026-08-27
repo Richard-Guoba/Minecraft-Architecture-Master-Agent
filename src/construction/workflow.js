@@ -1,14 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { ConstructionArchitectAgent } from './agents/architectAgent.js';
-import { ConstructionPlannerAgent } from './agents/plannerAgent.js';
-import { CreativeDesignAgent, applyCreativeDesign } from './agents/creativeDesignAgent.js';
-import { StylePresetMemoryAgent } from './agents/stylePresetMemoryAgent.js';
-import { MaterialPaletteAgent } from './agents/materialPaletteAgent.js';
-import { FacadeAgent } from './agents/facadeAgent.js';
-import { RoofAgent } from './agents/roofAgent.js';
 import { SiteLandscapeAgent } from './agents/siteLandscapeAgent.js';
-import { StructureAgent } from './agents/structureAgent.js';
 import { InteriorDetailAgent } from './agents/interiorDetailAgent.js';
 import { OpeningConnectivityAgent } from './agents/openingConnectivityAgent.js';
 import { ConstraintRepairAgent } from './agents/constraintRepairAgent.js';
@@ -16,7 +8,6 @@ import { ConstructionDecoratorAgent } from './agents/decoratorAgent.js';
 import { BlueprintOptimizerAgent } from './agents/blueprintOptimizerAgent.js';
 import { BlueprintQAAgent } from './agents/blueprintQaAgent.js';
 import { VisualizationAgent } from './agents/visualizationAgent.js';
-import { TemplateKnowledgeAgent, applyTemplateKnowledgeToArchitecture, applyTemplateKnowledgeToBuildSpec } from './agents/templateKnowledgeAgent.js';
 import { TemplateAestheticReviewAgent } from './agents/templateAestheticReviewAgent.js';
 import { TemplateLawCoverageAgent } from './agents/templateLawCoverageAgent.js';
 import { TemplateLawAutoRepairAgent } from './agents/templateLawAutoRepairAgent.js';
@@ -24,103 +15,61 @@ import { TemplateAssimilationAuditAgent } from './agents/templateAssimilationAud
 import { TemplateInteriorDensityRepairAgent } from './agents/templateInteriorDensityRepairAgent.js';
 import { InteriorClearanceRepairAgent } from './agents/interiorClearanceRepairAgent.js';
 import { ConstructionEvaluationAgent } from './agents/constructionEvaluationAgent.js';
-import { ConceptStudioAgent } from './agents/conceptStudioAgent.js';
-import { compactCoarseSemanticVoxelShadow, runCoarseSemanticVoxelShadow } from './learning/coarseSemanticVoxelShadow.js';
-import { ConceptSelectionAgent } from './agents/conceptSelectionAgent.js';
-import { ConceptFusionAgent } from './agents/conceptFusionAgent.js';
+import { compactCoarseSemanticVoxelShadow } from './learning/coarseSemanticVoxelShadow.js';
 import { CriticCouncilAgent } from './agents/criticCouncilAgent.js';
 import { CSGBuilder, computeBounds } from './engine/csgBuilder.js';
 import { BSPPartitioner } from './engine/bspPartitioner.js';
 import { AStarPathfinder } from './engine/pathfinder.js';
-import { createLlmClient } from '../llm/createLlmClient.js';
 import { ensureDir, writeJson } from '../lib/fs.js';
 import { resolveWorldDir } from '../lib/minecraftWorlds.js';
 import { detectDoorSide, detectFloors, detectScale } from './agents/architectAgent.js';
+import { compileDesignLayers, prepareConstructionDesign } from './designStages.js';
 
-export async function runConstructionWorkflow({
-  prompt,
-  mode = 'mock',
-  mcVersion = '1.21',
-  outputDir,
-  seed,
-  seedSource = seed === undefined ? 'none' : 'manual',
-  cwd = process.cwd(),
+export async function runConstructionWorkflow(options) {
+  const prepared = await prepareConstructionDesign(options);
+  const compiledLayers = compileDesignLayers({
+    prepared,
+    layerPayloads: undefined,
+    resolvedEffectsByLayer: {}
+  });
+  return compilePreparedConstruction({ ...options, prepared, compiledLayers });
+}
+
+export async function compilePreparedConstruction({
+  prepared,
+  compiledLayers,
+  outputDir = prepared.outputDir,
+  mcVersion = prepared.mcVersion,
+  cwd = prepared.cwd,
   minecraftDir,
   world,
   datapacksDir,
   autoBuild = false,
-  conceptCount = 0,
-  conceptStrategy = 'select',
-  critics = true,
-  neuralRetrieval = false,
-  coarseVoxelMode = 'off', coarseVoxelProvider = 'baseline', coarseVoxelPlan
+  critics = prepared.critics
 }) {
-  if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
-
-  await ensureDir(outputDir);
-  const llmClient = createLlmClient({ cwd });
-  const llmProvider = mode === 'mock' ? 'disabled-by-mock-mode' : llmClient.name;
-
-  let architecture = await new ConstructionArchitectAgent({ llmClient, mode }).run(prompt);
-  const stylePreset = new StylePresetMemoryAgent().run(prompt, architecture);
-  const materialPalette = new MaterialPaletteAgent().run(prompt, architecture, stylePreset);
-  architecture = {
-    ...architecture,
-    materials: materialPalette.materials,
-    generation_hints: {
-      ...(architecture.generation_hints || {}),
-      style_preset: stylePreset.id,
-      material_palette: materialPalette.palette
-    }
-  };
-  let buildSpec = deriveBuildSpec(prompt, architecture, seed);
-  const templateKnowledge = new TemplateKnowledgeAgent({ cwd, neuralRetrieval }).run(prompt, architecture, buildSpec);
-  architecture = applyTemplateKnowledgeToArchitecture(architecture, templateKnowledge);
-  if (architecture.generation_hints?.template_material_patch) {
-    materialPalette.materials = architecture.materials;
-    materialPalette.template_material_guidance = architecture.generation_hints.template_material_guidance;
-    materialPalette.template_material_patch = architecture.generation_hints.template_material_patch;
-    materialPalette.roles = Object.keys(materialPalette.materials || {}).sort();
-  }
-  buildSpec = applyTemplateKnowledgeToBuildSpec(buildSpec, templateKnowledge);
-  let topology = await new ConstructionPlannerAgent({ llmClient, mode }).run(prompt, architecture, buildSpec);
-  const conceptStudio = await runConceptStudio({
+  const {
     prompt,
     mode,
-    llmClient,
-    architecture,
-    buildSpec,
-    topology,
-    templateKnowledge,
-    conceptCount,
-    conceptStrategy,
-    seed
-  });
-  let creativeDesign = await new CreativeDesignAgent({ llmClient, mode }).run(
-    prompt,
-    architecture,
-    buildSpec,
-    topology,
-    { conceptStudio }
-  );
-  ({ architecture, buildSpec, topology, creativeDesign } = applyCreativeDesign({ architecture, buildSpec, topology, creativeDesign, prompt }));
-  const stage7Shadow = await runCoarseSemanticVoxelShadow({
-    mode: coarseVoxelMode,
-    provider: coarseVoxelProvider,
-    artifactPath: coarseVoxelPlan,
-    prompt,
     seed,
+    seedSource,
+    coarseVoxelPlan,
+    llmProvider,
+    llmUsage,
+    conceptStudio,
+    stage7Shadow,
+    stylePreset,
+    materialPalette,
+    templateKnowledge
+  } = prepared;
+  const {
     architecture,
-    buildSpec,
     topology,
     creativeDesign,
-    conceptStudio,
-    templateKnowledge
-  });
-  const llmUsage = summarizeLlmUsage({ mode, llmProvider, architecture, topology, creativeDesign });
-  const structure = new StructureAgent().run(architecture, buildSpec, topology);
-  const facade = new FacadeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
-  const roof = new RoofAgent().run(prompt, architecture, buildSpec, structure, facade, materialPalette, stylePreset);
+    buildSpec,
+    structure,
+    facade,
+    roof
+  } = compiledLayers.runtime;
   const site = new SiteLandscapeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
   const shell = new CSGBuilder(buildSpec, architecture.materials).generateShell(architecture, { structure, facade, roof, site });
   const layout = new BSPPartitioner(buildSpec, architecture.materials).fitRooms(shell, topology);
@@ -647,41 +596,6 @@ function moduleCounts(grid) {
   return counts;
 }
 
-function summarizeLlmUsage({ mode, llmProvider, architecture, topology, creativeDesign }) {
-  const stages = [
-    summarizeLlmStage('ArchitectAgent', architecture),
-    summarizeLlmStage('PlannerAgent', topology),
-    summarizeLlmStage('CreativeDesignAgent', creativeDesign)
-  ];
-  const called = stages.some((stage) => stage.called);
-  const used = stages.some((stage) => stage.used);
-  const failedStages = stages.filter((stage) => stage.error);
-  return {
-    mode,
-    provider: llmProvider,
-    called,
-    used,
-    status: used ? 'used' : called ? 'fallback-after-error' : 'not-called',
-    stages,
-    errors: failedStages.map((stage) => `${stage.agent}: ${stage.error}`)
-  };
-}
-
-function summarizeLlmStage(agent, output = {}) {
-  const source = String(output?.source || 'unknown');
-  const decisionSource = String(output?.decision_source || '');
-  const called = source === 'llm' || source === 'fallback-after-llm-error' || decisionSource === 'llm' || decisionSource === 'fallback-after-llm-error';
-  const used = source === 'llm' || decisionSource === 'llm';
-  const stage = {
-    agent,
-    source: decisionSource || source,
-    called,
-    used
-  };
-  if (output?.llm_error) stage.error = String(output.llm_error);
-  return stage;
-}
-
 function compactTemplateLawCoverage(coverage = {}) {
   return {
     active: Boolean(coverage.active),
@@ -790,47 +704,6 @@ function summarizeSite(site = {}) {
 
 function validateBlueprint(blueprint) {
   return new BlueprintQAAgent().run(blueprint);
-}
-
-async function runConceptStudio({ prompt, mode, llmClient, architecture, buildSpec, topology, templateKnowledge, conceptCount = 0, conceptStrategy = 'select', seed }) {
-  const count = clampConceptCount(conceptCount);
-  if (count < 2) return undefined;
-  const base = await new ConceptStudioAgent({ llmClient, mode }).run(
-    prompt,
-    architecture,
-    buildSpec,
-    topology,
-    templateKnowledge,
-    { count, strategy: conceptStrategy, seed }
-  );
-  if (!base.active || base.concepts.length < 2) return base;
-  const selection = new ConceptSelectionAgent().run(base.concepts, {
-    prompt,
-    architecture,
-    buildSpec,
-    templateKnowledge
-  });
-  let selectedConcept = base.concepts.find((item) => item.id === selection.selected_concept_id);
-  let fusion;
-  if (String(base.strategy) === 'fuse') {
-    fusion = new ConceptFusionAgent().run(base.concepts, selection, { prompt, architecture, buildSpec });
-    if (fusion.active && fusion.concept) selectedConcept = fusion.concept;
-  }
-  return {
-    ...base,
-    selected_concept_id: selectedConcept?.id || selection.selected_concept_id,
-    fused_concept_id: fusion?.active ? fusion.concept?.id : undefined,
-    selection,
-    fusion,
-    selectedConcept,
-    warnings: [...(base.warnings || []), ...(selection.warnings || []), ...(fusion?.warnings || [])]
-  };
-}
-
-function clampConceptCount(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number < 2) return 0;
-  return Math.max(2, Math.min(5, Math.round(number)));
 }
 
 async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shadow, coarseVoxelPlan, criticCouncil, architectureScorecard, validation, prompt, mcVersion, autoBuild, minecraftDir, world, datapacksDir }) {
