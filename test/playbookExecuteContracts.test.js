@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import {
   CHECKPOINT_STATUSES,
@@ -26,28 +27,66 @@ import {
   validateResolvedPatch,
   validateSelectionRecord
 } from '../src/playbook/execute/contracts.js';
-import { sha256, stableJson } from '../src/playbook/shadow/canonical.js';
 
 const HASH = 'a'.repeat(64);
 const DESIGN_LAYERS = ['brief', 'massing', 'structure', 'roof', 'facade'];
+const INVALIDATES = {
+  brief: ['massing', 'structure', 'roof', 'facade'],
+  massing: ['structure', 'roof', 'facade'],
+  structure: ['roof', 'facade'],
+  roof: ['facade'],
+  facade: []
+};
+const CHECKPOINT_ENVELOPE_SHA256 = '978e462f6e1a0dbfb360d0334b14c9e1c3a9e20c532f36de2387625433a1e952';
+const REPAIR_ROWS = [
+  {
+    rule_id: 'rule:structure.compose-three-volumes',
+    check_id: 'check:massing:three-volume-composition',
+    design_layer: 'massing',
+    repair_operation_id: 'repair:massing:resize-or-reposition-volume',
+    invalidates_layers: ['structure', 'roof', 'facade'],
+    compiler_version: 1,
+    allowed_variant_ids: ['center-primary-and-reattach-secondaries', 'differentiate-equal-secondary-scale']
+  },
+  {
+    rule_id: 'rule:structure.create-primary-secondary-hierarchy',
+    check_id: 'check:massing:primary-secondary-hierarchy',
+    design_layer: 'massing',
+    repair_operation_id: 'repair:massing:strengthen-primary-volume',
+    invalidates_layers: ['structure', 'roof', 'facade'],
+    compiler_version: 1,
+    allowed_variant_ids: ['promote-largest-stable', 'reduce-nondominant-secondary']
+  },
+  {
+    rule_id: 'rule:structure.keep-support-volumes-subordinate',
+    check_id: 'check:massing:subordinate-support-volume',
+    design_layer: 'structure',
+    repair_operation_id: 'repair:massing:reduce-support-volume-prominence',
+    invalidates_layers: ['structure', 'roof', 'facade'],
+    compiler_version: 1,
+    allowed_variant_ids: ['reduce-attached-support-scale']
+  },
+  {
+    rule_id: 'rule:medieval.show-load-path',
+    check_id: 'check:structure:visible-load-path',
+    design_layer: 'structure',
+    repair_operation_id: 'repair:structure:connect-support-path',
+    invalidates_layers: ['roof', 'facade'],
+    compiler_version: 1,
+    allowed_variant_ids: ['connect-known-structural-anchors']
+  }
+];
 
 test('exports the literal P5 modes, layers, invalidation graph, and repair rows', () => {
   assert.equal(EXECUTE_SCHEMA_VERSION, 1);
   assert.equal(EXECUTE_COMPILER_VERSION, 1);
   assert.deepEqual(PLAYBOOK_MODES, ['off', 'execute']);
   assert.deepEqual(DESIGN_LAYER_ORDER, DESIGN_LAYERS);
-  assert.deepEqual(INVALIDATES_BY_LAYER.massing, ['structure', 'roof', 'facade']);
-  assert.deepEqual(INVALIDATES_BY_LAYER.structure, ['roof', 'facade']);
+  assert.deepEqual(INVALIDATES_BY_LAYER, INVALIDATES);
   assert.deepEqual(CHECKPOINT_STATUSES, [
     'draft', 'reviewing', 'accepted', 'rework_required', 'superseded', 'failed'
   ]);
-  assert.equal(EXECUTABLE_REPAIR_ROWS.length, 4);
-  assert.deepEqual(EXECUTABLE_REPAIR_ROWS.map((row) => row.repair_operation_id), [
-    'repair:massing:resize-or-reposition-volume',
-    'repair:massing:strengthen-primary-volume',
-    'repair:massing:reduce-support-volume-prominence',
-    'repair:structure:connect-support-path'
-  ]);
+  assert.deepEqual(EXECUTABLE_REPAIR_ROWS, REPAIR_ROWS);
   assert.ok(Object.isFrozen(EXECUTABLE_REPAIR_ROWS));
   assert.ok(P5_ERROR_CODES.includes('P5_NO_ELIGIBLE_CANDIDATE'));
 });
@@ -72,9 +111,28 @@ test('frozen envelope admits only its exact outer schema and canonical data', ()
   assertFrozenMutationRejections(validateFrozenDesignEnvelope, frozenDesign(), 'P5_DESIGN_INVALID');
   assert.throws(() => validateFrozenDesignEnvelope(accessorObject(frozenDesign())), { code: 'P5_DESIGN_INVALID' });
   assert.throws(() => validateFrozenDesignEnvelope(cyclic(frozenDesign())), { code: 'P5_DESIGN_INVALID' });
-  const result = validateFrozenDesignEnvelope(frozenDesign());
+  const input = frozenDesign();
+  const result = validateFrozenDesignEnvelope(input);
   assert.ok(Object.isFrozen(result));
-  assert.notEqual(result, frozenDesign());
+  assert.ok(Object.isFrozen(result.layer_intents));
+  assert.ok(Object.isFrozen(result.repair_variant_preferences));
+  assert.notEqual(result, input);
+});
+
+test('canonical data rejects array accessors/custom prototypes and accepts reordered object keys', () => {
+  const accessor = frozenDesign();
+  Object.defineProperty(accessor.selected_rule_ids, '0', {
+    enumerable: true,
+    get: () => 'rule:medieval.show-load-path'
+  });
+  assert.throws(() => validateFrozenDesignEnvelope(accessor), { code: 'P5_DESIGN_INVALID' });
+
+  const customPrototype = frozenDesign();
+  Object.setPrototypeOf(customPrototype.selected_rule_ids, { map: Array.prototype.map });
+  assert.throws(() => validateFrozenDesignEnvelope(customPrototype), { code: 'P5_DESIGN_INVALID' });
+
+  const reordered = Object.fromEntries(Object.entries(frozenDesign()).reverse());
+  assert.deepEqual(validateFrozenDesignEnvelope(reordered), frozenDesign());
 });
 
 test('frozen generator context is bound to its candidate and contains only safe canonical data', () => {
@@ -90,8 +148,8 @@ test('checkpoint payload/envelope preserve exact layer predecessors and their ca
   const reordered = checkpointPayload('facade');
   reordered.upstream_accepted_hashes.reverse();
   assert.throws(() => validateCheckpointPayload(reordered), { code: 'P5_CHECKPOINT_INVALID' });
-  const payload = checkpointPayload();
-  const envelope = { checkpoint_sha256: sha256(stableJson(payload)), checkpoint: payload };
+  const envelope = checkpointEnvelope();
+  assert.equal(independentSha256(independentStableJson(envelope.checkpoint)), CHECKPOINT_ENVELOPE_SHA256);
   assert.deepEqual(validateCheckpointEnvelope(envelope), envelope);
   envelope.checkpoint_sha256 = HASH.replace('a', 'b');
   assert.throws(() => validateCheckpointEnvelope(envelope), { code: 'P5_CHECKPOINT_INVALID' });
@@ -101,6 +159,17 @@ test('checkpoint payload/envelope preserve exact layer predecessors and their ca
   const wrongArtifactHash = checkpointPayload();
   wrongArtifactHash.compiled_artifact_hashes.blueprint = 'g'.repeat(64);
   assert.throws(() => validateCheckpointPayload(wrongArtifactHash), { code: 'P5_CHECKPOINT_INVALID' });
+});
+
+test('checkpoint envelope receives the same exhaustive outer mutation matrix as other contracts', () => {
+  assertFrozenMutationRejections(validateCheckpointEnvelope, checkpointEnvelope(), 'P5_CHECKPOINT_INVALID');
+  const envelope = checkpointEnvelope();
+  assertNestedObjectMutationRejections(
+    validateCheckpointEnvelope,
+    envelope,
+    ['checkpoint'],
+    'P5_CHECKPOINT_INVALID'
+  );
 });
 
 test('chain manifest and eligibility reject extra, reordered, duplicate, and malformed authority rows', () => {
@@ -132,6 +201,12 @@ test('repair preference, request, and resolved patch retain only the allowlisted
   const badHash = repairRequest();
   badHash.base_checkpoint_sha256 = 'f'.repeat(63);
   assert.throws(() => validateRepairRequest(badHash), { code: 'P5_REPAIR_INVALID' });
+  for (const row of REPAIR_ROWS) {
+    const request = repairRequestFor(row);
+    const patch = resolvedPatchFor(row);
+    assert.deepEqual(validateRepairRequest(request), request);
+    assert.deepEqual(validateResolvedPatch(patch), patch);
+  }
 });
 
 test('selection record is an exact, frozen authority boundary', () => {
@@ -147,6 +222,71 @@ test('selection record is an exact, frozen authority boundary', () => {
   const wrongSelection = selectionRecord();
   wrongSelection.selected_chain_sha256 = 'b'.repeat(64);
   assert.throws(() => validateSelectionRecord(wrongSelection), { code: 'P5_AUTHORITY_INVALID' });
+});
+
+test('every fixed nested authority row receives missing, extra, wrong-type, duplicate, order, and hash mutations', () => {
+  assertRowMutationRejections(
+    validateFrozenDesignEnvelope,
+    frozenDesign(),
+    ['repair_variant_preferences'],
+    ['repair_operation_id', 'variant_id'],
+    'P5_DESIGN_INVALID'
+  );
+
+  const checkpoint = checkpointPayload('facade');
+  assertRowMutationRejections(
+    validateCheckpointPayload,
+    checkpoint,
+    ['upstream_accepted_hashes'],
+    ['layer', 'checkpoint_sha256'],
+    'P5_CHECKPOINT_INVALID'
+  );
+  for (const [index] of checkpoint.upstream_accepted_hashes.entries()) {
+    const invalid = clone(checkpoint);
+    invalid.upstream_accepted_hashes[index].checkpoint_sha256 = 'g'.repeat(64);
+    assert.throws(() => validateCheckpointPayload(invalid), { code: 'P5_CHECKPOINT_INVALID' }, `upstream hash ${index}`);
+  }
+
+  const chain = chainManifest();
+  assertRowMutationRejections(
+    validateChainManifest,
+    chain,
+    ['checkpoint_hashes'],
+    ['layer', 'checkpoint_sha256'],
+    'P5_CHECKPOINT_INVALID'
+  );
+  assertNestedObjectMutationRejections(
+    validateChainManifest,
+    chain,
+    ['eligibility'],
+    'P5_AUTHORITY_INVALID'
+  );
+  for (const [index] of chain.checkpoint_hashes.entries()) {
+    const invalid = clone(chain);
+    invalid.checkpoint_hashes[index].checkpoint_sha256 = 'g'.repeat(64);
+    assert.throws(() => validateChainManifest(invalid), { code: 'P5_CHECKPOINT_INVALID' }, `chain hash ${index}`);
+  }
+
+  const selection = selectionRecord();
+  assertRowMutationRejections(
+    validateSelectionRecord,
+    selection,
+    ['candidates'],
+    ['candidate_id', 'seed', 'current_chain_sha256', 'hard_qa_sha256', 'p4_review_sha256', 'eligibility', 'repair_attempt_count'],
+    'P5_AUTHORITY_INVALID'
+  );
+  for (const [rowIndex, row] of selection.candidates.entries()) {
+    for (const hash of ['current_chain_sha256', 'hard_qa_sha256', 'p4_review_sha256']) {
+      const invalid = clone(selection);
+      invalid.candidates[rowIndex][hash] = 'g'.repeat(64);
+      assert.throws(() => validateSelectionRecord(invalid), { code: 'P5_AUTHORITY_INVALID' }, `selection ${rowIndex} ${hash}`);
+    }
+    const duplicate = clone(selection);
+    duplicate.candidates[rowIndex].candidate_id = 'candidate-01';
+    if (rowIndex !== 0) {
+      assert.throws(() => validateSelectionRecord(duplicate), { code: 'P5_AUTHORITY_INVALID' }, `duplicate candidate ${rowIndex}`);
+    }
+  }
 });
 
 function assertFrozenMutationRejections(validate, input, code) {
@@ -169,6 +309,50 @@ function assertFrozenMutationRejections(validate, input, code) {
       assert.throws(() => validate(wrongType), { code }, `wrong type ${key}`);
     }
   }
+}
+
+function assertNestedObjectMutationRejections(validate, input, path, code) {
+  const target = atPath(input, path);
+  for (const key of Object.keys(target)) {
+    const missing = clone(input);
+    delete atPath(missing, path)[key];
+    assert.throws(() => validate(missing), { code }, `missing ${path.join('.')}.${key}`);
+
+    const extra = clone(input);
+    atPath(extra, path).extra = true;
+    assert.throws(() => validate(extra), { code }, `extra ${path.join('.')}.${key}`);
+
+    if (isScalar(target[key])) {
+      const wrongType = clone(input);
+      atPath(wrongType, path)[key] = wrongScalar(target[key]);
+      assert.throws(() => validate(wrongType), { code }, `wrong type ${path.join('.')}.${key}`);
+    }
+  }
+}
+
+function assertRowMutationRejections(validate, input, path, fields, code) {
+  const rows = atPath(input, path);
+  for (const [index, row] of rows.entries()) {
+    for (const key of fields) {
+      const missing = clone(input);
+      delete atPath(missing, path)[index][key];
+      assert.throws(() => validate(missing), { code }, `missing ${path.join('.')}[${index}].${key}`);
+
+      const extra = clone(input);
+      atPath(extra, path)[index].extra = true;
+      assert.throws(() => validate(extra), { code }, `extra ${path.join('.')}[${index}].${key}`);
+
+      if (isScalar(row[key])) {
+        const wrongType = clone(input);
+        atPath(wrongType, path)[index][key] = wrongScalar(row[key]);
+        assert.throws(() => validate(wrongType), { code }, `wrong type ${path.join('.')}[${index}].${key}`);
+      }
+    }
+  }
+}
+
+function atPath(value, path) {
+  return path.reduce((current, key) => current[key], value);
 }
 
 function frozenDesign() {
@@ -220,8 +404,15 @@ function checkpointPayload(layer = 'massing') {
     compiled_artifact_hashes: { blueprint: HASH },
     hard_qa: { ok: true },
     design_review: { status: 'satisfied' },
-    invalidates_downstream: INVALIDATES_BY_LAYER[layer],
+    invalidates_downstream: INVALIDATES[layer],
     replay_origin: 'initial'
+  };
+}
+
+function checkpointEnvelope() {
+  return {
+    checkpoint_sha256: CHECKPOINT_ENVELOPE_SHA256,
+    checkpoint: checkpointPayload()
   };
 }
 
@@ -271,6 +462,17 @@ function repairRequest() {
   };
 }
 
+function repairRequestFor(row) {
+  return {
+    schema_version: 1,
+    candidate_id: 'candidate-01',
+    rule_id: row.rule_id,
+    repair_operation_id: row.repair_operation_id,
+    variant_id: row.allowed_variant_ids[0],
+    base_checkpoint_sha256: HASH
+  };
+}
+
 function resolvedPatch() {
   return {
     schema_version: 1,
@@ -284,6 +486,22 @@ function resolvedPatch() {
     precondition_hashes: [{ anchor_id: 'primary-volume', sha256: HASH }],
     effects: [{ kind: 'assign-primary', volume_id: 'volume-01' }],
     invalidates_layers: ['structure', 'roof', 'facade']
+  };
+}
+
+function resolvedPatchFor(row) {
+  return {
+    schema_version: 1,
+    compiler_version: 1,
+    candidate_id: 'candidate-01',
+    rule_id: row.rule_id,
+    repair_operation_id: row.repair_operation_id,
+    variant_id: row.allowed_variant_ids[0],
+    target_layer: row.repair_operation_id.startsWith('repair:massing:') ? 'massing' : row.design_layer,
+    base_checkpoint_sha256: HASH,
+    precondition_hashes: [{ anchor_id: 'primary-volume', sha256: HASH }],
+    effects: [{ kind: 'assign-primary', volume_id: 'volume-01' }],
+    invalidates_layers: row.invalidates_layers
   };
 }
 
@@ -340,4 +558,18 @@ function wrongScalar(value) {
   if (typeof value === 'string') return 1;
   if (typeof value === 'number') return '1';
   return 'true';
+}
+
+function independentSha256(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function independentStableJson(value) {
+  return `${JSON.stringify(independentSort(value), null, 2)}\n`;
+}
+
+function independentSort(value) {
+  if (Array.isArray(value)) return value.map(independentSort);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, independentSort(value[key]) ]));
 }

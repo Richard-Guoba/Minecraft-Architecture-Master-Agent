@@ -117,7 +117,12 @@ export function validateFrozenDesignEnvelope(value) {
   assertArray(data.repair_variant_preferences, 'P5_DESIGN_INVALID');
   const seen = new Set();
   for (const preference of data.repair_variant_preferences) {
-    const row = validateRepairPreference(preference);
+    let row;
+    try {
+      row = validateRepairPreference(preference);
+    } catch {
+      fail('P5_DESIGN_INVALID');
+    }
     if (seen.has(row.repair_operation_id)) fail('P5_DESIGN_INVALID');
     seen.add(row.repair_operation_id);
   }
@@ -282,9 +287,15 @@ function jsonClone(value, code) {
     if (ancestors.has(item) || Object.getOwnPropertySymbols(item).length > 0) fail(code);
     ancestors.add(item);
     if (Array.isArray(item)) {
+      if (Object.getPrototypeOf(item) !== Array.prototype) fail(code);
       const names = Object.getOwnPropertyNames(item);
-      if (names.length !== item.length + 1 || names.at(-1) !== 'length') fail(code);
-      const output = item.map(clone);
+      if (names.length !== item.length + 1 || !names.includes('length')) fail(code);
+      const output = new Array(item.length);
+      for (let index = 0; index < item.length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(item, String(index));
+        if (!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor, 'value')) fail(code);
+        output[index] = clone(descriptor.value);
+      }
       ancestors.delete(item);
       return output;
     }
@@ -303,7 +314,7 @@ function jsonClone(value, code) {
 }
 
 function assertExactObject(value, fields, code) {
-  if (!isPlainObject(value) || !sameArray(Object.keys(value), fields)) fail(code);
+  if (!isPlainObject(value) || !sameKeySet(Object.keys(value), fields)) fail(code);
 }
 
 function assertSchemaVersion(value, code) {
@@ -406,6 +417,10 @@ function isPlainObject(value) {
 
 function sameArray(left, right) {
   return Array.isArray(left) && left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameKeySet(left, right) {
+  return left.length === right.length && left.every((key) => right.includes(key));
 }
 
 function fail(code) {
