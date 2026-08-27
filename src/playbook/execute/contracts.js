@@ -111,8 +111,8 @@ export function validateFrozenDesignEnvelope(value) {
   assertSeed(data.seed, 'P5_DESIGN_INVALID');
   assertBoundedProse(data.brief_intent, 'P5_DESIGN_INVALID');
   assertLayerIntentRows(data.layer_intents, 'P5_DESIGN_INVALID');
-  assertCanonicalIds(data.selected_rule_ids, RULE_ID, 'P5_DESIGN_INVALID');
-  assertCanonicalIds(data.rejected_rule_ids, RULE_ID, 'P5_DESIGN_INVALID');
+  assertUniqueIds(data.selected_rule_ids, RULE_ID, 'P5_DESIGN_INVALID');
+  assertUniqueIds(data.rejected_rule_ids, RULE_ID, 'P5_DESIGN_INVALID');
   assertDistinct(data.selected_rule_ids, data.rejected_rule_ids, 'P5_DESIGN_INVALID');
   assertArray(data.repair_variant_preferences, 'P5_DESIGN_INVALID');
   const seen = new Set();
@@ -368,6 +368,15 @@ function assertCanonicalIds(value, pattern, code) {
   for (const item of value) {
     if (typeof item !== 'string' || !pattern.test(item) || item === previous || previous !== undefined && item < previous) fail(code);
     previous = item;
+  }
+}
+
+function assertUniqueIds(value, pattern, code) {
+  assertArray(value, code);
+  const seen = new Set();
+  for (const item of value) {
+    if (typeof item !== 'string' || !pattern.test(item) || seen.has(item)) fail(code);
+    seen.add(item);
   }
 }
 

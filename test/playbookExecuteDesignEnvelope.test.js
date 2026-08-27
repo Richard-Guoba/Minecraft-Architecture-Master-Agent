@@ -132,6 +132,49 @@ test('configured LLM receives one exact bounded packet and freezes its valid ful
   assert.ok(Object.isFrozen(calls[0].user));
 });
 
+test('LLM accepts a reviewed-corpus ordered cross-prefix rule subset and rejects its reverse', async () => {
+  const cards = await reviewedCards();
+  const ordered = clone(RESPONSE);
+  ordered.selected_rule_ids = [
+    'rule:structure.compose-three-volumes',
+    'rule:roof.border-with-material-contrast'
+  ];
+  const reverse = clone(ordered);
+  reverse.selected_rule_ids.reverse();
+  const client = {
+    name: 'private-provider',
+    isConfigured: () => true,
+    chatJson: async () => ordered
+  };
+
+  assert.deepEqual(
+    await createFrozenDesignEnvelope({ mode: 'llm', ...INPUT, cards, client }),
+    ordered
+  );
+  client.chatJson = async () => reverse;
+  await assert.rejects(
+    createFrozenDesignEnvelope({ mode: 'llm', ...INPUT, cards, client }),
+    { code: 'P5_DESIGN_INVALID' }
+  );
+});
+
+test('LLM rejects a syntactically valid fabricated 21-card corpus', async () => {
+  const cards = clone(REVIEWED_RULES);
+  cards[0].rule_id = 'rule:unpublished-00';
+  const response = clone(RESPONSE);
+  response.selected_rule_ids = ['rule:unpublished-00'];
+  const client = {
+    name: 'private-provider',
+    isConfigured: () => true,
+    chatJson: async () => response
+  };
+
+  await assert.rejects(
+    createFrozenDesignEnvelope({ mode: 'llm', ...INPUT, cards, client }),
+    { code: 'P5_DESIGN_INVALID', message: 'P5_DESIGN_INVALID' }
+  );
+});
+
 test('LLM degrades whole candidate for every authority drift without a mock fallback', async (t) => {
   const cards = await reviewedCards();
   const mutations = [

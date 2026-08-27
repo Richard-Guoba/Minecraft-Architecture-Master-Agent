@@ -1,6 +1,7 @@
 import { DESIGN_LAYER_ORDER, EXECUTABLE_REPAIR_ROWS, EXECUTE_SCHEMA_VERSION } from './constants.js';
 import { executeError, validateFrozenDesignEnvelope } from './contracts.js';
 import { deepFreeze } from '../shadow/canonical.js';
+import { createCheckerDefinitions } from '../shadow/checkerRegistry.js';
 
 const SYSTEM_INSTRUCTION = 'Select design intents, reviewed rule IDs, and optional repair variant preferences from the supplied exact lists. Return no patch, path, value, coordinate, block, command, score, threshold, or extra field. Preserve candidate ID, seed, five layer rows, and canonical reviewed order.';
 const ENVELOPE_FIELDS = Object.freeze([
@@ -10,6 +11,7 @@ const ENVELOPE_FIELDS = Object.freeze([
 const LAYER_INTENT_FIELDS = Object.freeze(['layer', 'intent']);
 const PREFERENCE_FIELDS = Object.freeze(['repair_operation_id', 'variant_id']);
 const REPAIR_ORDER = new Map(EXECUTABLE_REPAIR_ROWS.map((row, index) => [row.repair_operation_id, index]));
+const CASE_PATTERN_COUNT = 6;
 
 export function buildDesignEnvelopePrompt(input = {}) {
   try {
@@ -102,13 +104,14 @@ function validateCandidate(value, candidateId, seed, reviewedRules) {
 
 function reviewedRulesFrom(cards) {
   const safeCards = clonePlainData(cards);
-  if (!Array.isArray(safeCards) || safeCards.length !== 21) invalid();
-  const seen = new Set();
-  return safeCards.map((card) => {
+  const definitions = createCheckerDefinitions();
+  if (!Array.isArray(safeCards) || safeCards.length !== definitions.length) invalid();
+  return safeCards.map((card, index) => {
     if (!card || typeof card !== 'object' || Object.getPrototypeOf(card) !== Object.prototype) invalid();
-    if (typeof card.rule_id !== 'string' || !/^rule:[a-z0-9][a-z0-9.-]*$/u.test(card.rule_id)) invalid();
-    if (!['core-procedure', 'case-pattern'].includes(card.teaching_role) || seen.has(card.rule_id)) invalid();
-    seen.add(card.rule_id);
+    const expectedRole = index < definitions.length - CASE_PATTERN_COUNT
+      ? 'core-procedure'
+      : 'case-pattern';
+    if (card.rule_id !== definitions[index].rule_id || card.teaching_role !== expectedRole) invalid();
     return { rule_id: card.rule_id, teaching_role: card.teaching_role };
   });
 }

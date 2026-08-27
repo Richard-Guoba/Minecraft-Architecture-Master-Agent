@@ -108,7 +108,9 @@ test('mode/options and public errors have an exact safe surface', () => {
 });
 
 test('frozen envelope admits only its exact outer schema and canonical data', () => {
-  assertFrozenMutationRejections(validateFrozenDesignEnvelope, frozenDesign(), 'P5_DESIGN_INVALID');
+  assertFrozenMutationRejections(validateFrozenDesignEnvelope, frozenDesign(), 'P5_DESIGN_INVALID', {
+    unorderedArrays: ['selected_rule_ids', 'rejected_rule_ids']
+  });
   assert.throws(() => validateFrozenDesignEnvelope(accessorObject(frozenDesign())), { code: 'P5_DESIGN_INVALID' });
   assert.throws(() => validateFrozenDesignEnvelope(cyclic(frozenDesign())), { code: 'P5_DESIGN_INVALID' });
   const input = frozenDesign();
@@ -374,7 +376,7 @@ test('every ID-bearing authoritative array rejects duplicated rows', () => {
   );
 });
 
-function assertFrozenMutationRejections(validate, input, code) {
+function assertFrozenMutationRejections(validate, input, code, { unorderedArrays = [] } = {}) {
   assert.deepEqual(validate(input), input);
   for (const key of Object.keys(input)) {
     const missing = clone(input);
@@ -383,7 +385,7 @@ function assertFrozenMutationRejections(validate, input, code) {
   }
   assert.throws(() => validate({ ...clone(input), extra: true }), { code }, 'extra field');
   for (const [key, value] of Object.entries(input)) {
-    if (Array.isArray(value) && value.length > 1) {
+    if (Array.isArray(value) && value.length > 1 && !unorderedArrays.includes(key)) {
       const reordered = clone(input);
       reordered[key].reverse();
       assert.throws(() => validate(reordered), { code }, `reordered ${key}`);
