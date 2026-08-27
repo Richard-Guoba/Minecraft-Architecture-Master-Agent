@@ -117,6 +117,66 @@ test('P5 dependency gate closes repository-wide P6 and visual scoring paths with
     assert.equal(audit.import_boundary_unresolved_count, 0);
     assert.equal(audit.eligibility_authority_violation_count, 0);
   });
+  await t.test('deny both exact exceptions when eligibility imports them', async (t) => {
+    const root = await dependencyRoot(t);
+    await writeFixture(root, 'src/construction/agents/candidateSelectionAgent.js', 'export const ranker = true;\n');
+    await writeFixture(root, 'src/construction/agents/visualizationAgent.js', 'export const preview = true;\n');
+    await writeFixture(root, 'src/playbook/execute/entry.js', 'export const execute = true;\n');
+    await writeFixture(root, 'src/playbook/execute/eligibility.js', [
+      "import '../../construction/agents/candidateSelectionAgent.js';",
+      "import '../../construction/agents/visualizationAgent.js';",
+      ''
+    ].join('\n'));
+    const audit = await auditExecuteDependencyBoundary({ projectRoot: root });
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.eligibility_authority_violation_count, 2);
+    assert.equal(audit.eligibility_authority_unresolved_count, 0);
+  });
+});
+
+test('P5 dependency gate classifies logical and real paths for every visual-authority variant', async (t) => {
+  for (const target of [
+    'src/phases/p6/evaluator.js',
+    'src/phases/p6Evaluator.js',
+    'src/providers/imageClient.js',
+    'src/scoring/aestheticEvaluator.js',
+    'src/construction/agents/candidateSelectionAgent/index.js',
+    'src/construction/agents/visualizationAgent/index.js'
+  ]) {
+    await t.test(`reject ${target}`, async (t) => {
+      const root = await dependencyRoot(t);
+      await writeFixture(root, target, 'export const forbidden = true;\n');
+      await writeFixture(root, 'src/playbook/execute/entry.js',
+        `import '${relativeImport('src/playbook/execute/entry.js', target)}';\n`);
+      const audit = await auditExecuteDependencyBoundary({ projectRoot: root });
+      assert.equal(audit.import_boundary_violation_count, 1);
+      assert.equal(audit.import_boundary_unresolved_count, 0);
+    });
+  }
+
+  await t.test('allow helper by its own logical path', async (t) => {
+    const root = await dependencyRoot(t);
+    await writeFixture(root, 'src/utils/helper.js', 'export const helper = true;\n');
+    await writeFixture(root, 'src/playbook/execute/entry.js', "import '../../utils/helper.js';\n");
+    const audit = await auditExecuteDependencyBoundary({ projectRoot: root });
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+  });
+
+  await t.test('reject forbidden logical P6 symlink without forbidding its helper inode', async (t) => {
+    const root = await dependencyRoot(t);
+    const helper = path.join(root, 'src/utils/helper.js');
+    const logicalP6 = path.join(root, 'src/p6/evaluator.js');
+    await writeFixture(root, 'src/utils/helper.js', 'export const helper = true;\n');
+    await fs.mkdir(path.dirname(logicalP6), { recursive: true });
+    await fs.symlink(helper, logicalP6);
+    await writeFixture(root, 'src/playbook/execute/entry.js', "import '../../p6/evaluator.js';\n");
+    const audit = await auditExecuteDependencyBoundary({ projectRoot: root });
+    assert.equal(audit.import_boundary_violation_count, 1);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+    assert.deepEqual(audit.forbidden_dependency_imports,
+      ['EXECUTE_FORBIDDEN_MODULE:src/p6/evaluator.js -> src/utils/helper.js']);
+  });
 });
 
 test('positive acceptance fixture produces exactly three eligible zero-repair five-layer candidates', async (t) => {

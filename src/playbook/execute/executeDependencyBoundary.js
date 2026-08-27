@@ -22,7 +22,8 @@ export async function auditExecuteDependencyBoundary({ projectRoot }) {
       'src/playbook/human-preference',
       'src/playbook/visual-scoring'
     ],
-    factNamespace: 'EXECUTE'
+    factNamespace: 'EXECUTE',
+    classifyResolvedDependency: classifyExecuteDependencyEdge
   });
   const repositoryWideViolations = execute.resolved_dependency_paths
     .filter((relativePath) => isForbiddenExecuteDependency(relativePath))
@@ -58,12 +59,17 @@ export async function auditExecuteDependencyBoundary({ projectRoot }) {
 function isForbiddenExecuteDependency(relativePath) {
   if (ALLOWED_NONELIGIBILITY_DEPENDENCIES.includes(relativePath)) return false;
   const normalized = relativePath.toLowerCase().replaceAll('-', '').replaceAll('_', '');
-  if (normalized === 'src/p6' || normalized.startsWith('src/p6/')) return true;
   const segments = normalized.split('/');
-  if (segments.includes('visual') || segments.includes('imagemodel') || segments.includes('screenshot')
-    || segments.includes('camera') || segments.includes('fixedview') || segments.includes('blindselection')
-    || segments.includes('humanpreference') || segments.includes('visualscoring')) return true;
-  const basename = segments.at(-1) || '';
-  return /(?:^|[^a-z])visual\.js$/u.test(basename)
-    || /visual(?:scor|evaluat|model|ization)|imagemodel|screenshot|camera|fixedview|blindselection|humanpreference|candidateselection/u.test(basename);
+  return segments.some((segment) => segment.startsWith('p6'))
+    || segments.some((segment) => /^(?:image(?:client|model|provider|scor|evaluat)?|screenshot|camera|fixedview|blindselection|humanpreference)/u.test(segment))
+    || segments.some((segment) => /visual(?:scor|evaluat|model|ization)|aesthetic(?:scor|evaluat)|candidateselection/u.test(segment));
+}
+
+function classifyExecuteDependencyEdge(edge) {
+  const logicalForbidden = !ALLOWED_NONELIGIBILITY_DEPENDENCIES.includes(edge.logical_dependency_path)
+    && (isForbiddenExecuteDependency(edge.logical_dependency_path)
+      || isForbiddenExecuteDependency(edge.specifier));
+  const realForbidden = isForbiddenExecuteDependency(edge.real_dependency_path);
+  if (!logicalForbidden || realForbidden) return null;
+  return `EXECUTE_FORBIDDEN_MODULE:${edge.logical_dependency_path} -> ${edge.real_dependency_path}`;
 }

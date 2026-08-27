@@ -33,7 +33,8 @@ export async function auditPlaybookSourceBoundary({
   projectRoot,
   entryPaths,
   forbiddenPaths,
-  factNamespace
+  factNamespace,
+  classifyResolvedDependency
 }) {
   const root = path.resolve(projectRoot);
   const namespace = String(factNamespace).toUpperCase();
@@ -128,6 +129,21 @@ export async function auditPlaybookSourceBoundary({
         unresolved.add(
           `${safeRelative(root, logicalPath)}:DEPENDENCY_UNAVAILABLE`
         );
+        continue;
+      }
+      const classifiedViolation = classifyResolvedDependency?.(Object.freeze({
+        importer_path: safeRelative(root, logicalPath),
+        specifier: dependency.specifier,
+        logical_dependency_path: logicalDependencyPath({
+          projectRoot: root,
+          importerPath: logicalPath,
+          specifier: dependency.specifier,
+          resolvedPath: resolved.path
+        }),
+        real_dependency_path: safeRelative(root, resolvedReal)
+      }));
+      if (classifiedViolation !== undefined && classifiedViolation !== null) {
+        violations.add(String(classifiedViolation));
         continue;
       }
       if (isForbiddenPath(resolvedReal, forbiddenRoots)) {
@@ -1076,6 +1092,13 @@ function isWithin(candidate, root) {
 function safeRelative(projectRoot, candidate) {
   if (!isWithin(candidate, projectRoot)) return 'outside-project';
   return path.relative(projectRoot, candidate).split(path.sep).join('/');
+}
+
+function logicalDependencyPath({ projectRoot, importerPath, specifier, resolvedPath }) {
+  if (specifier.startsWith('.') || path.isAbsolute(specifier)) {
+    return safeRelative(projectRoot, path.resolve(path.dirname(importerPath), specifier));
+  }
+  return safeRelative(projectRoot, resolvedPath);
 }
 
 function dependencyEdgeFact(projectRoot, importerPath, targetPath) {

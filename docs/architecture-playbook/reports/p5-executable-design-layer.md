@@ -42,9 +42,9 @@ npm run playbook:execute -- --mode mock --seed 424242 "Build a two-story medieva
 ## 新鲜门禁结果
 
 - 实施范围：Task 9 审阅基线 `e50195302990a860218c88ae28f73253e1a56636` 到本 Task 10 `feat(playbook): complete P5 executable design layer` 提交。
-- P5 精确门禁：378/378（合同、off 兼容、设计层、checkpoint、存储、资格、四类 repair、replay、orchestrator、真实 CLI、依赖和三场景 acceptance）。
+- P5 精确门禁：388/388（合同、off 兼容、设计层、checkpoint、存储、资格、四类 repair、replay、orchestrator、真实 CLI、依赖和三场景 acceptance）。
 - P4 精确兼容门禁：201/201。
-- 完整仓库回归：1426/1426，退出码 0。
+- 完整仓库回归：1436/1436，退出码 0。
 - P3：21 条审阅规则、15 条核心程序、6 条案例模式、5 个受管产物、0 managed drift。
 - 依赖：P5 与 P4 violation/unresolved 均为 0；P5 资格模块也不依赖 construction/pipeline/world/datapack I/O。
 - 卫生：`git diff --check` 为 0，`git ls-files out .local/architecture-playbook` 为空。
