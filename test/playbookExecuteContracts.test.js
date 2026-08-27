@@ -289,6 +289,91 @@ test('every fixed nested authority row receives missing, extra, wrong-type, dupl
   }
 });
 
+test('every ID-bearing authoritative array rejects duplicated rows', () => {
+  const envelope = frozenDesign();
+  assertDuplicateRowRejected(
+    validateFrozenDesignEnvelope,
+    envelope,
+    ['selected_rule_ids'],
+    0,
+    'P5_DESIGN_INVALID'
+  );
+  assertDuplicateRowRejected(
+    validateFrozenDesignEnvelope,
+    envelope,
+    ['rejected_rule_ids'],
+    0,
+    'P5_DESIGN_INVALID'
+  );
+  assertDuplicateRowRejected(
+    validateFrozenDesignEnvelope,
+    envelope,
+    ['repair_variant_preferences'],
+    0,
+    'P5_DESIGN_INVALID'
+  );
+
+  const checkpoint = checkpointPayload('facade');
+  assertDuplicateRowRejected(
+    validateCheckpointPayload,
+    checkpoint,
+    ['selected_rule_ids'],
+    0,
+    'P5_CHECKPOINT_INVALID'
+  );
+  assertDuplicateRowRejected(
+    validateCheckpointPayload,
+    checkpoint,
+    ['rejected_rule_ids'],
+    0,
+    'P5_CHECKPOINT_INVALID'
+  );
+  assertDuplicateRowRejected(
+    validateCheckpointPayload,
+    checkpoint,
+    ['upstream_accepted_hashes'],
+    0,
+    'P5_CHECKPOINT_INVALID'
+  );
+
+  const eligibilityWithUnresolved = {
+    hard_qa_ok: true,
+    unresolved_core_rule_ids: ['rule:medieval.show-load-path'],
+    neutral_rule_ids: ['rule:facade.break-repetitive-bays'],
+    repair_budget_used: 0,
+    status: 'unresolved-core-violation'
+  };
+  assertDuplicateRowRejected(
+    validateEligibilityRecord,
+    eligibilityWithUnresolved,
+    ['unresolved_core_rule_ids'],
+    0,
+    'P5_AUTHORITY_INVALID'
+  );
+  assertDuplicateRowRejected(
+    validateEligibilityRecord,
+    eligibilityWithUnresolved,
+    ['neutral_rule_ids'],
+    0,
+    'P5_AUTHORITY_INVALID'
+  );
+
+  assertDuplicateRowRejected(
+    validateChainManifest,
+    chainManifest(),
+    ['checkpoint_hashes'],
+    0,
+    'P5_CHECKPOINT_INVALID'
+  );
+  assertDuplicateRowRejected(
+    validateSelectionRecord,
+    selectionRecord(),
+    ['candidates'],
+    0,
+    'P5_AUTHORITY_INVALID'
+  );
+});
+
 function assertFrozenMutationRejections(validate, input, code) {
   assert.deepEqual(validate(input), input);
   for (const key of Object.keys(input)) {
@@ -349,6 +434,13 @@ function assertRowMutationRejections(validate, input, path, fields, code) {
       }
     }
   }
+}
+
+function assertDuplicateRowRejected(validate, input, path, index, code) {
+  const invalid = clone(input);
+  const rows = atPath(invalid, path);
+  rows.push(clone(rows[index]));
+  assert.throws(() => validate(invalid), { code }, `duplicate ${path.join('.')}[${index}]`);
 }
 
 function atPath(value, path) {
