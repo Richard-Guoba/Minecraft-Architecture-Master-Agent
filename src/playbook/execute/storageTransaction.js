@@ -377,12 +377,38 @@ async function removeVerifiedFlatDirectory(
     if (!sameIdentity(read.identity, identities[name]) || !read.bytes.equals(files[name])) {
       throw executeError('P5_INSTALL_FAILED');
     }
+    await assertFlatRetirementAuthority(
+      ops,
+      tree,
+      directory,
+      handle,
+      assertAuthority
+    );
     await ops.unlink(descriptorEntryPath(handle, name));
+  }
+  await assertFlatRetirementAuthority(
+    ops,
+    tree,
+    directory,
+    handle,
+    assertAuthority
+  );
+  if ((await ops.readdir(descriptorPath(handle))).length !== 0) {
+    throw executeError('P5_INSTALL_FAILED');
   }
   await closeHandle(handle);
   directory.handle = undefined;
   await assertNamedDirectoryIdentity(ops, tree.rootHandle, directory.basename, directory.identity);
   await ops.rmdir(descriptorEntryPath(tree.rootHandle, directory.basename));
+}
+
+async function assertFlatRetirementAuthority(ops, tree, directory, handle, assertAuthority) {
+  await assertAuthority();
+  const retained = await handle.stat();
+  if (!retained.isDirectory() || !sameIdentity(identity(retained), directory.identity)) {
+    throw executeError('P5_INSTALL_FAILED');
+  }
+  await assertNamedDirectoryIdentity(ops, tree.rootHandle, directory.basename, directory.identity);
 }
 
 async function readRegularFile(ops, directoryHandle, basename) {

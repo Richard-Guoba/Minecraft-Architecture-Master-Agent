@@ -484,20 +484,28 @@ async function openExecuteTree(internal, ops, { create }) {
     if (create) {
       try {
         if (candidatesCreated && candidatesHandle && rootHandle) {
-          const entries = await ops.readdir(descriptorPath(candidatesHandle));
-          if (entries.length === 0) {
-            await closeHandle(candidatesHandle);
-            candidatesHandle = undefined;
-            await ops.rmdir(descriptorEntryPath(rootHandle, CANDIDATES_BASENAME));
-          }
+          await removeVerifiedEmptyCreatedDirectory(
+            internal,
+            ops,
+            rootHandle,
+            CANDIDATES_BASENAME,
+            identity(await candidatesHandle.stat()),
+            candidatesHandle
+          );
+          candidatesHandle = undefined;
+          candidatesCreated = false;
         }
         if (rootCreated && rootHandle) {
-          const entries = await ops.readdir(descriptorPath(rootHandle));
-          if (entries.length === 0) {
-            await closeHandle(rootHandle);
-            rootHandle = undefined;
-            await ops.rmdir(descriptorEntryPath(internal.runHandle, OUTPUT_BASENAME));
-          }
+          await removeVerifiedEmptyCreatedDirectory(
+            internal,
+            ops,
+            internal.runHandle,
+            OUTPUT_BASENAME,
+            identity(await rootHandle.stat()),
+            rootHandle
+          );
+          rootHandle = undefined;
+          rootCreated = false;
         }
       } catch {
         // Preserve anything that cannot be verified empty and owned.
@@ -524,14 +532,34 @@ async function openOrCreateOwnedDirectory(internal, ops, parentHandle, basename,
     if (!create || !isMissingError(error)) throw error;
   }
   await assertRunAuthority(internal, ops);
+  let madeDirectory = false;
   try {
     await ops.mkdir(target, { recursive: false, mode: 0o700 });
+    madeDirectory = true;
   } catch (error) {
     if (!isAlreadyExistsError(error)) throw publicError(error, 'P5_INSTALL_FAILED');
   }
   await assertRunAuthority(internal, ops);
+  if (!madeDirectory) {
+    return {
+      handle: await openDirectoryEntry(
+        ops,
+        parentHandle,
+        basename,
+        'P5_INSTALL_FAILED',
+        'P5_OUTPUT_OWNERSHIP'
+      ),
+      created: false
+    };
+  }
   let handle;
+  let createdIdentity;
   try {
+    const createdStat = await ops.lstat(target);
+    if (createdStat.isSymbolicLink() || !createdStat.isDirectory()) {
+      throw executeError('P5_INSTALL_FAILED');
+    }
+    createdIdentity = identity(createdStat);
     handle = await openDirectoryEntry(
       ops,
       parentHandle,
@@ -539,56 +567,108 @@ async function openOrCreateOwnedDirectory(internal, ops, parentHandle, basename,
       'P5_INSTALL_FAILED',
       'P5_OUTPUT_OWNERSHIP'
     );
+    const opened = await handle.stat();
+    if (!opened.isDirectory() || !sameIdentity(identity(opened), createdIdentity)) {
+      throw executeError('P5_INSTALL_FAILED');
+    }
     await syncBareDirectory(internal, ops, parentHandle);
     return { handle, created: true };
   } catch (error) {
+    try {
+      if (createdIdentity) {
+        await removeVerifiedEmptyCreatedDirectory(
+          internal,
+          ops,
+          parentHandle,
+          basename,
+          createdIdentity,
+          handle
+        );
+        handle = undefined;
+      }
+    } catch {
+      // Preserve a path that can no longer be proven to be our empty creation.
+    }
     await closeHandle(handle);
-    throw error;
+    throw publicError(error, 'P5_INSTALL_FAILED');
+  }
+}
+
+async function removeVerifiedEmptyCreatedDirectory(
+  internal,
+  ops,
+  parentHandle,
+  basename,
+  expectedIdentity,
+  existingHandle
+) {
+  await assertRunAuthority(internal, ops);
+  let handle = existingHandle;
+  if (!handle) {
+    handle = await openDirectoryEntry(
+      ops,
+      parentHandle,
+      basename,
+      'P5_INSTALL_FAILED',
+      'P5_INSTALL_FAILED'
+    );
+  }
+  let closed = false;
+  try {
+    const retained = await handle.stat();
+    if (
+      !retained.isDirectory()
+      || !sameIdentity(identity(retained), expectedIdentity)
+      || (await ops.readdir(descriptorPath(handle))).length !== 0
+    ) throw executeError('P5_INSTALL_FAILED');
+    await assertNamedDirectoryIdentity(
+      parentHandle,
+      ops,
+      basename,
+      expectedIdentity,
+      'P5_INSTALL_FAILED'
+    );
+    await closeHandle(handle);
+    closed = true;
+    await assertNamedDirectoryIdentity(
+      parentHandle,
+      ops,
+      basename,
+      expectedIdentity,
+      'P5_INSTALL_FAILED'
+    );
+    await ops.rmdir(descriptorEntryPath(parentHandle, basename));
+    await parentHandle.sync();
+    await assertRunAuthority(internal, ops);
+  } finally {
+    if (!closed) await closeHandle(handle);
   }
 }
 
 async function rollbackCreatedExecuteTree(internal, ops, tree) {
   await assertRunAuthority(internal, ops);
   if (tree.candidatesCreated) {
-    const stat = await tree.candidatesHandle.stat();
-    const entries = await ops.readdir(descriptorPath(tree.candidatesHandle));
-    if (
-      !stat.isDirectory()
-      || !sameIdentity(identity(stat), tree.candidatesIdentity)
-      || entries.length !== 0
-    ) throw executeError('P5_INSTALL_FAILED');
-    await assertNamedDirectoryIdentity(
-      tree.rootHandle,
+    await removeVerifiedEmptyCreatedDirectory(
+      internal,
       ops,
+      tree.rootHandle,
       CANDIDATES_BASENAME,
       tree.candidatesIdentity,
-      'P5_INSTALL_FAILED'
+      tree.candidatesHandle
     );
-    await closeHandle(tree.candidatesHandle);
     tree.candidatesHandle = undefined;
-    await ops.rmdir(descriptorEntryPath(tree.rootHandle, CANDIDATES_BASENAME));
-    await tree.rootHandle.sync();
     tree.candidatesCreated = false;
   }
   if (tree.rootCreated) {
-    const stat = await tree.rootHandle.stat();
-    const entries = await ops.readdir(descriptorPath(tree.rootHandle));
-    if (
-      !stat.isDirectory()
-      || !sameIdentity(identity(stat), tree.rootIdentity)
-      || entries.length !== 0
-    ) throw executeError('P5_INSTALL_FAILED');
-    await assertNamedDirectoryIdentity(
-      internal.runHandle,
+    await removeVerifiedEmptyCreatedDirectory(
+      internal,
       ops,
+      internal.runHandle,
       OUTPUT_BASENAME,
       tree.rootIdentity,
-      'P5_INSTALL_FAILED'
+      tree.rootHandle
     );
-    await closeHandle(tree.rootHandle);
     tree.rootHandle = undefined;
-    await ops.rmdir(descriptorEntryPath(internal.runHandle, OUTPUT_BASENAME));
-    await internal.runHandle.sync();
     tree.rootCreated = false;
   }
   await assertRunAuthority(internal, ops);
@@ -937,15 +1017,26 @@ async function removeVerifiedDirectory(
       }
     }
 
-    const rootHandle = await ops.open(descriptorEntryPath(parentHandle, basename), DIRECTORY_FLAGS);
+    const rootHandle = await openDirectoryEntry(
+      ops,
+      parentHandle,
+      basename,
+      'P5_INSTALL_FAILED',
+      'P5_INSTALL_FAILED'
+    );
     const nodes = new Map();
+    nodes.set('', {
+      handle: rootHandle,
+      identity: expectedIdentity,
+      parent: null,
+      basename
+    });
     try {
-      nodes.set('', {
-        handle: rootHandle,
-        identity: expectedIdentity,
-        parent: null,
-        basename
-      });
+      const cleanupRootStat = await rootHandle.stat();
+      if (
+        !cleanupRootStat.isDirectory()
+        || !sameIdentity(identity(cleanupRootStat), expectedIdentity)
+      ) throw executeError('P5_INSTALL_FAILED');
       for (const relative of [...directory.directories].sort((left, right) => (
         pathDepth(left) - pathDepth(right) || left.localeCompare(right)
       ))) {
@@ -1021,6 +1112,11 @@ async function removeVerifiedDirectory(
 
 async function assertRetainedNodeChain(ops, rootParentHandle, rootBasename, nodes, relative) {
   const root = nodes.get('');
+  const retainedRoot = await root.handle.stat();
+  if (
+    !retainedRoot.isDirectory()
+    || !sameIdentity(identity(retainedRoot), root.identity)
+  ) throw executeError('P5_INSTALL_FAILED');
   await assertNamedDirectoryIdentity(
     rootParentHandle,
     ops,

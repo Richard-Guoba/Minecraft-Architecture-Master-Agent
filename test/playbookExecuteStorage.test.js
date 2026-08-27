@@ -428,6 +428,31 @@ test('rejects replay origin gaps and origins not bound to the parent transaction
   }
 });
 
+test('rejects replay chains that drift immutable frozen authority hashes', async (t) => {
+  for (const [field, value] of [
+    ['frozen_design_sha256', '1'.repeat(64)],
+    ['frozen_generator_context_sha256', '2'.repeat(64)]
+  ]) {
+    await t.test(field, async (t) => {
+      const fixture = await installedFixture(t);
+      const replacement = replaySnapshot(fixture.initial);
+      const chain = JSON.parse(replacement.currentChain);
+      chain[field] = value;
+      replacement.currentChain = canonicalBytes(chain);
+      await assertP5Failure(
+        installCandidateSnapshot({
+          authority: fixture.authority,
+          candidateId: 'candidate-01',
+          ...replacement,
+          expectedPreviousChainSha256: fixture.initial.chainHash
+        }),
+        'P5_CHECKPOINT_INVALID',
+        fixture.root
+      );
+    });
+  }
+});
+
 test('rejects an existing unowned candidate, unknown body, or symlink without touching targets', async (t) => {
   for (const scenario of ['unowned-root', 'unknown-body', 'candidate-symlink', 'body-symlink']) {
     await t.test(scenario, async (t) => {
@@ -556,6 +581,191 @@ test('first-install precommit failure removes only the topology created by that 
     'RAW_FIRST_INSTALL_WRITE_FAILURE'
   );
   assert.deepEqual(await snapshotTree(fixture.root), before);
+});
+
+test('mkdir followed by directory open failure removes only the directory created by that call', async (t) => {
+  for (const basename of ['playbook-execute', 'candidates']) {
+    await t.test(basename, async (t) => {
+      const fixture = await storageFixture(t);
+      const before = await snapshotTree(fixture.root);
+      const created = new Set();
+      let failed = false;
+      const fsImpl = fsWith({
+        async mkdir(target, options) {
+          const result = await fs.mkdir(target, options);
+          if (path.basename(String(target)) === basename) created.add(String(target));
+          return result;
+        },
+        async open(target, flags, ...args) {
+          if (!failed && created.has(String(target))) {
+            failed = true;
+            throw new Error('RAW_CREATED_DIRECTORY_OPEN_FAILURE');
+          }
+          return fs.open(target, flags, ...args);
+        }
+      });
+      const authority = await admitExecuteRun({ runDir: fixture.runDir });
+      t.after(() => authority.close());
+
+      await assertP5Failure(
+        installCandidateSnapshot({
+          authority,
+          candidateId: 'candidate-01',
+          ...initialSnapshot(),
+          fsImpl
+        }),
+        'P5_INSTALL_FAILED',
+        fixture.root,
+        'RAW_CREATED_DIRECTORY_OPEN_FAILURE'
+      );
+      assert.equal(failed, true);
+      assert.deepEqual(await snapshotTree(fixture.root), before);
+    });
+  }
+});
+
+test('mkdir followed by parent sync failure restores exact first-install topology', async (t) => {
+  for (const basename of ['playbook-execute', 'candidates']) {
+    await t.test(basename, async (t) => {
+      const fixture = await storageFixture(t);
+      const before = await snapshotTree(fixture.root);
+      let created = false;
+      let failed = false;
+      const fsImpl = fsWith({
+        async mkdir(target, options) {
+          const result = await fs.mkdir(target, options);
+          if (path.basename(String(target)) === basename) created = true;
+          return result;
+        },
+        async open(target, flags, ...args) {
+          const handle = await fs.open(target, flags, ...args);
+          const targetBasename = path.basename(String(target));
+          const parentForCreated = basename === 'playbook-execute'
+            ? targetBasename === path.basename(fixture.runDir)
+            : targetBasename === 'playbook-execute';
+          if (!parentForCreated) return handle;
+          return wrapFileHandle(handle, {
+            async sync() {
+              if (created && !failed) {
+                failed = true;
+                throw new Error('RAW_CREATED_DIRECTORY_SYNC_FAILURE');
+              }
+              return handle.sync();
+            }
+          });
+        }
+      });
+      const authority = await admitExecuteRun({ runDir: fixture.runDir, fsImpl });
+      t.after(() => authority.close());
+
+      await assertP5Failure(
+        installCandidateSnapshot({ authority, candidateId: 'candidate-01', ...initialSnapshot() }),
+        'P5_INSTALL_FAILED',
+        fixture.root,
+        'RAW_CREATED_DIRECTORY_SYNC_FAILURE'
+      );
+      assert.equal(failed, true);
+      assert.deepEqual(await snapshotTree(fixture.root), before);
+    });
+  }
+});
+
+test('EEXIST adoption is never rolled back as a directory created by this call', async (t) => {
+  for (const basename of ['playbook-execute', 'candidates']) {
+    await t.test(basename, async (t) => {
+      const fixture = await storageFixture(t);
+      let actorPath;
+      let actorIdentity;
+      let raced = false;
+      const fsImpl = fsWith({
+        async mkdir(target, options) {
+          if (!raced && path.basename(String(target)) === basename) {
+            await fs.mkdir(target, options);
+            actorPath = basename === 'playbook-execute'
+              ? path.join(fixture.runDir, 'playbook-execute')
+              : path.join(fixture.runDir, 'playbook-execute', 'candidates');
+            actorIdentity = fileIdentity(await fs.lstat(actorPath));
+            raced = true;
+            throw Object.assign(new Error('RAW_ACTOR_EEXIST'), { code: 'EEXIST' });
+          }
+          return fs.mkdir(target, options);
+        },
+        async open(target, flags, ...args) {
+          if (
+            raced
+            && (flags & constants.O_WRONLY) !== 0
+            && await pathContainsGeneratedName(String(target), STAGE_PREFIX)
+          ) throw new Error('RAW_AFTER_EEXIST_FAILURE');
+          return fs.open(target, flags, ...args);
+        }
+      });
+      const authority = await admitExecuteRun({ runDir: fixture.runDir });
+      t.after(() => authority.close());
+
+      await assertP5Failure(
+        installCandidateSnapshot({
+          authority,
+          candidateId: 'candidate-01',
+          ...initialSnapshot(),
+          fsImpl
+        }),
+        'P5_INSTALL_FAILED',
+        fixture.root,
+        'RAW_AFTER_EEXIST_FAILURE'
+      );
+      assert.equal(raced, true);
+      assert.deepEqual(fileIdentity(await fs.lstat(actorPath)), actorIdentity);
+      assert.deepEqual(await fs.readdir(actorPath), []);
+    });
+  }
+});
+
+test('first-install cleanup identity swap preserves both created and foreign directories', async (t) => {
+  const fixture = await storageFixture(t);
+  const candidatesPath = path.join(fixture.runDir, 'playbook-execute', 'candidates');
+  const parked = path.join(fixture.runDir, 'playbook-execute', 'parked-created-candidates');
+  let parkedBefore;
+  let foreignIdentity;
+  let swapped = false;
+  const fsImpl = fsWith({
+    async open(target, flags, ...args) {
+      if (
+        (flags & constants.O_WRONLY) !== 0
+        && await pathContainsGeneratedName(String(target), STAGE_PREFIX)
+      ) throw new Error('RAW_TRIGGER_CREATED_CLEANUP');
+      const handle = await fs.open(target, flags, ...args);
+      if (path.basename(String(target)) !== 'candidates') return handle;
+      return wrapFileHandle(handle, {
+        async close() {
+          if (!swapped) {
+            await fs.rename(candidatesPath, parked);
+            parkedBefore = await inodeTree(parked);
+            await fs.mkdir(candidatesPath);
+            foreignIdentity = fileIdentity(await fs.lstat(candidatesPath));
+            swapped = true;
+          }
+          return handle.close();
+        }
+      });
+    }
+  });
+  const authority = await admitExecuteRun({ runDir: fixture.runDir });
+  t.after(() => authority.close());
+
+  await assertP5Failure(
+    installCandidateSnapshot({
+      authority,
+      candidateId: 'candidate-01',
+      ...initialSnapshot(),
+      fsImpl
+    }),
+    'P5_INSTALL_FAILED',
+    fixture.root,
+    'RAW_TRIGGER_CREATED_CLEANUP'
+  );
+  assert.equal(swapped, true);
+  assert.deepEqual(await inodeTree(parked), parkedBefore);
+  assert.deepEqual(fileIdentity(await fs.lstat(candidatesPath)), foreignIdentity);
 });
 
 test('a no-replace backup collision preserves the exact old candidate and collision', async (t) => {
@@ -775,6 +985,79 @@ test('candidate retirement never follows a swapped intermediate directory', asyn
   assert.equal(swapped, true);
   assert.deepEqual(await inodeTree(outside), outsideBefore);
   assert.deepEqual(await inodeTree(parked), parkedBefore);
+});
+
+test('candidate cleanup root validates the descriptor across swap/open races', async (t) => {
+  for (const restoreCanonical of [false, true]) {
+    await t.test(restoreCanonical ? 'swap-open-restore' : 'swap-after-open', async (t) => {
+      const fixture = await installedFixture(t);
+      const replacement = replaySnapshot(fixture.initial);
+      let promoted = false;
+      let backupOpens = 0;
+      let swapped = false;
+      let oldParked;
+      let oldParkedBefore;
+      let foreignParked;
+      let foreignBefore;
+      const fsImpl = fsWith({
+        async open(target, flags, ...args) {
+          const handle = await fs.open(target, flags, ...args);
+          if (
+            !promoted
+            || !path.basename(String(target)).startsWith(BACKUP_PREFIX)
+            || ++backupOpens !== 2
+          ) return handle;
+          return wrapFileHandle(handle, {
+            async stat(...statArgs) {
+              if (!swapped) {
+                const canonical = await fs.readlink(`/proc/self/fd/${handle.fd}`);
+                oldParked = `${canonical}-parked-old`;
+                await fs.rename(canonical, oldParked);
+                oldParkedBefore = await inodeTree(oldParked);
+                await fs.mkdir(canonical);
+                await fs.writeFile(path.join(canonical, 'foreign.txt'), 'foreign cleanup root\n');
+                if (restoreCanonical) {
+                  foreignParked = `${canonical}-parked-foreign`;
+                  await fs.rename(canonical, foreignParked);
+                  foreignBefore = await inodeTree(foreignParked);
+                  await fs.rename(oldParked, canonical);
+                } else {
+                  foreignParked = canonical;
+                  foreignBefore = await inodeTree(canonical);
+                }
+                swapped = true;
+              }
+              return handle.stat(...statArgs);
+            }
+          });
+        },
+        async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
+          const result = await next(directoryHandle, sourceName, destinationName);
+          if (sourceName.startsWith(STAGE_PREFIX) && destinationName === 'candidate-01') {
+            promoted = true;
+          }
+          return result;
+        }
+      });
+
+      const result = await installCandidateSnapshot({
+        authority: fixture.authority,
+        candidateId: 'candidate-01',
+        ...replacement,
+        expectedPreviousChainSha256: fixture.initial.chainHash,
+        fsImpl
+      });
+      assert.equal(result.status, 'replaced');
+      assert.equal(swapped, true);
+      assert.deepEqual(await inodeTree(foreignParked), foreignBefore);
+      if (!restoreCanonical) assert.deepEqual(await inodeTree(oldParked), oldParkedBefore);
+      const current = await readCurrentCandidateSnapshot({
+        authority: fixture.authority,
+        candidateId: 'candidate-01'
+      });
+      assert.equal(current.current_chain_sha256, replacement.chainHash);
+    });
+  }
 });
 
 test('rollback cleanup failure leaves the exact verified backup recoverable', async (t) => {
@@ -1080,6 +1363,72 @@ test('every selection postcommit backup cleanup failure keeps the complete new g
         assert.deepEqual(await allCandidateInodes(fixture.runDir), candidates);
       });
     }
+  }
+});
+
+test('selection retirement rechecks canonical and retained backup identity at every boundary', async (t) => {
+  for (let boundary = 1; boundary <= SELECTION_TEST_PATHS.length + 1; boundary += 1) {
+    await t.test(boundary <= SELECTION_TEST_PATHS.length
+      ? `before-unlink-${boundary}`
+      : 'before-close-rmdir', async (t) => {
+      const fixture = await threeCandidateFixture(t);
+      await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
+      const replacement = selectionFiles('new');
+      let promoted = false;
+      let retirementChecks = 0;
+      let swapped = false;
+      let parked;
+      let parkedBefore;
+      let foreign;
+      let foreignBefore;
+      const fsImpl = fsWith({
+        async open(target, flags, ...args) {
+          const handle = await fs.open(target, flags, ...args);
+          if (!path.basename(String(target)).startsWith(BACKUP_PREFIX)) return handle;
+          return wrapFileHandle(handle, {
+            async stat(...statArgs) {
+              if (promoted && !swapped && ++retirementChecks === boundary) {
+                const canonical = await fs.readlink(`/proc/self/fd/${handle.fd}`);
+                parked = `${canonical}-parked`;
+                await fs.rename(canonical, parked);
+                parkedBefore = await inodeTree(parked);
+                await fs.mkdir(canonical);
+                await fs.writeFile(path.join(canonical, 'foreign.txt'), 'foreign retirement bytes\n');
+                foreign = canonical;
+                foreignBefore = await inodeTree(foreign);
+                swapped = true;
+              }
+              return handle.stat(...statArgs);
+            }
+          });
+        },
+        async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+          const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
+          if (
+            sourceName === 'manifest.json'
+            && destinationName === 'manifest.json'
+            && await pathContainsGeneratedName(`/proc/self/fd/${sourceHandle.fd}`, STAGE_PREFIX)
+          ) promoted = true;
+          return result;
+        }
+      });
+
+      const result = await installExecuteSelection({
+        authority: fixture.authority,
+        files: replacement,
+        fsImpl
+      });
+      assert.equal(result.status, 'replaced');
+      assert.equal(swapped, true);
+      assert.deepEqual(await inodeTree(parked), parkedBefore);
+      assert.deepEqual(await inodeTree(foreign), foreignBefore);
+      for (const name of SELECTION_TEST_PATHS) {
+        assert.deepEqual(
+          await fs.readFile(path.join(fixture.runDir, 'playbook-execute', name)),
+          replacement[name]
+        );
+      }
+    });
   }
 });
 

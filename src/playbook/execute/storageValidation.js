@@ -122,6 +122,8 @@ export function validateCandidateFiles(candidateId, files, code) {
     }
 
     if (chainsByRevision.size !== current.chain_revision) throw executeError(code);
+    const initialChain = chainsByRevision.get(1)?.chain;
+    if (!initialChain) throw executeError(code);
     const referencedCheckpointHashes = new Set();
     for (let revision = 1; revision <= current.chain_revision; revision += 1) {
       const row = chainsByRevision.get(revision);
@@ -132,7 +134,12 @@ export function validateCandidateFiles(candidateId, files, code) {
         }
       } else {
         const previous = chainsByRevision.get(revision - 1);
-        if (row.chain.parent_chain_sha256 !== previous.hash || row.chain.created_from !== 'replay') {
+        if (
+          row.chain.parent_chain_sha256 !== previous.hash
+          || row.chain.created_from !== 'replay'
+          || row.chain.frozen_design_sha256 !== initialChain.frozen_design_sha256
+          || row.chain.frozen_generator_context_sha256 !== initialChain.frozen_generator_context_sha256
+        ) {
           throw executeError(code);
         }
       }
