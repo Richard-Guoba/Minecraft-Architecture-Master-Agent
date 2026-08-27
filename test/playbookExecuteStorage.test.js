@@ -670,6 +670,110 @@ test('mkdir followed by parent sync failure restores exact first-install topolog
   }
 });
 
+test('post-mkdir authority failure restores exact first-install topology', async (t) => {
+  for (const basename of ['playbook-execute', 'candidates']) {
+    await t.test(basename, async (t) => {
+      const fixture = await storageFixture(t);
+      const before = await snapshotTree(fixture.root);
+      let createdTarget;
+      let failed = false;
+      const fsImpl = fsWith({
+        async mkdir(target, options) {
+          const result = await fs.mkdir(target, options);
+          if (path.basename(String(target)) === basename) createdTarget = String(target);
+          return result;
+        },
+        async lstat(target, ...args) {
+          if (
+            createdTarget
+            && !failed
+            && path.basename(String(target)) === path.basename(fixture.runDir)
+          ) {
+            failed = true;
+            throw new Error('RAW_POST_MKDIR_AUTHORITY_FAILURE');
+          }
+          return fs.lstat(target, ...args);
+        }
+      });
+      const authority = await admitExecuteRun({ runDir: fixture.runDir });
+      t.after(() => authority.close());
+
+      await assertP5Failure(
+        installCandidateSnapshot({
+          authority,
+          candidateId: 'candidate-01',
+          ...initialSnapshot(),
+          fsImpl
+        }),
+        'P5_INSTALL_FAILED',
+        fixture.root,
+        'RAW_POST_MKDIR_AUTHORITY_FAILURE'
+      );
+      assert.equal(failed, true);
+      assert.deepEqual(await snapshotTree(fixture.root), before);
+    });
+  }
+});
+
+test('first post-mkdir identity-probe ambiguity preserves created and foreign inodes', async (t) => {
+  for (const basename of ['playbook-execute', 'candidates']) {
+    await t.test(basename, async (t) => {
+      const fixture = await storageFixture(t);
+      const canonical = basename === 'playbook-execute'
+        ? path.join(fixture.runDir, 'playbook-execute')
+        : path.join(fixture.runDir, 'playbook-execute', 'candidates');
+      const parked = basename === 'playbook-execute'
+        ? path.join(fixture.runDir, 'parked-ambiguous-playbook-execute')
+        : path.join(fixture.runDir, 'playbook-execute', 'parked-ambiguous-candidates');
+      let createdTarget;
+      let parkedBefore;
+      let foreignBefore;
+      let failed = false;
+      const postMkdirLstats = [];
+      const fsImpl = fsWith({
+        async mkdir(target, options) {
+          const result = await fs.mkdir(target, options);
+          if (path.basename(String(target)) === basename) createdTarget = String(target);
+          return result;
+        },
+        async lstat(target, ...args) {
+          if (createdTarget && !failed) {
+            postMkdirLstats.push(String(target));
+            if (String(target) === createdTarget) {
+              failed = true;
+              parkedBefore = await inodeTree(canonical);
+              await fs.rename(canonical, parked);
+              await fs.mkdir(canonical);
+              await fs.writeFile(path.join(canonical, 'foreign.txt'), 'foreign ambiguous directory\n');
+              foreignBefore = await inodeTree(canonical);
+              throw new Error('RAW_FIRST_IDENTITY_PROBE_FAILURE');
+            }
+          }
+          return fs.lstat(target, ...args);
+        }
+      });
+      const authority = await admitExecuteRun({ runDir: fixture.runDir });
+      t.after(() => authority.close());
+
+      await assertP5Failure(
+        installCandidateSnapshot({
+          authority,
+          candidateId: 'candidate-01',
+          ...initialSnapshot(),
+          fsImpl
+        }),
+        'P5_INSTALL_FAILED',
+        fixture.root,
+        'RAW_FIRST_IDENTITY_PROBE_FAILURE|foreign ambiguous directory'
+      );
+      assert.equal(failed, true);
+      assert.deepEqual(postMkdirLstats, [createdTarget]);
+      assert.deepEqual(await inodeTree(parked), parkedBefore);
+      assert.deepEqual(await inodeTree(canonical), foreignBefore);
+    });
+  }
+});
+
 test('EEXIST adoption is never rolled back as a directory created by this call', async (t) => {
   for (const basename of ['playbook-execute', 'candidates']) {
     await t.test(basename, async (t) => {

@@ -533,33 +533,34 @@ async function openOrCreateOwnedDirectory(internal, ops, parentHandle, basename,
   }
   await assertRunAuthority(internal, ops);
   let madeDirectory = false;
-  try {
-    await ops.mkdir(target, { recursive: false, mode: 0o700 });
-    madeDirectory = true;
-  } catch (error) {
-    if (!isAlreadyExistsError(error)) throw publicError(error, 'P5_INSTALL_FAILED');
-  }
-  await assertRunAuthority(internal, ops);
-  if (!madeDirectory) {
-    return {
-      handle: await openDirectoryEntry(
-        ops,
-        parentHandle,
-        basename,
-        'P5_INSTALL_FAILED',
-        'P5_OUTPUT_OWNERSHIP'
-      ),
-      created: false
-    };
-  }
   let handle;
   let createdIdentity;
   try {
+    try {
+      await ops.mkdir(target, { recursive: false, mode: 0o700 });
+      madeDirectory = true;
+    } catch (error) {
+      if (!isAlreadyExistsError(error)) throw error;
+    }
+    if (!madeDirectory) {
+      await assertRunAuthority(internal, ops);
+      return {
+        handle: await openDirectoryEntry(
+          ops,
+          parentHandle,
+          basename,
+          'P5_INSTALL_FAILED',
+          'P5_OUTPUT_OWNERSHIP'
+        ),
+        created: false
+      };
+    }
     const createdStat = await ops.lstat(target);
     if (createdStat.isSymbolicLink() || !createdStat.isDirectory()) {
       throw executeError('P5_INSTALL_FAILED');
     }
     createdIdentity = identity(createdStat);
+    await assertRunAuthority(internal, ops);
     handle = await openDirectoryEntry(
       ops,
       parentHandle,
@@ -572,10 +573,21 @@ async function openOrCreateOwnedDirectory(internal, ops, parentHandle, basename,
       throw executeError('P5_INSTALL_FAILED');
     }
     await syncBareDirectory(internal, ops, parentHandle);
+    await assertNamedDirectoryIdentity(
+      parentHandle,
+      ops,
+      basename,
+      createdIdentity,
+      'P5_INSTALL_FAILED'
+    );
+    const reconciled = await handle.stat();
+    if (!reconciled.isDirectory() || !sameIdentity(identity(reconciled), createdIdentity)) {
+      throw executeError('P5_INSTALL_FAILED');
+    }
     return { handle, created: true };
   } catch (error) {
     try {
-      if (createdIdentity) {
+      if (madeDirectory && createdIdentity) {
         await removeVerifiedEmptyCreatedDirectory(
           internal,
           ops,
