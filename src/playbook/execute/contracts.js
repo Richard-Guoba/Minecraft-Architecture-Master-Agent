@@ -62,6 +62,11 @@ const PATCH_FIELDS = Object.freeze([
   'repair_operation_id', 'variant_id', 'target_layer', 'base_checkpoint_sha256',
   'precondition_hashes', 'effects', 'invalidates_layers'
 ]);
+const REPAIR_TRANSACTION_FIELDS = Object.freeze([
+  'schema_version', 'compiler_version', 'candidate_id', 'base_chain_sha256',
+  'repair_budget', 'earliest_target_layer', 'operations', 'invalidates_layers'
+]);
+const PRECONDITION_FIELDS = Object.freeze(['kind', 'id', 'sha256']);
 const ENVELOPE_FIELDS = Object.freeze(['checkpoint_sha256', 'checkpoint']);
 const SELECTION_FIELDS = Object.freeze([
   'schema_version', 'mode', 'candidate_count', 'candidates', 'selected_candidate_id',
@@ -249,9 +254,47 @@ export function validateResolvedPatch(value) {
   const targetLayer = data.repair_operation_id.startsWith('repair:massing:') ? 'massing' : row.design_layer;
   if (data.target_layer !== targetLayer) fail('P5_REPAIR_INVALID');
   assertHash(data.base_checkpoint_sha256, 'P5_REPAIR_INVALID');
-  assertArray(data.precondition_hashes, 'P5_REPAIR_INVALID');
-  assertArray(data.effects, 'P5_REPAIR_INVALID');
+  assertPreconditionHashes(data.precondition_hashes, 'P5_REPAIR_INVALID');
+  const expectedKind = data.target_layer === 'massing' ? 'volume' : 'structural-anchor';
+  if (data.precondition_hashes.some((row) => row.kind !== expectedKind)) fail('P5_REPAIR_INVALID');
+  assertRepairEffects(data.effects, data.target_layer, 'P5_REPAIR_INVALID');
   assertExactArray(data.invalidates_layers, row.invalidates_layers, 'P5_REPAIR_INVALID');
+  return data;
+}
+
+export function validateRepairTransaction(value) {
+  const data = canonicalObject(value, REPAIR_TRANSACTION_FIELDS, 'P5_REPAIR_INVALID');
+  assertSchemaVersion(data, 'P5_REPAIR_INVALID');
+  if (data.compiler_version !== EXECUTE_COMPILER_VERSION) fail('P5_REPAIR_INVALID');
+  assertCandidateId(data.candidate_id, 'P5_REPAIR_INVALID');
+  assertHash(data.base_chain_sha256, 'P5_REPAIR_INVALID');
+  if (data.repair_budget !== 1) fail('P5_REPAIR_INVALID');
+  assertLayer(data.earliest_target_layer, 'P5_REPAIR_INVALID');
+  assertArray(data.operations, 'P5_REPAIR_INVALID');
+  if (data.operations.length === 0) fail('P5_REPAIR_INVALID');
+  const seenOperations = new Set();
+  let previousOrder = -1;
+  for (const patchValue of data.operations) {
+    const patch = validateResolvedPatch(patchValue);
+    if (patch.candidate_id !== data.candidate_id || seenOperations.has(patch.repair_operation_id)) fail('P5_REPAIR_INVALID');
+    seenOperations.add(patch.repair_operation_id);
+    const corpusOrder = EXECUTABLE_REPAIR_ROWS.findIndex((row) => row.repair_operation_id === patch.repair_operation_id);
+    const order = DESIGN_LAYER_ORDER.indexOf(patch.target_layer) * EXECUTABLE_REPAIR_ROWS.length + corpusOrder;
+    if (order <= previousOrder) fail('P5_REPAIR_INVALID');
+    previousOrder = order;
+  }
+  const earliest = data.operations.reduce((best, patch) => (
+    DESIGN_LAYER_ORDER.indexOf(patch.target_layer) < DESIGN_LAYER_ORDER.indexOf(best)
+      ? patch.target_layer : best
+  ), data.operations[0].target_layer);
+  if (data.earliest_target_layer !== earliest) fail('P5_REPAIR_INVALID');
+  assertArray(data.invalidates_layers, 'P5_REPAIR_INVALID');
+  if (data.invalidates_layers.some((layer, index) => !DESIGN_LAYER_ORDER.includes(layer)
+    || index > 0 && DESIGN_LAYER_ORDER.indexOf(layer) <= DESIGN_LAYER_ORDER.indexOf(data.invalidates_layers[index - 1]))) {
+    fail('P5_REPAIR_INVALID');
+  }
+  const expectedInvalidations = DESIGN_LAYER_ORDER.filter((layer) => data.operations.some((patch) => patch.invalidates_layers.includes(layer)));
+  assertExactArray(data.invalidates_layers, expectedInvalidations, 'P5_REPAIR_INVALID');
   return data;
 }
 
@@ -442,6 +485,59 @@ function assertRepairTuple(value, code) {
   const row = ROW_BY_OPERATION.get(value.repair_operation_id);
   if (!row) fail(code);
   return row;
+}
+
+function assertPreconditionHashes(value, code) {
+  assertArray(value, code);
+  if (value.length === 0) fail(code);
+  const seen = new Set();
+  for (const item of value) {
+    assertExactObject(item, PRECONDITION_FIELDS, code);
+    if (!['volume', 'structural-anchor'].includes(item.kind)) fail(code);
+    assertBoundedId(item.id, code);
+    assertHash(item.sha256, code);
+    const key = `${item.kind}:${item.id}`;
+    if (seen.has(key)) fail(code);
+    seen.add(key);
+  }
+}
+
+function assertRepairEffects(value, targetLayer, code) {
+  assertArray(value, code);
+  if (value.length === 0) fail(code);
+  for (const effect of value) {
+    if (!isPlainObject(effect) || typeof effect.type !== 'string') fail(code);
+    if (effect.type === 'set-volume-role') {
+      assertExactObject(effect, ['type', 'volume_id', 'role'], code);
+      if (targetLayer !== 'massing' || !['primary-mass', 'secondary-mass', 'support-volume'].includes(effect.role)) fail(code);
+      assertBoundedId(effect.volume_id, code);
+    } else if (effect.type === 'set-volume-placement') {
+      assertExactObject(effect, ['type', 'volume_id', 'placement'], code);
+      if (targetLayer !== 'massing') fail(code);
+      assertBoundedId(effect.volume_id, code);
+      if (!isPlainObject(effect.placement)) fail(code);
+      const fields = effect.placement.relation === 'center' ? ['relation'] : ['relation', 'attach_to'];
+      assertExactObject(effect.placement, fields, code);
+      assertBoundedId(effect.placement.relation, code);
+      if (effect.placement.relation !== 'center') {
+        if (!effect.placement.relation.startsWith('attached-')) fail(code);
+        assertBoundedId(effect.placement.attach_to, code);
+      }
+    } else if (effect.type === 'set-volume-scale-axis') {
+      assertExactObject(effect, ['type', 'volume_id', 'axis', 'value'], code);
+      if (targetLayer !== 'massing' || !['x', 'y', 'z'].includes(effect.axis)
+        || !Number.isInteger(effect.value) || effect.value <= 0) fail(code);
+      assertBoundedId(effect.volume_id, code);
+    } else if (effect.type === 'set-load-path') {
+      assertExactObject(effect, ['type', 'from', 'through', 'to'], code);
+      if (targetLayer !== 'structure') fail(code);
+      for (const field of ['from', 'through', 'to']) assertBoundedId(effect[field], code);
+    } else fail(code);
+  }
+}
+
+function assertBoundedId(value, code) {
+  if (typeof value !== 'string' || value.length < 1 || value.length > 128 || !/^[a-z0-9][a-z0-9-]*$/u.test(value)) fail(code);
 }
 
 function assertCanonicalIds(value, pattern, code) {

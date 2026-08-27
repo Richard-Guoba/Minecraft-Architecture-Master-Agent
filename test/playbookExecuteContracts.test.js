@@ -579,13 +579,14 @@ function resolvedPatch() {
     variant_id: 'promote-largest-stable',
     target_layer: 'massing',
     base_checkpoint_sha256: HASH,
-    precondition_hashes: [{ anchor_id: 'primary-volume', sha256: HASH }],
-    effects: [{ kind: 'assign-primary', volume_id: 'volume-01' }],
+    precondition_hashes: [{ kind: 'volume', id: 'volume-01', sha256: HASH }],
+    effects: [{ type: 'set-volume-role', volume_id: 'volume-01', role: 'primary-mass' }],
     invalidates_layers: ['structure', 'roof', 'facade']
   };
 }
 
 function resolvedPatchFor(row) {
+  const massing = row.repair_operation_id.startsWith('repair:massing:');
   return {
     schema_version: 1,
     compiler_version: 1,
@@ -593,10 +594,12 @@ function resolvedPatchFor(row) {
     rule_id: row.rule_id,
     repair_operation_id: row.repair_operation_id,
     variant_id: row.allowed_variant_ids[0],
-    target_layer: row.repair_operation_id.startsWith('repair:massing:') ? 'massing' : row.design_layer,
+    target_layer: massing ? 'massing' : row.design_layer,
     base_checkpoint_sha256: HASH,
-    precondition_hashes: [{ anchor_id: 'primary-volume', sha256: HASH }],
-    effects: [{ kind: 'assign-primary', volume_id: 'volume-01' }],
+    precondition_hashes: [{ kind: massing ? 'volume' : 'structural-anchor', id: massing ? 'volume-01' : 'roof-main', sha256: HASH }],
+    effects: massing
+      ? [{ type: 'set-volume-role', volume_id: 'volume-01', role: 'primary-mass' }]
+      : [{ type: 'set-load-path', from: 'roof-main', through: 'frame-main', to: 'foundation-main' }],
     invalidates_layers: row.invalidates_layers
   };
 }
