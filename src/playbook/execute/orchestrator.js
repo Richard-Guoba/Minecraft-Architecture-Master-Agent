@@ -3,11 +3,11 @@ import path from 'node:path';
 import { randomInt } from 'node:crypto';
 import { CandidateSelectionAgent } from '../../construction/agents/candidateSelectionAgent.js';
 import { BlueprintQAAgent } from '../../construction/agents/blueprintQaAgent.js';
-import { candidateSeedFor, installSelectedDatapack } from '../../construction/candidatePipelineSupport.js';
+import { candidateSeedFor, installSelectedDatapackSafely } from '../../construction/candidatePipelineSupport.js';
 import { compileDesignLayers, prepareConstructionDesign } from '../../construction/designStages.js';
 import { compilePreparedConstruction } from '../../construction/workflow.js';
 import { createLlmClient } from '../../llm/createLlmClient.js';
-import { createTimestamp, ensureDir } from '../../lib/fs.js';
+import { createTimestamp } from '../../lib/fs.js';
 import { hashReplayArtifacts } from './artifactAuthority.js';
 import { chainManifestBytes, chainManifestHash, checkpointBytes, createChainManifest, createCheckpointEnvelope } from './checkpoints.js';
 import { DESIGN_LAYER_ORDER, INVALIDATES_BY_LAYER } from './constants.js';
@@ -17,60 +17,100 @@ import { evaluateExecuteEligibility, executableViolations } from './eligibility.
 import { buildRepairTransaction } from './repairTransaction.js';
 import { replayCandidate } from './replay.js';
 import { renderExecuteSelectionReport } from './report.js';
-import { admitExecuteRun, appendCandidateRepairPlanningFailureEvidence, inspectCandidateEvidence, installCandidateSnapshot, installExecuteSelection, installInitialCandidateFailure, readCurrentCandidateSnapshot } from './storage.js';
-import { selectionProjectionForCandidateEvidence } from './storageValidation.js';
+import { appendCandidateRepairPlanningFailureEvidence, createExecuteRun, inspectCandidateEvidence, installCandidateSnapshot, installExecuteSelection, installInitialCandidateFailure, pruneCandidateWorkspaces, readCurrentCandidateSnapshot } from './storage.js';
+import { FROZEN_CONTEXT_PATH, FROZEN_DESIGN_PATH, selectionProjectionForCandidateEvidence } from './storageValidation.js';
 import { buildDeterministicShadowReview } from '../shadow/runShadowReview.js';
 import { loadShadowCorpus } from '../shadow/corpus.js';
 import { sha256, stableJson } from '../shadow/canonical.js';
 
 const MAX_RANDOM_SEED = 2147483647;
 const DEFAULT_TARGET_SCORE = 95;
-const DEPENDENCY_KEYS = Object.freeze(['createClient', 'createEnvelope', 'prepareDesign', 'compileLayers', 'compilePrepared', 'buildReview', 'buildTransaction', 'replay', 'createSelectionAgent', 'installSelected']);
+const DEPENDENCY_KEYS = Object.freeze([
+  'createClient', 'createEnvelope', 'prepareDesign', 'compileLayers', 'compilePrepared',
+  'buildReview', 'buildTransaction', 'replay', 'createSelectionAgent', 'installSelected',
+  'createRun', 'loadCorpus', 'publishSelection', 'renderSelection', 'pruneWorkspaces',
+  'closeAuthority'
+]);
 const DEFAULT_DEPENDENCIES = Object.freeze({
   createClient: createLlmClient, createEnvelope: createFrozenDesignEnvelope,
   prepareDesign: prepareConstructionDesign, compileLayers: compileDesignLayers,
   compilePrepared: compilePreparedConstruction, buildReview: buildDeterministicShadowReview,
   buildTransaction: buildRepairTransaction, replay: replayCandidate,
-  createSelectionAgent: () => new CandidateSelectionAgent(), installSelected: installSelectedDatapack
+  createSelectionAgent: () => new CandidateSelectionAgent(), installSelected: installSelectedDatapackSafely,
+  createRun: createExecuteRun, loadCorpus: loadShadowCorpus,
+  publishSelection: installExecuteSelection, renderSelection: renderExecuteSelectionReport,
+  pruneWorkspaces: pruneCandidateWorkspaces, closeAuthority: (authority) => authority.close()
 });
 
 export async function runExecutablePlaybookPipeline(options = {}, dependencies = {}) {
-  const deps = resolveDependencies(dependencies);
-  const normalized = validateExecuteOptions(Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)));
-  if (normalized.playbook !== 'execute') throw executeError('P5_MODE_INVALID');
-  if (!normalized.prompt?.trim() || normalized.coarseVoxelMode === 'shadow' && normalized.coarseVoxelProvider === 'artifact') throw executeError('P5_OPTIONS_INCOMPATIBLE');
-  const projectRoot = path.resolve(normalized.cwd || process.cwd());
-  const seedPlan = resolveSeed(normalized.seed);
-  const runDir = path.join(path.resolve(normalized.outRoot || path.join(projectRoot, 'out')), createTimestamp());
-  await ensureDir(runDir);
-  const authority = await admitExecuteRun({ runDir });
+  let deps;
+  let authority;
+  let stage = 'dependencies';
+  let failure;
+  let outcome;
+  let retainedWorkspace;
   try {
-    const cards = (await loadShadowCorpus({ projectRoot })).cards;
+    deps = resolveDependencies(dependencies);
+    stage = 'options';
+    const normalized = validateExecuteOptions(Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)));
+    if (normalized.playbook !== 'execute') throw executeError('P5_MODE_INVALID');
+    if (!normalized.prompt?.trim() || normalized.coarseVoxelMode === 'shadow' && normalized.coarseVoxelProvider === 'artifact') throw executeError('P5_OPTIONS_INCOMPATIBLE');
+    const projectRoot = path.resolve(normalized.cwd || process.cwd());
+    const seedPlan = resolveSeed(normalized.seed);
+    stage = 'create-run';
+    const created = await deps.createRun({
+      outRoot: path.resolve(normalized.outRoot || path.join(projectRoot, 'out')),
+      runBasename: createTimestamp()
+    });
+    ({ authority } = created);
+    const { runDir } = created;
+    stage = 'corpus';
+    const cards = (await deps.loadCorpus({ projectRoot })).cards;
+    stage = 'candidates';
     const records = [];
     for (let index = 1; index <= 3; index += 1) records.push(await executeCandidate({ index, normalized, seedPlan, runDir, projectRoot, authority, cards, deps }));
     const eligibleRecords = records.filter((record) => record.playbookEligibility.status === 'eligible');
     const targetScore = clampInt(normalized.candidateTargetScore, 0, 100, DEFAULT_TARGET_SCORE);
     const ranked = deps.createSelectionAgent().run(eligibleRecords.map((record) => record.rankerRecord), { targetScore, scope: 'playbook-execute' });
     const selected = records.find((record) => record.candidateId === ranked.selected_candidate_id);
+    retainedWorkspace = selected?.result?.outputDir;
     const selection = createSelection(records, selected, ranked);
     if (!selected) throw executeError('P5_NO_ELIGIBLE_CANDIDATE');
-    await revalidateSelected({ authority, selected });
+    const selectedArtifactHashes = await revalidateSelected({ authority, selected });
     const selectionBytes = Buffer.from(stableJson(selection));
-    const reportBytes = Buffer.from(renderExecuteSelectionReport(selection));
+    stage = 'selection-render';
+    const reportBytes = Buffer.from(deps.renderSelection(selection));
     const manifest = { schema_version: 1, managed_paths: ['manifest.json', 'selection.json', 'selection-report.md'], artifact_hashes: { 'selection.json': sha256(selectionBytes), 'selection-report.md': sha256(reportBytes) } };
-    await installExecuteSelection({ authority, files: { 'manifest.json': Buffer.from(stableJson(manifest)), 'selection.json': selectionBytes, 'selection-report.md': reportBytes } });
-    const installed = await deps.installSelected(selected.result.artifacts.datapackDir, { minecraftDir: normalized.minecraftDir, world: normalized.world, datapacksDir: normalized.datapacksDir });
+    stage = 'selection-publication';
+    const publication = await deps.publishSelection({ authority, files: { 'manifest.json': Buffer.from(stableJson(manifest)), 'selection.json': selectionBytes, 'selection-report.md': reportBytes } });
+    stage = 'install';
+    const installed = await deps.installSelected(selected.result.artifacts.datapackDir, {
+      minecraftDir: normalized.minecraftDir, world: normalized.world, datapacksDir: normalized.datapacksDir,
+      expectedDatapackTreeSha256: selectedArtifactHashes.datapack_tree_sha256
+    });
+    const selectionGeneration = path.join(runDir, 'playbook-execute', publication.generation);
     const artifacts = { ...selected.result.artifacts,
-      playbookExecutionManifest: path.join(runDir, 'playbook-execute', 'manifest.json'),
-      playbookExecutionSelection: path.join(runDir, 'playbook-execute', 'selection.json'),
-      playbookExecutionReport: path.join(runDir, 'playbook-execute', 'selection-report.md') };
+      playbookExecutionManifest: path.join(selectionGeneration, 'manifest.json'),
+      playbookExecutionSelection: path.join(selectionGeneration, 'selection.json'),
+      playbookExecutionReport: path.join(selectionGeneration, 'selection-report.md') };
     if (installed) artifacts.installedDatapackDir = installed;
-    return { ...selected.result, outputDir: runDir, selectedOutputDir: selected.result.outputDir, seed: selected.seed,
+    outcome = { ...selected.result, outputDir: runDir, selectedOutputDir: selected.result.outputDir, seed: selected.seed,
       seedSource: `${seedPlan.source}-candidate-selected`, artifacts,
       playbookExecution: { mode: 'execute', candidate_count: 3, selected_candidate_id: selected.candidateId,
         selected_chain_sha256: selected.currentChainSha256, repair_attempt_count: selection.repair_attempt_count,
         candidates: selection.candidates } };
-  } finally { await authority.close(); }
+  } catch (error) {
+    failure = sanitizeExecuteError(error, executeStageFallback(stage));
+  } finally {
+    if (authority) {
+      try { await deps.pruneWorkspaces({ authority, keepPath: retainedWorkspace }); }
+      catch (error) { if (!failure) failure = sanitizeExecuteError(error, 'P5_INSTALL_FAILED'); }
+      try { await deps.closeAuthority(authority); }
+      catch (error) { if (!failure) failure = sanitizeExecuteError(error, 'P5_AUTHORITY_INVALID'); }
+    }
+  }
+  if (failure) throw failure;
+  return outcome;
 }
 
 async function executeCandidate({ index, normalized, seedPlan, runDir, projectRoot, authority, cards, deps }) {
@@ -97,11 +137,12 @@ async function executeCandidate({ index, normalized, seedPlan, runDir, projectRo
     blueprintSha256 = sha256(blueprintBytes);
     hardQa = new BlueprintQAAgent().run(result.blueprint); hardQaSha256 = sha256(stableJson(hardQa));
     review = await deps.buildReview({ projectRoot, blueprintBytes, blueprintRelativePath: 'blueprint.json' }); reviewSha256 = sha256(stableJson(review));
+    const candidateAuthority = { blueprint_sha256: blueprintSha256, workflow: 'construction_method_v1', seed };
     if (!hardQa.ok) {
       await installInitialFailure({ authority, candidateId, stage: 'hard-qa', code: 'P5_HARD_QA_FAILED', frozenDesignSha256, contextSha256, blueprintSha256, hardQa, hardQaSha256, review, reviewSha256 });
-      return failedRecord(candidateId, seed, evaluateExecuteEligibility({ review, hardQa: { ok: false }, repairBudgetUsed: 0 }));
+      return failedRecord(candidateId, seed, evaluateExecuteEligibility({ review, hardQa: { ok: false }, repairBudgetUsed: 0, candidateAuthority }));
     }
-    let eligibility = evaluateExecuteEligibility({ review, hardQa: { ok: true }, repairBudgetUsed: 0 });
+    let eligibility = evaluateExecuteEligibility({ review, hardQa: { ok: true }, repairBudgetUsed: 0, candidateAuthority });
     const artifactHashes = await hashReplayArtifacts({ compiledResult: result });
     const envelopes = initialCheckpoints({ candidateId, frozenDesign, compiled, hardQa, hardQaSha256, reviewSha256, artifactHashes });
     const chain = createChainManifest({ candidate_id: candidateId, chain_revision: 1, parent_chain_sha256: null,
@@ -110,16 +151,16 @@ async function executeCandidate({ index, normalized, seedPlan, runDir, projectRo
       repair_transaction_sha256: null, eligibility, created_from: 'initial' });
     const chainSha256 = chainManifestHash(chain);
     const files = Object.fromEntries(envelopes.map((envelope) => [`checkpoints/${envelope.checkpoint.layer}/r0001.json`, checkpointBytes(envelope)]));
+    files[FROZEN_DESIGN_PATH] = Buffer.from(stableJson(frozenDesign));
+    files[FROZEN_CONTEXT_PATH] = Buffer.from(stableJson(prepared.frozen_generator_context));
+    files['blueprints/chain-0001.json'] = Buffer.from(blueprintBytes);
     files['reviews/chain-0001-hard-qa.json'] = Buffer.from(stableJson(hardQa)); files['reviews/chain-0001-review.json'] = Buffer.from(stableJson(review));
     await installCandidateSnapshot({ authority, candidateId, files, currentChain: chainManifestBytes(chain), expectedPreviousChainSha256: null });
     let current = { chain, chainSha256, result, hardQa, review, eligibility }; let repairAttempts = 0;
     if (eligibility.status !== 'eligible' && executableViolations(review).length > 0) {
       repairAttempts = 1;
       const transaction = deps.buildTransaction({ candidateId, review, frozenDesign, baseChainSha256: chainSha256, acceptedChain: chain, checkpointEnvelopes: envelopes });
-      const replayed = await deps.replay({ authority, candidate: { candidate_id: candidateId, seed, frozen_design: frozenDesign,
-        frozen_generator_context: prepared.frozen_generator_context, prepared_design: prepared, current_chain: chain,
-        checkpoint_envelopes: envelopes, initial_result: result, hard_qa: hardQa, p4_review: review, playbook_eligibility: eligibility },
-      transaction, projectRoot, compilePrepared: deps.compilePrepared });
+      const replayed = await deps.replay({ authority, candidateId, transaction, projectRoot, compilePrepared: deps.compilePrepared });
       current = { chain: replayed.current_chain, chainSha256: replayed.current_chain_sha256, result: replayed.compiled_result,
         hardQa: replayed.hard_qa, review: replayed.p4_review, eligibility: replayed.playbook_eligibility };
     }
@@ -204,6 +245,7 @@ async function revalidateSelected({ authority, selected }) {
     if (!facadePath || sha256(await fs.readFile(selected.result.artifacts.blueprint)) !== current.blueprint_sha256) installFailed();
     const facade = JSON.parse(reopened.files[facadePath].toString('utf8')); const hashes = await hashReplayArtifacts({ compiledResult: selected.result });
     for (const [key, value] of Object.entries(hashes)) if (facade.compiled_artifact_hashes[key] !== value) installFailed();
+    return hashes;
   } catch {
     installFailed();
   }
@@ -213,4 +255,9 @@ function resolveDependencies(input) { if (!input || Object.getPrototypeOf(input)
 function resolveSeed(seed) { if (seed === undefined || seed === null || seed === '') return { seed: randomInt(1, MAX_RANDOM_SEED), source: 'random' }; const value = Number(seed); if (!Number.isFinite(value)) throw executeError('P5_OPTIONS_INCOMPATIBLE'); return { seed: Math.trunc(value), source: 'manual' }; }
 function clampInt(value, min, max, fallback) { const number = Number(value); return Number.isFinite(number) ? Math.min(max, Math.max(min, Math.trunc(number))) : fallback; }
 function fallbackEligibility(hardQa, budget) { return { status: hardQa?.ok === false ? 'hard-qa-failed' : 'replay-failed', hard_qa_ok: Boolean(hardQa?.ok), unresolved_violated_core_rule_ids: [], neutral_unknown_rule_ids: [], neutral_not_applicable_rule_ids: [], repair_budget_used: budget }; }
+function executeStageFallback(stage) {
+  if (stage === 'options') return 'P5_OPTIONS_INCOMPATIBLE';
+  if (['selection-render', 'selection-publication', 'install'].includes(stage)) return 'P5_INSTALL_FAILED';
+  return 'P5_AUTHORITY_INVALID';
+}
 function installFailed() { throw executeError('P5_INSTALL_FAILED'); }

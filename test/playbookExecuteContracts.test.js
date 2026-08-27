@@ -140,13 +140,15 @@ test('canonical data rejects array accessors/custom prototypes and accepts reord
 test('frozen generator context is bound to its candidate and contains only safe canonical data', () => {
   assertFrozenMutationRejections(validateFrozenGeneratorContext, frozenGeneratorContext(), 'P5_DESIGN_INVALID');
   const invalid = frozenGeneratorContext();
-  invalid.concept = Number.NaN;
+  invalid.concept_count = Number.NaN;
   assert.throws(() => validateFrozenGeneratorContext(invalid), { code: 'P5_DESIGN_INVALID' });
-  assert.deepEqual(validateFrozenGeneratorContext(frozenGeneratorContext()).concept, null);
+  assert.deepEqual(validateFrozenGeneratorContext(frozenGeneratorContext()).concept_studio, null);
 });
 
 test('checkpoint payload/envelope preserve exact layer predecessors and their canonical hash', () => {
-  assertFrozenMutationRejections(validateCheckpointPayload, checkpointPayload(), 'P5_CHECKPOINT_INVALID');
+  assertFrozenMutationRejections(validateCheckpointPayload, checkpointPayload(), 'P5_CHECKPOINT_INVALID', {
+    unorderedArrays: ['selected_rule_ids', 'rejected_rule_ids']
+  });
   const reordered = checkpointPayload('facade');
   reordered.upstream_accepted_hashes.reverse();
   assert.throws(() => validateCheckpointPayload(reordered), { code: 'P5_CHECKPOINT_INVALID' });
@@ -472,11 +474,25 @@ function frozenGeneratorContext() {
     architecture: { source: 'fallback' },
     topology: { rooms: 8 },
     creative_design: { source: 'local' },
-    concept: null,
+    concept_studio: null,
+    stage7_shadow: null,
     build_spec: { typology: 'house' },
     style_preset: { id: 'medieval' },
     material_palette: { roof: 'dark_oak' },
-    template_knowledge: { source: 'local' }
+    template_knowledge: { source: 'local' },
+    prompt: 'Build a medieval residence',
+    mode: 'mock',
+    mc_version: '1.21',
+    seed_source: 'explicit',
+    concept_count: 0,
+    concept_strategy: 'select',
+    critics: false,
+    neural_retrieval: false,
+    coarse_voxel_mode: 'off',
+    coarse_voxel_provider: 'baseline',
+    coarse_voxel_plan: null,
+    llm_provider: 'disabled-by-mock-mode',
+    llm_usage: { calls: 0 }
   };
 }
 

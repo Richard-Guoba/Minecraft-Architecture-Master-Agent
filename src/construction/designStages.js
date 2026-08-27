@@ -137,6 +137,7 @@ export async function prepareConstructionDesign({
   if (frozenDesign !== undefined) prepared.frozenDesign = frozenDesign;
 
   if (candidateId !== undefined || frozenDesignSha256 !== undefined || frozenDesign !== undefined) {
+    const persistedLlmProvider = mode === 'mock' ? 'disabled-by-mock-mode' : 'configured-provider';
     prepared.frozen_generator_context = buildFrozenGeneratorContext({
       schema_version: 1,
       candidate_id: candidateId,
@@ -145,12 +146,27 @@ export async function prepareConstructionDesign({
       architecture,
       topology,
       creative_design: creativeDesign,
-      concept: conceptStudio?.selectedConcept || null,
+      concept_studio: conceptStudio || null,
+      stage7_shadow: stage7Shadow || null,
       build_spec: buildSpec,
       style_preset: stylePreset,
       material_palette: materialPalette,
-      template_knowledge: templateKnowledge
+      template_knowledge: templateKnowledge,
+      prompt,
+      mode,
+      mc_version: mcVersion,
+      seed_source: seedSource,
+      concept_count: clampConceptCount(conceptCount),
+      concept_strategy: conceptStrategy,
+      critics: Boolean(critics),
+      neural_retrieval: Boolean(neuralRetrieval),
+      coarse_voxel_mode: coarseVoxelMode,
+      coarse_voxel_provider: coarseVoxelProvider,
+      coarse_voxel_plan: null,
+      llm_provider: persistedLlmProvider,
+      llm_usage: projectPersistedLlmUsage(llmUsage, persistedLlmProvider)
     });
+    Object.assign(prepared, preparedFromFrozenGeneratorContext(prepared.frozen_generator_context, { outputDir, cwd }));
   }
 
   return prepared;
@@ -158,10 +174,44 @@ export async function prepareConstructionDesign({
 
 export function buildFrozenGeneratorContext(value) {
   try {
-    return validateFrozenGeneratorContext(canonicalClone(value, { omitKeys: new Set(['llm_error']) }));
+    return validateFrozenGeneratorContext(canonicalClone(value, {
+      omitKeys: new Set(['llm_error', 'rawArtifactSource'])
+    }));
   } catch {
     throw executeError('P5_DESIGN_INVALID');
   }
+}
+
+export function preparedFromFrozenGeneratorContext(context, { outputDir, cwd } = {}) {
+  const value = validateFrozenGeneratorContext(context);
+  return {
+    prompt: value.prompt,
+    mode: value.mode,
+    mcVersion: value.mc_version,
+    outputDir,
+    seed: value.seed,
+    seedSource: value.seed_source,
+    cwd,
+    conceptCount: value.concept_count,
+    conceptStrategy: value.concept_strategy,
+    critics: value.critics,
+    neuralRetrieval: value.neural_retrieval,
+    coarseVoxelMode: value.coarse_voxel_mode,
+    coarseVoxelProvider: value.coarse_voxel_provider,
+    coarseVoxelPlan: undefined,
+    llmProvider: value.llm_provider,
+    llmUsage: value.llm_usage,
+    architecture: value.architecture,
+    topology: value.topology,
+    creativeDesign: value.creative_design,
+    conceptStudio: value.concept_studio || undefined,
+    stage7Shadow: value.stage7_shadow || undefined,
+    buildSpec: value.build_spec,
+    stylePreset: value.style_preset,
+    materialPalette: value.material_palette,
+    templateKnowledge: value.template_knowledge,
+    frozen_generator_context: value
+  };
 }
 
 export function compileDesignLayers({ prepared, layerPayloads, resolvedEffectsByLayer = {} }) {
@@ -488,4 +538,23 @@ function summarizeLlmStage(agent, output = {}) {
   const stage = { agent, source: decisionSource || source, called, used };
   if (output?.llm_error) stage.error = String(output.llm_error);
   return stage;
+}
+
+function projectPersistedLlmUsage(usage, provider) {
+  const stages = Array.isArray(usage?.stages) ? usage.stages.map((stage) => ({
+    agent: String(stage.agent),
+    source: String(stage.source),
+    called: Boolean(stage.called),
+    used: Boolean(stage.used),
+    ...(stage.error ? { error: 'provider-error' } : {})
+  })) : [];
+  return {
+    mode: String(usage?.mode || 'mock'),
+    provider,
+    called: Boolean(usage?.called),
+    used: Boolean(usage?.used),
+    status: String(usage?.status || 'not-called'),
+    stages,
+    errors: stages.filter((stage) => stage.error).map((stage) => `${stage.agent}: provider-error`)
+  };
 }

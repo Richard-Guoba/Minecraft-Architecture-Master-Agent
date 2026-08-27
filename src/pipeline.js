@@ -136,8 +136,29 @@ export async function runCandidatePipeline({
   minecraftDir,
   world,
   datapacksDir,
-  autoBuild = false
+  autoBuild = false,
+  playbook = 'off'
 }) {
+  validatePlaybookMode(playbook);
+  if (playbook === 'execute') {
+    const executeOptions = validateExecuteOptions({
+      playbook,
+      ...(candidates !== undefined ? { candidates } : {}),
+      ...(candidateRounds !== undefined ? { candidateRounds } : {}),
+      candidateForceRounds
+    });
+    return runExecutablePlaybookPipeline({
+      prompt, mode, mcVersion, outRoot, seed,
+      candidates: executeOptions.candidates,
+      candidateRounds: executeOptions.candidateRounds,
+      candidateTargetScore,
+      candidateForceRounds: executeOptions.candidateForceRounds,
+      concepts, conceptStrategy, critics, neuralRetrieval,
+      coarseVoxelMode, coarseVoxelProvider, coarseVoxelPlan,
+      cwd, minecraftDir, world, datapacksDir, autoBuild,
+      playbook: 'execute'
+    });
+  }
   if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
 
   const seedPlan = resolveSeed(seed);

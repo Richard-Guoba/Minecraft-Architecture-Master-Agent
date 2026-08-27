@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { ensureDir } from '../lib/fs.js';
 import { resolveWorldDir } from '../lib/minecraftWorlds.js';
+export { installSelectedDatapackSafely } from '../playbook/execute/installer.js';
 
 const MAX_RANDOM_SEED = 2147483647;
 

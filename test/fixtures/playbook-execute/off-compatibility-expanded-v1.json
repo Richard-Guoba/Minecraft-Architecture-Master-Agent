@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "base_commit": "ece476d39f63b5d0d4e6489a0f3154464b2496bd",
+  "stage7_concept_no_critics": {
+    "summary_sha256": "de54917cee5f6fc8b6dcd6932358a9017962df69a286b1f0af8e93d3f433efa9",
+    "artifact_hashes": {
+      "blueprint": "dc61ca9448686607bd1f4a1a3a20b8444a4096e7c017a6f6aa527efba77ab2b5",
+      "buildFunction": "b371cb9cbf82fd011e3dec28ac7d05482c46eafd1ad355c29adb510aeafa2732",
+      "clearFunction": "0539309cac15917ba87a596b8afd0ef5c9e912c625740d80dbd9484012277e23",
+      "runFunction": "568b2b7f3a56bd18743ddba22e6def4d56003dd536c3e18c9668fee7ad6d2631",
+      "rawBuild": "d57f93b37efb9f221af9c60fe00cfb1a466350d526c2fa301ca464539e468749",
+      "previewHtml": "7aa8856550975e38fe22511767a939b00068afb8776326ec16a7f4d19b608ae5",
+      "report": "edb475fbb90a9dafc6e2b576a6b25930a14cceab692de7dd1cba75412b617c8f",
+      "architectureScorecard": "a8bed6a6e94d9febf128f636c90e560a48722ee94350a1c56d90754835434162",
+      "conceptStudio": "e60741063c47942687b8e99e4c5a764609430d9d6c85b36aaaba966ae7312499",
+      "conceptStudioReport": "e169f1bc275ed8bb43829f54b89cde8c1645c8f316b110797677e069d2bb1b6a",
+      "stage7Condition": "4428ed4b93ef4fc47e324a132deeb421324b222aa6d249558a6375f93bb180aa",
+      "stage7RawPlan": "d8b6faa5b6c57a5a85de755dda77ee9d9e7b872d5f63eb93cc1a5e3174e709e8",
+      "stage7RepairedPlan": "1ababe1a05b1dc9258b760fd6e63b4f73816a9061093f16b1bb6a2769e131dce",
+      "stage7Candidate": "12d8f2f4954ac9098ea8cf568d18b50600c6b387ffe3996796136b1b4c56aa6b",
+      "stage7Report": "583f593392a2808908eafb85f73374b6ed0df7f17fc3d286a2f7d58950ceb074"
+    },
+    "installed_tree_sha256": null
+  },
+  "provider_fallback": {
+    "summary_sha256": "673df39fa8f1ca4ef6ef9357c82ddf9b36656bf3b07dc549158cd7b29c9cda75",
+    "artifact_hashes": {
+      "blueprint": "57168431f253a8337fc2b720b250399df1359853b6ff93f6cb14ded15d006395",
+      "buildFunction": "68ff458dd7b5bbf22249a8b6d1f418fc637fe1499971eae062ea85f4600cd829",
+      "clearFunction": "0539309cac15917ba87a596b8afd0ef5c9e912c625740d80dbd9484012277e23",
+      "runFunction": "568b2b7f3a56bd18743ddba22e6def4d56003dd536c3e18c9668fee7ad6d2631",
+      "rawBuild": "2fb6917b76242d3154b8d4367bb2a24f02f5b9b860c8d2ab034a8fc3a58834b9",
+      "previewHtml": "501e3964faf75f5879c221d6cd3e34edd4283dae87e05e363894eb27a1a060ff",
+      "report": "9343b8f9789a28e1641246b1adc0bc48d35dc86292ad04629ebbd4eab5d64c4d",
+      "architectureScorecard": "290156f10508434e75a8c9b0f6a969a2ca95f21f57cda9f3595afc92e39969db"
+    },
+    "installed_tree_sha256": null,
+    "request_count": 3,
+    "request_trace_sha256": "7e6b0ac3a2020f0c56be0fe6a120a01234a0bb963a57c8347353109319579e91",
+    "requests": [
+      { "index": 1, "url": "https://off-compatibility.invalid/v1/chat/completions", "method": "POST", "model": "off-compatibility-model", "temperature": 0.2, "roles": ["system", "user"], "body_sha256": "2a978f2ec8ff6102af8bc81a68dbab0c9ce84952d6f2a4f9a1bfe408dda47af5", "system_sha256": "d0c1dd62778aed0a023432215ed2f126687bc6744a096fa27fd894eecc6366fd", "user_sha256": "e392062b457ead73d16fa2bde4039e0bfeec52454c947dfd392ad67b3eb196bc" },
+      { "index": 2, "url": "https://off-compatibility.invalid/v1/chat/completions", "method": "POST", "model": "off-compatibility-model", "temperature": 0.2, "roles": ["system", "user"], "body_sha256": "beff7abef4adf4f9f89c7f8a9ea0a7780c8bea9db9e1e32b6c9a42dba6754f2e", "system_sha256": "224363592f62e2f97db907bc2a41267a568325f2378fcba2da2b24ae228d10d5", "user_sha256": "4432eb6623961a953ce816e3382d72c9c8f16244604a6cd6fde5735150adc59c" },
+      { "index": 3, "url": "https://off-compatibility.invalid/v1/chat/completions", "method": "POST", "model": "off-compatibility-model", "temperature": 0.2, "roles": ["system", "user"], "body_sha256": "96ac2f007920426468af64e4fbb8871a2ab78b25b9a942a8cfebcae5b2c7972b", "system_sha256": "15fcdbe9238a591bd6f53ef1252101ca50fef57d0659c5c1bde75a31a209aa70", "user_sha256": "94262fc88021f703daf11f24cc839965b794f3a70629c7c1f28902fd02c2e284" }
+    ]
+  },
+  "single_install": {
+    "summary_sha256": "b3e9284cb8ec4283e3e4e9c42789797ef9b23efe10b00088fa6414c54e2e51a2",
+    "artifact_hashes": {
+      "blueprint": "82c169bfc8d78f1a92da8d55c29475c97bbf93d8de91d6b8665b28d7503d9174",
+      "buildFunction": "68ff458dd7b5bbf22249a8b6d1f418fc637fe1499971eae062ea85f4600cd829",
+      "clearFunction": "0539309cac15917ba87a596b8afd0ef5c9e912c625740d80dbd9484012277e23",
+      "runFunction": "568b2b7f3a56bd18743ddba22e6def4d56003dd536c3e18c9668fee7ad6d2631",
+      "rawBuild": "2fb6917b76242d3154b8d4367bb2a24f02f5b9b860c8d2ab034a8fc3a58834b9",
+      "previewHtml": "501e3964faf75f5879c221d6cd3e34edd4283dae87e05e363894eb27a1a060ff",
+      "report": "d7c61ae7574ba3f4af67f0d3ccd3d7285f997d7fdd2c162213acffdc4a49cdfd",
+      "architectureScorecard": "19cc29a3854fe27559043ec5c0b4fc663a5f5eccd8e90d9e64cf2b8f6e2017db",
+      "criticCouncil": "2fcd4f18ee1fa8e7a7eb5aefafa6fa97d37c276b309e056dc9ec6cdd993a2f52"
+    },
+    "installed_tree_sha256": "97380c1764b778d7629d6509734b7096bb9bf0b523cb42f36c23ef99852a1810"
+  },
+  "candidate_install": {
+    "summary_sha256": "2b15f454d428f667e20302c1e29e9c042fe9f0cd1ce87ddaf8332d529da28ebc",
+    "artifact_hashes": {
+      "blueprint": "20cff94d5bf5ba897cdf0c1fe983e097e9d9b1cdf82ad40ff2159995b33119c3",
+      "buildFunction": "631973cf34ded1e5cbadc2e109ef05b48fc102b36c21c28b4486381ce73539c4",
+      "clearFunction": "220bd03d4a4034541032922a7e4a6fd97dc57ec75dc70d0865f32b10cf424653",
+      "runFunction": "568b2b7f3a56bd18743ddba22e6def4d56003dd536c3e18c9668fee7ad6d2631",
+      "rawBuild": "351a3a9c2ea79b18a23654fbcf906173caeb61ed0b10693e2465626dee058b58",
+      "previewHtml": "fd7df1886c8e480fd271fa5b497002787c406c9fb516ce2511a1c47dc22ccb9f",
+      "report": "11b48e9262ee0edede72bfba8fe62005c0751dfcbd82b642b4a535305c2c65cf",
+      "architectureScorecard": "ae8edd0e274d9c8d0234afa77e097b6b66394d8d344ac865c7db0a29a174f482",
+      "candidateSelection": "36b93029145a623872225781901d3ca00e496d1959300318cb3cde8922f572ef",
+      "candidateSelectionReport": "092e4dded81e6f304ee9e603f7445fe1a306b4a356f02449195d04bf1f2e4b6b",
+      "criticCouncil": "d548391426429edc8d89f395ff21766c0e1882080c56b8a3cee24b8014a4b957"
+    },
+    "installed_tree_sha256": "d870a3eeb305d06f88cd2028c04f4c6cf5876060ebc0bf300473e9d57302b1ec"
+  }
+}

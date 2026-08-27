@@ -1,10 +1,18 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { BlueprintQAAgent } from '../src/construction/agents/blueprintQaAgent.js';
+import {
+  buildFrozenGeneratorContext,
+  compileDesignLayers,
+  prepareConstructionDesign
+} from '../src/construction/designStages.js';
+import { compilePreparedConstruction } from '../src/construction/workflow.js';
 import {
   chainManifestBytes,
   chainManifestHash,
@@ -13,6 +21,8 @@ import {
   createCheckpointEnvelope
 } from '../src/playbook/execute/checkpoints.js';
 import { validateExecuteSelectionManifest } from '../src/playbook/execute/contracts.js';
+import { buildDeterministicShadowReview } from '../src/playbook/shadow/runShadowReview.js';
+import { sha256, stableJson } from '../src/playbook/shadow/canonical.js';
 import {
   admitExecuteRun,
   appendCandidateFailureEvidence,
@@ -32,14 +42,9 @@ const INVALIDATES = Object.freeze({
 const STAGE_PREFIX = '.playbook-execute.stage-';
 const BACKUP_PREFIX = '.playbook-execute.backup-';
 const ARTIFACT_HASH = 'a'.repeat(64);
-const QA_BYTES = canonicalBytes({ ok: true, source: 'storage-fixture' });
-const REVIEW_BYTES = canonicalBytes({ schema_version: 1, source: 'storage-fixture' });
-const QA_HASH = testHash(QA_BYTES);
-const REVIEW_HASH = testHash(REVIEW_BYTES);
-const DESIGN_HASH = 'd'.repeat(64);
-const CONTEXT_HASH = 'e'.repeat(64);
-const BLUEPRINT_HASH = 'f'.repeat(64);
-const TRANSACTION_HASH = '9'.repeat(64);
+const TRANSACTION_HASH = 'b'.repeat(64);
+const CRASH_WORKER = path.join(import.meta.dirname, 'fixtures', 'playbookExecuteCrashWorker.js');
+const STORAGE_AUTHORITIES = await buildStorageAuthorities();
 
 test('failure evidence append rolls back every precommit write sync move and inspection fault', async (t) => {
   const cases = [
@@ -274,7 +279,7 @@ test('installs and reads a complete first candidate snapshot with immutable bodi
   read.files['current-chain.json'].fill(0);
   const reread = await readCurrentCandidateSnapshot({ authority, candidateId: 'candidate-01' });
   assert.deepEqual(reread.current_chain, snapshot.currentChain);
-  assert.deepEqual(reread.files['current-chain.json'], snapshot.currentChain);
+  assert.deepEqual(reread.files['current-chain.json'], expectedFiles['current-chain.json']);
 });
 
 test('closes every descriptor opened by admission and candidate installation', async (t) => {
@@ -353,6 +358,49 @@ test('owned replacement requires the exact prior chain and retains every immutab
   assert.deepEqual(await generatedCandidateEntries(fixture.runDir), []);
 });
 
+test('revision 2 requires the complete bound attempt-01 evidence triplet', async (t) => {
+  const fixture = await installedFixture(t);
+  const replay = replaySnapshot(fixture.initial);
+  for (const name of [
+    'repairs/attempt-01-request.json',
+    'repairs/attempt-01-patch.json',
+    'repairs/attempt-01-result.json'
+  ]) delete replay.files[name];
+
+  await assert.rejects(installCandidateSnapshot({
+    authority: fixture.authority,
+    candidateId: 'candidate-01',
+    files: replay.files,
+    currentChain: replay.currentChain,
+    expectedPreviousChainSha256: fixture.initial.chainHash
+  }), { code: /P5_(?:AUTHORITY_INVALID|CHECKPOINT_INVALID|REPAIR_INVALID)/u });
+});
+
+test('replay promotion preserves every historical immutable body inode', async (t) => {
+  const fixture = await installedFixture(t);
+  const candidateDir = candidateDirectory(fixture.runDir, 'candidate-01');
+  const historicalPaths = [
+    'chains/chain-0001.json',
+    ...LAYERS.map((layer) => `checkpoints/${layer}/r0001.json`),
+    'reviews/chain-0001-hard-qa.json',
+    'reviews/chain-0001-review.json'
+  ];
+  const before = Object.fromEntries(await Promise.all(historicalPaths.map(async (name) => [
+    name, (await fs.stat(path.join(candidateDir, name))).ino
+  ])));
+  const replay = replaySnapshot(fixture.initial);
+  await installCandidateSnapshot({
+    authority: fixture.authority,
+    candidateId: 'candidate-01',
+    files: replay.files,
+    currentChain: replay.currentChain,
+    expectedPreviousChainSha256: fixture.initial.chainHash
+  });
+  for (const name of historicalPaths) {
+    assert.equal((await fs.stat(path.join(candidateDir, name))).ino, before[name], name);
+  }
+});
+
 test('stale previous chain hash leaves the exact current snapshot authoritative', async (t) => {
   const fixture = await installedFixture(t);
   const before = await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01'));
@@ -420,6 +468,10 @@ test('rejects malformed, noncanonical, path-drifted, and hash-drifted checkpoint
     ['review-without-chain', (snapshot) => {
       snapshot.files['reviews/chain-9999-review.json'] = canonicalBytes({ status: 'orphaned' });
     }],
+    ['missing-frozen-authority', (snapshot) => {
+      delete snapshot.files['frozen/frozen-design.json'];
+      delete snapshot.files['frozen/frozen-generator-context.json'];
+    }],
     ['draft-checkpoint', (snapshot) => {
       rebindCheckpoint(snapshot, 'roof', (checkpoint) => { checkpoint.status = 'draft'; });
     }],
@@ -435,7 +487,7 @@ test('rejects malformed, noncanonical, path-drifted, and hash-drifted checkpoint
       rebindCheckpoint(snapshot, 'roof', (checkpoint) => {
         checkpoint.replay_origin = {
           kind: 'replay',
-          base_chain_sha256: DESIGN_HASH,
+          base_chain_sha256: STORAGE_AUTHORITIES.get('candidate-01').designHash,
           repair_transaction_sha256: TRANSACTION_HASH
         };
       });
@@ -473,7 +525,7 @@ test('rejects malformed, noncanonical, path-drifted, and hash-drifted checkpoint
 test('rejects replay origin gaps and origins not bound to the parent transaction', async (t) => {
   for (const [name, mutate] of [
     ['origin-gap', (checkpoint, layer) => {
-      if (layer === 'massing') checkpoint.replay_origin = null;
+      if (layer === 'structure') checkpoint.replay_origin = null;
     }],
     ['wrong-parent', (checkpoint, layer) => {
       if (layer === 'roof') checkpoint.replay_origin.base_chain_sha256 = '7'.repeat(64);
@@ -944,212 +996,62 @@ test('first-install cleanup identity swap preserves both created and foreign dir
   assert.deepEqual(fileIdentity(await fs.lstat(candidatesPath)), foreignIdentity);
 });
 
-test('a no-replace backup collision preserves the exact old candidate and collision', async (t) => {
-  const fixture = await installedFixture(t);
-  const old = await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01'));
-  let collisionName;
-  let collisionIdentity;
-  const fsImpl = fsWith({
-    async lstat(target, ...args) {
-      try {
-        return await fs.lstat(target, ...args);
-      } catch (error) {
-        if (!collisionName && error.code === 'ENOENT' && path.basename(String(target)).startsWith(BACKUP_PREFIX)) {
-          collisionName = path.basename(String(target));
-          await fs.mkdir(target);
-          collisionIdentity = fileIdentity(await fs.lstat(target));
-        }
-        throw error;
-      }
-    }
-  });
-
-  await assertP5Failure(
-    installCandidateSnapshot({
-      authority: fixture.authority,
-      candidateId: 'candidate-01',
-      ...replaySnapshot(fixture.initial),
-      expectedPreviousChainSha256: fixture.initial.chainHash,
-      fsImpl
-    }),
-    'P5_INSTALL_FAILED',
-    fixture.root
-  );
-  assert.deepEqual(await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01')), old);
-  assert.deepEqual(
-    fileIdentity(await fs.lstat(path.join(
-      fixture.runDir,
-      'playbook-execute',
-      'candidates',
-      collisionName
-    ))),
-    collisionIdentity
-  );
-});
-
-test('a candidate source swap is detected without deleting old or foreign bytes', async (t) => {
-  const fixture = await installedFixture(t);
-  const candidatePath = candidateDirectory(fixture.runDir, 'candidate-01');
-  const held = path.join(path.dirname(candidatePath), 'held-owned-candidate');
-  let swapped = false;
-  let foreignIdentity;
-  const fsImpl = fsWith({
-    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
-      if (!swapped && sourceName === 'candidate-01' && destinationName.startsWith(BACKUP_PREFIX)) {
-        swapped = true;
-        await fs.rename(candidatePath, held);
-        await fs.mkdir(candidatePath);
-        await fs.writeFile(path.join(candidatePath, 'foreign.txt'), 'foreign bytes\n');
-        foreignIdentity = fileIdentity(await fs.lstat(candidatePath));
-      }
-      return next(directoryHandle, sourceName, destinationName);
-    }
-  });
-
-  await assertP5Failure(
-    installCandidateSnapshot({
-      authority: fixture.authority,
-      candidateId: 'candidate-01',
-      ...replaySnapshot(fixture.initial),
-      expectedPreviousChainSha256: fixture.initial.chainHash,
-      fsImpl
-    }),
-    'P5_INSTALL_FAILED',
-    fixture.root
-  );
-  assert.deepEqual(fileIdentity(await fs.lstat(candidatePath)), foreignIdentity);
-  assert.deepEqual(await readTreeBytes(held), expectedInstalledFiles(fixture.initial));
-});
-
-test('failure injection covers every staged exclusive write, chmod, file sync, and directory sync', async (t) => {
-  const counts = await replacementOperationCounts(t);
-  assert.ok(counts.exclusiveWrite >= 13, JSON.stringify(counts));
-  assert.ok(counts.chmod >= 12, JSON.stringify(counts));
-  assert.ok(counts.fileSync >= 13, JSON.stringify(counts));
-  assert.ok(counts.directorySync >= 4, JSON.stringify(counts));
-
-  for (const category of ['exclusiveWrite', 'chmod', 'fileSync', 'directorySync']) {
-    for (let failAt = 1; failAt <= counts[category]; failAt += 1) {
-      await t.test(`${category}-${failAt}`, async (t) => {
-        const fixture = await installedFixture(t);
-        const before = await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01'));
-        const fsImpl = instrumentedFs({ failCategory: category, failAt });
-        await assertP5Failure(
-          installCandidateSnapshot({
-            authority: fixture.authority,
-            candidateId: 'candidate-01',
-            ...replaySnapshot(fixture.initial),
-            expectedPreviousChainSha256: fixture.initial.chainHash,
-            fsImpl
-          }),
-          'P5_INSTALL_FAILED',
-          fixture.root,
-          'RAW_INJECTED'
-        );
-        assert.deepEqual(await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01')), before);
-        assert.deepEqual(await fs.readFile(fixture.unrelatedPath), fixture.unrelatedBytes);
-      });
-    }
-  }
-});
-
-test('backup rename, final no-replace rename, and pointer write failures restore exact old inodes', async (t) => {
-  for (const category of ['backupRename', 'finalRename', 'pointerWrite']) {
+test('candidate immutable-body and pointer precommit faults preserve old authority', async (t) => {
+  const categories = [
+    'exclusiveWrite', 'stageWrite', 'fileSync', 'chmod', 'bodyMove',
+    'parentSync', 'pointerWrite', 'backupLink', 'pointerMove', 'pointerDirSync'
+  ];
+  for (const category of categories) {
     await t.test(category, async (t) => {
       const fixture = await installedFixture(t);
-      const before = await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01'));
+      const candidatePath = candidateDirectory(fixture.runDir, 'candidate-01');
+      const beforeTree = await inodeTree(candidatePath);
+      const pointerPath = path.join(candidatePath, 'current-chain.json');
+      const beforePointer = await fs.readFile(pointerPath);
+      const beforePointerStat = await fs.stat(pointerPath);
       await assertP5Failure(
         installCandidateSnapshot({
           authority: fixture.authority,
           candidateId: 'candidate-01',
           ...replaySnapshot(fixture.initial),
           expectedPreviousChainSha256: fixture.initial.chainHash,
-          fsImpl: instrumentedFs({ failCategory: category, failAt: 1 })
+          fsImpl: candidatePointerFaultFs(category)
         }),
         'P5_INSTALL_FAILED',
         fixture.root,
-        'RAW_INJECTED'
+        'RAW_POINTER_FAULT'
       );
-      assert.deepEqual(await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01')), before);
+      assert.deepEqual(await fs.readFile(pointerPath), beforePointer);
+      assert.equal((await fs.stat(pointerPath)).ino, beforePointerStat.ino);
+      const current = await readCurrentCandidateSnapshot({
+        authority: fixture.authority,
+        candidateId: 'candidate-01'
+      });
+      assert.equal(current.current_chain_sha256, fixture.initial.chainHash);
+      assertHistoricalRowsUnchanged(beforeTree, await inodeTree(candidatePath));
       assert.deepEqual(await fs.readFile(fixture.unrelatedPath), fixture.unrelatedBytes);
-      assert.deepEqual(await generatedCandidateEntries(fixture.runDir), []);
     });
   }
 });
 
-test('every candidate postcommit backup cleanup failure keeps the complete new generation authoritative', async (t) => {
-  const counts = await candidateRetirementOperationCounts(t);
-  assert.ok(counts.retireUnlink >= 7, JSON.stringify(counts));
-  assert.ok(counts.retireRmdir >= 2, JSON.stringify(counts));
-
-  for (const category of ['retireUnlink', 'retireRmdir']) {
-    for (let failAt = 1; failAt <= counts[category]; failAt += 1) {
-      await t.test(`${category}-${failAt}`, async (t) => {
-        const fixture = await installedFixture(t);
-        const replacement = replaySnapshot(fixture.initial);
-        const result = await installCandidateSnapshot({
-          authority: fixture.authority,
-          candidateId: 'candidate-01',
-          ...replacement,
-          expectedPreviousChainSha256: fixture.initial.chainHash,
-          fsImpl: instrumentedFs({ failCategory: category, failAt })
-        });
-        assert.equal(result.status, 'replaced');
-        const current = await readCurrentCandidateSnapshot({
-          authority: fixture.authority,
-          candidateId: 'candidate-01'
-        });
-        assert.equal(current.current_chain_sha256, replacement.chainHash);
-        assert.deepEqual(current.files, expectedInstalledFiles(replacement));
-        assert.deepEqual(await fs.readFile(fixture.unrelatedPath), fixture.unrelatedBytes);
-      });
-    }
-  }
-});
-
-test('candidate retirement never follows a swapped intermediate directory', async (t) => {
+test('candidate pointer cleanup faults are postcommit and preserve historical bodies', async (t) => {
   const fixture = await installedFixture(t);
+  const beforeTree = await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01'));
   const replacement = replaySnapshot(fixture.initial);
-  const outside = path.join(fixture.root, 'outside-retirement-target');
-  await fs.mkdir(outside);
-  const outsideBody = fixture.initial.files['checkpoints/brief/r0001.json'];
-  const outsidePath = path.join(outside, 'r0001.json');
-  await fs.writeFile(outsidePath, outsideBody);
-  const outsideBefore = await inodeTree(outside);
-  let parked;
-  let parkedBefore;
-  let swapped = false;
-  let newPromoted = false;
+  let backupLinked = false;
   const fsImpl = fsWith({
-    async lstat(target, ...args) {
-      const targetText = String(target);
-      const safeImmediateChild = targetText.endsWith('/brief')
-        && await pathContainsGeneratedName(targetText, BACKUP_PREFIX);
-      const unsafeDescendant = targetText.endsWith('/checkpoints/brief/r0001.json')
-        && await pathContainsGeneratedName(targetText, BACKUP_PREFIX);
-      if (newPromoted && !swapped && (safeImmediateChild || unsafeDescendant)) {
-        const descriptorMatch = targetText.match(/^\/proc\/self\/fd\/(\d+)\/(.+)$/u);
-        assert.ok(descriptorMatch);
-        const descriptorRoot = await fs.readlink(`/proc/self/fd/${descriptorMatch[1]}`);
-        const absoluteTarget = path.join(descriptorRoot, descriptorMatch[2]);
-        const brief = safeImmediateChild ? absoluteTarget : path.dirname(absoluteTarget);
-        parked = `${brief}-parked`;
-        await fs.rename(brief, parked);
-        parkedBefore = await inodeTree(parked);
-        await fs.symlink(outside, brief);
-        swapped = true;
-      }
-      return fs.lstat(target, ...args);
-    },
-    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
-      const result = await next(directoryHandle, sourceName, destinationName);
-      if (sourceName.startsWith(STAGE_PREFIX) && destinationName === 'candidate-01') {
-        newPromoted = true;
-      }
+    async link(source, destination) {
+      const result = await fs.link(source, destination);
+      if (path.basename(String(destination)).startsWith(BACKUP_PREFIX)) backupLinked = true;
       return result;
+    },
+    async unlink(target) {
+      if (backupLinked && path.basename(String(target)).startsWith(BACKUP_PREFIX)) {
+        throw new Error('RAW_POINTER_FAULT:cleanup');
+      }
+      return fs.unlink(target);
     }
   });
-
   const result = await installCandidateSnapshot({
     authority: fixture.authority,
     candidateId: 'candidate-01',
@@ -1158,121 +1060,123 @@ test('candidate retirement never follows a swapped intermediate directory', asyn
     fsImpl
   });
   assert.equal(result.status, 'replaced');
-  assert.equal(swapped, true);
-  assert.deepEqual(await inodeTree(outside), outsideBefore);
-  assert.deepEqual(await inodeTree(parked), parkedBefore);
+  const current = await readCurrentCandidateSnapshot({
+    authority: fixture.authority,
+    candidateId: 'candidate-01'
+  });
+  assert.equal(current.current_chain_sha256, replacement.chainHash);
+  assertHistoricalRowsUnchanged(beforeTree.filter((row) => row.relative !== 'current-chain.json'),
+    await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01')));
+  assert.deepEqual(await fs.readFile(fixture.unrelatedPath), fixture.unrelatedBytes);
 });
 
-test('candidate cleanup root validates the descriptor across swap/open races', async (t) => {
-  for (const restoreCanonical of [false, true]) {
-    await t.test(restoreCanonical ? 'swap-open-restore' : 'swap-after-open', async (t) => {
+test('candidate subprocess crashes reopen to one complete old-or-new chain', async (t) => {
+  for (const killPoint of [
+    'body-write:1', 'body-file-sync:1', 'body-file-sync:2', 'body-chmod:1',
+    'body-move:1', 'candidate-dir-sync:1', 'pointer-write:1', 'backup-link:1',
+    'pointer-move:1', 'pointer-dir-sync:1'
+  ]) {
+    await t.test(killPoint, async (t) => {
       const fixture = await installedFixture(t);
+      const candidatePath = candidateDirectory(fixture.runDir, 'candidate-01');
+      const historical = (await inodeTree(candidatePath)).filter((row) => row.relative !== 'current-chain.json');
       const replacement = replaySnapshot(fixture.initial);
-      let promoted = false;
-      let backupOpens = 0;
-      let swapped = false;
-      let oldParked;
-      let oldParkedBefore;
-      let foreignParked;
-      let foreignBefore;
-      const fsImpl = fsWith({
-        async open(target, flags, ...args) {
-          const handle = await fs.open(target, flags, ...args);
-          if (
-            !promoted
-            || !path.basename(String(target)).startsWith(BACKUP_PREFIX)
-            || ++backupOpens !== 2
-          ) return handle;
-          return wrapFileHandle(handle, {
-            async stat(...statArgs) {
-              if (!swapped) {
-                const canonical = await fs.readlink(`/proc/self/fd/${handle.fd}`);
-                oldParked = `${canonical}-parked-old`;
-                await fs.rename(canonical, oldParked);
-                oldParkedBefore = await inodeTree(oldParked);
-                await fs.mkdir(canonical);
-                await fs.writeFile(path.join(canonical, 'foreign.txt'), 'foreign cleanup root\n');
-                if (restoreCanonical) {
-                  foreignParked = `${canonical}-parked-foreign`;
-                  await fs.rename(canonical, foreignParked);
-                  foreignBefore = await inodeTree(foreignParked);
-                  await fs.rename(oldParked, canonical);
-                } else {
-                  foreignParked = canonical;
-                  foreignBefore = await inodeTree(canonical);
-                }
-                swapped = true;
-              }
-              return handle.stat(...statArgs);
-            }
-          });
-        },
-        async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
-          const result = await next(directoryHandle, sourceName, destinationName);
-          if (sourceName.startsWith(STAGE_PREFIX) && destinationName === 'candidate-01') {
-            promoted = true;
-          }
-          return result;
-        }
-      });
-
-      const result = await installCandidateSnapshot({
-        authority: fixture.authority,
+      const jobPath = path.join(fixture.root, `candidate-crash-${killPoint.replace(':', '-')}.json`);
+      await fs.writeFile(jobPath, JSON.stringify({
+        kind: 'candidate',
+        killPoint,
+        runDir: fixture.runDir,
         candidateId: 'candidate-01',
-        ...replacement,
-        expectedPreviousChainSha256: fixture.initial.chainHash,
-        fsImpl
+        files: encodeFiles(replacement.files),
+        currentChain: replacement.currentChain.toString('base64'),
+        expectedPreviousChainSha256: fixture.initial.chainHash
+      }));
+      const child = spawnSync(process.execPath, [CRASH_WORKER, jobPath], {
+        cwd: path.resolve(import.meta.dirname, '..'),
+        encoding: 'utf8',
+        timeout: 30000
       });
-      assert.equal(result.status, 'replaced');
-      assert.equal(swapped, true);
-      assert.deepEqual(await inodeTree(foreignParked), foreignBefore);
-      if (!restoreCanonical) assert.deepEqual(await inodeTree(oldParked), oldParkedBefore);
+      assert.equal(child.signal, 'SIGKILL', `${killPoint}: ${child.stderr}`);
       const current = await readCurrentCandidateSnapshot({
         authority: fixture.authority,
         candidateId: 'candidate-01'
       });
-      assert.equal(current.current_chain_sha256, replacement.chainHash);
+      assert.ok([fixture.initial.chainHash, replacement.chainHash].includes(current.current_chain_sha256));
+      assertHistoricalRowsUnchanged(historical, await inodeTree(candidatePath));
+      assert.deepEqual(await fs.readFile(fixture.unrelatedPath), fixture.unrelatedBytes);
     });
   }
 });
 
-test('rollback cleanup failure leaves the exact verified backup recoverable', async (t) => {
-  const fixture = await installedFixture(t);
-  const before = await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01'));
-  let finalFailed = false;
-  const fsImpl = fsWith({
-    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
-      if (sourceName.startsWith(STAGE_PREFIX) && destinationName === 'candidate-01') {
-        finalFailed = true;
-        throw new Error('RAW_FINAL_FAILURE');
+function candidatePointerFaultFs(failCategory) {
+  let pointerMoved = false;
+  let failed = false;
+  const fail = (category) => {
+    if (!failed && category === failCategory) {
+      failed = true;
+      throw new Error(`RAW_POINTER_FAULT:${category}`);
+    }
+  };
+  return fsWith({
+    async open(target, flags, ...args) {
+      const targetText = String(target);
+      const inStage = await pathContainsGeneratedName(targetText, STAGE_PREFIX);
+      if (inStage && (flags & constants.O_WRONLY) !== 0) fail('exclusiveWrite');
+      const handle = await fs.open(target, flags, ...args);
+      const stat = await handle.stat();
+      const candidateDirectoryHandle = stat.isDirectory() && path.basename(targetText) === 'candidate-01';
+      return wrapFileHandle(handle, {
+        async writeFile(value, ...writeArgs) {
+          const pointer = isCandidatePointerBytes(value);
+          if (inStage) fail(pointer ? 'pointerWrite' : 'stageWrite');
+          return handle.writeFile(value, ...writeArgs);
+        },
+        async sync(...syncArgs) {
+          if (inStage && stat.isFile()) fail('fileSync');
+          if (candidateDirectoryHandle) fail(pointerMoved ? 'pointerDirSync' : 'parentSync');
+          return handle.sync(...syncArgs);
+        },
+        async chmod(...chmodArgs) {
+          if (inStage) fail('chmod');
+          return handle.chmod(...chmodArgs);
+        }
+      });
+    },
+    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+      if (sourceName.startsWith(STAGE_PREFIX) && destinationName !== 'current-chain.json') fail('bodyMove');
+      return next(sourceHandle, sourceName, destinationHandle, destinationName);
+    },
+    async link(source, destination) {
+      if (path.basename(String(destination)).startsWith(BACKUP_PREFIX)) fail('backupLink');
+      return fs.link(source, destination);
+    },
+    async rename(source, destination) {
+      if (path.basename(String(destination)) === 'current-chain.json') {
+        fail('pointerMove');
+        const result = await fs.rename(source, destination);
+        pointerMoved = true;
+        return result;
       }
-      if (finalFailed && sourceName.startsWith(BACKUP_PREFIX) && destinationName === 'candidate-01') {
-        throw new Error('RAW_ROLLBACK_FAILURE');
-      }
-      return next(directoryHandle, sourceName, destinationName);
+      return fs.rename(source, destination);
     }
   });
+}
 
-  await assertP5Failure(
-    installCandidateSnapshot({
-      authority: fixture.authority,
-      candidateId: 'candidate-01',
-      ...replaySnapshot(fixture.initial),
-      expectedPreviousChainSha256: fixture.initial.chainHash,
-      fsImpl
-    }),
-    'P5_INSTALL_FAILED',
-    fixture.root,
-    'RAW_FINAL_FAILURE|RAW_ROLLBACK_FAILURE'
-  );
-  const [backupName] = await generatedCandidateEntries(fixture.runDir, BACKUP_PREFIX);
-  assert.ok(backupName);
-  assert.deepEqual(
-    await inodeTree(path.join(fixture.runDir, 'playbook-execute', 'candidates', backupName)),
-    before.map((row) => row)
-  );
-  assert.deepEqual(await fs.readFile(fixture.unrelatedPath), fixture.unrelatedBytes);
-});
+function isCandidatePointerBytes(value) {
+  try {
+    const parsed = JSON.parse(Buffer.from(value).toString('utf8'));
+    return Object.keys(parsed).sort().join(',') ===
+      'candidate_id,chain_revision,chain_sha256,schema_version';
+  } catch {
+    return false;
+  }
+}
+
+function assertHistoricalRowsUnchanged(before, after) {
+  const byPath = new Map(after.map((row) => [row.relative, row]));
+  for (const row of before) assert.deepEqual(byPath.get(row.relative), row, row.relative);
+}
+
 
 test('selection installs only after all candidates and exact manifest hashes validate', async (t) => {
   const fixture = await storageFixture(t);
@@ -1299,421 +1203,185 @@ test('selection installs only after all candidates and exact manifest hashes val
     ...initialSnapshot('candidate-03')
   });
   const result = await installExecuteSelection({ authority, files });
-  assert.deepEqual(result, {
-    status: 'created',
-    artifact_hashes: {
-      'selection.json': testHash(files['selection.json']),
-      'selection-report.md': testHash(files['selection-report.md'])
-    }
+  assert.equal(result.status, 'created');
+  assert.deepEqual(result.artifact_hashes, {
+    'selection.json': testHash(files['selection.json']),
+    'selection-report.md': testHash(files['selection-report.md'])
   });
+  assert.match(result.generation, /^selection-generations\/selection-[a-f0-9]{64}$/u);
+  const pointer = JSON.parse(await fs.readFile(path.join(fixture.runDir, 'playbook-execute', 'manifest.json')));
+  assert.equal(pointer.generation, result.generation);
   for (const name of Object.keys(files)) {
-    assert.deepEqual(await fs.readFile(path.join(fixture.runDir, 'playbook-execute', name)), files[name]);
+    assert.deepEqual(await fs.readFile(path.join(fixture.runDir, 'playbook-execute', result.generation, name)), files[name]);
   }
 });
 
-test('selection no-replace promotion preserves an identical-byte late collision inode', async (t) => {
+test('selection publishes immutable complete generations through one current pointer', async (t) => {
   const fixture = await threeCandidateFixture(t);
-  const files = selectionFiles();
-  let collisionIdentity;
-  const fsImpl = fsWith({
-    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
-      if (!collisionIdentity && destinationName === 'selection.json') {
-        const destination = path.join(`/proc/self/fd/${destinationHandle.fd}`, destinationName);
-        await fs.writeFile(destination, files['selection.json']);
-        collisionIdentity = fileIdentity(await fs.lstat(destination));
-      }
-      return next(sourceHandle, sourceName, destinationHandle, destinationName);
-    }
-  });
+  const executeRoot = path.join(fixture.runDir, 'playbook-execute');
+  await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('first') });
+  const firstPointer = JSON.parse(await fs.readFile(path.join(executeRoot, 'manifest.json')));
+  assert.deepEqual(Object.keys(firstPointer), [
+    'generation', 'manifest_sha256', 'schema_version'
+  ]);
+  const firstGeneration = path.join(executeRoot, firstPointer.generation);
+  const firstInodes = await inodeTree(firstGeneration);
 
-  await assertP5Failure(
-    installExecuteSelection({ authority: fixture.authority, files, fsImpl }),
-    'P5_INSTALL_FAILED',
-    fixture.root
-  );
-  const destination = path.join(fixture.runDir, 'playbook-execute', 'selection.json');
-  assert.deepEqual(fileIdentity(await fs.lstat(destination)), collisionIdentity);
-  assert.deepEqual(await fs.readFile(destination), files['selection.json']);
-  assert.equal(await generatedRootEntries(fixture.runDir), 0);
+  await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('second') });
+  const secondPointer = JSON.parse(await fs.readFile(path.join(executeRoot, 'manifest.json')));
+  assert.notEqual(secondPointer.generation, firstPointer.generation);
+  assert.deepEqual(await inodeTree(firstGeneration), firstInodes);
+  for (const name of ['manifest.json', 'selection.json', 'selection-report.md']) {
+    await fs.access(path.join(executeRoot, secondPointer.generation, name));
+  }
 });
 
-test('selection identical and replacement paths preserve candidates and replace the complete owned set', async (t) => {
+test('selection identical and replacement paths update only one current pointer', async (t) => {
   const fixture = await threeCandidateFixture(t);
+  const root = path.join(fixture.runDir, 'playbook-execute');
+  const candidatesBefore = await allCandidateInodes(fixture.runDir);
   const oldFiles = selectionFiles('old');
+  const first = await installExecuteSelection({ authority: fixture.authority, files: oldFiles });
+  const pointerPath = path.join(root, 'manifest.json');
+  const pointerBefore = await fs.readFile(pointerPath);
+  const pointerStatBefore = await fs.stat(pointerPath);
+  const oldGenerationBefore = await inodeTree(path.join(root, first.generation));
+
+  const unchanged = await installExecuteSelection({ authority: fixture.authority, files: oldFiles });
+  assert.equal(unchanged.status, 'unchanged');
+  assert.equal(unchanged.generation, first.generation);
+  assert.deepEqual(await fs.readFile(pointerPath), pointerBefore);
+  assert.equal((await fs.stat(pointerPath)).ino, pointerStatBefore.ino);
+
   const newFiles = selectionFiles('new');
-  await installExecuteSelection({ authority: fixture.authority, files: oldFiles });
-  const oldSelectionInodes = await selectionInodes(fixture.runDir);
-  const candidateInodes = await allCandidateInodes(fixture.runDir);
-
-  assert.equal((await installExecuteSelection({
-    authority: fixture.authority,
-    files: oldFiles
-  })).status, 'unchanged');
-  assert.deepEqual(await selectionInodes(fixture.runDir), oldSelectionInodes);
-
-  assert.equal((await installExecuteSelection({
-    authority: fixture.authority,
-    files: newFiles
-  })).status, 'replaced');
-  for (const name of SELECTION_TEST_PATHS) {
-    assert.deepEqual(await fs.readFile(path.join(fixture.runDir, 'playbook-execute', name)), newFiles[name]);
+  const replaced = await installExecuteSelection({ authority: fixture.authority, files: newFiles });
+  assert.equal(replaced.status, 'replaced');
+  assert.notEqual(replaced.generation, first.generation);
+  assert.deepEqual(await inodeTree(path.join(root, first.generation)), oldGenerationBefore);
+  for (const [name, body] of Object.entries(newFiles)) {
+    assert.deepEqual(await fs.readFile(path.join(root, replaced.generation, name)), body);
   }
-  assert.deepEqual(await allCandidateInodes(fixture.runDir), candidateInodes);
-  assert.equal(await generatedRootEntries(fixture.runDir), 0);
+  assert.deepEqual(await allCandidateInodes(fixture.runDir), candidatesBefore);
 });
 
-test('selection root-sync failure after promotion restores exact old selection and candidate inodes', async (t) => {
-  const fixture = await threeCandidateFixture(t);
-  const oldFiles = selectionFiles('old');
-  await installExecuteSelection({ authority: fixture.authority, files: oldFiles });
-  const oldSelectionInodes = await selectionInodes(fixture.runDir);
-  const candidateInodes = await allCandidateInodes(fixture.runDir);
-  let rootSyncs = 0;
-  const fsImpl = fsWith({
-    async open(target, flags, ...args) {
-      const handle = await fs.open(target, flags, ...args);
-      if (path.basename(String(target)) !== 'playbook-execute') return handle;
-      return wrapFileHandle(handle, {
-        async sync() {
-          rootSyncs += 1;
-          throw new Error('RAW_ROOT_SYNC_FAILURE');
-        }
-      });
-    }
-  });
-
-  await assertP5Failure(
-    installExecuteSelection({
-      authority: fixture.authority,
-      files: selectionFiles('new'),
-      fsImpl
-    }),
-    'P5_INSTALL_FAILED',
-    fixture.root,
-    'RAW_ROOT_SYNC_FAILURE'
-  );
-  assert.equal(rootSyncs, 2);
-  assert.deepEqual(await selectionInodes(fixture.runDir), oldSelectionInodes);
-  assert.deepEqual(await allCandidateInodes(fixture.runDir), candidateInodes);
-  assert.equal(await generatedRootEntries(fixture.runDir), 0);
-});
-
-test('candidate-root swap during replacement promotion restores the exact old selection generation', async (t) => {
-  const fixture = await threeCandidateFixture(t);
-  const oldFiles = selectionFiles('old');
-  const replacement = selectionFiles('replacement');
-  await installExecuteSelection({ authority: fixture.authority, files: oldFiles });
-  const oldSelectionInodes = await selectionInodes(fixture.runDir);
-  const executeRoot = path.join(fixture.runDir, 'playbook-execute');
-  const candidatesRoot = path.join(executeRoot, 'candidates');
-  const firstRoot = path.join(candidatesRoot, 'candidate-01');
-  const secondRoot = path.join(candidatesRoot, 'candidate-02');
-  const parkedRoot = path.join(candidatesRoot, '.test-candidate-swap');
-  let swapped = false;
-  const swapCandidateRoots = async () => {
-    await fs.rename(firstRoot, parkedRoot);
-    await fs.rename(secondRoot, firstRoot);
-    await fs.rename(parkedRoot, secondRoot);
-  };
-  const fsImpl = fsWith({
-    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
-      const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
-      if (!swapped && destinationName === 'selection.json'
-        && await pathContainsGeneratedName(`/proc/self/fd/${sourceHandle.fd}`, STAGE_PREFIX)) {
-        await swapCandidateRoots();
-        swapped = true;
-      }
-      return result;
-    }
-  });
-
-  await assertP5Failure(
-    installExecuteSelection({ authority: fixture.authority, files: replacement, fsImpl }),
-    'P5_INSTALL_FAILED',
-    fixture.root
-  );
-  assert.equal(swapped, true);
-  await swapCandidateRoots();
-  assert.deepEqual(await selectionInodes(fixture.runDir), oldSelectionInodes);
-  for (const name of SELECTION_TEST_PATHS) {
-    assert.deepEqual(await fs.readFile(path.join(executeRoot, name)), oldFiles[name]);
-  }
-  assert.equal(await generatedRootEntries(fixture.runDir), 0);
-});
-
-test('candidate-root swap rollback cleanup fault cannot displace the restored old selection', async (t) => {
-  const fixture = await threeCandidateFixture(t);
-  const oldFiles = selectionFiles('old');
-  await installExecuteSelection({ authority: fixture.authority, files: oldFiles });
-  const oldSelectionInodes = await selectionInodes(fixture.runDir);
-  const executeRoot = path.join(fixture.runDir, 'playbook-execute');
-  const candidatesRoot = path.join(executeRoot, 'candidates');
-  const firstRoot = path.join(candidatesRoot, 'candidate-01');
-  const secondRoot = path.join(candidatesRoot, 'candidate-02');
-  const parkedRoot = path.join(candidatesRoot, '.test-candidate-swap');
-  let swapped = false;
-  let cleanupFailed = false;
-  const swapCandidateRoots = async () => {
-    await fs.rename(firstRoot, parkedRoot);
-    await fs.rename(secondRoot, firstRoot);
-    await fs.rename(parkedRoot, secondRoot);
-  };
-  const fsImpl = fsWith({
-    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
-      const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
-      if (!swapped && destinationName === 'selection.json'
-        && await pathContainsGeneratedName(`/proc/self/fd/${sourceHandle.fd}`, STAGE_PREFIX)) {
-        await swapCandidateRoots();
-        swapped = true;
-      }
-      return result;
-    },
-    async unlink(target) {
-      if (swapped && !cleanupFailed && await pathContainsGeneratedName(String(target), STAGE_PREFIX)) {
-        cleanupFailed = true;
-        throw new Error('RAW_ROLLBACK_CLEANUP_FAILURE');
-      }
-      return fs.unlink(target);
-    }
-  });
-
-  await assertP5Failure(
-    installExecuteSelection({ authority: fixture.authority, files: selectionFiles('replacement'), fsImpl }),
-    'P5_INSTALL_FAILED',
-    fixture.root,
-    'RAW_ROLLBACK_CLEANUP_FAILURE'
-  );
-  assert.equal(swapped, true);
-  assert.equal(cleanupFailed, true);
-  await swapCandidateRoots();
-  assert.deepEqual(await selectionInodes(fixture.runDir), oldSelectionInodes);
-  for (const name of SELECTION_TEST_PATHS) {
-    assert.deepEqual(await fs.readFile(path.join(executeRoot, name)), oldFiles[name]);
-  }
-  const residue = (await fs.readdir(executeRoot)).filter((name) => (
-    name.startsWith(STAGE_PREFIX) || name.startsWith(BACKUP_PREFIX)
-  ));
-  assert.equal(residue.length, 1);
-  assert.match(residue[0], new RegExp(`^${escapeRegex(STAGE_PREFIX)}`, 'u'));
-});
-
-test('selection faults after each successful partial promotion restore the exact old generation', async (t) => {
-  for (let failAt = 1; failAt <= SELECTION_TEST_PATHS.length; failAt += 1) {
-    await t.test(`promotion-${failAt}`, async (t) => {
+test('selection generation and pointer precommit faults preserve old logical authority', async (t) => {
+  const categories = [
+    'exclusiveWrite', 'stageWrite', 'fileSync', 'chmod', 'stageDirSync',
+    'generationMove', 'pointerWrite', 'backupLink', 'pointerMove', 'rootSyncAfterPointer'
+  ];
+  for (const category of categories) {
+    await t.test(category, async (t) => {
       const fixture = await threeCandidateFixture(t);
-      await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
-      const oldSelection = await selectionInodes(fixture.runDir);
-      const oldCandidates = await allCandidateInodes(fixture.runDir);
-      let promoted = 0;
-      const fsImpl = fsWith({
-        async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
-          const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
-          if (SELECTION_TEST_PATHS.includes(destinationName) && ++promoted === failAt) {
-            throw new Error('RAW_LATE_SELECTION_PROMOTION_FAILURE');
-          }
-          return result;
-        }
+      const root = path.join(fixture.runDir, 'playbook-execute');
+      const first = await installExecuteSelection({
+        authority: fixture.authority,
+        files: selectionFiles('old')
       });
-
+      const pointerPath = path.join(root, 'manifest.json');
+      const pointerBefore = await fs.readFile(pointerPath);
+      const pointerStatBefore = await fs.stat(pointerPath);
+      const generationBefore = await inodeTree(path.join(root, first.generation));
+      const candidatesBefore = await allCandidateInodes(fixture.runDir);
+      const unrelated = path.join(fixture.runDir, 'world-region.bin');
+      await fs.writeFile(unrelated, Buffer.from([0, 1, 2, 255]));
       await assertP5Failure(
         installExecuteSelection({
           authority: fixture.authority,
           files: selectionFiles('new'),
-          fsImpl
+          fsImpl: selectionPointerFaultFs(category)
         }),
         'P5_INSTALL_FAILED',
         fixture.root,
-        'RAW_LATE_SELECTION_PROMOTION_FAILURE'
+        'RAW_SELECTION_POINTER_FAULT'
       );
-      assert.deepEqual(await selectionInodes(fixture.runDir), oldSelection);
-      assert.deepEqual(await allCandidateInodes(fixture.runDir), oldCandidates);
+      assert.deepEqual(await fs.readFile(pointerPath), pointerBefore);
+      assert.equal((await fs.stat(pointerPath)).ino, pointerStatBefore.ino);
+      assert.deepEqual(await inodeTree(path.join(root, first.generation)), generationBefore);
+      assert.deepEqual(await allCandidateInodes(fixture.runDir), candidatesBefore);
+      assert.deepEqual(await fs.readFile(unrelated), Buffer.from([0, 1, 2, 255]));
+      const current = JSON.parse(await fs.readFile(pointerPath));
+      assert.equal(current.generation, first.generation);
     });
   }
 });
 
-test('selection detects a staged source swap without consuming foreign or parked bytes', async (t) => {
+test('selection pointer backup cleanup faults are postcommit', async (t) => {
   const fixture = await threeCandidateFixture(t);
-  await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
-  const oldSelection = await selectionInodes(fixture.runDir);
-  const foreign = path.join(fixture.root, 'foreign-selection.json');
-  await fs.writeFile(foreign, 'foreign selection bytes\n');
-  const foreignBefore = await inodeTree(foreign);
-  let parked;
-  let parkedBefore;
-  let swapped = false;
-  const fsImpl = fsWith({
-    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
-      if (
-        !swapped
-        && sourceName === 'selection.json'
-        && destinationName === 'selection.json'
-        && await pathContainsGeneratedName(`/proc/self/fd/${sourceHandle.fd}`, STAGE_PREFIX)
-      ) {
-        const stagePath = `/proc/self/fd/${sourceHandle.fd}`;
-        parked = path.join(await fs.readlink(stagePath), 'parked-selection.json');
-        await fs.rename(path.join(stagePath, sourceName), parked);
-        parkedBefore = await inodeTree(parked);
-        await fs.link(foreign, path.join(stagePath, sourceName));
-        swapped = true;
-      }
-      return next(sourceHandle, sourceName, destinationHandle, destinationName);
-    }
-  });
-
-  await assertP5Failure(
-    installExecuteSelection({ authority: fixture.authority, files: selectionFiles('new'), fsImpl }),
-    'P5_INSTALL_FAILED',
-    fixture.root
-  );
-  assert.equal(swapped, true);
-  assert.deepEqual(await inodeTree(foreign), foreignBefore);
-  assert.deepEqual(await selectionInodes(fixture.runDir), oldSelection);
-  assert.deepEqual(await inodeTree(parked), parkedBefore);
-});
-
-test('selection detects an existing source swap without deleting old or foreign bytes', async (t) => {
-  const fixture = await threeCandidateFixture(t);
-  const oldFiles = selectionFiles('old');
-  await installExecuteSelection({ authority: fixture.authority, files: oldFiles });
   const root = path.join(fixture.runDir, 'playbook-execute');
-  const canonical = path.join(root, 'manifest.json');
-  const parked = path.join(root, 'parked-owned-manifest.json');
-  const oldIdentity = fileIdentity(await fs.lstat(canonical));
-  let foreignIdentity;
-  let swapped = false;
-  const swap = async (sourceName) => {
-    if (!swapped && sourceName === 'manifest.json') {
-      await fs.rename(canonical, parked);
-      await fs.writeFile(canonical, 'foreign manifest bytes\n');
-      foreignIdentity = fileIdentity(await fs.lstat(canonical));
-      swapped = true;
-    }
-  };
-  const fsImpl = fsWith({
-    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
-      await swap(sourceName);
-      return next(directoryHandle, sourceName, destinationName);
-    },
-    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
-      await swap(sourceName);
-      return next(sourceHandle, sourceName, destinationHandle, destinationName);
-    }
-  });
-
-  await assertP5Failure(
-    installExecuteSelection({ authority: fixture.authority, files: selectionFiles('new'), fsImpl }),
-    'P5_INSTALL_FAILED',
-    fixture.root
-  );
-  assert.equal(swapped, true);
-  assert.deepEqual(fileIdentity(await fs.lstat(canonical)), foreignIdentity);
-  assert.deepEqual(fileIdentity(await fs.lstat(parked)), oldIdentity);
-  assert.deepEqual(await fs.readFile(parked), oldFiles['manifest.json']);
-});
-
-test('every selection postcommit backup cleanup failure keeps the complete new generation authoritative', async (t) => {
-  const counts = await selectionRetirementOperationCounts(t);
-  assert.ok(counts.retireUnlink >= SELECTION_TEST_PATHS.length, JSON.stringify(counts));
-  assert.ok(counts.retireRmdir >= 1, JSON.stringify(counts));
-
-  for (const category of ['retireUnlink', 'retireRmdir']) {
-    for (let failAt = 1; failAt <= counts[category]; failAt += 1) {
-      await t.test(`${category}-${failAt}`, async (t) => {
-        const fixture = await threeCandidateFixture(t);
-        await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
-        const candidates = await allCandidateInodes(fixture.runDir);
-        const replacement = selectionFiles('new');
-        const result = await installExecuteSelection({
-          authority: fixture.authority,
-          files: replacement,
-          fsImpl: retirementFs({ failCategory: category, failAt })
-        });
-        assert.equal(result.status, 'replaced');
-        for (const name of SELECTION_TEST_PATHS) {
-          assert.deepEqual(
-            await fs.readFile(path.join(fixture.runDir, 'playbook-execute', name)),
-            replacement[name]
-          );
+  const first = await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
+  const firstGeneration = await inodeTree(path.join(root, first.generation));
+  const replacementFiles = selectionFiles('new');
+  const result = await installExecuteSelection({
+    authority: fixture.authority,
+    files: replacementFiles,
+    fsImpl: fsWith({
+      async unlink(target) {
+        if (path.basename(String(target)).startsWith(BACKUP_PREFIX)) {
+          throw new Error('RAW_SELECTION_POINTER_FAULT:cleanup');
         }
-        assert.deepEqual(await allCandidateInodes(fixture.runDir), candidates);
-      });
-    }
-  }
-});
-
-test('selection retirement rechecks canonical and retained backup identity at every boundary', async (t) => {
-  for (let boundary = 1; boundary <= SELECTION_TEST_PATHS.length + 1; boundary += 1) {
-    await t.test(boundary <= SELECTION_TEST_PATHS.length
-      ? `before-unlink-${boundary}`
-      : 'before-close-rmdir', async (t) => {
-      const fixture = await threeCandidateFixture(t);
-      await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
-      const replacement = selectionFiles('new');
-      let promoted = false;
-      let retirementChecks = 0;
-      let swapped = false;
-      let parked;
-      let parkedBefore;
-      let foreign;
-      let foreignBefore;
-      const fsImpl = fsWith({
-        async open(target, flags, ...args) {
-          const handle = await fs.open(target, flags, ...args);
-          if (!path.basename(String(target)).startsWith(BACKUP_PREFIX)) return handle;
-          return wrapFileHandle(handle, {
-            async stat(...statArgs) {
-              if (promoted && !swapped && ++retirementChecks === boundary) {
-                const canonical = await fs.readlink(`/proc/self/fd/${handle.fd}`);
-                parked = `${canonical}-parked`;
-                await fs.rename(canonical, parked);
-                parkedBefore = await inodeTree(parked);
-                await fs.mkdir(canonical);
-                await fs.writeFile(path.join(canonical, 'foreign.txt'), 'foreign retirement bytes\n');
-                foreign = canonical;
-                foreignBefore = await inodeTree(foreign);
-                swapped = true;
-              }
-              return handle.stat(...statArgs);
-            }
-          });
-        },
-        async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
-          const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
-          if (
-            sourceName === 'manifest.json'
-            && destinationName === 'manifest.json'
-            && await pathContainsGeneratedName(`/proc/self/fd/${sourceHandle.fd}`, STAGE_PREFIX)
-          ) promoted = true;
-          return result;
-        }
-      });
-
-      const result = await installExecuteSelection({
-        authority: fixture.authority,
-        files: replacement,
-        fsImpl
-      });
-      assert.equal(result.status, 'replaced');
-      assert.equal(swapped, true);
-      assert.deepEqual(await inodeTree(parked), parkedBefore);
-      assert.deepEqual(await inodeTree(foreign), foreignBefore);
-      for (const name of SELECTION_TEST_PATHS) {
-        assert.deepEqual(
-          await fs.readFile(path.join(fixture.runDir, 'playbook-execute', name)),
-          replacement[name]
-        );
+        return fs.unlink(target);
       }
+    })
+  });
+  assert.equal(result.status, 'replaced');
+  const pointer = JSON.parse(await fs.readFile(path.join(root, 'manifest.json')));
+  assert.equal(pointer.generation, result.generation);
+  for (const [name, body] of Object.entries(replacementFiles)) {
+    assert.deepEqual(await fs.readFile(path.join(root, result.generation, name)), body);
+  }
+  assert.deepEqual(await inodeTree(path.join(root, first.generation)), firstGeneration);
+});
+
+test('selection subprocess crashes reopen to one complete old-or-new generation', async (t) => {
+  for (const killPoint of [
+    'generation-write:1', 'generation-file-sync:1', 'generation-file-sync:2',
+    'generation-chmod:1', 'generation-dir-sync:1', 'generation-move:1',
+    'pointer-write:1', 'backup-link:1', 'pointer-move:1', 'pointer-dir-sync:1'
+  ]) {
+    await t.test(killPoint, async (t) => {
+      const fixture = await threeCandidateFixture(t);
+      const root = path.join(fixture.runDir, 'playbook-execute');
+      const oldFiles = selectionFiles('old');
+      const old = await installExecuteSelection({ authority: fixture.authority, files: oldFiles });
+      const oldGeneration = await inodeTree(path.join(root, old.generation));
+      const candidates = await allCandidateInodes(fixture.runDir);
+      const unrelated = path.join(fixture.runDir, 'world-region.bin');
+      const unrelatedBytes = Buffer.from([0, 1, 2, 255]);
+      await fs.writeFile(unrelated, unrelatedBytes);
+      const newFiles = selectionFiles('new');
+      const jobPath = path.join(fixture.root, `selection-crash-${killPoint.replace(':', '-')}.json`);
+      await fs.writeFile(jobPath, JSON.stringify({
+        kind: 'selection',
+        killPoint,
+        runDir: fixture.runDir,
+        files: encodeFiles(newFiles)
+      }));
+      const child = spawnSync(process.execPath, [CRASH_WORKER, jobPath], {
+        cwd: path.resolve(import.meta.dirname, '..'),
+        encoding: 'utf8',
+        timeout: 30000
+      });
+      assert.equal(child.signal, 'SIGKILL', `${killPoint}: ${child.stderr}`);
+      const pointer = JSON.parse(await fs.readFile(path.join(root, 'manifest.json')));
+      const isOld = pointer.generation === old.generation;
+      const currentFiles = isOld ? oldFiles : newFiles;
+      const reopened = await installExecuteSelection({ authority: fixture.authority, files: currentFiles });
+      assert.equal(reopened.status, 'unchanged');
+      assert.equal(reopened.generation, pointer.generation);
+      assert.deepEqual(await inodeTree(path.join(root, old.generation)), oldGeneration);
+      assert.deepEqual(await allCandidateInodes(fixture.runDir), candidates);
+      assert.deepEqual(await fs.readFile(unrelated), unrelatedBytes);
     });
   }
 });
 
-test('selection rejects file-map, manifest, hash, and existing ownership drift', async (t) => {
-  for (const [name, mutate, expectedCode] of [
-    ['missing', (files) => { delete files['selection-report.md']; }, 'P5_AUTHORITY_INVALID'],
-    ['extra', (files) => { files['extra.txt'] = Buffer.from('provider-secret'); }, 'P5_AUTHORITY_INVALID'],
-    ['non-buffer', (files) => { files['selection-report.md'] = 'not bytes'; }, 'P5_AUTHORITY_INVALID'],
-    ['corrupt-manifest', (files) => { files['manifest.json'] = Buffer.from('{RAW_MANIFEST'); }, 'P5_AUTHORITY_INVALID'],
-    ['hash-drift', (files) => { files['selection-report.md'] = Buffer.from('drift\n'); }, 'P5_AUTHORITY_INVALID']
+test('selection rejects input authority and current generation drift', async (t) => {
+  for (const [name, mutate] of [
+    ['missing', (files) => { delete files['selection-report.md']; }],
+    ['extra', (files) => { files['extra.txt'] = Buffer.from('provider-secret'); }],
+    ['non-buffer', (files) => { files['selection-report.md'] = 'not bytes'; }],
+    ['corrupt-manifest', (files) => { files['manifest.json'] = Buffer.from('{RAW_MANIFEST'); }],
+    ['hash-drift', (files) => { files['selection-report.md'] = Buffer.from('drift\n'); }]
   ]) {
     await t.test(name, async (t) => {
       const fixture = await threeCandidateFixture(t);
@@ -1721,7 +1389,7 @@ test('selection rejects file-map, manifest, hash, and existing ownership drift',
       mutate(files);
       await assertP5Failure(
         installExecuteSelection({ authority: fixture.authority, files }),
-        expectedCode,
+        'P5_AUTHORITY_INVALID',
         fixture.root,
         'provider-secret|RAW_MANIFEST'
       );
@@ -1730,14 +1398,19 @@ test('selection rejects file-map, manifest, hash, and existing ownership drift',
 
   await t.test('existing-drift', async (t) => {
     const fixture = await threeCandidateFixture(t);
-    const files = selectionFiles();
-    await installExecuteSelection({ authority: fixture.authority, files });
-    const report = path.join(fixture.runDir, 'playbook-execute', 'selection-report.md');
+    const first = await installExecuteSelection({
+      authority: fixture.authority,
+      files: selectionFiles('old')
+    });
+    const report = path.join(fixture.runDir, 'playbook-execute', first.generation, 'selection-report.md');
     await fs.chmod(report, 0o600);
     await fs.writeFile(report, 'foreign provider-secret\n');
     const before = await snapshotTree(fixture.root);
     await assertP5Failure(
-      installExecuteSelection({ authority: fixture.authority, files: selectionFiles('replacement') }),
+      installExecuteSelection({
+        authority: fixture.authority,
+        files: selectionFiles('replacement')
+      }),
       'P5_INSTALL_FAILED',
       fixture.root,
       'provider-secret'
@@ -1745,6 +1418,146 @@ test('selection rejects file-map, manifest, hash, and existing ownership drift',
     assert.deepEqual(await snapshotTree(fixture.root), before);
   });
 });
+
+function selectionPointerFaultFs(failCategory) {
+  let pointerMoved = false;
+  let failed = false;
+  const fail = (category) => {
+    if (!failed && category === failCategory) {
+      failed = true;
+      throw new Error(`RAW_SELECTION_POINTER_FAULT:${category}`);
+    }
+  };
+  return fsWith({
+    async open(target, flags, ...args) {
+      const targetText = String(target);
+      const inStage = await pathContainsGeneratedName(targetText, STAGE_PREFIX);
+      if (inStage && (flags & constants.O_WRONLY) !== 0) fail('exclusiveWrite');
+      const handle = await fs.open(target, flags, ...args);
+      const stat = await handle.stat();
+      const isStageDirectory = stat.isDirectory() && inStage;
+      const isExecuteRoot = stat.isDirectory() && path.basename(targetText) === 'playbook-execute';
+      return wrapFileHandle(handle, {
+        async writeFile(value, ...writeArgs) {
+          const pointer = isSelectionPointerBytes(value);
+          if (inStage) fail(pointer ? 'pointerWrite' : 'stageWrite');
+          return handle.writeFile(value, ...writeArgs);
+        },
+        async sync(...syncArgs) {
+          if (inStage && stat.isFile()) fail('fileSync');
+          if (isStageDirectory) fail('stageDirSync');
+          if (isExecuteRoot && pointerMoved) fail('rootSyncAfterPointer');
+          return handle.sync(...syncArgs);
+        },
+        async chmod(...chmodArgs) {
+          if (inStage && stat.isFile()) fail('chmod');
+          return handle.chmod(...chmodArgs);
+        }
+      });
+    },
+    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
+      if (sourceName.startsWith(STAGE_PREFIX)
+        && destinationName.startsWith('selection-')) fail('generationMove');
+      return next(directoryHandle, sourceName, destinationName);
+    },
+    async link(source, destination) {
+      if (path.basename(String(destination)).startsWith(BACKUP_PREFIX)) fail('backupLink');
+      return fs.link(source, destination);
+    },
+    async rename(source, destination) {
+      if (path.basename(String(destination)) === 'manifest.json') {
+        fail('pointerMove');
+        const result = await fs.rename(source, destination);
+        pointerMoved = true;
+        return result;
+      }
+      return fs.rename(source, destination);
+    }
+  });
+}
+
+function isSelectionPointerBytes(value) {
+  try {
+    const parsed = JSON.parse(Buffer.from(value).toString('utf8'));
+    return Object.keys(parsed).sort().join(',') === 'generation,manifest_sha256,schema_version';
+  } catch {
+    return false;
+  }
+}
+
+function encodeFiles(files) {
+  return Object.fromEntries(Object.entries(files).map(([name, body]) => [
+    name,
+    body.toString('base64')
+  ]));
+}
+
+async function buildStorageAuthorities() {
+  const projectRoot = path.resolve(import.meta.dirname, '..');
+  const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-storage-authority-'));
+  try {
+    const baseDesign = {
+      schema_version: 1,
+      candidate_id: 'candidate-01',
+      seed: 11,
+      brief_intent: 'storage authority fixture',
+      layer_intents: LAYERS.map((layer) => ({ layer, intent: `${layer} authority` })),
+      selected_rule_ids: ['rule:medieval.show-load-path'],
+      rejected_rule_ids: ['rule:facade.break-repetitive-bays'],
+      repair_variant_preferences: []
+    };
+    const designBytes = Buffer.from(stableJson(baseDesign));
+    const prepared = await prepareConstructionDesign({
+      prompt: 'three-volume medieval storage authority fixture',
+      mode: 'mock',
+      outputDir,
+      seed: 11,
+      seedSource: 'manual-candidate',
+      candidateId: 'candidate-01',
+      frozenDesign: baseDesign,
+      frozenDesignSha256: sha256(designBytes),
+      critics: false,
+      cwd: projectRoot
+    });
+    const compiledLayers = compileDesignLayers({ prepared, resolvedEffectsByLayer: {} });
+    const compiled = await compilePreparedConstruction({ prepared, compiledLayers, outputDir });
+    const blueprintBytes = await fs.readFile(compiled.artifacts.blueprint);
+    const hardQa = new BlueprintQAAgent().run(compiled.blueprint);
+    assert.equal(hardQa.ok, true);
+    const review = await buildDeterministicShadowReview({
+      projectRoot,
+      blueprintBytes,
+      blueprintRelativePath: 'blueprint.json'
+    });
+    const hardQaBytes = Buffer.from(stableJson(hardQa));
+    const reviewBytes = Buffer.from(stableJson(review));
+    return new Map(['candidate-01', 'candidate-02', 'candidate-03'].map((candidateId) => {
+      const frozenDesign = { ...structuredClone(baseDesign), candidate_id: candidateId };
+      const frozenDesignBytes = Buffer.from(stableJson(frozenDesign));
+      const context = buildFrozenGeneratorContext({
+        ...structuredClone(prepared.frozen_generator_context),
+        candidate_id: candidateId,
+        frozen_design_sha256: sha256(frozenDesignBytes)
+      });
+      const contextBytes = Buffer.from(stableJson(context));
+      return [candidateId, Object.freeze({
+        designBytes: frozenDesignBytes,
+        designHash: sha256(frozenDesignBytes),
+        contextBytes,
+        contextHash: sha256(contextBytes),
+        blueprintBytes: Buffer.from(blueprintBytes),
+        blueprintHash: sha256(blueprintBytes),
+        hardQaBytes: Buffer.from(hardQaBytes),
+        hardQaHash: sha256(hardQaBytes),
+        reviewBytes: Buffer.from(reviewBytes),
+        reviewHash: sha256(reviewBytes)
+      })];
+    }));
+  } finally {
+    await fs.rm(outputDir, { recursive: true, force: true });
+  }
+}
+
 
 async function storageFixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-execute-storage-'));
@@ -1777,6 +1590,7 @@ async function threeCandidateFixture(t) {
 }
 
 function initialSnapshot(candidateId = 'candidate-01') {
+  const authority = STORAGE_AUTHORITIES.get(candidateId);
   const envelopes = buildEnvelopes(candidateId, 1, null, null);
   const chain = createChainManifest(chainInput(candidateId, envelopes, {
     chain_revision: 1,
@@ -1788,8 +1602,11 @@ function initialSnapshot(candidateId = 'candidate-01') {
   return {
     files: {
       ...checkpointFileMap(envelopes),
-      'reviews/chain-0001-hard-qa.json': Buffer.from(QA_BYTES),
-      'reviews/chain-0001-review.json': Buffer.from(REVIEW_BYTES)
+      'frozen/frozen-design.json': Buffer.from(authority.designBytes),
+      'frozen/frozen-generator-context.json': Buffer.from(authority.contextBytes),
+      'blueprints/chain-0001.json': Buffer.from(authority.blueprintBytes),
+      'reviews/chain-0001-hard-qa.json': Buffer.from(authority.hardQaBytes),
+      'reviews/chain-0001-review.json': Buffer.from(authority.reviewBytes)
     },
     currentChain,
     chain,
@@ -1801,11 +1618,75 @@ function initialSnapshot(candidateId = 'candidate-01') {
 
 function replaySnapshot(initial) {
   const candidateId = initial.chain.candidate_id;
-  const envelopes = buildEnvelopes(candidateId, 2, initial.chainHash, TRANSACTION_HASH);
+  const operation = {
+    schema_version: 1,
+    compiler_version: 1,
+    candidate_id: candidateId,
+    rule_id: 'rule:medieval.show-load-path',
+    repair_operation_id: 'repair:structure:connect-support-path',
+    variant_id: 'connect-known-structural-anchors',
+    target_layer: 'structure',
+    base_checkpoint_sha256: initial.chain.checkpoint_hashes[2].checkpoint_sha256,
+    precondition_hashes: [
+      { kind: 'structural-anchor', id: 'upper', sha256: '1'.repeat(64) },
+      { kind: 'structural-anchor', id: 'frame', sha256: '2'.repeat(64) },
+      { kind: 'structural-anchor', id: 'base', sha256: '3'.repeat(64) }
+    ],
+    effects: [{ type: 'set-load-path', from: 'upper', through: 'frame', to: 'base' }],
+    invalidates_layers: ['roof', 'facade']
+  };
+  const transaction = {
+    schema_version: 1,
+    compiler_version: 1,
+    candidate_id: candidateId,
+    base_chain_sha256: initial.chainHash,
+    repair_budget: 1,
+    earliest_target_layer: 'structure',
+    operations: [operation],
+    invalidates_layers: ['roof', 'facade']
+  };
+  const transactionBytes = canonicalBytes(transaction);
+  const transactionHash = testHash(transactionBytes);
+  const request = canonicalBytes({
+    schema_version: 1,
+    candidate_id: candidateId,
+    attempt: 1,
+    base_chain_sha256: initial.chainHash,
+    repair_transaction_sha256: transactionHash,
+    requests: [{
+      schema_version: operation.schema_version,
+      candidate_id: operation.candidate_id,
+      rule_id: operation.rule_id,
+      repair_operation_id: operation.repair_operation_id,
+      variant_id: operation.variant_id,
+      base_checkpoint_sha256: operation.base_checkpoint_sha256
+    }]
+  });
+  const eligibility = {
+    status: 'eligible',
+    hard_qa_ok: true,
+    unresolved_violated_core_rule_ids: [],
+    neutral_unknown_rule_ids: [],
+    neutral_not_applicable_rule_ids: [],
+    repair_budget_used: 1
+  };
+  const result = canonicalBytes({
+    schema_version: 1,
+    candidate_id: candidateId,
+    attempt: 1,
+    base_chain_sha256: initial.chainHash,
+    repair_request_sha256: testHash(request),
+    repair_transaction_sha256: transactionHash,
+    blueprint_sha256: initial.chain.blueprint_sha256,
+    hard_qa_sha256: initial.chain.hard_qa_sha256,
+    p4_review_sha256: initial.chain.p4_review_sha256,
+    eligibility
+  });
+  const envelopes = buildReplayEnvelopes(initial, transactionHash, testHash(result));
   const chain = createChainManifest(chainInput(candidateId, envelopes, {
     chain_revision: 2,
     parent_chain_sha256: initial.chainHash,
-    repair_transaction_sha256: TRANSACTION_HASH,
+    repair_transaction_sha256: transactionHash,
     created_from: 'replay'
   }));
   const currentChain = chainManifestBytes(chain);
@@ -1813,7 +1694,13 @@ function replaySnapshot(initial) {
     files: {
       ...cloneBuffers(initial.files),
       [`chains/chain-${padRevision(initial.chain.chain_revision)}.json`]: Buffer.from(initial.currentChain),
-      ...checkpointFileMap(envelopes)
+      ...checkpointFileMap(envelopes),
+      'blueprints/chain-0002.json': Buffer.from(initial.files['blueprints/chain-0001.json']),
+      'reviews/chain-0002-hard-qa.json': Buffer.from(initial.files['reviews/chain-0001-hard-qa.json']),
+      'reviews/chain-0002-review.json': Buffer.from(initial.files['reviews/chain-0001-review.json']),
+      'repairs/attempt-01-request.json': request,
+      'repairs/attempt-01-patch.json': transactionBytes,
+      'repairs/attempt-01-result.json': result
     },
     currentChain,
     chain,
@@ -1862,7 +1749,8 @@ function rewriteCurrentCheckpoints(snapshot, mutate) {
   snapshot.currentChain = canonicalBytes(chain);
 }
 
-function buildEnvelopes(candidateId, revision, baseChainSha256, transactionSha256) {
+function buildEnvelopes(candidateId, revision, baseChainSha256, transactionSha256, repairResultSha256) {
+  const authority = STORAGE_AUTHORITIES.get(candidateId);
   const envelopes = [];
   for (const layer of LAYERS) {
     envelopes.push(createCheckpointEnvelope({
@@ -1877,9 +1765,15 @@ function buildEnvelopes(candidateId, revision, baseChainSha256, transactionSha25
       design_intent: { layer, purpose: `${layer}-revision-${revision}` },
       recipe_fragment: { layer, payload: { revision } },
       field_patches: [],
-      compiled_artifact_hashes: { layer_payload_sha256: ARTIFACT_HASH },
-      hard_qa: { hard_qa_ok: true, hard_qa_sha256: QA_HASH },
-      design_review: { p4_review_sha256: REVIEW_HASH },
+      compiled_artifact_hashes: layer === 'facade' && revision === 2 ? {
+        layer_payload_sha256: ARTIFACT_HASH,
+        operation_list_sha256: '4'.repeat(64),
+        build_function_sha256: '5'.repeat(64),
+        datapack_tree_sha256: '6'.repeat(64),
+        repair_result_sha256: repairResultSha256
+      } : { layer_payload_sha256: ARTIFACT_HASH },
+      hard_qa: { hard_qa_ok: true, hard_qa_sha256: authority.hardQaHash },
+      design_review: { p4_review_sha256: authority.reviewHash },
       invalidates_downstream: INVALIDATES[layer],
       replay_origin: revision === 1 ? null : {
         kind: 'replay',
@@ -1891,15 +1785,53 @@ function buildEnvelopes(candidateId, revision, baseChainSha256, transactionSha25
   return envelopes;
 }
 
+function buildReplayEnvelopes(initial, transactionSha256, repairResultSha256) {
+  const candidateId = initial.chain.candidate_id;
+  const authority = STORAGE_AUTHORITIES.get(candidateId);
+  const envelopes = initial.envelopes.slice(0, 2);
+  for (const layer of LAYERS.slice(2)) {
+    envelopes.push(createCheckpointEnvelope({
+      build_id: 'build-01',
+      candidate_id: candidateId,
+      layer,
+      revision: 2,
+      status: 'accepted',
+      preceding_envelopes: envelopes,
+      selected_rule_ids: ['rule:medieval.show-load-path'],
+      rejected_rule_ids: ['rule:facade.break-repetitive-bays'],
+      design_intent: { layer, purpose: `${layer}-revision-2` },
+      recipe_fragment: { layer, payload: { revision: 2 } },
+      field_patches: [],
+      compiled_artifact_hashes: layer === 'facade' ? {
+        layer_payload_sha256: ARTIFACT_HASH,
+        operation_list_sha256: '4'.repeat(64),
+        build_function_sha256: '5'.repeat(64),
+        datapack_tree_sha256: '6'.repeat(64),
+        repair_result_sha256: repairResultSha256
+      } : { layer_payload_sha256: ARTIFACT_HASH },
+      hard_qa: { hard_qa_ok: true, hard_qa_sha256: authority.hardQaHash },
+      design_review: { p4_review_sha256: authority.reviewHash },
+      invalidates_downstream: INVALIDATES[layer],
+      replay_origin: {
+        kind: 'replay',
+        base_chain_sha256: initial.chainHash,
+        repair_transaction_sha256: transactionSha256
+      }
+    }));
+  }
+  return envelopes;
+}
+
 function chainInput(candidateId, checkpoint_envelopes, overrides) {
+  const authority = STORAGE_AUTHORITIES.get(candidateId);
   return {
     candidate_id: candidateId,
     checkpoint_envelopes,
-    frozen_design_sha256: DESIGN_HASH,
-    frozen_generator_context_sha256: CONTEXT_HASH,
-    blueprint_sha256: BLUEPRINT_HASH,
-    hard_qa_sha256: QA_HASH,
-    p4_review_sha256: REVIEW_HASH,
+    frozen_design_sha256: authority.designHash,
+    frozen_generator_context_sha256: authority.contextHash,
+    blueprint_sha256: authority.blueprintHash,
+    hard_qa_sha256: authority.hardQaHash,
+    p4_review_sha256: authority.reviewHash,
     eligibility: {
       status: 'eligible',
       hard_qa_ok: true,
@@ -1923,7 +1855,12 @@ function expectedInstalledFiles(snapshot) {
   return sortObject({
     ...cloneBuffers(snapshot.files),
     [`chains/chain-${padRevision(snapshot.chain.chain_revision)}.json`]: Buffer.from(snapshot.currentChain),
-    'current-chain.json': Buffer.from(snapshot.currentChain)
+    'current-chain.json': canonicalBytes({
+      schema_version: 1,
+      candidate_id: snapshot.chain.candidate_id,
+      chain_revision: snapshot.chain.chain_revision,
+      chain_sha256: snapshot.chainHash
+    })
   });
 }
 
@@ -1935,7 +1872,7 @@ function selectionFiles(marker = 'selected') {
     candidate_count: 3,
     candidates: snapshots.map((snapshot, index) => ({
       candidate_id: snapshot.chain.candidate_id,
-      seed: 11 + index,
+      seed: 11,
       current_chain_sha256: snapshot.chainHash,
       hard_qa_sha256: snapshot.chain.hard_qa_sha256,
       p4_review_sha256: snapshot.chain.p4_review_sha256,

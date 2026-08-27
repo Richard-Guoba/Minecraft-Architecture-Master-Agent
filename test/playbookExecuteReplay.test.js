@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { BlueprintQAAgent } from '../src/construction/agents/blueprintQaAgent.js';
@@ -14,6 +15,7 @@ import { compileMassingRepair } from '../src/playbook/execute/repairCompilers/ma
 import { replayCandidate } from '../src/playbook/execute/replay.js';
 import { admitExecuteRun, installCandidateSnapshot, readCurrentCandidateSnapshot } from '../src/playbook/execute/storage.js';
 import { buildDeterministicShadowReview } from '../src/playbook/shadow/runShadowReview.js';
+import { validateCandidateFiles } from '../src/playbook/execute/storageValidation.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const LAYERS = ['brief', 'massing', 'structure', 'roof', 'facade'];
@@ -68,6 +70,100 @@ test('replay is provider-free and deterministic across roots', async (t) => {
   }
 });
 
+test('restart replay reconstructs from disk authority without a runtime candidate object', async (t) => {
+  const input = await fixture(t);
+  const result = await replayCandidate({
+    authority: input.authority,
+    candidateId: 'candidate-01',
+    transaction: input.transaction,
+    projectRoot: input.projectRoot,
+    compilePrepared: input.compilePrepared
+  });
+  assert.equal(result.status, 'complete');
+  assert.equal(result.candidate_id, 'candidate-01');
+});
+
+test('disk-only replay restores active Concept Studio and Stage 7 authority without providers', async (t) => {
+  const input = await fixture(t, { activeContext: true });
+  assert.ok(input.candidate.frozen_generator_context.concept_studio);
+  assert.ok(input.candidate.frozen_generator_context.stage7_shadow);
+  const compile = input.compilePrepared;
+  let observed = false;
+  const result = await replayCandidate({
+    authority: input.authority,
+    candidateId: 'candidate-01',
+    transaction: input.transaction,
+    projectRoot: input.projectRoot,
+    compilePrepared: async (options) => {
+      observed = true;
+      assert.equal(options.prepared.conceptStudio.selected_concept_id,
+        input.candidate.frozen_generator_context.concept_studio.selected_concept_id);
+      assert.equal(options.prepared.stage7Shadow.condition.condition_hash,
+        input.candidate.frozen_generator_context.stage7_shadow.condition.condition_hash);
+      assert.equal(options.prepared.llmClient, undefined);
+      return compile(options);
+    }
+  });
+  assert.equal(observed, true);
+  assert.equal(result.status, 'complete');
+});
+
+test('every persisted output-bearing context field is hash-bound to the accepted chain', async (t) => {
+  const input = await fixture(t);
+  const stored = await readCurrentCandidateSnapshot({
+    authority: input.authority,
+    candidateId: 'candidate-01'
+  });
+  const contextPath = 'frozen/frozen-generator-context.json';
+  const mutations = {
+    seed: (value) => value + 1,
+    frozen_design_sha256: () => '0'.repeat(64),
+    architecture: (value) => ({ ...value, compatibility_marker: true }),
+    topology: (value) => ({ ...value, compatibility_marker: true }),
+    creative_design: (value) => ({ ...value, compatibility_marker: true }),
+    concept_studio: (value) => value ? { ...value, compatibility_marker: true } : { active: true },
+    stage7_shadow: (value) => value ? { ...value, compatibility_marker: true } : { active: true },
+    build_spec: (value) => ({ ...value, compatibility_marker: true }),
+    style_preset: (value) => ({ ...value, compatibility_marker: true }),
+    material_palette: (value) => ({ ...value, compatibility_marker: true }),
+    template_knowledge: (value) => ({ ...value, compatibility_marker: true }),
+    prompt: (value) => `${value} changed`,
+    mode: () => 'auto',
+    mc_version: (value) => `${value}.1`,
+    seed_source: (value) => `${value}-changed`,
+    concept_count: () => 1,
+    concept_strategy: () => 'fuse',
+    critics: (value) => !value,
+    neural_retrieval: (value) => !value,
+    coarse_voxel_mode: () => 'shadow',
+    coarse_voxel_provider: () => 'artifact',
+    llm_provider: (value) => `${value}-changed`,
+    llm_usage: (value) => ({ ...value, compatibility_marker: true })
+  };
+  for (const [field, mutate] of Object.entries(mutations)) {
+    const context = JSON.parse(stored.files[contextPath]);
+    context[field] = mutate(context[field]);
+    const files = Object.fromEntries(Object.entries(stored.files).map(([name, body]) => [
+      name,
+      name === contextPath ? Buffer.from(stable(context)) : Buffer.from(body)
+    ]));
+    assert.throws(
+      () => validateCandidateFiles('candidate-01', files, 'P5_OUTPUT_OWNERSHIP'),
+      { code: 'P5_OUTPUT_OWNERSHIP' },
+      field
+    );
+  }
+});
+
+test('successful replay uses run-owned workspace and creates no p5 replay temp residue', async (t) => {
+  const before = new Set((await fs.readdir(os.tmpdir())).filter((name) => name.startsWith('p5-replay-candidate-')));
+  const input = await fixture(t);
+  const result = await replayCandidate(input);
+  const after = (await fs.readdir(os.tmpdir())).filter((name) => name.startsWith('p5-replay-candidate-') && !before.has(name));
+  assert.deepEqual(after, []);
+  assert.equal(path.relative(input.runDir, result.compiled_result.outputDir).startsWith('..'), false);
+});
+
 test('structure replay preserves brief and massing bytes and replays only structure through facade', async (t) => {
   const input = await fixture(t, { structureOnly: true });
   assert.equal(input.transaction.earliest_target_layer, 'structure');
@@ -108,7 +204,7 @@ test('actual replay compiler applicator QA review and hash faults preserve the o
 });
 
 test('actual candidate storage precommit faults preserve the original pointer bytes and inode', async (t) => {
-  for (const category of ['exclusiveWrite', 'chmod', 'fileSync', 'directorySync', 'pointerWrite', 'backupRename', 'finalRename']) {
+  for (const category of ['exclusiveWrite', 'chmod', 'fileSync', 'directorySync', 'bodyRename', 'pointerWrite', 'backupLink', 'pointerRename']) {
     const input = await fixture(t);
     const currentPath = path.join(input.runDir, 'playbook-execute/candidates/candidate-01/current-chain.json');
     const beforeBytes = await fs.readFile(currentPath); const beforeStat = await fs.stat(currentPath);
@@ -129,10 +225,12 @@ test('candidate retirement cleanup faults are postcommit and keep the replay gen
   assert.notEqual(current.current_chain_sha256, input.transaction.base_chain_sha256);
 });
 
-test('functions clients and accessors in frozen context fail closed', async (t) => {
+test('runtime-only frozen-context lookalikes cannot override persisted replay authority', async (t) => {
   for (const mutate of [(x) => { x.architecture.callback = () => {}; }, (x) => { x.architecture.client = { chatJson() {} }; }, (x) => { Object.defineProperty(x.architecture, 'computed', { enumerable: true, get: () => 1 }); }]) {
-    const input = await fixture(t); input.candidate.frozen_generator_context = structuredClone(input.candidate.frozen_generator_context); mutate(input.candidate.frozen_generator_context);
-    await assert.rejects(replayCandidate(input), { code: 'P5_DESIGN_INVALID' });
+    const input = await fixture(t);
+    input.candidate.frozen_generator_context = structuredClone(input.candidate.frozen_generator_context);
+    mutate(input.candidate.frozen_generator_context);
+    await assert.rejects(replayCandidate(input), { code: 'P5_AUTHORITY_INVALID' });
   }
 });
 
@@ -263,7 +361,7 @@ test('artifact hashing rejects blueprint object and byte mutations before candid
   }
 });
 
-async function fixture(t, { structureOnly = false } = {}) {
+async function fixture(t, { structureOnly = false, activeContext = false } = {}) {
   const root = path.join('/tmp', `p5-replay-${Date.now()}-${Math.random()}`); const runDir = path.join(root, 'run'); await fs.mkdir(runDir, { recursive: true }); t.after(() => fs.rm(root, { recursive: true, force: true }));
   const frozenDesign = { schema_version: 1, candidate_id: 'candidate-01', seed: 7, brief_intent: 'three-volume repair', layer_intents: LAYERS.map((layer) => ({ layer, intent: `preserve ${layer}` })), selected_rule_ids: [], rejected_rule_ids: [], repair_variant_preferences: [
     { repair_operation_id: 'repair:massing:resize-or-reposition-volume', variant_id: 'center-primary-and-reattach-secondaries' },
@@ -271,21 +369,33 @@ async function fixture(t, { structureOnly = false } = {}) {
     { repair_operation_id: 'repair:structure:connect-support-path', variant_id: 'connect-known-structural-anchors' }
   ] };
   const frozenDesignHash = digest(frozenDesign);
-  const prepared = await prepareConstructionDesign({ prompt: 'three-volume medieval house', mode: 'mock', outputDir: path.join(root, 'initial'), seed: 7, candidateId: 'candidate-01', frozenDesignSha256: frozenDesignHash, frozenDesign, critics: false });
+  const prepared = await prepareConstructionDesign({
+    prompt: 'three-volume medieval house', mode: 'mock', outputDir: path.join(root, 'initial'),
+    seed: 7, candidateId: 'candidate-01', frozenDesignSha256: frozenDesignHash, frozenDesign,
+    critics: false,
+    conceptCount: activeContext ? 2 : 0,
+    conceptStrategy: activeContext ? 'fuse' : 'select',
+    coarseVoxelMode: activeContext ? 'shadow' : 'off',
+    coarseVoxelProvider: 'baseline'
+  });
   prepared.architecture = structuredClone(prepared.architecture);
   prepared.architecture.volumes = [
     { id: 'side-b', shape: 'box', role: 'secondary-mass', scale: [0.4, 0.4, 0.4], placement: { relation: 'attached-right', attach_to: 'main' } },
     { id: 'main', shape: 'box', role: 'primary-mass', scale: [0.4, 0.4, 0.4], placement: { relation: 'offset' } },
     { id: 'side-a', shape: 'box', role: 'secondary-mass', scale: [0.4, 0.4, 0.4], placement: { relation: 'attached-left', attach_to: 'main' } }
   ];
-  prepared.frozen_generator_context = buildFrozenGeneratorContext({ schema_version: 1, candidate_id: 'candidate-01', seed: 7, frozen_design_sha256: frozenDesignHash, architecture: prepared.architecture, topology: prepared.topology, creative_design: prepared.creativeDesign, concept: prepared.conceptStudio?.selectedConcept || null, build_spec: prepared.buildSpec, style_preset: prepared.stylePreset, material_palette: prepared.materialPalette, template_knowledge: prepared.templateKnowledge });
+  prepared.frozen_generator_context = buildFrozenGeneratorContext({
+    ...structuredClone(prepared.frozen_generator_context),
+    architecture: prepared.architecture
+  });
   const compiled = compileDesignLayers({ prepared, resolvedEffectsByLayer: {} });
   let blueprintBytes = await fs.readFile(path.join(ROOT, `test/fixtures/playbook-shadow/${structureOnly ? 'medieval-positive' : 'medieval-defect'}.json`));
   const blueprint = JSON.parse(blueprintBytes);
+  blueprint.seed = 7;
   if (structureOnly) {
     blueprint.structure.load_paths = [];
-    blueprintBytes = Buffer.from(`${JSON.stringify(blueprint, null, 2)}\n`);
   }
+  blueprintBytes = Buffer.from(`${JSON.stringify(blueprint, null, 2)}\n`);
   const hardQa = new BlueprintQAAgent().run(blueprint); const p4Review = await buildDeterministicShadowReview({ projectRoot: ROOT, blueprintBytes, blueprintRelativePath: 'blueprint.json' });
   const eligibility = evaluateExecuteEligibility({ review: p4Review, hardQa: { ok: hardQa.ok }, repairBudgetUsed: 0 }); const hardQaHash = digest(hardQa); const reviewHash = digest(p4Review);
   const envelopes = [];
@@ -293,7 +403,14 @@ async function fixture(t, { structureOnly = false } = {}) {
   const chain = createChainManifest({ candidate_id: 'candidate-01', chain_revision: 1, parent_chain_sha256: null, checkpoint_envelopes: envelopes, frozen_design_sha256: frozenDesignHash, frozen_generator_context_sha256: digest(prepared.frozen_generator_context), blueprint_sha256: digestBytes(blueprintBytes), hard_qa_sha256: hardQaHash, p4_review_sha256: reviewHash, repair_transaction_sha256: null, eligibility, created_from: 'initial' });
   const chainHash = chainManifestHash(chain); const transaction = buildRepairTransaction({ candidateId: 'candidate-01', review: p4Review, frozenDesign, baseChainSha256: chainHash, acceptedChain: chain, checkpointEnvelopes: envelopes });
   const authority = await admitExecuteRun({ runDir }); t.after(() => authority.close());
-  await installCandidateSnapshot({ authority, candidateId: 'candidate-01', expectedPreviousChainSha256: null, currentChain: chainManifestBytes(chain), files: Object.fromEntries(envelopes.map((envelope) => [`checkpoints/${envelope.checkpoint.layer}/r0001.json`, checkpointBytes(envelope)])) });
+  await installCandidateSnapshot({ authority, candidateId: 'candidate-01', expectedPreviousChainSha256: null, currentChain: chainManifestBytes(chain), files: {
+    ...Object.fromEntries(envelopes.map((envelope) => [`checkpoints/${envelope.checkpoint.layer}/r0001.json`, checkpointBytes(envelope)])),
+    'frozen/frozen-design.json': Buffer.from(stable(frozenDesign)),
+    'frozen/frozen-generator-context.json': Buffer.from(stable(prepared.frozen_generator_context)),
+    'blueprints/chain-0001.json': Buffer.from(blueprintBytes),
+    'reviews/chain-0001-hard-qa.json': Buffer.from(stable(hardQa)),
+    'reviews/chain-0001-review.json': Buffer.from(stable(p4Review))
+  } });
   const compilePrepared = async ({ outputDir, compiledLayers, world, datapacksDir, minecraftDir }) => {
     assert.equal(world, undefined); assert.equal(datapacksDir, undefined); assert.equal(minecraftDir, undefined);
     assert.deepEqual(compiledLayers.runtime.architecture.volumes, compiledLayers.massing.volumes);
@@ -325,17 +442,40 @@ function replayStorageFs({ failCategory, failAt }) {
       const handle = await fs.open(target, flags, ...args); const isDirectory = (await handle.stat()).isDirectory();
       return wrapFileHandle(handle, {
         async chmod(...chmodArgs) { if (inStage) tick('chmod'); return handle.chmod(...chmodArgs); },
-        async writeFile(...writeArgs) { if (inStage && path.basename(targetText) === 'current-chain.json') tick('pointerWrite'); return handle.writeFile(...writeArgs); },
-        async sync(...syncArgs) { if (inStage) tick(isDirectory ? 'directorySync' : 'fileSync'); return handle.sync(...syncArgs); }
+        async writeFile(...writeArgs) {
+          if (inStage && isCurrentChainPointer(writeArgs[0])) tick('pointerWrite');
+          return handle.writeFile(...writeArgs);
+        },
+        async sync(...syncArgs) {
+          if (inStage && !isDirectory) tick('fileSync');
+          if (isDirectory && path.basename(targetText) === 'candidate-01') tick('directorySync');
+          return handle.sync(...syncArgs);
+        }
       });
     },
-    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
-      if (sourceName === 'candidate-01' && destinationName.startsWith('.playbook-execute.backup-')) tick('backupRename');
-      if (sourceName.startsWith('.playbook-execute.stage-') && destinationName === 'candidate-01') tick('finalRename');
-      return next(directoryHandle, sourceName, destinationName);
+    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+      if (sourceName.startsWith('.playbook-execute.stage-') && destinationName !== 'current-chain.json') tick('bodyRename');
+      return next(sourceHandle, sourceName, destinationHandle, destinationName);
+    },
+    async link(source, destination) {
+      if (path.basename(String(source)) === 'current-chain.json'
+        && path.basename(String(destination)).startsWith('.playbook-execute.backup-')) tick('backupLink');
+      return fs.link(source, destination);
+    },
+    async rename(source, destination) {
+      if (path.basename(String(source)).startsWith('.playbook-execute.stage-')
+        && path.basename(String(destination)) === 'current-chain.json') tick('pointerRename');
+      return fs.rename(source, destination);
     },
     async unlink(target) { if (await pathContainsGeneratedName(String(target), '.playbook-execute.backup-')) tick('cleanup'); return fs.unlink(target); }
   });
+}
+
+function isCurrentChainPointer(value) {
+  try {
+    const parsed = JSON.parse(Buffer.from(value).toString('utf8'));
+    return Object.keys(parsed).sort().join(',') === 'candidate_id,chain_revision,chain_sha256,schema_version';
+  } catch { return false; }
 }
 
 function fsWith(overrides) { return new Proxy(fs, { get(target, property) { return Object.hasOwn(overrides, property) ? overrides[property] : Reflect.get(target, property); } }); }

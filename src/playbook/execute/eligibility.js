@@ -42,9 +42,10 @@ const COVERAGE_ROWS = Object.freeze([
 
 const EXECUTABLE_BY_RULE = new Map(EXECUTABLE_REPAIR_ROWS.map((item) => [item.rule_id, item]));
 
-export function evaluateExecuteEligibility({ review, hardQa, repairBudgetUsed } = {}) {
+export function evaluateExecuteEligibility({ review, hardQa, repairBudgetUsed, candidateAuthority } = {}) {
   const authoritativeReview = authorityReview(review);
   try {
+    if (candidateAuthority !== undefined) assertReviewCandidateAuthority(authoritativeReview, candidateAuthority);
     if (!isExactHardQa(hardQa)) throw executeError('P5_AUTHORITY_INVALID');
     const coreRows = authoritativeReview.assessments.filter((item) => item.teaching_role === 'core-procedure');
     const unresolved = coreRows.filter((item) => item.status === 'violated').map((item) => item.rule_id);
@@ -58,6 +59,19 @@ export function evaluateExecuteEligibility({ review, hardQa, repairBudgetUsed } 
       neutral_not_applicable_rule_ids: notApplicable,
       repair_budget_used: repairBudgetUsed
     });
+  } catch {
+    throw executeError('P5_AUTHORITY_INVALID');
+  }
+}
+
+export function assertReviewCandidateAuthority(review, candidateAuthority) {
+  try {
+    if (!candidateAuthority || Object.getPrototypeOf(candidateAuthority) !== Object.prototype
+      || !sameArray(Object.keys(candidateAuthority).sort(), ['blueprint_sha256', 'seed', 'workflow'])) invalid();
+    if (review.input.blueprint_sha256 !== candidateAuthority.blueprint_sha256
+      || review.input.workflow !== candidateAuthority.workflow
+      || review.input.seed !== candidateAuthority.seed) invalid();
+    return review;
   } catch {
     throw executeError('P5_AUTHORITY_INVALID');
   }

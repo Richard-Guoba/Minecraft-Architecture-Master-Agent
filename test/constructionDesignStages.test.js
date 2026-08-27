@@ -51,8 +51,11 @@ test('prepareConstructionDesign preserves architect, planner, creative provider 
     assert.deepEqual(calls, ['architect', 'planner', 'creative']);
     assert.deepEqual(Object.keys(prepared.frozen_generator_context), [
       'schema_version', 'candidate_id', 'seed', 'frozen_design_sha256', 'architecture',
-      'topology', 'creative_design', 'concept', 'build_spec', 'style_preset',
-      'material_palette', 'template_knowledge'
+      'topology', 'creative_design', 'concept_studio', 'stage7_shadow', 'build_spec',
+      'style_preset', 'material_palette', 'template_knowledge', 'prompt', 'mode',
+      'mc_version', 'seed_source', 'concept_count', 'concept_strategy', 'critics',
+      'neural_retrieval', 'coarse_voxel_mode', 'coarse_voxel_provider',
+      'coarse_voxel_plan', 'llm_provider', 'llm_usage'
     ]);
     const serializedContext = JSON.stringify(prepared.frozen_generator_context);
     assert.equal(serializedContext.includes('configured-test-client'), false);
@@ -171,10 +174,24 @@ function frozenContextInput() {
     architecture: {},
     topology: {},
     creative_design: {},
-    concept: null,
+    concept_studio: null,
+    stage7_shadow: null,
     build_spec: {},
     style_preset: {},
     material_palette: {},
-    template_knowledge: {}
+    template_knowledge: {},
+    prompt: 'three-volume house',
+    mode: 'mock',
+    mc_version: '1.21',
+    seed_source: 'manual',
+    concept_count: 0,
+    concept_strategy: 'select',
+    critics: true,
+    neural_retrieval: false,
+    coarse_voxel_mode: 'off',
+    coarse_voxel_provider: 'baseline',
+    coarse_voxel_plan: null,
+    llm_provider: 'disabled-by-mock-mode',
+    llm_usage: { mode: 'mock', provider: 'disabled-by-mock-mode', called: false, used: false, status: 'not-called', stages: [], errors: [] }
   };
 }

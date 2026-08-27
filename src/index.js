@@ -54,6 +54,7 @@ function parseArgs(argv) {
     if (!['off', 'execute'].includes(value)) throw p5CliError('P5_MODE_INVALID');
     options.playbook = value;
   }
+  if (options.playbook === 'execute') assertExecuteSingletonOptions(argv);
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -173,6 +174,46 @@ function parseArgs(argv) {
   };
 }
 
+function assertExecuteSingletonOptions(argv) {
+  const groups = new Map(Object.entries({
+    '--playbook': 'playbook',
+    '--mode': 'mode',
+    '--mc-version': 'mc-version',
+    '--out': 'out',
+    '--seed': 'seed',
+    '--candidates': 'candidates',
+    '--auto-select': 'candidates',
+    '--candidate-rounds': 'candidate-rounds',
+    '--candidate-target-score': 'candidate-target-score',
+    '--candidate-force-rounds': 'candidate-force-rounds',
+    '--concepts': 'concepts',
+    '--concept-strategy': 'concept-strategy',
+    '--no-critics': 'critics',
+    '--neural-retrieval': 'neural-retrieval',
+    '--no-neural-retrieval': 'neural-retrieval',
+    '--coarse-voxel-mode': 'coarse-voxel-mode',
+    '--coarse-voxel-provider': 'coarse-voxel-provider',
+    '--coarse-voxel-plan': 'coarse-voxel-plan',
+    '--minecraft-dir': 'minecraft-dir',
+    '--world': 'world',
+    '--datapacks-dir': 'datapack-destination',
+    '--datapacks-target': 'datapack-destination',
+    '--auto-build': 'auto-build',
+    '--launch': 'launch',
+    '--launch-command': 'launch-command',
+    '--list-worlds': 'list-worlds',
+    '--list-prompts': 'list-prompts',
+    '--prompt-id': 'prompt-id'
+  }));
+  const seen = new Set();
+  for (const argument of argv) {
+    const group = groups.get(argument);
+    if (!group) continue;
+    if (seen.has(group)) throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
+    seen.add(group);
+  }
+}
+
 function p5CliError(code) {
   return Object.assign(new Error(code), { code });
 }
@@ -245,9 +286,18 @@ Options:
 `);
 }
 
-async function main() {
+export async function main({ argv = process.argv.slice(2), runPipelineImpl = runPipeline } = {}) {
   loadEnvFile(path.join(projectRoot, '.env'));
-  const { prompt, options } = parseArgs(process.argv.slice(2));
+  let parsed;
+  try {
+    parsed = parseArgs(argv);
+  } catch (error) {
+    if (executeRequested(argv) && !error?.code?.startsWith('P5_')) {
+      throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
+    }
+    throw error;
+  }
+  const { prompt, options } = parsed;
 
   if (options.help) {
     printHelp();
@@ -287,7 +337,7 @@ async function main() {
     process.exit(1);
   }
 
-  const result = await runPipeline({
+  const result = await runPipelineImpl({
     prompt: finalPrompt,
     mode: options.mode,
     mcVersion: options.mcVersion,
@@ -373,6 +423,10 @@ async function main() {
   }
 }
 
+function executeRequested(argv) {
+  return argv.some((arg, index, values) => arg === '--playbook' && values[index + 1] === 'execute');
+}
+
 function printCuratedPromptList() {
   console.log('可用推荐提示词：');
   for (const item of listCuratedTemplatePrompts()) {
@@ -380,18 +434,29 @@ function printCuratedPromptList() {
   }
 }
 
-main().catch((error) => {
-  if (typeof error?.code === 'string' && error.code.startsWith('P5_')) {
-    console.error(error.code);
-    process.exitCode = 1;
-    return;
+export async function runCli({
+  argv = process.argv.slice(2),
+  runPipelineImpl = runPipeline,
+  writeError = (value) => console.error(value)
+} = {}) {
+  try {
+    await main({ argv, runPipelineImpl });
+    return 0;
+  } catch (error) {
+    if (typeof error?.code === 'string' && error.code.startsWith('P5_')) {
+      writeError(error.code);
+      return 1;
+    }
+    if (executeRequested(argv)) {
+      writeError('P5_AUTHORITY_INVALID');
+      return 1;
+    }
+    writeError(`运行失败: ${error?.message || 'unknown error'}`);
+    if (process.env.DEBUG) writeError(String(error?.stack || error));
+    return 1;
   }
-  if (process.argv.some((arg, index, argv) => arg === '--playbook' && argv[index + 1] === 'execute')) {
-    console.error('P5_OPTIONS_INCOMPATIBLE');
-    process.exitCode = 1;
-    return;
-  }
-  console.error('运行失败:', error.message);
-  if (process.env.DEBUG) console.error(error);
-  process.exit(1);
-});
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  runCli().then((status) => { process.exitCode = status; });
+}

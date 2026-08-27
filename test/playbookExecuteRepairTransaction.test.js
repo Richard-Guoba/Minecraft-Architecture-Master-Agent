@@ -134,6 +134,12 @@ test('stale bases, exhausted budget, malformed anchors, and replay-time anchor d
   staleInput.baseChainSha256 = H('0');
   assert.throws(() => buildRepairTransaction(staleInput), { code: 'P5_STALE_BASE' });
   const input = await fixture();
+  Object.assign(input.acceptedChain, {
+    chain_revision: 2,
+    parent_chain_sha256: H('8'),
+    repair_transaction_sha256: H('9'),
+    created_from: 'replay'
+  });
   input.acceptedChain.eligibility.repair_budget_used = 1;
   input.baseChainSha256 = digestCanonical(input.acceptedChain);
   assert.throws(() => buildRepairTransaction(input), { code: 'P5_REPAIR_INVALID' });

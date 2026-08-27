@@ -31,6 +31,43 @@ test('execute orchestration rejects unknown dependency authority before work', a
   );
 });
 
+test('outer execute boundary sanitizes every public stage and authority close', async (t) => {
+  const projectRoot = path.resolve(import.meta.dirname, '..');
+  const prompt = 'Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base';
+  const secret = 'PRIVATE_EXECUTE_BOUNDARY_BODY_/home/private/world';
+  const cases = [
+    ['create-run', 'P5_AUTHORITY_INVALID', { createRun: async () => { throw new Error(secret); } }],
+    ['corpus-load', 'P5_AUTHORITY_INVALID', { loadCorpus: async () => { throw new Error(secret); } }],
+    ['selection-render', 'P5_INSTALL_FAILED', { renderSelection: () => { throw new Error(secret); } }],
+    ['selection-publication', 'P5_INSTALL_FAILED', { publishSelection: async () => { throw new Error(secret); } }],
+    ['installer', 'P5_INSTALL_FAILED', { installSelected: async () => { throw new Error(secret); } }],
+    ['authority-close', 'P5_AUTHORITY_INVALID', {
+      closeAuthority: async (authority) => { await authority.close(); throw new Error(secret); }
+    }]
+  ];
+  for (const [name, code, dependencies] of cases) {
+    await t.test(name, async (t) => {
+      const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), `p5-boundary-${name}-`));
+      t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+      await assert.rejects(
+        runExecutablePlaybookPipeline({
+          playbook: 'execute', prompt, mode: 'mock', seed: 424242, outRoot, cwd: projectRoot
+        }, dependencies),
+        (error) => {
+          assert.equal(error.code, code);
+          assert.equal(error.message, code);
+          assert.equal(JSON.stringify(error).includes(secret), false);
+          return true;
+        }
+      );
+    });
+  }
+  await assert.rejects(
+    runExecutablePlaybookPipeline({ playbook: 'execute', prompt, candidates: 2 }),
+    { code: 'P5_OPTIONS_INCOMPATIBLE', message: 'P5_OPTIONS_INCOMPATIBLE' }
+  );
+});
+
 test('initial failure evidence installs once without an accepted-chain pointer', async (t) => {
   const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-initial-failure-'));
   t.after(() => fs.rm(runDir, { recursive: true, force: true }));
@@ -169,6 +206,58 @@ test('pipeline rejects execute option drift before creating output', async (t) =
   }
 });
 
+test('execute admits a no-follow output root before creating run topology', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-output-root-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const external = path.join(root, 'external');
+  const linked = path.join(root, 'linked-out');
+  await fs.mkdir(external);
+  await fs.symlink(external, linked, 'dir');
+
+  await assert.rejects(runExecutablePlaybookPipeline({
+    playbook: 'execute', prompt: 'three-volume medieval house', mode: 'mock',
+    seed: 7, cwd: path.resolve(import.meta.dirname, '..'), outRoot: linked
+  }), { code: /P5_(?:AUTHORITY_INVALID|OUTPUT_OWNERSHIP)/u });
+  assert.deepEqual(await fs.readdir(external), []);
+});
+
+test('reviewed corpus order survives the complete lifecycle and reversed order fails closed', async (t) => {
+  const projectRoot = path.resolve(import.meta.dirname, '..');
+  const prompt = 'Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base';
+  const orderedRuleIds = [
+    'rule:structure.compose-three-volumes',
+    'rule:roof.border-with-material-contrast'
+  ];
+  const orderedRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-corpus-order-'));
+  const reversedRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-corpus-reversed-'));
+  t.after(() => Promise.all([orderedRoot, reversedRoot].map((root) => fs.rm(root, { recursive: true, force: true }))));
+
+  const ordered = await runExecutablePlaybookPipeline({
+    playbook: 'execute', prompt, mode: 'mock', seed: 424242, outRoot: orderedRoot, cwd: projectRoot
+  }, { createEnvelope: (input) => reviewedSubsetEnvelope(input, orderedRuleIds) });
+  assert.equal(ordered.playbookExecution.selected_candidate_id, 'candidate-03');
+  for (const candidateId of ['candidate-01', 'candidate-02', 'candidate-03']) {
+    const checkpoint = JSON.parse(await fs.readFile(path.join(
+      ordered.outputDir, 'playbook-execute', 'candidates', candidateId, 'checkpoints', 'brief', 'r0001.json'
+    )));
+    assert.deepEqual(checkpoint.selected_rule_ids, orderedRuleIds);
+  }
+
+  await assert.rejects(runExecutablePlaybookPipeline({
+    playbook: 'execute', prompt, mode: 'mock', seed: 424242, outRoot: reversedRoot, cwd: projectRoot
+  }, { createEnvelope: (input) => reviewedSubsetEnvelope(input, [...orderedRuleIds].reverse()) }), {
+    code: 'P5_NO_ELIGIBLE_CANDIDATE'
+  });
+  const [runName] = await fs.readdir(reversedRoot);
+  for (const candidateId of ['candidate-01', 'candidate-02', 'candidate-03']) {
+    const failure = JSON.parse(await fs.readFile(path.join(
+      reversedRoot, runName, 'playbook-execute', 'candidates', candidateId, 'failures', 'initial.json'
+    )));
+    assert.equal(failure.stage, 'design');
+    assert.equal(failure.code, 'P5_DESIGN_INVALID');
+  }
+});
+
 test('real mock execution creates exactly three five-layer evidence trees and one selection', async (t) => {
   const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-three-candidates-'));
   t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
@@ -187,7 +276,8 @@ test('real mock execution creates exactly three five-layer evidence trees and on
     const evidence = await fs.readdir(root);
     assert.ok(evidence.includes('current-chain.json') || evidence.includes('failures'));
     if (evidence.includes('current-chain.json')) {
-      const chain = JSON.parse(await fs.readFile(path.join(root, 'current-chain.json')));
+      const pointer = JSON.parse(await fs.readFile(path.join(root, 'current-chain.json')));
+      const chain = JSON.parse(await fs.readFile(path.join(root, `chains/chain-${String(pointer.chain_revision).padStart(4, '0')}.json`)));
       assert.equal(chain.checkpoint_hashes.length, 5);
     }
   }
@@ -214,6 +304,7 @@ test('selection installation binds candidate rows and selected current review bo
   const reportBytes = await fs.readFile(result.artifacts.playbookExecutionReport);
   for (const [name, mutate] of [
     ['invented hash', (value) => { value.candidates[0].current_chain_sha256 = 'f'.repeat(64); }],
+    ['accepted seed mismatch', (value) => { value.candidates[0].seed += 1; }],
     ['attempt mismatch', (value) => { value.candidates[0].repair_attempt_count = 0; }],
     ['eligibility mismatch', (value) => { value.candidates[0].eligibility.status = 'replay-failed'; }],
     ['candidate authority swap', (value) => {
@@ -454,7 +545,7 @@ test('controlled production semantics yield 01 eligible, 02 repaired, and 03 sti
     },
     compilePrepared: async (input) => {
       const compiled = await compilePreparedConstruction(input);
-      if (input.prepared.seed === 1448002 && input.outputDir.includes('p5-replay-candidate-03-')) {
+      if (input.prepared.seed === 1448002 && input.outputDir.includes('replay-candidate-03-attempt-01')) {
         compiled.blueprint.architecture.volumes = structuredClone(hierarchyDefectVolumes);
         await fs.writeFile(compiled.artifacts.blueprint, `${JSON.stringify(compiled.blueprint, null, 2)}\n`);
       }
@@ -474,6 +565,19 @@ function satisfy(row) {
   Object.assign(row, { status: 'satisfied', evidence_json_pointers: row.evidence_json_pointers.length ? row.evidence_json_pointers : ['/architecture'],
     observations: row.observations.length ? row.observations : ['controlled satisfied evidence'], missing_signals: [], unknown_ids: [],
     repair_operation_id: null, repair_target_layer: null, invalidates_layers: [] });
+}
+
+async function reviewedSubsetEnvelope(input, selectedRuleIds) {
+  const response = structuredClone(await createFrozenDesignEnvelope({ ...input, mode: 'mock' }));
+  response.selected_rule_ids = selectedRuleIds;
+  return createFrozenDesignEnvelope({
+    ...input,
+    mode: 'llm',
+    client: {
+      isConfigured: () => true,
+      chatJson: async () => response
+    }
+  });
 }
 
 function violateHierarchy(row) {

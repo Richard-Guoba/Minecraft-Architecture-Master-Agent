@@ -1,11 +1,15 @@
 import path from 'node:path';
+import { BlueprintQAAgent } from '../../construction/agents/blueprintQaAgent.js';
 import { sha256, stableJson } from '../shadow/canonical.js';
+import { validateReview } from '../shadow/contracts.js';
 import {
   executeError,
   validateChainManifest,
   validateCheckpointPayload,
   validateExecuteSelectionManifest,
   validateEligibilityRecord,
+  validateFrozenDesignEnvelope,
+  validateFrozenGeneratorContext,
   validateInitialCandidateFailure,
   validateRepairEvidenceRequest,
   validateRepairEvidenceResult,
@@ -14,11 +18,14 @@ import {
   validateReplayFailureEvidence,
   validateSelectionRecord
 } from './contracts.js';
+import { assertReviewCandidateAuthority } from './eligibility.js';
 
 export const CANDIDATE_IDS = Object.freeze(['candidate-01', 'candidate-02', 'candidate-03']);
 export const LAYERS = Object.freeze(['brief', 'massing', 'structure', 'roof', 'facade']);
 export const CURRENT_CHAIN_BASENAME = 'current-chain.json';
 export const SELECTION_PATHS = Object.freeze(['manifest.json', 'selection.json', 'selection-report.md']);
+export const FROZEN_DESIGN_PATH = 'frozen/frozen-design.json';
+export const FROZEN_CONTEXT_PATH = 'frozen/frozen-generator-context.json';
 
 const SELECTION_BODY_PATHS = Object.freeze(['selection.json', 'selection-report.md']);
 const UNSAFE_PATH_CHARACTER = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u;
@@ -27,6 +34,7 @@ const CHECKPOINT_PATH = new RegExp(`^checkpoints/(${LAYERS.join('|')})/r(${REVIS
 const CHAIN_PATH = new RegExp(`^chains/chain-(${REVISION})\\.json$`, 'u');
 const HARD_QA_PATH = new RegExp(`^reviews/chain-(${REVISION})-hard-qa\\.json$`, 'u');
 const REVIEW_PATH = new RegExp(`^reviews/chain-(${REVISION})-review\\.json$`, 'u');
+const BLUEPRINT_PATH = new RegExp(`^blueprints/chain-(${REVISION})\\.json$`, 'u');
 const REPAIR_REQUEST_PATH = 'repairs/attempt-01-request.json';
 const REPAIR_PATCH_PATH = 'repairs/attempt-01-patch.json';
 const REPAIR_RESULT_PATH = 'repairs/attempt-01-result.json';
@@ -95,10 +103,16 @@ export function normalizeCandidateSnapshot({ candidateId, files, currentChain })
   const currentChainBytes = Buffer.from(currentChain);
   const currentChainPath = chainPath(current.chain_revision);
   if (Object.hasOwn(immutableFiles, currentChainPath)) throw executeError('P5_AUTHORITY_INVALID');
+  const currentPointer = Buffer.from(stableJson({
+    schema_version: 1,
+    candidate_id: candidateId,
+    chain_revision: current.chain_revision,
+    chain_sha256: sha256(currentChainBytes)
+  }));
   const installedFiles = Object.freeze(sortFileMap({
     ...immutableFiles,
     [currentChainPath]: Buffer.from(currentChainBytes),
-    [CURRENT_CHAIN_BASENAME]: Buffer.from(currentChainBytes)
+    [CURRENT_CHAIN_BASENAME]: currentPointer
   }));
   const validated = validateCandidateFiles(candidateId, installedFiles, 'P5_CHECKPOINT_INVALID');
   return Object.freeze({
@@ -142,10 +156,14 @@ export function validateCandidateFiles(candidateId, files, code) {
     if (!isPlainObject(files) || !Buffer.isBuffer(files[CURRENT_CHAIN_BASENAME])) {
       throw executeError(code);
     }
-    const current = parseCanonicalValidatedJson(files[CURRENT_CHAIN_BASENAME], validateChainManifest);
-    if (current.candidate_id !== candidateId) throw executeError(code);
-    const currentPath = chainPath(current.chain_revision);
-    if (!Buffer.isBuffer(files[currentPath]) || !files[currentPath].equals(files[CURRENT_CHAIN_BASENAME])) {
+    const pointer = parseCurrentPointer(files[CURRENT_CHAIN_BASENAME], code);
+    if (pointer.candidate_id !== candidateId) throw executeError(code);
+    const currentPath = chainPath(pointer.chain_revision);
+    if (!Buffer.isBuffer(files[currentPath]) || sha256(files[currentPath]) !== pointer.chain_sha256) {
+      throw executeError(code);
+    }
+    const current = parseCanonicalValidatedJson(files[currentPath], validateChainManifest);
+    if (current.candidate_id !== candidateId || current.chain_revision !== pointer.chain_revision) {
       throw executeError(code);
     }
 
@@ -162,6 +180,8 @@ export function validateCandidateFiles(candidateId, files, code) {
         const checkpoint = parseCanonicalValidatedJson(bytes, validateCheckpointPayload);
         const revision = parseRevision(match[2]);
         if (
+          ![1, 2].includes(revision)
+          ||
           checkpoint.candidate_id !== candidateId
           || checkpoint.layer !== match[1]
           || checkpoint.revision !== revision
@@ -192,12 +212,21 @@ export function validateCandidateFiles(candidateId, files, code) {
         parseCanonicalValidatedJson(bytes, validateReplayFailureEvidence);
       } else if (name === REPAIR_PLANNING_FAILURE_PATH) {
         parseCanonicalValidatedJson(bytes, validateRepairPlanningFailureEvidence);
+      } else if (name === FROZEN_DESIGN_PATH) {
+        parseCanonicalValidatedJson(bytes, validateFrozenDesignEnvelope);
+      } else if (name === FROZEN_CONTEXT_PATH) {
+        parseCanonicalValidatedJson(bytes, validateFrozenGeneratorContext);
+      } else if (BLUEPRINT_PATH.test(name)) {
+        if (![1, 2].includes(parseRevision(BLUEPRINT_PATH.exec(name)[1]))) throw executeError(code);
+        parseJsonBytes(bytes, code);
       } else {
         parseCanonicalJson(bytes, code);
       }
     }
 
-    if (chainsByRevision.size !== current.chain_revision) throw executeError(code);
+    if ([...chainsByRevision.keys()].some((revision) => revision < 1 || revision > 2)
+      || !Array.from({ length: current.chain_revision }, (_, index) => index + 1)
+        .every((revision) => chainsByRevision.has(revision))) throw executeError(code);
     const initialChain = chainsByRevision.get(1)?.chain;
     if (!initialChain) throw executeError(code);
     const referencedCheckpointHashes = new Set();
@@ -257,22 +286,28 @@ export function validateCandidateFiles(candidateId, files, code) {
       checkpointByHash.get(row.checkpoint_sha256)
     ));
     if (initialSelected.some(({ checkpoint }) => checkpoint.revision !== 1)) throw executeError(code);
-    if (
-      checkpointByHash.size !== referencedCheckpointHashes.size
-      || [...checkpointByHash.keys()].some((hash) => !referencedCheckpointHashes.has(hash))
-    ) throw executeError(code);
+    if ([...checkpointByHash.values()].some(({ checkpoint, hash }) => (
+      !referencedCheckpointHashes.has(hash)
+      && !(current.chain_revision === 1 && checkpoint.revision === 2)
+    ))) throw executeError(code);
     for (const name of Object.keys(files)) {
       const hardQa = HARD_QA_PATH.exec(name);
       const review = REVIEW_PATH.exec(name);
       if (hardQa || review) {
-        const chain = chainsByRevision.get(parseRevision((hardQa ?? review)[1]))?.chain;
+        const revision = parseRevision((hardQa ?? review)[1]);
+        if (![1, 2].includes(revision)) throw executeError(code);
+        if (revision > current.chain_revision) continue;
+        const chain = chainsByRevision.get(revision)?.chain;
         const referencedHash = hardQa ? chain?.hard_qa_sha256 : chain?.p4_review_sha256;
         if (!chain || referencedHash !== sha256(files[name])) throw executeError(code);
       }
     }
     const currentStored = chainsByRevision.get(current.chain_revision);
-    if (!currentStored.bytes.equals(files[CURRENT_CHAIN_BASENAME])) throw executeError(code);
-    validateReplayEvidence(files, current, checkpointByHash, code);
+    if (currentStored.hash !== pointer.chain_sha256) throw executeError(code);
+    validatePersistedCandidateAuthority(files, new Map(
+      [...chainsByRevision].filter(([revision]) => revision <= current.chain_revision)
+    ), code);
+    validateReplayEvidence(files, current, checkpointByHash, code, currentStored.hash, chainsByRevision);
     return Object.freeze({
       currentChainSha256: currentStored.hash,
       current,
@@ -398,18 +433,78 @@ function parseCanonicalJson(bytes, code) {
   }
 }
 
+function parseJsonBytes(bytes, code) {
+  try {
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    const value = JSON.parse(decoded);
+    if (!isPlainObject(value)) throw executeError(code);
+    return value;
+  } catch {
+    throw executeError(code);
+  }
+}
+
+function parseCurrentPointer(bytes, code) {
+  const pointer = parseCanonicalJson(bytes, code);
+  if (!sameStrings(Object.keys(pointer), [
+    'candidate_id', 'chain_revision', 'chain_sha256', 'schema_version'
+  ]) || pointer.schema_version !== 1 || !CANDIDATE_IDS.includes(pointer.candidate_id)
+    || ![1, 2].includes(pointer.chain_revision)
+    || typeof pointer.chain_sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(pointer.chain_sha256)) {
+    throw executeError(code);
+  }
+  return pointer;
+}
+
+function validatePersistedCandidateAuthority(files, chainsByRevision, code) {
+  const hasFrozenDesign = Buffer.isBuffer(files[FROZEN_DESIGN_PATH]);
+  const hasFrozenContext = Buffer.isBuffer(files[FROZEN_CONTEXT_PATH]);
+  if (!hasFrozenDesign || !hasFrozenContext) throw executeError(code);
+  const frozenDesign = parseCanonicalValidatedJson(files[FROZEN_DESIGN_PATH], validateFrozenDesignEnvelope);
+  const context = parseCanonicalValidatedJson(files[FROZEN_CONTEXT_PATH], validateFrozenGeneratorContext);
+  const designHash = sha256(files[FROZEN_DESIGN_PATH]);
+  const contextHash = sha256(files[FROZEN_CONTEXT_PATH]);
+  if (context.candidate_id !== frozenDesign.candidate_id || context.seed !== frozenDesign.seed
+    || context.frozen_design_sha256 !== designHash) throw executeError(code);
+  for (const [revision, { chain }] of chainsByRevision) {
+    if (chain.candidate_id !== frozenDesign.candidate_id
+      || chain.frozen_design_sha256 !== designHash
+      || chain.frozen_generator_context_sha256 !== contextHash) throw executeError(code);
+    const suffix = padRevision(revision);
+    const blueprintBytes = files[`blueprints/chain-${suffix}.json`];
+    const hardQaBytes = files[`reviews/chain-${suffix}-hard-qa.json`];
+    const reviewBytes = files[`reviews/chain-${suffix}-review.json`];
+    if (!blueprintBytes || !hardQaBytes || !reviewBytes
+      || sha256(blueprintBytes) !== chain.blueprint_sha256
+      || sha256(hardQaBytes) !== chain.hard_qa_sha256
+      || sha256(reviewBytes) !== chain.p4_review_sha256) throw executeError(code);
+    const blueprint = parseJsonBytes(blueprintBytes, code);
+    const hardQa = parseCanonicalJson(hardQaBytes, code);
+    const recomputed = new BlueprintQAAgent().run(blueprint);
+    if (stableJson(recomputed) !== stableJson(hardQa)) throw executeError(code);
+    const review = validateReview(parseCanonicalJson(reviewBytes, code));
+    assertReviewCandidateAuthority(review, {
+      blueprint_sha256: chain.blueprint_sha256,
+      workflow: 'construction_method_v1',
+      seed: context.seed
+    });
+  }
+}
+
 function isAllowedImmutablePath(value) {
   return typeof value === 'string'
     && !UNSAFE_PATH_CHARACTER.test(value)
-    && (CHECKPOINT_PATH.test(value) || CHAIN_PATH.test(value) || HARD_QA_PATH.test(value) || REVIEW_PATH.test(value)
+    && (CHECKPOINT_PATH.test(value) || CHAIN_PATH.test(value) || HARD_QA_PATH.test(value)
+      || REVIEW_PATH.test(value) || BLUEPRINT_PATH.test(value)
+      || value === FROZEN_DESIGN_PATH || value === FROZEN_CONTEXT_PATH
       || [REPAIR_REQUEST_PATH, REPAIR_PATCH_PATH, REPAIR_RESULT_PATH, FAILURE_PATH, REPAIR_PLANNING_FAILURE_PATH].includes(value));
 }
 
-function validateReplayEvidence(files, current, checkpointByHash, code) {
+function validateReplayEvidence(files, current, checkpointByHash, code, currentChainHash, chainsByRevision) {
   const repairNames = [REPAIR_REQUEST_PATH, REPAIR_PATCH_PATH, REPAIR_RESULT_PATH];
   const count = repairNames.filter((name) => files[name]).length;
-  if (count !== 0 && count !== repairNames.length) throw executeError(code);
-  if (count === repairNames.length) {
+  if (current.chain_revision === 2 && count !== repairNames.length) throw executeError(code);
+  if (current.chain_revision === 2 && count === repairNames.length) {
     const request = parseCanonicalValidatedJson(files[REPAIR_REQUEST_PATH], validateRepairEvidenceRequest);
     const transaction = parseCanonicalValidatedJson(files[REPAIR_PATCH_PATH], validateRepairTransaction);
     const result = parseCanonicalValidatedJson(files[REPAIR_RESULT_PATH], validateRepairEvidenceResult);
@@ -422,6 +517,7 @@ function validateReplayEvidence(files, current, checkpointByHash, code) {
       || sha256(files[REPAIR_REQUEST_PATH]) !== result.repair_request_sha256
       || request.candidate_id !== current.candidate_id || transaction.candidate_id !== current.candidate_id || result.candidate_id !== current.candidate_id
       || request.base_chain_sha256 !== transaction.base_chain_sha256 || result.base_chain_sha256 !== transaction.base_chain_sha256
+      || transaction.base_chain_sha256 !== current.parent_chain_sha256
       || request.requests.length !== transaction.operations.length
       || request.requests.some((item, index) => !sameRequestProjection(item, transaction.operations[index]))
       || current.repair_transaction_sha256 !== result.repair_transaction_sha256
@@ -429,17 +525,27 @@ function validateReplayEvidence(files, current, checkpointByHash, code) {
       || current.p4_review_sha256 !== result.p4_review_sha256
       || facadeArtifacts.repair_result_sha256 !== sha256(files[REPAIR_RESULT_PATH])
       || stableJson(current.eligibility) !== stableJson(result.eligibility)) throw executeError(code);
+    const initial = chainsByRevision.get(1)?.chain;
+    const replayStart = current.checkpoint_hashes.findIndex((row, index) => (
+      row.checkpoint_sha256 !== initial?.checkpoint_hashes[index]?.checkpoint_sha256
+    ));
+    if (replayStart !== LAYERS.indexOf(transaction.earliest_target_layer)
+      || transaction.operations.some((operation) => operation.base_checkpoint_sha256
+        !== initial.checkpoint_hashes[LAYERS.indexOf(operation.target_layer)]?.checkpoint_sha256)) {
+      throw executeError(code);
+    }
   }
   if (files[FAILURE_PATH]) {
     const failure = parseCanonicalValidatedJson(files[FAILURE_PATH], validateReplayFailureEvidence);
-    if (failure.candidate_id !== current.candidate_id || failure.current_chain_sha256 !== sha256(files[CURRENT_CHAIN_BASENAME])) throw executeError(code);
+    if (failure.candidate_id !== current.candidate_id || failure.current_chain_sha256 !== currentChainHash) throw executeError(code);
   }
   if (files[REPAIR_PLANNING_FAILURE_PATH]) {
     const failure = parseCanonicalValidatedJson(files[REPAIR_PLANNING_FAILURE_PATH], validateRepairPlanningFailureEvidence);
-    if (failure.candidate_id !== current.candidate_id || failure.current_chain_sha256 !== sha256(files[CURRENT_CHAIN_BASENAME])
+    if (failure.candidate_id !== current.candidate_id || failure.current_chain_sha256 !== currentChainHash
       || count !== 0 || files[FAILURE_PATH] || current.repair_transaction_sha256 !== null) throw executeError(code);
   }
-  if (count === repairNames.length && (files[FAILURE_PATH] || files[REPAIR_PLANNING_FAILURE_PATH])) throw executeError(code);
+  if (current.chain_revision === 2 && count === repairNames.length
+    && (files[FAILURE_PATH] || files[REPAIR_PLANNING_FAILURE_PATH])) throw executeError(code);
 }
 
 export function selectionProjectionForCandidateEvidence(candidateId, files, { requireCurrentReviews = false } = {}) {
@@ -459,6 +565,7 @@ export function selectionProjectionForCandidateEvidence(candidateId, files, { re
   }
   const current = validated.current;
   const currentHash = validated.currentChainSha256;
+  const context = parseCanonicalValidatedJson(files[FROZEN_CONTEXT_PATH], validateFrozenGeneratorContext);
   if (requireCurrentReviews) {
     const revision = padRevision(current.chain_revision);
     const hardQaPath = `reviews/chain-${revision}-hard-qa.json`;
@@ -482,7 +589,7 @@ export function selectionProjectionForCandidateEvidence(candidateId, files, { re
     eligibility = deriveFailureEligibilityOverlay(current.eligibility, { kind: 'replay', code: failure.code });
     repairAttemptCount = 1;
   }
-  return Object.freeze({ kind: 'accepted', current_chain_sha256: currentHash,
+  return Object.freeze({ kind: 'accepted', seed: context.seed, current_chain_sha256: currentHash,
     hard_qa_sha256: current.hard_qa_sha256, p4_review_sha256: current.p4_review_sha256,
     eligibility, repair_attempt_count: repairAttemptCount });
 }

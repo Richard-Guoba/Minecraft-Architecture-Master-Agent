@@ -78,6 +78,23 @@ test('creates five canonical envelopes with locally derived ordered upstream row
   assert.ok(Object.isFrozen(envelopes[4].checkpoint));
 });
 
+test('checkpoint contracts preserve reviewed corpus order across rule-id prefixes', () => {
+  const input = checkpointInput('structure');
+  input.preceding_envelopes = buildEnvelopes().slice(0, 2);
+  input.selected_rule_ids = [
+    'rule:structure.compose-three-volumes',
+    'rule:roof.border-with-material-contrast'
+  ];
+  input.rejected_rule_ids = [
+    'rule:structure.create-primary-secondary-hierarchy',
+    'rule:medieval.show-load-path'
+  ];
+
+  const envelope = createCheckpointEnvelope(input);
+  assert.deepEqual(envelope.checkpoint.selected_rule_ids, input.selected_rule_ids);
+  assert.deepEqual(envelope.checkpoint.rejected_rule_ids, input.rejected_rule_ids);
+});
+
 test('hashes the checkpoint body only from P4 canonical UTF-8 bytes', () => {
   const envelope = createCheckpointEnvelope(checkpointInput('brief'));
   const literalCanonicalPayload = `{
@@ -226,6 +243,7 @@ test('accepts only a contiguous replay suffix bound to its parent and transactio
   accepted.chain_revision = 2;
   accepted.parent_chain_sha256 = DESIGN_HASH;
   accepted.repair_transaction_sha256 = CONTEXT_HASH;
+  accepted.eligibility.repair_budget_used = 1;
   accepted.created_from = 'replay';
   assert.equal(createChainManifest(accepted).created_from, 'replay');
 
@@ -236,6 +254,28 @@ test('accepts only a contiguous replay suffix bound to its parent and transactio
   const gapped = clone(accepted);
   gapped.checkpoint_envelopes = buildReplayEnvelopes({ null_roof_origin: true });
   assert.throws(() => createChainManifest(gapped), { code: 'P5_CHECKPOINT_INVALID' });
+});
+
+test('chain authority is exactly initial revision 1 or one replay revision 2', () => {
+  const replay = chainInput(buildReplayEnvelopes());
+  replay.chain_revision = 2;
+  replay.parent_chain_sha256 = DESIGN_HASH;
+  replay.repair_transaction_sha256 = CONTEXT_HASH;
+  replay.eligibility.repair_budget_used = 1;
+  replay.created_from = 'replay';
+  assert.equal(createChainManifest(replay).chain_revision, 2);
+
+  const third = clone(replay);
+  third.chain_revision = 3;
+  assert.throws(() => createChainManifest(third), { code: 'P5_CHECKPOINT_INVALID' });
+
+  const wrongInitialBudget = chainInput(buildEnvelopes());
+  wrongInitialBudget.eligibility.repair_budget_used = 1;
+  assert.throws(() => createChainManifest(wrongInitialBudget), { code: 'P5_CHECKPOINT_INVALID' });
+
+  const wrongReplayBudget = clone(replay);
+  wrongReplayBudget.eligibility.repair_budget_used = 0;
+  assert.throws(() => createChainManifest(wrongReplayBudget), { code: 'P5_CHECKPOINT_INVALID' });
 });
 
 test('creates exact score-free eligibility records and rejects forbidden fields', () => {

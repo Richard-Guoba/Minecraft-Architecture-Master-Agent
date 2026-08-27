@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { runCli } from '../src/index.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const CLI = path.join(ROOT, 'src/index.js');
@@ -57,12 +58,70 @@ test('execute CLI rejects malformed or incompatible P5 options before output', a
   for (const argv of cases) {
     const result = spawnSync(process.execPath, [CLI, '--out', outRoot, ...argv, PROMPT],
       { cwd: ROOT, env: CHILD_ENV, encoding: 'utf8', timeout: 30000 });
-    assert.equal(result.status, 1);
-    assert.equal(result.stdout, '');
-    assert.match(result.stderr, /^P5_(?:MODE_INVALID|OPTIONS_INCOMPATIBLE)\n$/u);
+    const label = argv.join(' ');
+    assert.equal(result.status, 1, label);
+    assert.equal(result.stdout, '', label);
+    assert.match(result.stderr, /^P5_(?:MODE_INVALID|OPTIONS_INCOMPATIBLE)\n$/u, label);
     assert.doesNotMatch(result.stderr, /private-|\/home\/|\/tmp\//u);
     assert.deepEqual(await fs.readdir(outRoot), []);
   }
+});
+
+test('execute CLI rejects duplicate semantic singleton aliases before side effects', async (t) => {
+  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-cli-duplicate-'));
+  t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+  const cases = [
+    ['--candidates', '2', '--auto-select'],
+    ['--candidates', '3', '--candidates', '3'],
+    ['--candidate-rounds', '1', '--candidate-rounds', '1'],
+    ['--mode', 'mock', '--mode', 'mock'],
+    ['--seed', '424242', '--seed', '424242'],
+    ['--neural-retrieval', '--no-neural-retrieval'],
+    ['--datapacks-dir', path.join(outRoot, 'world'), '--datapacks-target', 'build-lab'],
+    ['--coarse-voxel-mode', 'off', '--coarse-voxel-mode', 'off'],
+    ['--no-critics', '--no-critics']
+  ];
+  for (const argv of cases) {
+    const result = spawnSync(process.execPath, [
+      CLI, '--playbook', 'execute', '--out', outRoot, ...argv, PROMPT
+    ], { cwd: ROOT, env: CHILD_ENV, encoding: 'utf8', timeout: 30000 });
+    assert.equal(result.status, 1, argv.join(' '));
+    assert.equal(result.stdout, '', argv.join(' '));
+    assert.equal(result.stderr, 'P5_OPTIONS_INCOMPATIBLE\n', argv.join(' '));
+    assert.deepEqual(await fs.readdir(outRoot), [], argv.join(' '));
+  }
+});
+
+test('CLI preserves sanitized execute stage codes and never relabels raw faults as options', async () => {
+  const argv = ['--playbook', 'execute', '--mode', 'mock', '--seed', '424242', PROMPT];
+  const secret = 'PRIVATE_CLI_STAGE_BODY_/home/private/world';
+  for (const [stage, code] of [
+    ['create-run', 'P5_AUTHORITY_INVALID'],
+    ['corpus-load', 'P5_AUTHORITY_INVALID'],
+    ['selection', 'P5_INSTALL_FAILED'],
+    ['install', 'P5_INSTALL_FAILED'],
+    ['close', 'P5_AUTHORITY_INVALID']
+  ]) {
+    const stderr = [];
+    const status = await runCli({
+      argv,
+      runPipelineImpl: async () => {
+        throw Object.assign(new Error(`${secret}:${stage}`), { code });
+      },
+      writeError: (value) => stderr.push(value)
+    });
+    assert.equal(status, 1);
+    assert.deepEqual(stderr, [code]);
+    assert.equal(stderr.join('\n').includes(secret), false);
+  }
+  const stderr = [];
+  const status = await runCli({
+    argv,
+    runPipelineImpl: async () => { throw new Error(secret); },
+    writeError: (value) => stderr.push(value)
+  });
+  assert.equal(status, 1);
+  assert.deepEqual(stderr, ['P5_AUTHORITY_INVALID']);
 });
 
 test('no-eligible execute CLI exits safely after retaining three evidence trees and no selection', async (t) => {

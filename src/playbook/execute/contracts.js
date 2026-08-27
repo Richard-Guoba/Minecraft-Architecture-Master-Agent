@@ -26,8 +26,11 @@ const FROZEN_DESIGN_FIELDS = Object.freeze([
 ]);
 const GENERATOR_CONTEXT_FIELDS = Object.freeze([
   'schema_version', 'candidate_id', 'seed', 'frozen_design_sha256', 'architecture',
-  'topology', 'creative_design', 'concept', 'build_spec', 'style_preset',
-  'material_palette', 'template_knowledge'
+  'topology', 'creative_design', 'concept_studio', 'stage7_shadow', 'build_spec',
+  'style_preset', 'material_palette', 'template_knowledge', 'prompt', 'mode',
+  'mc_version', 'seed_source', 'concept_count', 'concept_strategy', 'critics',
+  'neural_retrieval', 'coarse_voxel_mode', 'coarse_voxel_provider',
+  'coarse_voxel_plan', 'llm_provider', 'llm_usage'
 ]);
 const CHECKPOINT_FIELDS = Object.freeze([
   'schema_version', 'playbook_version', 'build_id', 'candidate_id', 'layer', 'revision',
@@ -182,7 +185,21 @@ export function validateFrozenGeneratorContext(value) {
   for (const key of ['architecture', 'topology', 'creative_design', 'build_spec', 'style_preset', 'material_palette', 'template_knowledge']) {
     assertContainer(data[key], 'P5_DESIGN_INVALID');
   }
-  if (data.concept !== null) assertContainer(data.concept, 'P5_DESIGN_INVALID');
+  for (const key of ['concept_studio', 'stage7_shadow']) {
+    if (data[key] !== null) assertContainer(data[key], 'P5_DESIGN_INVALID');
+  }
+  assertBoundedProse(data.prompt, 'P5_DESIGN_INVALID');
+  if (!['mock', 'llm', 'auto'].includes(data.mode)) fail('P5_DESIGN_INVALID');
+  assertNonEmptyString(data.mc_version, 'P5_DESIGN_INVALID');
+  assertNonEmptyString(data.seed_source, 'P5_DESIGN_INVALID');
+  if (!Number.isInteger(data.concept_count) || data.concept_count < 0 || data.concept_count > 5) fail('P5_DESIGN_INVALID');
+  if (!['select', 'fuse'].includes(data.concept_strategy)) fail('P5_DESIGN_INVALID');
+  if (typeof data.critics !== 'boolean' || typeof data.neural_retrieval !== 'boolean') fail('P5_DESIGN_INVALID');
+  if (!['off', 'shadow'].includes(data.coarse_voxel_mode)
+    || !['baseline', 'artifact'].includes(data.coarse_voxel_provider)
+    || data.coarse_voxel_plan !== null) fail('P5_DESIGN_INVALID');
+  assertNonEmptyString(data.llm_provider, 'P5_DESIGN_INVALID');
+  assertContainer(data.llm_usage, 'P5_DESIGN_INVALID');
   return data;
 }
 
@@ -196,8 +213,8 @@ export function validateCheckpointPayload(value) {
   if (!Number.isInteger(data.revision) || data.revision < 1) fail('P5_CHECKPOINT_INVALID');
   if (!CHECKPOINT_STATUSES.includes(data.status)) fail('P5_CHECKPOINT_INVALID');
   assertPredecessorHashes(data.upstream_accepted_hashes, data.layer, 'P5_CHECKPOINT_INVALID');
-  assertCanonicalIds(data.selected_rule_ids, RULE_ID, 'P5_CHECKPOINT_INVALID');
-  assertCanonicalIds(data.rejected_rule_ids, RULE_ID, 'P5_CHECKPOINT_INVALID');
+  assertUniqueIds(data.selected_rule_ids, RULE_ID, 'P5_CHECKPOINT_INVALID');
+  assertUniqueIds(data.rejected_rule_ids, RULE_ID, 'P5_CHECKPOINT_INVALID');
   assertDistinct(data.selected_rule_ids, data.rejected_rule_ids, 'P5_CHECKPOINT_INVALID');
   assertContainer(data.design_intent, 'P5_CHECKPOINT_INVALID');
   assertRecipeFragment(data.recipe_fragment, data.layer, 'P5_CHECKPOINT_INVALID');
@@ -237,7 +254,7 @@ export function validateChainManifest(value) {
   const data = canonicalObject(value, CHAIN_FIELDS, 'P5_CHECKPOINT_INVALID');
   assertSchemaVersion(data, 'P5_CHECKPOINT_INVALID');
   assertCandidateId(data.candidate_id, 'P5_CHECKPOINT_INVALID');
-  if (!Number.isInteger(data.chain_revision) || data.chain_revision < 1) fail('P5_CHECKPOINT_INVALID');
+  if (!Number.isInteger(data.chain_revision) || ![1, 2].includes(data.chain_revision)) fail('P5_CHECKPOINT_INVALID');
   assertNullableHash(data.parent_chain_sha256, 'P5_CHECKPOINT_INVALID');
   assertFullLayerHashes(data.checkpoint_hashes, 'P5_CHECKPOINT_INVALID');
   for (const key of ['frozen_design_sha256', 'frozen_generator_context_sha256', 'blueprint_sha256', 'hard_qa_sha256', 'p4_review_sha256']) {
@@ -576,12 +593,14 @@ function assertReplayOrigin(value, code) {
 
 function assertChainProvenance(value, code) {
   if (value.created_from === 'initial') {
-    if (value.chain_revision !== 1 || value.parent_chain_sha256 !== null || value.repair_transaction_sha256 !== null) {
+    if (value.chain_revision !== 1 || value.parent_chain_sha256 !== null
+      || value.repair_transaction_sha256 !== null || value.eligibility.repair_budget_used !== 0) {
       fail(code);
     }
     return;
   }
-  if (value.created_from !== 'replay' || value.chain_revision <= 1) fail(code);
+  if (value.created_from !== 'replay' || value.chain_revision !== 2
+    || value.eligibility.repair_budget_used !== 1) fail(code);
   assertHash(value.parent_chain_sha256, code);
   assertHash(value.repair_transaction_sha256, code);
 }

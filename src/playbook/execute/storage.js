@@ -27,12 +27,12 @@ import {
   validateCandidateFiles
 } from './storageValidation.js';
 import {
-  installSelectionGeneration,
   moveIdentityNoReplace
 } from './storageTransaction.js';
 
 const OUTPUT_BASENAME = 'playbook-execute';
 const CANDIDATES_BASENAME = 'candidates';
+const SELECTION_GENERATIONS_BASENAME = 'selection-generations';
 const STAGE_PREFIX = '.playbook-execute.stage-';
 const BACKUP_PREFIX = '.playbook-execute.backup-';
 const MOVE_BINARY = '/usr/bin/mv';
@@ -43,6 +43,59 @@ const UNSAFE_PATH_CHARACTER = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u;
 const HASH = /^[a-f0-9]{64}$/u;
 const AUTHORITIES = new WeakMap();
 let temporarySequence = 0;
+
+export async function createExecuteRun({ outRoot, runBasename, fsImpl } = {}) {
+  if (!isSafeAbsolutePath(outRoot) || !isPlainBasename(runBasename)) {
+    throw executeError('P5_AUTHORITY_INVALID');
+  }
+  const ops = fsOperations(fsImpl);
+  let parentHandle;
+  let runHandle;
+  let created = false;
+  let createdRunIdentity;
+  try {
+    parentHandle = await openOrCreateAbsoluteDirectory(ops, outRoot);
+    const target = descriptorEntryPath(parentHandle, runBasename);
+    try {
+      await ops.mkdir(target, { recursive: false, mode: 0o700 });
+      created = true;
+    } catch (error) {
+      throw publicError(error, 'P5_OUTPUT_OWNERSHIP');
+    }
+    runHandle = await openDirectoryEntry(
+      ops, parentHandle, runBasename, 'P5_AUTHORITY_INVALID', 'P5_OUTPUT_OWNERSHIP'
+    );
+    const parentIdentity = identity(await parentHandle.stat());
+    const runIdentity = identity(await runHandle.stat());
+    createdRunIdentity = runIdentity;
+    await parentHandle.sync();
+    const after = await ops.lstat(target);
+    if (after.isSymbolicLink() || !after.isDirectory() || !sameIdentity(identity(after), runIdentity)) {
+      throw executeError('P5_OUTPUT_OWNERSHIP');
+    }
+    const runDir = path.join(outRoot, runBasename);
+    return Object.freeze({
+      runDir,
+      authority: createAuthority({
+        ops, parentHandle, runHandle, runBasename, parentIdentity, runIdentity,
+        runDir, closed: false
+      })
+    });
+  } catch (error) {
+    await closeHandle(runHandle);
+    if (created && parentHandle && createdRunIdentity) {
+      try {
+        const target = descriptorEntryPath(parentHandle, runBasename);
+        const stat = await ops.lstat(target);
+        const entries = await ops.readdir(target);
+        if (!stat.isSymbolicLink() && stat.isDirectory()
+          && sameIdentity(identity(stat), createdRunIdentity) && entries.length === 0) await ops.rmdir(target);
+      } catch {}
+    }
+    await closeHandle(parentHandle);
+    throw publicError(error, admissionFallback(error));
+  }
+}
 
 export async function admitExecuteRun({ runDir, fsImpl } = {}) {
   if (!isSafeAbsolutePath(runDir)) throw executeError('P5_AUTHORITY_INVALID');
@@ -58,19 +111,71 @@ export async function admitExecuteRun({ runDir, fsImpl } = {}) {
       runBasename: path.basename(runDir),
       parentIdentity: identity(await parentHandle.stat()),
       runIdentity: identity(await runHandle.stat()),
+      runDir,
       closed: false
     };
-    const authority = {};
-    Object.defineProperty(authority, 'close', {
-      enumerable: true,
-      value: async () => closeAuthority(internal)
-    });
-    AUTHORITIES.set(authority, internal);
-    return Object.freeze(authority);
+    return createAuthority(internal);
   } catch (error) {
     await closeHandles([runHandle, parentHandle]);
     throw publicError(error, admissionFallback(error));
   }
+}
+
+export async function createReplayWorkspace({ authority, candidateId, fsImpl } = {}) {
+  const internal = authorityInternal(authority);
+  assertCandidateId(candidateId);
+  const ops = fsOperations(fsImpl ?? internal.ops.source);
+  let workHandle;
+  try {
+    await assertRunAuthority(internal, ops);
+    const work = await openOrCreateRunChild(internal, ops, 'candidate-work');
+    workHandle = work.handle;
+    const basename = `replay-${candidateId}-attempt-01-${process.pid}-${++temporarySequence}`;
+    await ops.mkdir(descriptorEntryPath(workHandle, basename), { recursive: false, mode: 0o700 });
+    const attempt = await openDirectoryEntry(ops, workHandle, basename, 'P5_INSTALL_FAILED', 'P5_INSTALL_FAILED');
+    try { await attempt.sync(); } finally { await closeHandle(attempt); }
+    await workHandle.sync();
+    await assertRunAuthority(internal, ops);
+    return path.join(internal.runDir, 'candidate-work', basename);
+  } catch (error) {
+    throw publicError(error, 'P5_INSTALL_FAILED');
+  } finally {
+    await closeHandle(workHandle);
+  }
+}
+
+export async function pruneCandidateWorkspaces({ authority, keepPath, fsImpl } = {}) {
+  const internal = authorityInternal(authority);
+  const ops = fsOperations(fsImpl ?? internal.ops.source);
+  const keep = typeof keepPath === 'string'
+    && path.dirname(keepPath) === path.join(internal.runDir, 'candidate-work')
+    ? path.basename(keepPath) : null;
+  let workHandle;
+  try {
+    await assertRunAuthority(internal, ops);
+    workHandle = await openDirectoryEntry(
+      ops, internal.runHandle, 'candidate-work', 'P5_INSTALL_FAILED', 'P5_OUTPUT_OWNERSHIP'
+    );
+    for (const name of (await ops.readdir(descriptorPath(workHandle))).sort()) {
+      if (name === keep) continue;
+      if (!isPlainBasename(name)) throw executeError('P5_OUTPUT_OWNERSHIP');
+      const target = descriptorEntryPath(workHandle, name);
+      const before = await ops.lstat(target);
+      if (before.isSymbolicLink() || !before.isDirectory()) throw executeError('P5_OUTPUT_OWNERSHIP');
+      const handle = await ops.open(target, DIRECTORY_FLAGS);
+      try {
+        const opened = await handle.stat();
+        if (!opened.isDirectory() || !sameIdentity(identity(before), identity(opened))) {
+          throw executeError('P5_OUTPUT_OWNERSHIP');
+        }
+      } finally { await closeHandle(handle); }
+      await ops.rm(target, { recursive: true, force: false });
+    }
+    await workHandle.sync();
+  } catch (error) {
+    if (isMissingError(error)) return;
+    throw publicError(error, 'P5_INSTALL_FAILED');
+  } finally { await closeHandle(workHandle); }
 }
 
 export async function installCandidateSnapshot({
@@ -118,6 +223,10 @@ export async function installCandidateSnapshot({
         tree = undefined;
         return frozenInstallResult('unchanged', candidateId, incoming.currentChainSha256);
       }
+      await publishCandidateUpdate({ internal, ops, tree, existing, incoming, candidateId });
+      await closeExecuteTree(tree);
+      tree = undefined;
+      return frozenInstallResult('replaced', candidateId, incoming.currentChainSha256);
     }
 
     stage = await createCandidateStage(internal, ops, tree, incoming);
@@ -290,10 +399,11 @@ export async function readCurrentCandidateSnapshot({ authority, candidateId, fsI
     tree = await openExecuteTree(internal, ops, { create: false });
     const candidate = await inspectCandidate(internal, ops, tree, candidateId, { allowMissing: false });
     if (candidate.validated.kind !== 'accepted') throw executeError('P5_OUTPUT_OWNERSHIP');
+    const currentChain = currentChainBytes(candidate);
     return Object.freeze({
       candidate_id: candidateId,
       current_chain_sha256: candidate.validated.currentChainSha256,
-      current_chain: Buffer.from(candidate.files[CURRENT_CHAIN_BASENAME]),
+      current_chain: currentChain,
       files: cloneFileMap(candidate.files)
     });
   } catch (error) {
@@ -311,7 +421,7 @@ export async function inspectCandidateEvidence({ authority, candidateId, fsImpl 
     tree = await openExecuteTree(internal, ops, { create: false });
     const candidate = await inspectCandidate(internal, ops, tree, candidateId, { allowMissing: false });
     return candidate.validated.kind === 'accepted'
-      ? Object.freeze({ kind: 'accepted', candidate_id: candidateId, current_chain_sha256: candidate.validated.currentChainSha256, current_chain: Buffer.from(candidate.files[CURRENT_CHAIN_BASENAME]), files: cloneFileMap(candidate.files) })
+      ? Object.freeze({ kind: 'accepted', candidate_id: candidateId, current_chain_sha256: candidate.validated.currentChainSha256, current_chain: currentChainBytes(candidate), files: cloneFileMap(candidate.files) })
       : Object.freeze({ kind: 'initial-failed', candidate_id: candidateId, failure: candidate.validated.failure, files: cloneFileMap(candidate.files) });
   } catch (error) {
     throw publicError(error, 'P5_OUTPUT_OWNERSHIP');
@@ -393,7 +503,9 @@ async function appendCandidateFailureRecord({ authority, candidateId, validated,
       beforeMove: async () => {
         await assertNamedDirectoryIdentity(tree.candidatesHandle, ops, candidateId, existing.identity, 'P5_OUTPUT_OWNERSHIP');
         const current = await readRegularFile(ops, candidateHandle, CURRENT_CHAIN_BASENAME, 'P5_OUTPUT_OWNERSHIP');
-        if (sha256(current.bytes) !== expectedCurrentChainSha256) throw executeError('P5_STALE_BASE');
+        let pointer;
+        try { pointer = JSON.parse(current.bytes.toString('utf8')); } catch { throw executeError('P5_STALE_BASE'); }
+        if (pointer.chain_sha256 !== expectedCurrentChainSha256) throw executeError('P5_STALE_BASE');
       },
       moveForward: () => ops.renameNoReplaceBetween(tree.candidatesHandle, stageBasename, candidateHandle, 'failures'),
       moveReverse: () => ops.renameNoReplaceBetween(candidateHandle, 'failures', tree.candidatesHandle, stageBasename),
@@ -465,6 +577,7 @@ export async function installExecuteSelection({ authority, files, fsImpl } = {})
         requireCurrentReviews: normalized.selection.selected_candidate_id === candidateId
       });
       if (!row || row.current_chain_sha256 !== projection.current_chain_sha256
+        || projection.kind === 'accepted' && row.seed !== projection.seed
         || row.hard_qa_sha256 !== projection.hard_qa_sha256
         || row.p4_review_sha256 !== projection.p4_review_sha256
         || row.repair_attempt_count !== projection.repair_attempt_count
@@ -487,28 +600,174 @@ export async function installExecuteSelection({ authority, files, fsImpl } = {})
     const existing = tree.selection;
     if (existing && sameFileMap(existing.files, normalized.files)) {
       await assertBoundCandidates();
-      return Object.freeze({ status: 'unchanged', artifact_hashes: normalized.artifactHashes });
+      return Object.freeze({
+        status: 'unchanged',
+        artifact_hashes: normalized.artifactHashes,
+        generation: existing.pointer.generation
+      });
     }
-    const assertRollbackAuthority = () => assertTreeAuthority(internal, ops, tree);
-    await installSelectionGeneration({
-      ops,
-      tree,
-      files: normalized.files,
-      existing,
-      assertRollbackAuthority,
-      assertForwardAuthority: async () => {
-        await assertRollbackAuthority();
-        await assertBoundCandidates();
-      }
+    await publishSelectionGeneration({
+      internal, ops, tree, files: normalized.files, existing,
+      assertBoundCandidates
     });
     return Object.freeze({
       status: existing ? 'replaced' : 'created',
-      artifact_hashes: normalized.artifactHashes
+      artifact_hashes: normalized.artifactHashes,
+      generation: `selection-generations/selection-${sha256(normalized.files['manifest.json'])}`
     });
   } catch (error) {
     throw executeError('P5_INSTALL_FAILED');
   } finally {
     await closeExecuteTree(tree);
+  }
+}
+
+async function publishSelectionGeneration({ internal, ops, tree, files, existing, assertBoundCandidates }) {
+  let generationsHandle;
+  let stageHandle;
+  let stageName;
+  let pointerStage;
+  let pointerBackup;
+  let pointerReplaced = false;
+  try {
+    const generationsPath = descriptorEntryPath(tree.rootHandle, SELECTION_GENERATIONS_BASENAME);
+    try {
+      const stat = await ops.lstat(generationsPath);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) throw executeError('P5_OUTPUT_OWNERSHIP');
+    } catch (error) {
+      if (!isMissingError(error)) throw error;
+      await ops.mkdir(generationsPath, { recursive: false, mode: 0o700 });
+      await tree.rootHandle.sync();
+    }
+    generationsHandle = await openDirectoryEntry(
+      ops, tree.rootHandle, SELECTION_GENERATIONS_BASENAME,
+      'P5_INSTALL_FAILED', 'P5_OUTPUT_OWNERSHIP'
+    );
+    const manifestHash = sha256(files['manifest.json']);
+    const generationName = `selection-${manifestHash}`;
+    let generationExists = false;
+    try {
+      const existingGeneration = await openDirectoryEntry(
+        ops, generationsHandle, generationName, 'P5_INSTALL_FAILED', 'P5_OUTPUT_OWNERSHIP'
+      );
+      try {
+        for (const name of SELECTION_PATHS) {
+          const read = await readRegularFile(ops, existingGeneration, name, 'P5_OUTPUT_OWNERSHIP');
+          if (!read.bytes.equals(files[name]) || (read.mode & 0o777) !== 0o400) {
+            throw executeError('P5_OUTPUT_OWNERSHIP');
+          }
+        }
+        generationExists = true;
+      } finally { await closeHandle(existingGeneration); }
+    } catch (error) {
+      if (!isMissingError(error) && error?.code !== 'P5_INSTALL_FAILED') throw error;
+    }
+    if (!generationExists) {
+      stageName = await unusedTemporaryBasename(internal, ops, tree, generationsHandle, STAGE_PREFIX);
+      await ops.mkdir(descriptorEntryPath(generationsHandle, stageName), { recursive: false, mode: 0o700 });
+      stageHandle = await openDirectoryEntry(
+        ops, generationsHandle, stageName, 'P5_INSTALL_FAILED', 'P5_INSTALL_FAILED'
+      );
+      for (const name of SELECTION_PATHS) {
+        let handle;
+        try {
+          handle = await ops.open(descriptorEntryPath(stageHandle, name), WRITE_FLAGS, 0o600);
+          await handle.writeFile(files[name]);
+          await handle.sync();
+          await handle.chmod(0o400);
+          await handle.sync();
+        } finally { await closeHandle(handle); }
+      }
+      await stageHandle.sync();
+      const stageIdentity = identity(await stageHandle.stat());
+      await closeHandle(stageHandle); stageHandle = undefined;
+      await moveIdentityNoReplace({
+        ops,
+        sourceHandle: generationsHandle,
+        sourceName: stageName,
+        destinationHandle: generationsHandle,
+        destinationName: generationName,
+        expectedIdentity: stageIdentity,
+        expectedKind: 'directory',
+        moveForward: () => ops.renameNoReplace(generationsHandle, stageName, generationName),
+        moveReverse: () => ops.renameNoReplace(generationsHandle, generationName, stageName),
+        beforeMove: async () => { await assertTreeAuthority(internal, ops, tree); await assertBoundCandidates(); },
+        afterMove: () => generationsHandle.sync()
+      });
+      stageName = undefined;
+    }
+
+    const pointerBytes = Buffer.from(stableJson({
+      schema_version: 1,
+      generation: `${SELECTION_GENERATIONS_BASENAME}/${generationName}`,
+      manifest_sha256: manifestHash
+    }));
+    if (existing && existing.pointer.generation === `${SELECTION_GENERATIONS_BASENAME}/${generationName}`) return;
+    pointerStage = await unusedTemporaryBasename(internal, ops, tree, tree.rootHandle, STAGE_PREFIX);
+    let pointerHandle;
+    try {
+      pointerHandle = await ops.open(descriptorEntryPath(tree.rootHandle, pointerStage), WRITE_FLAGS, 0o600);
+      await pointerHandle.writeFile(pointerBytes);
+      await pointerHandle.sync();
+    } finally { await closeHandle(pointerHandle); }
+    await assertBoundCandidates();
+    if (existing) {
+      pointerBackup = await unusedTemporaryBasename(internal, ops, tree, tree.rootHandle, BACKUP_PREFIX);
+      await ops.link(
+        descriptorEntryPath(tree.rootHandle, 'manifest.json'),
+        descriptorEntryPath(tree.rootHandle, pointerBackup)
+      );
+      await tree.rootHandle.sync();
+      await ops.rename(
+        descriptorEntryPath(tree.rootHandle, pointerStage),
+        descriptorEntryPath(tree.rootHandle, 'manifest.json')
+      );
+    } else {
+      await moveIdentityNoReplace({
+        ops,
+        sourceHandle: tree.rootHandle,
+        sourceName: pointerStage,
+        destinationHandle: tree.rootHandle,
+        destinationName: 'manifest.json',
+        expectedIdentity: identity(await ops.lstat(descriptorEntryPath(tree.rootHandle, pointerStage))),
+        expectedKind: 'file',
+        moveForward: () => ops.renameNoReplace(tree.rootHandle, pointerStage, 'manifest.json'),
+        moveReverse: () => ops.renameNoReplace(tree.rootHandle, 'manifest.json', pointerStage)
+      });
+    }
+    pointerStage = undefined;
+    pointerReplaced = true;
+    await tree.rootHandle.sync();
+    const installed = await readRegularFile(ops, tree.rootHandle, 'manifest.json', 'P5_INSTALL_FAILED');
+    if (!installed.bytes.equals(pointerBytes)) throw executeError('P5_INSTALL_FAILED');
+    pointerReplaced = false;
+    if (pointerBackup) {
+      try { await ops.unlink(descriptorEntryPath(tree.rootHandle, pointerBackup)); } catch {}
+      pointerBackup = undefined;
+    }
+  } catch (error) {
+    if (pointerReplaced && pointerBackup) {
+      try {
+        await ops.rename(
+          descriptorEntryPath(tree.rootHandle, pointerBackup),
+          descriptorEntryPath(tree.rootHandle, 'manifest.json')
+        );
+        pointerBackup = undefined;
+        await tree.rootHandle.sync();
+      } catch {}
+    }
+    throw error;
+  } finally {
+    await closeHandle(stageHandle);
+    if (stageName && generationsHandle) {
+      try { await removeVerifiedDirectory(internal, ops, tree, generationsHandle, stageName,
+        identity(await ops.lstat(descriptorEntryPath(generationsHandle, stageName))), files,
+        { allowMissing: true, requireComplete: false, verifyBytes: false }); } catch {}
+    }
+    for (const name of [pointerStage, pointerBackup].filter(Boolean)) {
+      try { await ops.unlink(descriptorEntryPath(tree.rootHandle, name)); } catch {}
+    }
+    await closeHandle(generationsHandle);
   }
 }
 
@@ -536,6 +795,56 @@ async function openAbsoluteRun(ops, absolutePath) {
     await closeHandle(current);
     throw error;
   }
+}
+
+async function openOrCreateAbsoluteDirectory(ops, absolutePath) {
+  const parsed = path.parse(absolutePath);
+  const components = absolutePath.slice(parsed.root.length).split(path.sep).filter(Boolean);
+  let current = await ops.open(parsed.root, DIRECTORY_FLAGS);
+  try {
+    for (const component of components) {
+      const target = descriptorEntryPath(current, component);
+      let created = false;
+      try {
+        const stat = await ops.lstat(target);
+        if (stat.isSymbolicLink() || !stat.isDirectory()) throw executeError('P5_OUTPUT_OWNERSHIP');
+      } catch (error) {
+        if (!isMissingError(error)) throw error;
+        await ops.mkdir(target, { recursive: false, mode: 0o700 });
+        created = true;
+      }
+      const next = await openDirectoryEntry(
+        ops, current, component, 'P5_AUTHORITY_INVALID', 'P5_OUTPUT_OWNERSHIP'
+      );
+      if (created) await current.sync();
+      await closeHandle(current);
+      current = next;
+    }
+    return current;
+  } catch (error) {
+    await closeHandle(current);
+    throw error;
+  }
+}
+
+async function openOrCreateRunChild(internal, ops, basename) {
+  await assertRunAuthority(internal, ops);
+  const target = descriptorEntryPath(internal.runHandle, basename);
+  let created = false;
+  try {
+    const stat = await ops.lstat(target);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) throw executeError('P5_OUTPUT_OWNERSHIP');
+  } catch (error) {
+    if (!isMissingError(error)) throw error;
+    await ops.mkdir(target, { recursive: false, mode: 0o700 });
+    created = true;
+  }
+  const handle = await openDirectoryEntry(
+    ops, internal.runHandle, basename, 'P5_INSTALL_FAILED', 'P5_OUTPUT_OWNERSHIP'
+  );
+  if (created) await internal.runHandle.sync();
+  await assertRunAuthority(internal, ops);
+  return { handle, created };
 }
 
 async function openDirectoryEntry(ops, parentHandle, basename, missingCode, ownershipCode) {
@@ -612,28 +921,49 @@ async function openExecuteTree(internal, ops, { create }) {
     const topEntries = await ops.readdir(descriptorPath(rootHandle));
     const allowed = new Set([
       CANDIDATES_BASENAME,
-      ...SELECTION_PATHS
+      'manifest.json',
+      SELECTION_GENERATIONS_BASENAME
     ]);
     if (topEntries.some((name) => !allowed.has(name) && !isGeneratedBasename(name))) {
       throw executeError('P5_OUTPUT_OWNERSHIP');
     }
-    const selectionNames = topEntries.filter((name) => SELECTION_PATHS.includes(name));
+    if (topEntries.includes('selection.json') || topEntries.includes('selection-report.md')) {
+      throw executeError('P5_OUTPUT_OWNERSHIP');
+    }
     let selection = null;
-    if (selectionNames.length !== 0) {
-      if (selectionNames.length !== SELECTION_PATHS.length) throw executeError('P5_OUTPUT_OWNERSHIP');
-      const selectionFiles = {};
-      const identities = {};
-      for (const name of SELECTION_PATHS) {
-        const read = await readRegularFile(ops, rootHandle, name, 'P5_OUTPUT_OWNERSHIP');
-        selectionFiles[name] = read.bytes;
-        identities[name] = read.identity;
-      }
+    if (topEntries.includes('manifest.json')) {
+      const pointerRead = await readRegularFile(ops, rootHandle, 'manifest.json', 'P5_OUTPUT_OWNERSHIP');
+      const pointer = parseSelectionPointer(pointerRead.bytes);
+      const generationRoot = await openDirectoryEntry(
+        ops, rootHandle, SELECTION_GENERATIONS_BASENAME,
+        'P5_OUTPUT_OWNERSHIP', 'P5_OUTPUT_OWNERSHIP'
+      );
+      let generationHandle;
       try {
+        generationHandle = await openDirectoryEntry(
+          ops, generationRoot, path.posix.basename(pointer.generation),
+          'P5_OUTPUT_OWNERSHIP', 'P5_OUTPUT_OWNERSHIP'
+        );
+        const selectionFiles = {};
+        const identities = {};
+        for (const name of SELECTION_PATHS) {
+          const read = await readRegularFile(ops, generationHandle, name, 'P5_OUTPUT_OWNERSHIP');
+          selectionFiles[name] = read.bytes;
+          identities[name] = read.identity;
+        }
+        if (sha256(selectionFiles['manifest.json']) !== pointer.manifest_sha256) {
+          throw executeError('P5_OUTPUT_OWNERSHIP');
+        }
         normalizeSelectionFiles(selectionFiles);
-      } catch {
-        throw executeError('P5_OUTPUT_OWNERSHIP');
+        selection = {
+          files: Object.freeze(selectionFiles),
+          identities: Object.freeze(identities),
+          pointer,
+          pointerIdentity: pointerRead.identity
+        };
+      } finally {
+        await closeHandles([generationHandle, generationRoot]);
       }
-      selection = { files: Object.freeze(selectionFiles), identities: Object.freeze(identities) };
     }
     ({ handle: candidatesHandle, created: candidatesCreated } = await openOrCreateOwnedDirectory(
       internal,
@@ -906,7 +1236,12 @@ async function inspectCandidate(internal, ops, tree, candidateId, { allowMissing
     if (!directory) return null;
     const validated = validateCandidateEvidence(candidateId, directory.files, 'P5_OUTPUT_OWNERSHIP');
     const expectedDirectories = expectedDirectoriesFor(directory.files);
-    if (!sameStrings(directory.directories, expectedDirectories)) {
+    const crashSafeProspectiveDirectories = validated.kind === 'accepted'
+      && validated.current.chain_revision === 1
+      ? [...new Set([...expectedDirectories, 'repairs'])].sort()
+      : expectedDirectories;
+    if (!sameStrings(directory.directories, expectedDirectories)
+      && !sameStrings(directory.directories, crashSafeProspectiveDirectories)) {
       throw executeError('P5_OUTPUT_OWNERSHIP');
     }
     for (const [name, mode] of Object.entries(directory.modes)) {
@@ -1005,6 +1340,169 @@ async function readDirectoryTree(ops, parentHandle, basename, fallbackCode, { al
     throw publicError(error, fallbackCode);
   } finally {
     await closeHandle(rootHandle);
+  }
+}
+
+async function publishCandidateUpdate({ internal, ops, tree, existing, incoming, candidateId }) {
+  let candidateHandle;
+  const directoryHandles = new Map();
+  const createdDirectories = [];
+  let pointerStage;
+  let pointerBackup;
+  let pointerReplaced = false;
+  try {
+    candidateHandle = await openDirectoryEntry(
+      ops, tree.candidatesHandle, candidateId, 'P5_INSTALL_FAILED', 'P5_OUTPUT_OWNERSHIP'
+    );
+    if (!sameIdentity(identity(await candidateHandle.stat()), existing.identity)) {
+      throw executeError('P5_OUTPUT_OWNERSHIP');
+    }
+    directoryHandles.set('', candidateHandle);
+    for (const directory of expectedDirectoriesFor(incoming.files)) {
+      const parentName = path.posix.dirname(directory) === '.' ? '' : path.posix.dirname(directory);
+      const parent = directoryHandles.get(parentName);
+      const basename = path.posix.basename(directory);
+      const target = descriptorEntryPath(parent, basename);
+      try {
+        const stat = await ops.lstat(target);
+        if (stat.isSymbolicLink() || !stat.isDirectory()) throw executeError('P5_OUTPUT_OWNERSHIP');
+      } catch (error) {
+        if (!isMissingError(error)) throw error;
+        await ops.mkdir(target, { recursive: false, mode: 0o700 });
+        const created = await ops.lstat(target);
+        if (created.isSymbolicLink() || !created.isDirectory()) {
+          throw executeError('P5_OUTPUT_OWNERSHIP');
+        }
+        createdDirectories.push({ directory, parent, basename, identity: identity(created) });
+        await parent.sync();
+      }
+      const child = await openDirectoryEntry(ops, parent, basename, 'P5_INSTALL_FAILED', 'P5_OUTPUT_OWNERSHIP');
+      directoryHandles.set(directory, child);
+    }
+
+    for (const [name, bytes] of Object.entries(incoming.files)) {
+      if (name === CURRENT_CHAIN_BASENAME) continue;
+      const parentName = path.posix.dirname(name) === '.' ? '' : path.posix.dirname(name);
+      const parent = directoryHandles.get(parentName);
+      const basename = path.posix.basename(name);
+      try {
+        const current = await readRegularFile(ops, parent, basename, 'P5_OUTPUT_OWNERSHIP');
+        if (!current.bytes.equals(bytes) || (current.mode & 0o777) !== 0o400) {
+          throw executeError('P5_OUTPUT_OWNERSHIP');
+        }
+        continue;
+      } catch (error) {
+        if (error?.code !== 'P5_OUTPUT_OWNERSHIP') throw error;
+        try {
+          const stat = await ops.lstat(descriptorEntryPath(parent, basename));
+          if (stat) throw error;
+        } catch (missing) {
+          if (!isMissingError(missing)) throw error;
+        }
+      }
+      const stageName = await unusedTemporaryBasename(internal, ops, tree, tree.candidatesHandle, STAGE_PREFIX);
+      const stagePath = descriptorEntryPath(tree.candidatesHandle, stageName);
+      let stageHandle;
+      try {
+        stageHandle = await ops.open(stagePath, WRITE_FLAGS, 0o600);
+        await stageHandle.writeFile(bytes);
+        await stageHandle.sync();
+        await stageHandle.chmod(0o400);
+        await stageHandle.sync();
+        const stageIdentity = identity(await stageHandle.stat());
+        await closeHandle(stageHandle); stageHandle = undefined;
+        await moveIdentityNoReplace({
+          ops,
+          sourceHandle: tree.candidatesHandle,
+          sourceName: stageName,
+          destinationHandle: parent,
+          destinationName: basename,
+          expectedIdentity: stageIdentity,
+          expectedKind: 'file',
+          moveForward: () => ops.renameNoReplaceBetween(tree.candidatesHandle, stageName, parent, basename),
+          moveReverse: () => ops.renameNoReplaceBetween(parent, basename, tree.candidatesHandle, stageName),
+          beforeMove: () => assertTreeAuthority(internal, ops, tree),
+          afterMove: async () => { await parent.sync(); await tree.candidatesHandle.sync(); }
+        });
+      } finally {
+        await closeHandle(stageHandle);
+        try { await ops.unlink(stagePath); } catch {}
+      }
+    }
+
+    const pointerBytes = incoming.files[CURRENT_CHAIN_BASENAME];
+    const currentPointer = await readRegularFile(
+      ops, candidateHandle, CURRENT_CHAIN_BASENAME, 'P5_OUTPUT_OWNERSHIP'
+    );
+    pointerStage = await unusedTemporaryBasename(internal, ops, tree, tree.candidatesHandle, STAGE_PREFIX);
+    pointerBackup = await unusedTemporaryBasename(internal, ops, tree, tree.candidatesHandle, BACKUP_PREFIX);
+    let pointerHandle;
+    try {
+      pointerHandle = await ops.open(descriptorEntryPath(tree.candidatesHandle, pointerStage), WRITE_FLAGS, 0o600);
+      await pointerHandle.writeFile(pointerBytes);
+      await pointerHandle.sync();
+    } finally { await closeHandle(pointerHandle); }
+    await ops.link(
+      descriptorEntryPath(candidateHandle, CURRENT_CHAIN_BASENAME),
+      descriptorEntryPath(tree.candidatesHandle, pointerBackup)
+    );
+    await tree.candidatesHandle.sync();
+    await ops.rename(
+      descriptorEntryPath(tree.candidatesHandle, pointerStage),
+      descriptorEntryPath(candidateHandle, CURRENT_CHAIN_BASENAME)
+    );
+    pointerReplaced = true;
+    await candidateHandle.sync();
+    const installedPointer = await readRegularFile(
+      ops, candidateHandle, CURRENT_CHAIN_BASENAME, 'P5_INSTALL_FAILED'
+    );
+    if (!installedPointer.bytes.equals(pointerBytes)) throw executeError('P5_INSTALL_FAILED');
+    const checked = await inspectCandidate(internal, ops, tree, candidateId, { allowMissing: false });
+    if (checked.validated.currentChainSha256 !== incoming.currentChainSha256) {
+      throw executeError('P5_INSTALL_FAILED');
+    }
+    pointerReplaced = false;
+    try { await ops.unlink(descriptorEntryPath(tree.candidatesHandle, pointerBackup)); } catch {}
+    pointerBackup = undefined;
+  } catch (error) {
+    if (pointerReplaced && pointerBackup) {
+      try {
+        await ops.rename(
+          descriptorEntryPath(tree.candidatesHandle, pointerBackup),
+          descriptorEntryPath(candidateHandle, CURRENT_CHAIN_BASENAME)
+        );
+        pointerBackup = undefined;
+        await candidateHandle.sync();
+      } catch {}
+    }
+    for (const created of [...createdDirectories].reverse()) {
+      try {
+        await removeVerifiedEmptyCreatedDirectory(
+          internal,
+          ops,
+          created.parent,
+          created.basename,
+          created.identity,
+          directoryHandles.get(created.directory)
+        );
+      } catch {
+        // A non-empty directory contains only immutable prospective bodies.
+        // Those are safe to retain and remain non-authoritative until the
+        // current pointer commits their complete chain.
+      } finally {
+        directoryHandles.delete(created.directory);
+      }
+    }
+    throw error;
+  } finally {
+    if (pointerStage) {
+      try { await ops.unlink(descriptorEntryPath(tree.candidatesHandle, pointerStage)); } catch {}
+    }
+    if (pointerBackup) {
+      try { await ops.unlink(descriptorEntryPath(tree.candidatesHandle, pointerBackup)); } catch {}
+    }
+    await closeHandles([...directoryHandles.entries()].filter(([name]) => name !== '').map(([, handle]) => handle));
+    await closeHandle(candidateHandle);
   }
 }
 
@@ -1491,6 +1989,33 @@ function frozenInstallResult(status, candidateId, currentChainSha256) {
   });
 }
 
+function currentChainBytes(candidate) {
+  const revision = String(candidate.validated.current.chain_revision).padStart(4, '0');
+  const bytes = candidate.files[`chains/chain-${revision}.json`];
+  if (!Buffer.isBuffer(bytes) || sha256(bytes) !== candidate.validated.currentChainSha256) {
+    throw executeError('P5_OUTPUT_OWNERSHIP');
+  }
+  return Buffer.from(bytes);
+}
+
+function parseSelectionPointer(bytes) {
+  try {
+    const pointer = JSON.parse(bytes.toString('utf8'));
+    if (stableJson(pointer) !== bytes.toString('utf8')
+      || !pointer || Object.getPrototypeOf(pointer) !== Object.prototype
+      || Object.keys(pointer).join(',') !== 'generation,manifest_sha256,schema_version'
+      || pointer.schema_version !== 1
+      || !/^selection-generations\/selection-[a-f0-9]{64}$/u.test(pointer.generation)
+      || !HASH.test(pointer.manifest_sha256)
+      || pointer.generation !== `selection-generations/selection-${pointer.manifest_sha256}`) {
+      throw executeError('P5_OUTPUT_OWNERSHIP');
+    }
+    return pointer;
+  } catch {
+    throw executeError('P5_OUTPUT_OWNERSHIP');
+  }
+}
+
 function isSafeAbsolutePath(value) {
   if (typeof value !== 'string' || !path.isAbsolute(value) || path.resolve(value) !== value) return false;
   const parsed = path.parse(value);
@@ -1567,6 +2092,9 @@ function fsOperations(source) {
     lstat: operation('lstat'),
     mkdir: operation('mkdir'),
     readdir: operation('readdir'),
+    link: operation('link'),
+    rename: operation('rename'),
+    rm: operation('rm'),
     unlink: operation('unlink'),
     rmdir: operation('rmdir'),
     renameNoReplace: customRename
@@ -1622,6 +2150,16 @@ async function renameNoReplaceBetweenDescriptors(
       else reject(executeError('P5_INSTALL_FAILED'));
     });
   });
+}
+
+function createAuthority(internal) {
+  const authority = {};
+  Object.defineProperty(authority, 'close', {
+    enumerable: true,
+    value: async () => closeAuthority(internal)
+  });
+  AUTHORITIES.set(authority, internal);
+  return Object.freeze(authority);
 }
 
 function authorityInternal(authority) {

@@ -2,8 +2,17 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { candidateSeedFor, runPipeline } from '../src/pipeline.js';
+import { candidateSeedFor, runCandidatePipeline, runPipeline } from '../src/pipeline.js';
 import { candidateSeedFor as supportCandidateSeedFor } from '../src/construction/candidatePipelineSupport.js';
+import {
+  captureOffCompatibility,
+  OFF_COMPAT_PROMPT,
+  OFF_COMPAT_SEED
+} from './fixtures/playbookExecuteFixtures.js';
+
+const OFF_FIXTURE = JSON.parse(await fs.readFile(new URL(
+  './fixtures/playbook-execute/off-compatibility-v1.json', import.meta.url
+), 'utf8'));
 
 test('candidate pipeline generates multiple rounds and selects the best aesthetic review', async () => {
   const root = path.resolve('.tmp', `architect-candidate-pipeline-${Date.now()}`);
@@ -54,4 +63,60 @@ test('candidateSeedFor creates stable per-round candidate seeds', () => {
   assert.equal(candidateSeedFor(10, 1, 1), candidateSeedFor(10, 1, 1));
   assert.notEqual(candidateSeedFor(10, 1, 1), candidateSeedFor(10, 1, 2));
   assert.notEqual(candidateSeedFor(10, 1, 1), candidateSeedFor(10, 2, 1));
+});
+
+test('direct candidate API validates playbook before prompt or output work', async () => {
+  const root = path.resolve('.tmp', `candidate-api-playbook-${Date.now()}-${Math.random()}`);
+  await assert.rejects(runCandidatePipeline({
+    playbook: 'shadow',
+    prompt: '',
+    outRoot: root
+  }), { code: 'P5_MODE_INVALID' });
+  await assert.rejects(fs.access(root), { code: 'ENOENT' });
+});
+
+test('direct candidate API delegates execute to the exact P5 3/1 authority', async () => {
+  const outRoot = path.resolve('.tmp', `candidate-api-execute-${Date.now()}-${Math.random()}`);
+  try {
+    const result = await runCandidatePipeline({
+      playbook: 'execute',
+      prompt: 'Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base',
+      mode: 'mock',
+      seed: 424242,
+      outRoot,
+      cwd: process.cwd()
+    });
+    assert.equal(result.playbookExecution.mode, 'execute');
+    assert.equal(result.playbookExecution.candidate_count, 3);
+    assert.equal(result.playbookExecution.candidates.length, 3);
+    assert.ok(['candidate-01', 'candidate-02', 'candidate-03']
+      .includes(result.playbookExecution.selected_candidate_id));
+  } finally {
+    await fs.rm(outRoot, { recursive: true, force: true });
+  }
+});
+
+test('direct candidate API off mode retains the frozen pre-P5 candidate bytes', async () => {
+  const root = path.resolve('.tmp', `candidate-api-off-${Date.now()}-${Math.random()}`);
+  const outRoot = path.join(root, 'out');
+  try {
+    const result = await runCandidatePipeline({
+      playbook: 'off',
+      prompt: OFF_COMPAT_PROMPT,
+      mode: 'mock',
+      seed: OFF_COMPAT_SEED,
+      candidates: 3,
+      candidateRounds: 1,
+      candidateTargetScore: 95,
+      candidateForceRounds: false,
+      outRoot,
+      cwd: process.cwd()
+    });
+    assert.deepEqual(
+      await captureOffCompatibility(result, { outRoot, runDir: result.outputDir }),
+      OFF_FIXTURE.candidate
+    );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 });

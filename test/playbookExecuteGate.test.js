@@ -381,7 +381,11 @@ test('positive acceptance fixture produces exactly three eligible zero-repair fi
   for (const row of result.playbookExecution.candidates) {
     assert.equal(row.eligibility.hard_qa_ok, true);
     assert.deepEqual(row.eligibility.unresolved_violated_core_rule_ids, []);
-    const chain = JSON.parse(await fs.readFile(path.join(result.outputDir, 'playbook-execute/candidates', row.candidate_id, 'current-chain.json')));
+    const candidateRoot = path.join(result.outputDir, 'playbook-execute/candidates', row.candidate_id);
+    const pointer = JSON.parse(await fs.readFile(path.join(candidateRoot, 'current-chain.json')));
+    const chain = JSON.parse(await fs.readFile(path.join(
+      candidateRoot, 'chains', `chain-${String(pointer.chain_revision).padStart(4, '0')}.json`
+    )));
     assert.equal(chain.chain_revision, 1);
     assert.deepEqual(chain.checkpoint_hashes.map((item) => item.layer), fixture.expected_checkpoint_layers);
   }
@@ -405,6 +409,10 @@ test('repairable acceptance fixture is provider-free and byte-identical across e
     assert.deepEqual(observed.ranked, repairable.expected_ranked_candidate_ids);
     assert.equal(observed.providerCalls, 0);
     assert.equal(observed.installCount, 1);
+    assert.deepEqual(
+      await fs.readdir(path.join(result.outputDir, 'candidate-work')),
+      [path.basename(result.selectedOutputDir)]
+    );
     for (const candidateId of observed.ranked) {
       const ranked = result.playbookExecution.candidates.find((row) => row.candidate_id === candidateId);
       assert.equal(ranked.eligibility.hard_qa_ok, true);
@@ -443,7 +451,10 @@ test('no-eligible acceptance fixture exhausts one real repair for every unresolv
   assert.deepEqual((await fs.readdir(path.join(executeRoot, 'candidates'))).sort(), ['candidate-01', 'candidate-02', 'candidate-03']);
   for (const id of ['candidate-01', 'candidate-02', 'candidate-03']) {
     const root = path.join(executeRoot, 'candidates', id);
-    const chain = JSON.parse(await fs.readFile(path.join(root, 'current-chain.json')));
+    const pointer = JSON.parse(await fs.readFile(path.join(root, 'current-chain.json')));
+    const chain = JSON.parse(await fs.readFile(path.join(
+      root, 'chains', `chain-${String(pointer.chain_revision).padStart(4, '0')}.json`
+    )));
     assert.equal(chain.chain_revision, 2);
     assert.equal(chain.eligibility.status, 'unresolved-core-violation');
     assert.equal(chain.eligibility.repair_budget_used, 1);
@@ -451,6 +462,7 @@ test('no-eligible acceptance fixture exhausts one real repair for every unresolv
       ['attempt-01-patch.json', 'attempt-01-request.json', 'attempt-01-result.json']);
     await assert.rejects(fs.access(path.join(root, 'failures/initial.json')), { code: 'ENOENT' });
   }
+  assert.deepEqual(await fs.readdir(path.join(roots.outRoot, runNames[0], 'candidate-work')), []);
   await assert.rejects(fs.access(path.join(executeRoot, 'selection.json')), { code: 'ENOENT' });
   assert.equal(noEligible.expected_selected_candidate_id, null);
   await roots.assertPreexistingUnchanged();
@@ -464,7 +476,7 @@ test('injected real repair failure preserves accepted pointer inode and unrelate
   const unrelatedWorld = path.join(worldRoot, 'region.bin');
   await fs.writeFile(unrelatedOut, Buffer.from([0, 1, 2, 255]));
   await fs.writeFile(unrelatedWorld, Buffer.from('world-before\n'));
-  const observed = { ranked: [], replays: [], rollback: null };
+  const observed = { ranked: [], replays: [], rollback: null, outRoot };
   const result = await runExecutablePlaybookPipeline({ ...executeOptions(fixture, outRoot), datapacksDir: worldRoot },
     scenarioDependencies({ scenario: 'rollback', fixture, observed }));
   assert.ok(result.playbookExecution.selected_candidate_id);
@@ -542,15 +554,18 @@ function scenarioDependencies({ scenario, fixture, observed }) {
     async compilePrepared(input) {
       const compiled = await compilePreparedConstruction(input);
       const index = candidateIndex(input.prepared.seed);
-      if (input.outputDir.includes(`p5-replay-candidate-0${index}-`) && retainDefectAfterReplay(index)) {
+      if (input.outputDir.includes(`replay-candidate-0${index}-`) && retainDefectAfterReplay(index)) {
         compiled.blueprint.architecture.volumes = structuredClone(volumes);
         await fs.writeFile(compiled.artifacts.blueprint, `${JSON.stringify(compiled.blueprint, null, 2)}\n`);
       }
       return compiled;
     },
     async replay(input) {
-      if (scenario === 'rollback' && input.candidate.candidate_id === 'candidate-02') {
-        const candidateRoot = path.resolve(input.candidate.initial_result.outputDir, '..', '..', 'playbook-execute/candidates/candidate-02');
+      if (scenario === 'rollback' && input.candidateId === 'candidate-02') {
+        const [runName] = (await fs.readdir(observed.outRoot, { withFileTypes: true }))
+          .filter((entry) => entry.isDirectory() && entry.name !== 'pre-existing')
+          .map((entry) => entry.name);
+        const candidateRoot = path.join(observed.outRoot, runName, 'playbook-execute/candidates/candidate-02');
         const pointer = path.join(candidateRoot, 'current-chain.json');
         const beforeBytes = await fs.readFile(pointer);
         const beforeStat = await fs.stat(pointer);
@@ -573,6 +588,13 @@ function scenarioDependencies({ scenario, fixture, observed }) {
         }
       }
       const result = await replayCandidate(input);
+      observed.replayArtifacts ||= [];
+      observed.replayArtifacts.push({
+        candidate_id: result.candidate_id,
+        blueprint: await fs.readFile(result.compiled_result.artifacts.blueprint),
+        build: await fs.readFile(result.compiled_result.artifacts.buildFunction),
+        treeRows: await datapackRows(result.compiled_result.artifacts.datapackDir)
+      });
       observed.replays.push(result);
       return result;
     },
@@ -591,10 +613,13 @@ function scenarioDependencies({ scenario, fixture, observed }) {
 
 async function repairedEvidence(result, observed) {
   const replay = observed.replays.find((row) => row.candidate_id === 'candidate-02');
+  const replayArtifacts = observed.replayArtifacts.find((row) => row.candidate_id === 'candidate-02');
   assert.ok(replay);
+  assert.ok(replayArtifacts);
   const root = path.join(result.outputDir, 'playbook-execute/candidates/candidate-02');
   const initialBytes = await fs.readFile(path.join(root, 'chains/chain-0001.json'));
-  const chainBytes = await fs.readFile(path.join(root, 'current-chain.json'));
+  const pointer = JSON.parse(await fs.readFile(path.join(root, 'current-chain.json')));
+  const chainBytes = await fs.readFile(path.join(root, 'chains', `chain-${String(pointer.chain_revision).padStart(4, '0')}.json`));
   const initial = JSON.parse(initialBytes);
   const chain = JSON.parse(chainBytes);
   const checkpointPaths = ['brief/r0001.json', 'massing/r0002.json', 'structure/r0002.json', 'roof/r0002.json', 'facade/r0002.json'];
@@ -602,9 +627,9 @@ async function repairedEvidence(result, observed) {
   const repairPaths = ['attempt-01-request.json', 'attempt-01-patch.json', 'attempt-01-result.json'];
   const repairBytes = await Promise.all(repairPaths.map((name) => fs.readFile(path.join(root, 'repairs', name))));
   const facade = checkpoints.at(-1);
-  const blueprintBytes = await fs.readFile(replay.compiled_result.artifacts.blueprint);
-  const buildBytes = await fs.readFile(replay.compiled_result.artifacts.buildFunction);
-  const treeRows = await datapackRows(replay.compiled_result.artifacts.datapackDir);
+  const blueprintBytes = replayArtifacts.blueprint;
+  const buildBytes = replayArtifacts.build;
+  const treeRows = replayArtifacts.treeRows;
   const regeneratedArtifactHashes = {
     operation_list_sha256: digestBytes(Buffer.from(stableJson(replay.compiled_result.blueprint.operations))),
     build_function_sha256: digestBytes(buildBytes),

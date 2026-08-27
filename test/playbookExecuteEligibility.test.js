@@ -137,6 +137,29 @@ test('requires reviewed P4 order for ordered neutral eligibility evidence', () =
   );
 });
 
+test('eligibility binds the P4 review to the exact blueprint workflow and seed', () => {
+  const authority = {
+    blueprint_sha256: HASH,
+    workflow: 'construction_method_v1',
+    seed: 7
+  };
+  assert.equal(evaluateExecuteEligibility({
+    review: literalReview(), hardQa: { ok: true }, repairBudgetUsed: 0,
+    candidateAuthority: authority
+  }).status, 'eligible');
+
+  for (const [field, value] of [
+    ['blueprint_sha256', 'b'.repeat(64)],
+    ['workflow', 'unrelated-workflow'],
+    ['seed', 8]
+  ]) {
+    assert.throws(() => evaluateExecuteEligibility({
+      review: literalReview(), hardQa: { ok: true }, repairBudgetUsed: 0,
+      candidateAuthority: { ...authority, [field]: value }
+    }), { code: 'P5_AUTHORITY_INVALID' }, field);
+  }
+});
+
 function literalReview({ coreStatus = 'unknown', statuses = {} } = {}) {
   const assessments = CARD_ROWS.map(([rule_id, design_layer, check_id, repair_operation_id, invalidates_layers, checker_kind], index) => {
     const status = statuses[index] ?? (index < 15 ? coreStatus : 'unknown');
