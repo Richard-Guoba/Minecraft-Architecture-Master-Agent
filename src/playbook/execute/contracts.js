@@ -109,8 +109,8 @@ export function validateFrozenDesignEnvelope(value) {
   assertSchemaVersion(data, 'P5_DESIGN_INVALID');
   assertCandidateId(data.candidate_id, 'P5_DESIGN_INVALID');
   assertSeed(data.seed, 'P5_DESIGN_INVALID');
-  assertString(data.brief_intent, 'P5_DESIGN_INVALID');
-  assertLayerIntentMap(data.layer_intents, 'P5_DESIGN_INVALID');
+  assertBoundedProse(data.brief_intent, 'P5_DESIGN_INVALID');
+  assertLayerIntentRows(data.layer_intents, 'P5_DESIGN_INVALID');
   assertCanonicalIds(data.selected_rule_ids, RULE_ID, 'P5_DESIGN_INVALID');
   assertCanonicalIds(data.rejected_rule_ids, RULE_ID, 'P5_DESIGN_INVALID');
   assertDistinct(data.selected_rule_ids, data.rejected_rule_ids, 'P5_DESIGN_INVALID');
@@ -321,9 +321,14 @@ function assertSchemaVersion(value, code) {
   if (value.schema_version !== EXECUTE_SCHEMA_VERSION) fail(code);
 }
 
-function assertLayerIntentMap(value, code) {
-  assertExactObject(value, DESIGN_LAYER_ORDER, code);
-  for (const layer of DESIGN_LAYER_ORDER) assertContainer(value[layer], code);
+function assertLayerIntentRows(value, code) {
+  assertArray(value, code);
+  if (value.length !== DESIGN_LAYER_ORDER.length) fail(code);
+  for (const [index, row] of value.entries()) {
+    assertExactObject(row, ['layer', 'intent'], code);
+    if (row.layer !== DESIGN_LAYER_ORDER[index]) fail(code);
+    assertBoundedProse(row.intent, code);
+  }
 }
 
 function assertPredecessorHashes(value, layer, code) {
@@ -403,8 +408,8 @@ function assertNullableHash(value, code) {
   if (value !== null) assertHash(value, code);
 }
 
-function assertString(value, code) {
-  if (typeof value !== 'string') fail(code);
+function assertBoundedProse(value, code) {
+  if (typeof value !== 'string' || Array.from(value).length > 800) fail(code);
 }
 
 function assertNonEmptyString(value, code) {

@@ -453,7 +453,7 @@ function frozenDesign() {
     candidate_id: 'candidate-01',
     seed: 424242,
     brief_intent: 'medieval residence',
-    layer_intents: Object.fromEntries(DESIGN_LAYERS.map((layer) => [layer, { layer }])),
+    layer_intents: DESIGN_LAYERS.map((layer) => ({ layer, intent: `${layer}-intent` })),
     selected_rule_ids: ['rule:medieval.show-load-path', 'rule:structure.compose-three-volumes'],
     rejected_rule_ids: ['rule:facade.break-repetitive-bays'],
     repair_variant_preferences: [repairPreference()]
