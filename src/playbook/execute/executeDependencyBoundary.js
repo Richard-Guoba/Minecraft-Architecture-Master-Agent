@@ -15,10 +15,41 @@ const FORBIDDEN_AUTHORITY_TOKENS = Object.freeze([
   'aesthetic'
 ]);
 const FORBIDDEN_AUTHORITY_TOKEN_PAIRS = Object.freeze([
+  Object.freeze(['p', '6']),
+  Object.freeze(['screen', 'shot']),
   Object.freeze(['fixed', 'view']),
   Object.freeze(['blind', 'selection']),
   Object.freeze(['human', 'preference']),
   Object.freeze(['candidate', 'selection'])
+]);
+const CANONICAL_IDENTIFIER_WORDS = Object.freeze([
+  'visualization',
+  'screenshot',
+  'evaluation',
+  'preference',
+  'aesthetic',
+  'candidate',
+  'selection',
+  'evaluator',
+  'reviewer',
+  'template',
+  'provider',
+  'scoring',
+  'selector',
+  'visual',
+  'review',
+  'scorer',
+  'camera',
+  'client',
+  'image',
+  'model',
+  'screen',
+  'blind',
+  'fixed',
+  'human',
+  'agent',
+  'view',
+  'shot'
 ]);
 
 export async function auditExecuteDependencyBoundary({ projectRoot }) {
@@ -74,19 +105,37 @@ export async function auditExecuteDependencyBoundary({ projectRoot }) {
 
 function isForbiddenExecuteDependency(relativePath) {
   if (ALLOWED_NONELIGIBILITY_DEPENDENCIES.includes(relativePath)) return false;
-  const tokens = tokenizeDependencyPath(relativePath);
+  const tokens = normalizeDependencyIdentifiers(relativePath);
   if (tokens.some((token) => FORBIDDEN_AUTHORITY_TOKENS.includes(token))) return true;
   return FORBIDDEN_AUTHORITY_TOKEN_PAIRS.some(([left, right]) =>
     tokens.some((token, index) => token === left && tokens[index + 1] === right));
 }
 
-function tokenizeDependencyPath(value) {
-  return String(value)
+function normalizeDependencyIdentifiers(value) {
+  const boundedTokens = String(value)
     .replace(/([A-Z]+)([A-Z][a-z])/gu, '$1 $2')
     .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
+    .replace(/([A-Za-z])([0-9])/gu, '$1 $2')
+    .replace(/([0-9])([A-Za-z])/gu, '$1 $2')
     .toLowerCase()
     .split(/[^a-z0-9]+/u)
     .filter(Boolean);
+  return boundedTokens.flatMap(splitCanonicalIdentifier);
+}
+
+function splitCanonicalIdentifier(identifier) {
+  const splits = Array(identifier.length + 1).fill(null);
+  splits[identifier.length] = [];
+  for (let offset = identifier.length - 1; offset >= 0; offset -= 1) {
+    for (const word of CANONICAL_IDENTIFIER_WORDS) {
+      const next = offset + word.length;
+      if (identifier.startsWith(word, offset) && splits[next] !== null) {
+        splits[offset] = [word, ...splits[next]];
+        break;
+      }
+    }
+  }
+  return splits[0]?.length > 1 ? splits[0] : [identifier];
 }
 
 function classifyExecuteDependencyEdge(edge) {
