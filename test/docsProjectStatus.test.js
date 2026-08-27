@@ -48,6 +48,11 @@ test('architecture playbook docs describe the strict P4 boundary', () => {
   assert.match(readme, /selection-generations/u);
   assert.match(p5Report, /current-chain\.json.*(?:pointer|指针)/iu);
   assert.match(p5Report, /descriptor.*P5_INSTALL_FAILED/iu);
+  assert.match(p5Report, /controlled-seam/u);
+  assert.match(p5Report, /natural-production-authority\.json/u);
+  assert.match(p5Report, /\[1, 1, 0\].*repair-invalid.*eligible/u);
+  assert.match(p5Report, /disposable root/u);
+  assert.match(p5Report, /没有证据的三场景自然性声明已明确撤回/u);
   assert.doesNotMatch(report, /P5 已开放|开放 P5/u);
   assert.doesNotMatch(report, /P6 已开放|已改善建筑审美/u);
 });
