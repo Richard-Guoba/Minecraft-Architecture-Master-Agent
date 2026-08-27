@@ -303,7 +303,9 @@ test('rejects caller file-map shape before staging', async (t) => {
     ['extra', (snapshot) => { snapshot.files['unknown/provider-secret.json'] = Buffer.from('RAW_EXTRA'); }],
     ['pointer-supplied', (snapshot) => { snapshot.files['current-chain.json'] = snapshot.currentChain; }],
     ['current-chain-body-supplied', (snapshot) => { snapshot.files['chains/chain-0001.json'] = snapshot.currentChain; }],
-    ['non-buffer', (snapshot) => { snapshot.files['checkpoints/roof/r0001.json'] = '{}\n'; }]
+    ['non-buffer', (snapshot) => { snapshot.files['checkpoints/roof/r0001.json'] = '{}\n'; }],
+    ['reserved-repair', (snapshot) => { snapshot.files['repairs/attempt-01-request.json'] = canonicalBytes({ reserved: true }); }],
+    ['reserved-failure', (snapshot) => { snapshot.files['failures/attempt-01.json'] = canonicalBytes({ reserved: true }); }]
   ]) {
     await t.test(name, async (t) => {
       const fixture = await storageFixture(t);
@@ -346,6 +348,31 @@ test('rejects malformed, noncanonical, path-drifted, and hash-drifted checkpoint
     ['review-without-chain', (snapshot) => {
       snapshot.files['reviews/chain-9999-review.json'] = canonicalBytes({ status: 'orphaned' });
     }],
+    ['draft-checkpoint', (snapshot) => {
+      rebindCheckpoint(snapshot, 'roof', (checkpoint) => { checkpoint.status = 'draft'; });
+    }],
+    ['spliced-upstream', (snapshot) => {
+      rebindCheckpoint(snapshot, 'massing', (checkpoint) => {
+        checkpoint.upstream_accepted_hashes[0].checkpoint_sha256 = '0'.repeat(64);
+      });
+    }],
+    ['initial-revision-two', (snapshot) => rewriteCurrentCheckpoints(snapshot, (checkpoint) => {
+      checkpoint.revision = 2;
+    })],
+    ['initial-replay-origin', (snapshot) => {
+      rebindCheckpoint(snapshot, 'roof', (checkpoint) => {
+        checkpoint.replay_origin = {
+          kind: 'replay',
+          base_chain_sha256: DESIGN_HASH,
+          repair_transaction_sha256: TRANSACTION_HASH
+        };
+      });
+    }],
+    ['chain-final-authority-drift', (snapshot) => {
+      const chain = JSON.parse(snapshot.currentChain);
+      chain.hard_qa_sha256 = '8'.repeat(64);
+      snapshot.currentChain = canonicalBytes(chain);
+    }],
     ['corrupt-chain', (snapshot) => { snapshot.currentChain = Buffer.from('{RAW_CHAIN_FAILURE'); }],
     ['noncanonical-chain', (snapshot) => { snapshot.currentChain = Buffer.from(JSON.stringify(JSON.parse(snapshot.currentChain))); }],
     ['chain-candidate-drift', (snapshot) => {
@@ -367,6 +394,36 @@ test('rejects malformed, noncanonical, path-drifted, and hash-drifted checkpoint
         'provider-secret|RAW_CHAIN_FAILURE'
       );
       assert.equal(await p5Exists(fixture.runDir), false);
+    });
+  }
+});
+
+test('rejects replay origin gaps and origins not bound to the parent transaction', async (t) => {
+  for (const [name, mutate] of [
+    ['origin-gap', (checkpoint, layer) => {
+      if (layer === 'massing') checkpoint.replay_origin = null;
+    }],
+    ['wrong-parent', (checkpoint, layer) => {
+      if (layer === 'roof') checkpoint.replay_origin.base_chain_sha256 = '7'.repeat(64);
+    }],
+    ['wrong-transaction', (checkpoint, layer) => {
+      if (layer === 'facade') checkpoint.replay_origin.repair_transaction_sha256 = '6'.repeat(64);
+    }]
+  ]) {
+    await t.test(name, async (t) => {
+      const fixture = await installedFixture(t);
+      const replacement = replaySnapshot(fixture.initial);
+      rewriteCurrentCheckpoints(replacement, mutate);
+      await assertP5Failure(
+        installCandidateSnapshot({
+          authority: fixture.authority,
+          candidateId: 'candidate-01',
+          ...replacement,
+          expectedPreviousChainSha256: fixture.initial.chainHash
+        }),
+        'P5_CHECKPOINT_INVALID',
+        fixture.root
+      );
     });
   }
 });
@@ -470,6 +527,35 @@ test('a private stage collision is retried and the colliding bytes are preserved
     ), 'utf8'),
     'collision bytes\n'
   );
+});
+
+test('first-install precommit failure removes only the topology created by that call', async (t) => {
+  const fixture = await storageFixture(t);
+  const before = await snapshotTree(fixture.root);
+  const fsImpl = fsWith({
+    async open(target, flags, ...args) {
+      if (
+        (flags & constants.O_WRONLY) !== 0
+        && await pathContainsGeneratedName(String(target), STAGE_PREFIX)
+      ) throw new Error('RAW_FIRST_INSTALL_WRITE_FAILURE');
+      return fs.open(target, flags, ...args);
+    }
+  });
+  const authority = await admitExecuteRun({ runDir: fixture.runDir });
+  t.after(() => authority.close());
+
+  await assertP5Failure(
+    installCandidateSnapshot({
+      authority,
+      candidateId: 'candidate-01',
+      ...initialSnapshot(),
+      fsImpl
+    }),
+    'P5_INSTALL_FAILED',
+    fixture.root,
+    'RAW_FIRST_INSTALL_WRITE_FAILURE'
+  );
+  assert.deepEqual(await snapshotTree(fixture.root), before);
 });
 
 test('a no-replace backup collision preserves the exact old candidate and collision', async (t) => {
@@ -581,8 +667,8 @@ test('failure injection covers every staged exclusive write, chmod, file sync, a
   }
 });
 
-test('backup rename, final no-replace rename, pointer write, and cleanup failures restore exact old inodes', async (t) => {
-  for (const category of ['backupRename', 'finalRename', 'pointerWrite', 'cleanup']) {
+test('backup rename, final no-replace rename, and pointer write failures restore exact old inodes', async (t) => {
+  for (const category of ['backupRename', 'finalRename', 'pointerWrite']) {
     await t.test(category, async (t) => {
       const fixture = await installedFixture(t);
       const before = await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01'));
@@ -603,6 +689,92 @@ test('backup rename, final no-replace rename, pointer write, and cleanup failure
       assert.deepEqual(await generatedCandidateEntries(fixture.runDir), []);
     });
   }
+});
+
+test('every candidate postcommit backup cleanup failure keeps the complete new generation authoritative', async (t) => {
+  const counts = await candidateRetirementOperationCounts(t);
+  assert.ok(counts.retireUnlink >= 7, JSON.stringify(counts));
+  assert.ok(counts.retireRmdir >= 2, JSON.stringify(counts));
+
+  for (const category of ['retireUnlink', 'retireRmdir']) {
+    for (let failAt = 1; failAt <= counts[category]; failAt += 1) {
+      await t.test(`${category}-${failAt}`, async (t) => {
+        const fixture = await installedFixture(t);
+        const replacement = replaySnapshot(fixture.initial);
+        const result = await installCandidateSnapshot({
+          authority: fixture.authority,
+          candidateId: 'candidate-01',
+          ...replacement,
+          expectedPreviousChainSha256: fixture.initial.chainHash,
+          fsImpl: instrumentedFs({ failCategory: category, failAt })
+        });
+        assert.equal(result.status, 'replaced');
+        const current = await readCurrentCandidateSnapshot({
+          authority: fixture.authority,
+          candidateId: 'candidate-01'
+        });
+        assert.equal(current.current_chain_sha256, replacement.chainHash);
+        assert.deepEqual(current.files, expectedInstalledFiles(replacement));
+        assert.deepEqual(await fs.readFile(fixture.unrelatedPath), fixture.unrelatedBytes);
+      });
+    }
+  }
+});
+
+test('candidate retirement never follows a swapped intermediate directory', async (t) => {
+  const fixture = await installedFixture(t);
+  const replacement = replaySnapshot(fixture.initial);
+  const outside = path.join(fixture.root, 'outside-retirement-target');
+  await fs.mkdir(outside);
+  const outsideBody = fixture.initial.files['checkpoints/brief/r0001.json'];
+  const outsidePath = path.join(outside, 'r0001.json');
+  await fs.writeFile(outsidePath, outsideBody);
+  const outsideBefore = await inodeTree(outside);
+  let parked;
+  let parkedBefore;
+  let swapped = false;
+  let newPromoted = false;
+  const fsImpl = fsWith({
+    async lstat(target, ...args) {
+      const targetText = String(target);
+      const safeImmediateChild = targetText.endsWith('/brief')
+        && await pathContainsGeneratedName(targetText, BACKUP_PREFIX);
+      const unsafeDescendant = targetText.endsWith('/checkpoints/brief/r0001.json')
+        && await pathContainsGeneratedName(targetText, BACKUP_PREFIX);
+      if (newPromoted && !swapped && (safeImmediateChild || unsafeDescendant)) {
+        const descriptorMatch = targetText.match(/^\/proc\/self\/fd\/(\d+)\/(.+)$/u);
+        assert.ok(descriptorMatch);
+        const descriptorRoot = await fs.readlink(`/proc/self/fd/${descriptorMatch[1]}`);
+        const absoluteTarget = path.join(descriptorRoot, descriptorMatch[2]);
+        const brief = safeImmediateChild ? absoluteTarget : path.dirname(absoluteTarget);
+        parked = `${brief}-parked`;
+        await fs.rename(brief, parked);
+        parkedBefore = await inodeTree(parked);
+        await fs.symlink(outside, brief);
+        swapped = true;
+      }
+      return fs.lstat(target, ...args);
+    },
+    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
+      const result = await next(directoryHandle, sourceName, destinationName);
+      if (sourceName.startsWith(STAGE_PREFIX) && destinationName === 'candidate-01') {
+        newPromoted = true;
+      }
+      return result;
+    }
+  });
+
+  const result = await installCandidateSnapshot({
+    authority: fixture.authority,
+    candidateId: 'candidate-01',
+    ...replacement,
+    expectedPreviousChainSha256: fixture.initial.chainHash,
+    fsImpl
+  });
+  assert.equal(result.status, 'replaced');
+  assert.equal(swapped, true);
+  assert.deepEqual(await inodeTree(outside), outsideBefore);
+  assert.deepEqual(await inodeTree(parked), parkedBefore);
 });
 
 test('rollback cleanup failure leaves the exact verified backup recoverable', async (t) => {
@@ -761,10 +933,154 @@ test('selection root-sync failure after promotion restores exact old selection a
     fixture.root,
     'RAW_ROOT_SYNC_FAILURE'
   );
-  assert.equal(rootSyncs, 1);
+  assert.equal(rootSyncs, 2);
   assert.deepEqual(await selectionInodes(fixture.runDir), oldSelectionInodes);
   assert.deepEqual(await allCandidateInodes(fixture.runDir), candidateInodes);
   assert.equal(await generatedRootEntries(fixture.runDir), 0);
+});
+
+test('selection faults after each successful partial promotion restore the exact old generation', async (t) => {
+  for (let failAt = 1; failAt <= SELECTION_TEST_PATHS.length; failAt += 1) {
+    await t.test(`promotion-${failAt}`, async (t) => {
+      const fixture = await threeCandidateFixture(t);
+      await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
+      const oldSelection = await selectionInodes(fixture.runDir);
+      const oldCandidates = await allCandidateInodes(fixture.runDir);
+      let promoted = 0;
+      const fsImpl = fsWith({
+        async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+          const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
+          if (SELECTION_TEST_PATHS.includes(destinationName) && ++promoted === failAt) {
+            throw new Error('RAW_LATE_SELECTION_PROMOTION_FAILURE');
+          }
+          return result;
+        }
+      });
+
+      await assertP5Failure(
+        installExecuteSelection({
+          authority: fixture.authority,
+          files: selectionFiles('new'),
+          fsImpl
+        }),
+        'P5_INSTALL_FAILED',
+        fixture.root,
+        'RAW_LATE_SELECTION_PROMOTION_FAILURE'
+      );
+      assert.deepEqual(await selectionInodes(fixture.runDir), oldSelection);
+      assert.deepEqual(await allCandidateInodes(fixture.runDir), oldCandidates);
+    });
+  }
+});
+
+test('selection detects a staged source swap without consuming foreign or parked bytes', async (t) => {
+  const fixture = await threeCandidateFixture(t);
+  await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
+  const oldSelection = await selectionInodes(fixture.runDir);
+  const foreign = path.join(fixture.root, 'foreign-selection.json');
+  await fs.writeFile(foreign, 'foreign selection bytes\n');
+  const foreignBefore = await inodeTree(foreign);
+  let parked;
+  let parkedBefore;
+  let swapped = false;
+  const fsImpl = fsWith({
+    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+      if (
+        !swapped
+        && sourceName === 'selection.json'
+        && destinationName === 'selection.json'
+        && await pathContainsGeneratedName(`/proc/self/fd/${sourceHandle.fd}`, STAGE_PREFIX)
+      ) {
+        const stagePath = `/proc/self/fd/${sourceHandle.fd}`;
+        parked = path.join(await fs.readlink(stagePath), 'parked-selection.json');
+        await fs.rename(path.join(stagePath, sourceName), parked);
+        parkedBefore = await inodeTree(parked);
+        await fs.link(foreign, path.join(stagePath, sourceName));
+        swapped = true;
+      }
+      return next(sourceHandle, sourceName, destinationHandle, destinationName);
+    }
+  });
+
+  await assertP5Failure(
+    installExecuteSelection({ authority: fixture.authority, files: selectionFiles('new'), fsImpl }),
+    'P5_INSTALL_FAILED',
+    fixture.root
+  );
+  assert.equal(swapped, true);
+  assert.deepEqual(await inodeTree(foreign), foreignBefore);
+  assert.deepEqual(await selectionInodes(fixture.runDir), oldSelection);
+  assert.deepEqual(await inodeTree(parked), parkedBefore);
+});
+
+test('selection detects an existing source swap without deleting old or foreign bytes', async (t) => {
+  const fixture = await threeCandidateFixture(t);
+  const oldFiles = selectionFiles('old');
+  await installExecuteSelection({ authority: fixture.authority, files: oldFiles });
+  const root = path.join(fixture.runDir, 'playbook-execute');
+  const canonical = path.join(root, 'manifest.json');
+  const parked = path.join(root, 'parked-owned-manifest.json');
+  const oldIdentity = fileIdentity(await fs.lstat(canonical));
+  let foreignIdentity;
+  let swapped = false;
+  const swap = async (sourceName) => {
+    if (!swapped && sourceName === 'manifest.json') {
+      await fs.rename(canonical, parked);
+      await fs.writeFile(canonical, 'foreign manifest bytes\n');
+      foreignIdentity = fileIdentity(await fs.lstat(canonical));
+      swapped = true;
+    }
+  };
+  const fsImpl = fsWith({
+    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
+      await swap(sourceName);
+      return next(directoryHandle, sourceName, destinationName);
+    },
+    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+      await swap(sourceName);
+      return next(sourceHandle, sourceName, destinationHandle, destinationName);
+    }
+  });
+
+  await assertP5Failure(
+    installExecuteSelection({ authority: fixture.authority, files: selectionFiles('new'), fsImpl }),
+    'P5_INSTALL_FAILED',
+    fixture.root
+  );
+  assert.equal(swapped, true);
+  assert.deepEqual(fileIdentity(await fs.lstat(canonical)), foreignIdentity);
+  assert.deepEqual(fileIdentity(await fs.lstat(parked)), oldIdentity);
+  assert.deepEqual(await fs.readFile(parked), oldFiles['manifest.json']);
+});
+
+test('every selection postcommit backup cleanup failure keeps the complete new generation authoritative', async (t) => {
+  const counts = await selectionRetirementOperationCounts(t);
+  assert.ok(counts.retireUnlink >= SELECTION_TEST_PATHS.length, JSON.stringify(counts));
+  assert.ok(counts.retireRmdir >= 1, JSON.stringify(counts));
+
+  for (const category of ['retireUnlink', 'retireRmdir']) {
+    for (let failAt = 1; failAt <= counts[category]; failAt += 1) {
+      await t.test(`${category}-${failAt}`, async (t) => {
+        const fixture = await threeCandidateFixture(t);
+        await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
+        const candidates = await allCandidateInodes(fixture.runDir);
+        const replacement = selectionFiles('new');
+        const result = await installExecuteSelection({
+          authority: fixture.authority,
+          files: replacement,
+          fsImpl: retirementFs({ failCategory: category, failAt })
+        });
+        assert.equal(result.status, 'replaced');
+        for (const name of SELECTION_TEST_PATHS) {
+          assert.deepEqual(
+            await fs.readFile(path.join(fixture.runDir, 'playbook-execute', name)),
+            replacement[name]
+          );
+        }
+        assert.deepEqual(await allCandidateInodes(fixture.runDir), candidates);
+      });
+    }
+  }
 });
 
 test('selection rejects file-map, manifest, hash, and existing ownership drift', async (t) => {
@@ -876,6 +1192,46 @@ function replaySnapshot(initial) {
     chainHash: chainManifestHash(chain),
     envelopes
   };
+}
+
+function rebindCheckpoint(snapshot, layer, mutate) {
+  const chain = JSON.parse(snapshot.currentChain);
+  const row = chain.checkpoint_hashes.find((item) => item.layer === layer);
+  const sourceName = Object.keys(snapshot.files).find((name) => (
+    name.startsWith(`checkpoints/${layer}/`) && testHash(snapshot.files[name]) === row.checkpoint_sha256
+  ));
+  assert.ok(sourceName, layer);
+  const checkpoint = JSON.parse(snapshot.files[sourceName]);
+  mutate(checkpoint);
+  const bytes = canonicalBytes(checkpoint);
+  snapshot.files[sourceName] = bytes;
+  row.checkpoint_sha256 = testHash(bytes);
+  snapshot.currentChain = canonicalBytes(chain);
+}
+
+function rewriteCurrentCheckpoints(snapshot, mutate) {
+  const chain = JSON.parse(snapshot.currentChain);
+  const rewritten = [];
+  for (const layer of LAYERS) {
+    const row = chain.checkpoint_hashes.find((item) => item.layer === layer);
+    const sourceName = Object.keys(snapshot.files).find((name) => (
+      name.startsWith(`checkpoints/${layer}/`) && testHash(snapshot.files[name]) === row.checkpoint_sha256
+    ));
+    assert.ok(sourceName, layer);
+    const checkpoint = JSON.parse(snapshot.files[sourceName]);
+    mutate(checkpoint, layer);
+    checkpoint.upstream_accepted_hashes = rewritten.map((item) => ({
+      layer: item.layer,
+      checkpoint_sha256: item.hash
+    }));
+    const bytes = canonicalBytes(checkpoint);
+    const destinationName = `checkpoints/${layer}/r${padRevision(checkpoint.revision)}.json`;
+    delete snapshot.files[sourceName];
+    snapshot.files[destinationName] = bytes;
+    row.checkpoint_sha256 = testHash(bytes);
+    rewritten.push({ layer, hash: row.checkpoint_sha256 });
+  }
+  snapshot.currentChain = canonicalBytes(chain);
 }
 
 function buildEnvelopes(candidateId, revision, baseChainSha256, transactionSha256) {
@@ -994,6 +1350,50 @@ async function replacementOperationCounts(t) {
   return counts;
 }
 
+async function candidateRetirementOperationCounts(t) {
+  const fixture = await installedFixture(t);
+  const counts = {};
+  await installCandidateSnapshot({
+    authority: fixture.authority,
+    candidateId: 'candidate-01',
+    ...replaySnapshot(fixture.initial),
+    expectedPreviousChainSha256: fixture.initial.chainHash,
+    fsImpl: instrumentedFs({ counts })
+  });
+  return counts;
+}
+
+async function selectionRetirementOperationCounts(t) {
+  const fixture = await threeCandidateFixture(t);
+  await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
+  const counts = {};
+  await installExecuteSelection({
+    authority: fixture.authority,
+    files: selectionFiles('new'),
+    fsImpl: retirementFs({ counts })
+  });
+  return counts;
+}
+
+function retirementFs({ failCategory, failAt, counts = {} }) {
+  const tick = (category) => {
+    counts[category] = (counts[category] ?? 0) + 1;
+    if (category === failCategory && counts[category] === failAt) {
+      throw new Error(`RAW_INJECTED_${category}_${failAt}`);
+    }
+  };
+  return fsWith({
+    async unlink(target) {
+      if (await pathContainsGeneratedName(String(target), BACKUP_PREFIX)) tick('retireUnlink');
+      return fs.unlink(target);
+    },
+    async rmdir(target) {
+      if (await pathContainsGeneratedName(String(target), BACKUP_PREFIX)) tick('retireRmdir');
+      return fs.rmdir(target);
+    }
+  });
+}
+
 function instrumentedFs({ failCategory, failAt, counts = {} }) {
   const tick = (category) => {
     counts[category] = (counts[category] ?? 0) + 1;
@@ -1030,8 +1430,15 @@ function instrumentedFs({ failCategory, failAt, counts = {} }) {
       return next(directoryHandle, sourceName, destinationName);
     },
     async unlink(target) {
-      if (await pathContainsGeneratedName(String(target), BACKUP_PREFIX)) tick('cleanup');
+      if (await pathContainsGeneratedName(String(target), BACKUP_PREFIX)) {
+        tick('cleanup');
+        tick('retireUnlink');
+      }
       return fs.unlink(target);
+    },
+    async rmdir(target) {
+      if (await pathContainsGeneratedName(String(target), BACKUP_PREFIX)) tick('retireRmdir');
+      return fs.rmdir(target);
     }
   });
 }

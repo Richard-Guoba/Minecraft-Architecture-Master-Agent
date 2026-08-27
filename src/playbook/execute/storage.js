@@ -2,21 +2,31 @@ import { spawn } from 'node:child_process';
 import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { sha256, stableJson } from '../shadow/canonical.js';
 import {
   executeError,
-  sanitizeExecuteError,
-  validateChainManifest,
-  validateCheckpointPayload,
-  validateExecuteSelectionManifest,
-  validateSelectionRecord
+  sanitizeExecuteError
 } from './contracts.js';
+import {
+  assertCandidateId,
+  assertImmutableHistory,
+  CANDIDATE_IDS,
+  cloneFileMap,
+  CURRENT_CHAIN_BASENAME,
+  expectedDirectoriesFor,
+  normalizeCandidateSnapshot,
+  normalizeSelectionFiles,
+  sameFileMap,
+  SELECTION_PATHS,
+  sortFileMap,
+  validateCandidateFiles
+} from './storageValidation.js';
+import {
+  installSelectionGeneration,
+  moveIdentityNoReplace
+} from './storageTransaction.js';
 
-const CANDIDATE_IDS = Object.freeze(['candidate-01', 'candidate-02', 'candidate-03']);
-const LAYERS = Object.freeze(['brief', 'massing', 'structure', 'roof', 'facade']);
 const OUTPUT_BASENAME = 'playbook-execute';
 const CANDIDATES_BASENAME = 'candidates';
-const CURRENT_CHAIN_BASENAME = 'current-chain.json';
 const STAGE_PREFIX = '.playbook-execute.stage-';
 const BACKUP_PREFIX = '.playbook-execute.backup-';
 const MOVE_BINARY = '/usr/bin/mv';
@@ -25,15 +35,6 @@ const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
 const WRITE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW;
 const UNSAFE_PATH_CHARACTER = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u;
 const HASH = /^[a-f0-9]{64}$/u;
-const REVISION = '[0-9]{4}';
-const CHECKPOINT_PATH = new RegExp(`^checkpoints/(${LAYERS.join('|')})/r(${REVISION})\\.json$`, 'u');
-const CHAIN_PATH = new RegExp(`^chains/chain-(${REVISION})\\.json$`, 'u');
-const HARD_QA_PATH = new RegExp(`^reviews/chain-(${REVISION})-hard-qa\\.json$`, 'u');
-const REVIEW_PATH = new RegExp(`^reviews/chain-(${REVISION})-review\\.json$`, 'u');
-const REPAIR_PATH = /^repairs\/attempt-01-(request|patch|result)\.json$/u;
-const FAILURE_PATH = /^failures\/attempt-01\.json$/u;
-const SELECTION_PATHS = Object.freeze(['manifest.json', 'selection.json', 'selection-report.md']);
-const SELECTION_BODY_PATHS = Object.freeze(['selection.json', 'selection-report.md']);
 const AUTHORITIES = new WeakMap();
 let temporarySequence = 0;
 
@@ -239,6 +240,13 @@ export async function installCandidateSnapshot({
         rollbackFailed = true;
       }
     }
+    if (tree && !newInstalled) {
+      try {
+        await rollbackCreatedExecuteTree(internal, ops, tree);
+      } catch {
+        rollbackFailed = true;
+      }
+    }
     await closeExecuteTree(tree);
     if (rollbackFailed) throw executeError('P5_INSTALL_FAILED');
     throw publicError(error, 'P5_INSTALL_FAILED');
@@ -257,43 +265,9 @@ export async function installCandidateSnapshot({
         { requireComplete: true, verifyBytes: true }
       );
       oldMoved = false;
-    } catch (error) {
-      try {
-        if (await namedDirectoryHasIdentity(
-          tree.candidatesHandle,
-          ops,
-          backupName,
-          existing.identity
-        )) {
-          await removeVerifiedDirectory(
-            internal,
-            ops,
-            tree,
-            tree.candidatesHandle,
-            candidateId,
-            stage.identity,
-            incoming.files,
-            { requireComplete: true, verifyBytes: true }
-          );
-          newInstalled = false;
-          await rollbackCandidateBackup(
-            internal,
-            ops,
-            tree,
-            backupName,
-            candidateId,
-            existing
-          );
-          oldMoved = false;
-        } else {
-          throw executeError('P5_INSTALL_FAILED');
-        }
-      } catch {
-        await closeExecuteTree(tree);
-        throw executeError('P5_INSTALL_FAILED');
-      }
-      await closeExecuteTree(tree);
-      throw publicError(error, 'P5_INSTALL_FAILED');
+    } catch {
+      // The new generation is already verified and committed. Old retirement is
+      // best-effort and can only leave a fixed-prefix residue behind.
     }
   }
 
@@ -342,7 +316,13 @@ export async function installExecuteSelection({ authority, files, fsImpl } = {})
     if (existing && sameFileMap(existing.files, normalized.files)) {
       return Object.freeze({ status: 'unchanged', artifact_hashes: normalized.artifactHashes });
     }
-    await installSelectionFiles(internal, ops, tree, normalized.files, existing);
+    await installSelectionGeneration({
+      ops,
+      tree,
+      files: normalized.files,
+      existing,
+      assertAuthority: () => assertTreeAuthority(internal, ops, tree)
+    });
     return Object.freeze({
       status: existing ? 'replaced' : 'created',
       artifact_hashes: normalized.artifactHashes
@@ -352,193 +332,6 @@ export async function installExecuteSelection({ authority, files, fsImpl } = {})
   } finally {
     await closeExecuteTree(tree);
   }
-}
-
-function normalizeCandidateSnapshot({ candidateId, files, currentChain }) {
-  assertCandidateId(candidateId);
-  if (!Buffer.isBuffer(currentChain)) throw executeError('P5_AUTHORITY_INVALID');
-  const immutableFiles = normalizeCandidateFileMap(files);
-  let current;
-  try {
-    current = parseCanonicalValidatedJson(currentChain, validateChainManifest);
-  } catch {
-    throw executeError('P5_CHECKPOINT_INVALID');
-  }
-  if (current.candidate_id !== candidateId) throw executeError('P5_CHECKPOINT_INVALID');
-  const checkpointPaths = Object.keys(immutableFiles).filter((name) => CHECKPOINT_PATH.test(name));
-  if (
-    checkpointPaths.length < LAYERS.length
-    || LAYERS.some((layer) => !checkpointPaths.some((name) => name.startsWith(`checkpoints/${layer}/`)))
-  ) throw executeError('P5_AUTHORITY_INVALID');
-  const currentChainBytes = Buffer.from(currentChain);
-  const currentChainPath = chainPath(current.chain_revision);
-  if (Object.hasOwn(immutableFiles, currentChainPath)) throw executeError('P5_AUTHORITY_INVALID');
-  const installedFiles = Object.freeze(sortFileMap({
-    ...immutableFiles,
-    [currentChainPath]: Buffer.from(currentChainBytes),
-    [CURRENT_CHAIN_BASENAME]: Buffer.from(currentChainBytes)
-  }));
-  const validated = validateCandidateFiles(candidateId, installedFiles, 'P5_CHECKPOINT_INVALID');
-  return Object.freeze({
-    files: installedFiles,
-    candidateId,
-    currentChainSha256: validated.currentChainSha256
-  });
-}
-
-function normalizeCandidateFileMap(files) {
-  if (!isPlainObject(files)) throw executeError('P5_AUTHORITY_INVALID');
-  const names = Reflect.ownKeys(files);
-  if (names.length === 0 || names.some((name) => typeof name !== 'string')) {
-    throw executeError('P5_AUTHORITY_INVALID');
-  }
-  const normalized = {};
-  for (const name of names) {
-    const descriptor = Object.getOwnPropertyDescriptor(files, name);
-    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
-      throw executeError('P5_AUTHORITY_INVALID');
-    }
-    if (!isAllowedImmutablePath(name) || !Buffer.isBuffer(descriptor.value)) {
-      throw executeError('P5_AUTHORITY_INVALID');
-    }
-    normalized[name] = Buffer.from(descriptor.value);
-  }
-  return Object.freeze(sortFileMap(normalized));
-}
-
-function validateCandidateFiles(candidateId, files, code) {
-  try {
-    if (!isPlainObject(files) || !Buffer.isBuffer(files[CURRENT_CHAIN_BASENAME])) {
-      throw executeError(code);
-    }
-    const current = parseCanonicalValidatedJson(files[CURRENT_CHAIN_BASENAME], validateChainManifest);
-    if (current.candidate_id !== candidateId) throw executeError(code);
-    const currentPath = chainPath(current.chain_revision);
-    if (!Buffer.isBuffer(files[currentPath]) || !files[currentPath].equals(files[CURRENT_CHAIN_BASENAME])) {
-      throw executeError(code);
-    }
-
-    const checkpointByHash = new Map();
-    const chainsByRevision = new Map();
-    const directories = new Set();
-    for (const [name, bytes] of Object.entries(files)) {
-      if (!Buffer.isBuffer(bytes)) throw executeError(code);
-      if (name === CURRENT_CHAIN_BASENAME) continue;
-      if (!isAllowedImmutablePath(name)) throw executeError(code);
-      addParentDirectories(directories, name);
-      let match = CHECKPOINT_PATH.exec(name);
-      if (match) {
-        const checkpoint = parseCanonicalValidatedJson(bytes, validateCheckpointPayload);
-        const revision = parseRevision(match[2]);
-        if (
-          checkpoint.candidate_id !== candidateId
-          || checkpoint.layer !== match[1]
-          || checkpoint.revision !== revision
-        ) throw executeError(code);
-        const hash = sha256(bytes);
-        if (checkpointByHash.has(hash)) throw executeError(code);
-        checkpointByHash.set(hash, { checkpoint, name });
-        continue;
-      }
-      match = CHAIN_PATH.exec(name);
-      if (match) {
-        const chain = parseCanonicalValidatedJson(bytes, validateChainManifest);
-        const revision = parseRevision(match[1]);
-        if (chain.candidate_id !== candidateId || chain.chain_revision !== revision) {
-          throw executeError(code);
-        }
-        if (chainsByRevision.has(revision)) throw executeError(code);
-        chainsByRevision.set(revision, { chain, bytes, hash: sha256(bytes), name });
-        continue;
-      }
-      parseCanonicalJson(bytes, code);
-    }
-
-    if (chainsByRevision.size !== current.chain_revision) throw executeError(code);
-    const referencedCheckpointHashes = new Set();
-    for (let revision = 1; revision <= current.chain_revision; revision += 1) {
-      const row = chainsByRevision.get(revision);
-      if (!row) throw executeError(code);
-      if (revision === 1) {
-        if (row.chain.parent_chain_sha256 !== null || row.chain.created_from !== 'initial') {
-          throw executeError(code);
-        }
-      } else {
-        const previous = chainsByRevision.get(revision - 1);
-        if (row.chain.parent_chain_sha256 !== previous.hash || row.chain.created_from !== 'replay') {
-          throw executeError(code);
-        }
-      }
-      for (const checkpointRow of row.chain.checkpoint_hashes) {
-        referencedCheckpointHashes.add(checkpointRow.checkpoint_sha256);
-        const stored = checkpointByHash.get(checkpointRow.checkpoint_sha256);
-        if (!stored || stored.checkpoint.layer !== checkpointRow.layer) throw executeError(code);
-      }
-      const hardQaName = `reviews/chain-${padRevision(revision)}-hard-qa.json`;
-      const reviewName = `reviews/chain-${padRevision(revision)}-review.json`;
-      if (files[hardQaName] && sha256(files[hardQaName]) !== row.chain.hard_qa_sha256) {
-        throw executeError(code);
-      }
-      if (files[reviewName] && sha256(files[reviewName]) !== row.chain.p4_review_sha256) {
-        throw executeError(code);
-      }
-    }
-    if (
-      checkpointByHash.size !== referencedCheckpointHashes.size
-      || [...checkpointByHash.keys()].some((hash) => !referencedCheckpointHashes.has(hash))
-    ) throw executeError(code);
-    for (const name of Object.keys(files)) {
-      const auxiliary = HARD_QA_PATH.exec(name) ?? REVIEW_PATH.exec(name);
-      if (auxiliary && !chainsByRevision.has(parseRevision(auxiliary[1]))) {
-        throw executeError(code);
-      }
-    }
-    const currentStored = chainsByRevision.get(current.chain_revision);
-    if (!currentStored.bytes.equals(files[CURRENT_CHAIN_BASENAME])) throw executeError(code);
-    return Object.freeze({
-      currentChainSha256: currentStored.hash,
-      current,
-      expectedDirectories: Object.freeze([...directories].sort())
-    });
-  } catch {
-    throw executeError(code);
-  }
-}
-
-function normalizeSelectionFiles(files) {
-  if (!isPlainObject(files) || !sameStrings(Reflect.ownKeys(files).sort(), [...SELECTION_PATHS].sort())) {
-    throw executeError('P5_AUTHORITY_INVALID');
-  }
-  const normalized = {};
-  for (const name of SELECTION_PATHS) {
-    const descriptor = Object.getOwnPropertyDescriptor(files, name);
-    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value') || !Buffer.isBuffer(descriptor.value)) {
-      throw executeError('P5_AUTHORITY_INVALID');
-    }
-    normalized[name] = Buffer.from(descriptor.value);
-  }
-  let manifest;
-  try {
-    manifest = parseCanonicalValidatedJson(
-      normalized['manifest.json'],
-      validateExecuteSelectionManifest
-    );
-    parseCanonicalValidatedJson(normalized['selection.json'], validateSelectionRecord);
-  } catch {
-    throw executeError('P5_AUTHORITY_INVALID');
-  }
-  for (const name of SELECTION_BODY_PATHS) {
-    if (manifest.artifact_hashes[name] !== sha256(normalized[name])) {
-      throw executeError('P5_AUTHORITY_INVALID');
-    }
-  }
-  return Object.freeze({
-    files: Object.freeze(normalized),
-    artifactHashes: Object.freeze({
-      'selection.json': manifest.artifact_hashes['selection.json'],
-      'selection-report.md': manifest.artifact_hashes['selection-report.md']
-    })
-  });
 }
 
 async function openAbsoluteRun(ops, absolutePath) {
@@ -627,14 +420,16 @@ async function openExecuteTree(internal, ops, { create }) {
   await assertRunAuthority(internal, ops);
   let rootHandle;
   let candidatesHandle;
+  let rootCreated = false;
+  let candidatesCreated = false;
   try {
-    rootHandle = await openOrCreateOwnedDirectory(
+    ({ handle: rootHandle, created: rootCreated } = await openOrCreateOwnedDirectory(
       internal,
       ops,
       internal.runHandle,
       OUTPUT_BASENAME,
       create
-    );
+    ));
     const rootIdentity = identity(await rootHandle.stat());
     const topEntries = await ops.readdir(descriptorPath(rootHandle));
     const allowed = new Set([
@@ -662,13 +457,13 @@ async function openExecuteTree(internal, ops, { create }) {
       }
       selection = { files: Object.freeze(selectionFiles), identities: Object.freeze(identities) };
     }
-    candidatesHandle = await openOrCreateOwnedDirectory(
+    ({ handle: candidatesHandle, created: candidatesCreated } = await openOrCreateOwnedDirectory(
       internal,
       ops,
       rootHandle,
       CANDIDATES_BASENAME,
       create
-    );
+    ));
     const candidatesIdentity = identity(await candidatesHandle.stat());
     const candidateEntries = await ops.readdir(descriptorPath(candidatesHandle));
     if (candidateEntries.some((name) => !CANDIDATE_IDS.includes(name) && !isGeneratedBasename(name))) {
@@ -679,11 +474,35 @@ async function openExecuteTree(internal, ops, { create }) {
       rootIdentity,
       candidatesHandle,
       candidatesIdentity,
-      selection
+      selection,
+      rootCreated,
+      candidatesCreated
     };
     await assertTreeAuthority(internal, ops, tree);
     return tree;
   } catch (error) {
+    if (create) {
+      try {
+        if (candidatesCreated && candidatesHandle && rootHandle) {
+          const entries = await ops.readdir(descriptorPath(candidatesHandle));
+          if (entries.length === 0) {
+            await closeHandle(candidatesHandle);
+            candidatesHandle = undefined;
+            await ops.rmdir(descriptorEntryPath(rootHandle, CANDIDATES_BASENAME));
+          }
+        }
+        if (rootCreated && rootHandle) {
+          const entries = await ops.readdir(descriptorPath(rootHandle));
+          if (entries.length === 0) {
+            await closeHandle(rootHandle);
+            rootHandle = undefined;
+            await ops.rmdir(descriptorEntryPath(internal.runHandle, OUTPUT_BASENAME));
+          }
+        }
+      } catch {
+        // Preserve anything that cannot be verified empty and owned.
+      }
+    }
     await closeHandles([candidatesHandle, rootHandle]);
     if (!create && isMissingError(error)) throw executeError('P5_AUTHORITY_INVALID');
     throw publicError(error, 'P5_OUTPUT_OWNERSHIP');
@@ -694,13 +513,13 @@ async function openOrCreateOwnedDirectory(internal, ops, parentHandle, basename,
   const target = descriptorEntryPath(parentHandle, basename);
   try {
     await ops.lstat(target);
-    return await openDirectoryEntry(
+    return { handle: await openDirectoryEntry(
       ops,
       parentHandle,
       basename,
       create ? 'P5_INSTALL_FAILED' : 'P5_AUTHORITY_INVALID',
       'P5_OUTPUT_OWNERSHIP'
-    );
+    ), created: false };
   } catch (error) {
     if (!create || !isMissingError(error)) throw error;
   }
@@ -721,11 +540,58 @@ async function openOrCreateOwnedDirectory(internal, ops, parentHandle, basename,
       'P5_OUTPUT_OWNERSHIP'
     );
     await syncBareDirectory(internal, ops, parentHandle);
-    return handle;
+    return { handle, created: true };
   } catch (error) {
     await closeHandle(handle);
     throw error;
   }
+}
+
+async function rollbackCreatedExecuteTree(internal, ops, tree) {
+  await assertRunAuthority(internal, ops);
+  if (tree.candidatesCreated) {
+    const stat = await tree.candidatesHandle.stat();
+    const entries = await ops.readdir(descriptorPath(tree.candidatesHandle));
+    if (
+      !stat.isDirectory()
+      || !sameIdentity(identity(stat), tree.candidatesIdentity)
+      || entries.length !== 0
+    ) throw executeError('P5_INSTALL_FAILED');
+    await assertNamedDirectoryIdentity(
+      tree.rootHandle,
+      ops,
+      CANDIDATES_BASENAME,
+      tree.candidatesIdentity,
+      'P5_INSTALL_FAILED'
+    );
+    await closeHandle(tree.candidatesHandle);
+    tree.candidatesHandle = undefined;
+    await ops.rmdir(descriptorEntryPath(tree.rootHandle, CANDIDATES_BASENAME));
+    await tree.rootHandle.sync();
+    tree.candidatesCreated = false;
+  }
+  if (tree.rootCreated) {
+    const stat = await tree.rootHandle.stat();
+    const entries = await ops.readdir(descriptorPath(tree.rootHandle));
+    if (
+      !stat.isDirectory()
+      || !sameIdentity(identity(stat), tree.rootIdentity)
+      || entries.length !== 0
+    ) throw executeError('P5_INSTALL_FAILED');
+    await assertNamedDirectoryIdentity(
+      internal.runHandle,
+      ops,
+      OUTPUT_BASENAME,
+      tree.rootIdentity,
+      'P5_INSTALL_FAILED'
+    );
+    await closeHandle(tree.rootHandle);
+    tree.rootHandle = undefined;
+    await ops.rmdir(descriptorEntryPath(internal.runHandle, OUTPUT_BASENAME));
+    await internal.runHandle.sync();
+    tree.rootCreated = false;
+  }
+  await assertRunAuthority(internal, ops);
 }
 
 async function assertTreeAuthority(internal, ops, tree) {
@@ -1072,32 +938,77 @@ async function removeVerifiedDirectory(
     }
 
     const rootHandle = await ops.open(descriptorEntryPath(parentHandle, basename), DIRECTORY_FLAGS);
+    const nodes = new Map();
     try {
-      for (const name of actualNames.sort((left, right) => right.length - left.length)) {
+      nodes.set('', {
+        handle: rootHandle,
+        identity: expectedIdentity,
+        parent: null,
+        basename
+      });
+      for (const relative of [...directory.directories].sort((left, right) => (
+        pathDepth(left) - pathDepth(right) || left.localeCompare(right)
+      ))) {
+        const parentRelative = path.posix.dirname(relative) === '.' ? '' : path.posix.dirname(relative);
+        const parent = nodes.get(parentRelative);
+        const childBasename = path.posix.basename(relative);
+        await assertRetainedNodeChain(ops, parentHandle, basename, nodes, parentRelative);
+        const child = await openDirectoryEntry(
+          ops,
+          parent.handle,
+          childBasename,
+          'P5_INSTALL_FAILED',
+          'P5_INSTALL_FAILED'
+        );
+        const childIdentity = identity(await child.stat());
+        if (!sameIdentity(childIdentity, directory.identities[relative])) {
+          await closeHandle(child);
+          throw executeError('P5_INSTALL_FAILED');
+        }
+        nodes.set(relative, {
+          handle: child,
+          identity: childIdentity,
+          parent: parentRelative,
+          basename: childBasename
+        });
+      }
+      for (const name of actualNames.sort()) {
         await assertTreeAuthority(internal, ops, tree);
-        await assertNamedDirectoryIdentity(parentHandle, ops, basename, expectedIdentity, 'P5_INSTALL_FAILED');
-        const stat = await ops.lstat(descriptorEntryPath(rootHandle, name));
+        const parentRelative = path.posix.dirname(name) === '.' ? '' : path.posix.dirname(name);
+        const parent = nodes.get(parentRelative);
+        const childBasename = path.posix.basename(name);
+        await assertRetainedNodeChain(ops, parentHandle, basename, nodes, parentRelative);
+        const stat = await ops.lstat(descriptorEntryPath(parent.handle, childBasename));
         const expectedEntryIdentity = directory.identities[name];
         if (stat.isSymbolicLink() || !stat.isFile() || !sameIdentity(identity(stat), expectedEntryIdentity)) {
           throw executeError('P5_INSTALL_FAILED');
         }
         if (verifyBytes) {
-          const read = await readRegularPath(ops, rootHandle, name, 'P5_INSTALL_FAILED');
+          const read = await readRegularFile(ops, parent.handle, childBasename, 'P5_INSTALL_FAILED');
           if (!read.bytes.equals(expectedFiles[name])) throw executeError('P5_INSTALL_FAILED');
         }
-        await ops.unlink(descriptorEntryPath(rootHandle, name));
+        await assertRetainedNodeChain(ops, parentHandle, basename, nodes, parentRelative);
+        await ops.unlink(descriptorEntryPath(parent.handle, childBasename));
       }
-      for (const name of [...directory.directories].sort((left, right) => right.length - left.length)) {
-        const stat = await ops.lstat(descriptorEntryPath(rootHandle, name));
-        if (
-          stat.isSymbolicLink()
-          || !stat.isDirectory()
-          || !sameIdentity(identity(stat), directory.identities[name])
-        ) throw executeError('P5_INSTALL_FAILED');
-        await ops.rmdir(descriptorEntryPath(rootHandle, name));
+      for (const relative of [...directory.directories].sort((left, right) => (
+        pathDepth(right) - pathDepth(left) || right.localeCompare(left)
+      ))) {
+        const node = nodes.get(relative);
+        const parent = nodes.get(node.parent);
+        await assertRetainedNodeChain(ops, parentHandle, basename, nodes, relative);
+        if ((await ops.readdir(descriptorPath(node.handle))).length !== 0) {
+          throw executeError('P5_INSTALL_FAILED');
+        }
+        await closeHandle(node.handle);
+        nodes.delete(relative);
+        const stat = await ops.lstat(descriptorEntryPath(parent.handle, node.basename));
+        if (stat.isSymbolicLink() || !stat.isDirectory() || !sameIdentity(identity(stat), node.identity)) {
+          throw executeError('P5_INSTALL_FAILED');
+        }
+        await ops.rmdir(descriptorEntryPath(parent.handle, node.basename));
       }
     } finally {
-      await closeHandle(rootHandle);
+      await closeHandles([...nodes.values()].map((node) => node.handle));
     }
     await assertTreeAuthority(internal, ops, tree);
     await assertNamedDirectoryIdentity(parentHandle, ops, basename, expectedIdentity, 'P5_INSTALL_FAILED');
@@ -1106,6 +1017,41 @@ async function removeVerifiedDirectory(
     if (allowMissing && isMissingError(error)) return;
     throw publicError(error, 'P5_INSTALL_FAILED');
   }
+}
+
+async function assertRetainedNodeChain(ops, rootParentHandle, rootBasename, nodes, relative) {
+  const root = nodes.get('');
+  await assertNamedDirectoryIdentity(
+    rootParentHandle,
+    ops,
+    rootBasename,
+    root.identity,
+    'P5_INSTALL_FAILED'
+  );
+  if (!relative) return;
+  let current = '';
+  for (const component of relative.split('/')) {
+    const next = current ? `${current}/${component}` : component;
+    const parent = nodes.get(current);
+    const node = nodes.get(next);
+    if (!parent || !node) throw executeError('P5_INSTALL_FAILED');
+    await assertNamedDirectoryIdentity(
+      parent.handle,
+      ops,
+      component,
+      node.identity,
+      'P5_INSTALL_FAILED'
+    );
+    const opened = await node.handle.stat();
+    if (!opened.isDirectory() || !sameIdentity(identity(opened), node.identity)) {
+      throw executeError('P5_INSTALL_FAILED');
+    }
+    current = next;
+  }
+}
+
+function pathDepth(value) {
+  return value === '' ? 0 : value.split('/').length;
 }
 
 async function rollbackCandidateBackup(internal, ops, tree, backupName, candidateId, existing) {
@@ -1148,149 +1094,28 @@ async function renameExpectedDirectoryNoReplace(
   destinationName,
   expectedIdentity
 ) {
-  await assertTreeAuthority(internal, ops, tree);
-  await assertNamedDirectoryIdentity(
-    parentHandle,
+  await moveIdentityNoReplace({
     ops,
+    sourceHandle: parentHandle,
     sourceName,
+    destinationHandle: parentHandle,
+    destinationName,
     expectedIdentity,
-    'P5_INSTALL_FAILED'
-  );
-  try {
-    await assertTreeAuthority(internal, ops, tree);
-    await ops.renameNoReplace(parentHandle, sourceName, destinationName);
-  } catch (error) {
-    throw publicError(error, 'P5_INSTALL_FAILED');
-  }
-  let destinationStat;
-  let sourceExists;
-  try {
-    destinationStat = await ops.lstat(descriptorEntryPath(parentHandle, destinationName));
-    sourceExists = await entryExists(ops, descriptorEntryPath(parentHandle, sourceName));
-  } catch (error) {
-    throw publicError(error, 'P5_INSTALL_FAILED');
-  }
-  if (
-    destinationStat.isDirectory()
-    && !destinationStat.isSymbolicLink()
-    && sameIdentity(identity(destinationStat), expectedIdentity)
-    && !sourceExists
-  ) return;
-  if (!sourceExists) {
-    await restoreUnexpectedRename(
-      internal,
-      ops,
-      tree,
-      parentHandle,
-      destinationName,
-      sourceName,
-      identity(destinationStat)
-    );
-  }
-  throw executeError('P5_INSTALL_FAILED');
-}
-
-async function restoreUnexpectedRename(
-  internal,
-  ops,
-  tree,
-  parentHandle,
-  sourceName,
-  destinationName,
-  movedIdentity
-) {
-  await assertTreeAuthority(internal, ops, tree);
-  const before = await ops.lstat(descriptorEntryPath(parentHandle, sourceName));
-  if (!sameIdentity(identity(before), movedIdentity)) throw executeError('P5_INSTALL_FAILED');
-  await ops.renameNoReplace(parentHandle, sourceName, destinationName);
-  const restored = await ops.lstat(descriptorEntryPath(parentHandle, destinationName));
-  if (
-    !sameIdentity(identity(restored), movedIdentity)
-    || await entryExists(ops, descriptorEntryPath(parentHandle, sourceName))
-  ) throw executeError('P5_INSTALL_FAILED');
-}
-
-async function installSelectionFiles(internal, ops, tree, files, existing) {
-  const stageName = nextTemporaryBasename(STAGE_PREFIX);
-  let stageHandle;
-  const installed = [];
-  const backups = new Map();
-  try {
-    await assertTreeAuthority(internal, ops, tree);
-    await ops.mkdir(descriptorEntryPath(tree.rootHandle, stageName), { recursive: false, mode: 0o700 });
-    stageHandle = await openDirectoryEntry(
-      ops,
-      tree.rootHandle,
-      stageName,
-      'P5_INSTALL_FAILED',
-      'P5_INSTALL_FAILED'
-    );
-    for (const name of SELECTION_PATHS) {
-      let handle;
-      try {
-        handle = await ops.open(descriptorEntryPath(stageHandle, name), WRITE_FLAGS, 0o600);
-        await handle.writeFile(files[name]);
-        await handle.sync();
-        await handle.chmod(0o400);
-        await handle.sync();
-      } finally {
-        await closeHandle(handle);
-      }
-    }
-    await stageHandle.sync();
-
-    if (existing) {
-      for (const name of ['manifest.json', 'selection.json', 'selection-report.md']) {
-        const backup = nextTemporaryBasename(`${BACKUP_PREFIX}${name}-`);
-        await ops.renameNoReplace(tree.rootHandle, name, backup);
-        backups.set(name, backup);
-      }
-    }
-    for (const name of ['selection.json', 'selection-report.md', 'manifest.json']) {
-      await ops.renameNoReplaceBetween(stageHandle, name, tree.rootHandle, name);
-      installed.push(name);
-    }
-    await closeHandle(stageHandle);
-    stageHandle = undefined;
-    await ops.rmdir(descriptorEntryPath(tree.rootHandle, stageName));
-    await assertTreeAuthority(internal, ops, tree);
-    await tree.rootHandle.sync();
-    await assertTreeAuthority(internal, ops, tree);
-    for (const backup of backups.values()) await ops.unlink(descriptorEntryPath(tree.rootHandle, backup));
-  } catch (error) {
-    for (const name of installed.reverse()) {
-      try {
-        const current = await readRegularFile(ops, tree.rootHandle, name, 'P5_INSTALL_FAILED');
-        if (current.bytes.equals(files[name])) await ops.unlink(descriptorEntryPath(tree.rootHandle, name));
-      } catch {
-        // A path that cannot be verified is never removed.
-      }
-    }
-    for (const [name, backup] of [...backups.entries()].reverse()) {
-      try {
-        if (!await entryExists(ops, descriptorEntryPath(tree.rootHandle, name))) {
-          await ops.renameNoReplace(tree.rootHandle, backup, name);
-        }
-      } catch {
-        throw executeError('P5_INSTALL_FAILED');
-      }
-    }
-    if (stageHandle) {
-      try {
-        for (const name of await ops.readdir(descriptorPath(stageHandle))) {
-          await ops.unlink(descriptorEntryPath(stageHandle, name));
-        }
-        await closeHandle(stageHandle);
-        stageHandle = undefined;
-        await ops.rmdir(descriptorEntryPath(tree.rootHandle, stageName));
-      } catch {
-        // Preserve anything that cannot be positively identified as this stage.
-      }
-    }
-    throw publicError(error, 'P5_INSTALL_FAILED');
-  } finally {
-    await closeHandle(stageHandle);
-  }
+    expectedKind: 'directory',
+    moveForward: () => ops.renameNoReplace(parentHandle, sourceName, destinationName),
+    moveReverse: () => ops.renameNoReplace(parentHandle, destinationName, sourceName),
+    beforeMove: async () => {
+      await assertTreeAuthority(internal, ops, tree);
+      await assertNamedDirectoryIdentity(
+        parentHandle,
+        ops,
+        sourceName,
+        expectedIdentity,
+        'P5_INSTALL_FAILED'
+      );
+    },
+    afterMove: () => assertTreeAuthority(internal, ops, tree)
+  });
 }
 
 async function readRegularFile(ops, directoryHandle, basename, fallbackCode) {
@@ -1372,87 +1197,6 @@ async function syncBareDirectory(internal, ops, handle) {
   await assertRunAuthority(internal, ops);
 }
 
-function assertImmutableHistory(existingFiles, incomingFiles) {
-  for (const [name, bytes] of Object.entries(existingFiles)) {
-    if (name === CURRENT_CHAIN_BASENAME) continue;
-    if (!incomingFiles[name] || !incomingFiles[name].equals(bytes)) {
-      throw executeError('P5_OUTPUT_OWNERSHIP');
-    }
-  }
-}
-
-function parseCanonicalValidatedJson(bytes, validator) {
-  const value = parseCanonicalJson(bytes, 'P5_CHECKPOINT_INVALID');
-  const validated = validator(value);
-  if (!Buffer.from(stableJson(validated), 'utf8').equals(bytes)) {
-    throw executeError('P5_CHECKPOINT_INVALID');
-  }
-  return validated;
-}
-
-function parseCanonicalJson(bytes, code) {
-  try {
-    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    const value = JSON.parse(decoded);
-    if (!isPlainObject(value) || !Buffer.from(stableJson(value), 'utf8').equals(bytes)) {
-      throw executeError(code);
-    }
-    return value;
-  } catch {
-    throw executeError(code);
-  }
-}
-
-function isAllowedImmutablePath(value) {
-  return typeof value === 'string'
-    && !UNSAFE_PATH_CHARACTER.test(value)
-    && (
-      CHECKPOINT_PATH.test(value)
-      || CHAIN_PATH.test(value)
-      || HARD_QA_PATH.test(value)
-      || REVIEW_PATH.test(value)
-      || REPAIR_PATH.test(value)
-      || FAILURE_PATH.test(value)
-    );
-}
-
-function expectedDirectoriesFor(files) {
-  const directories = new Set();
-  for (const name of Object.keys(files)) addParentDirectories(directories, name);
-  return [...directories].sort();
-}
-
-function addParentDirectories(output, filename) {
-  let parent = path.posix.dirname(filename);
-  while (parent !== '.') {
-    output.add(parent);
-    parent = path.posix.dirname(parent);
-  }
-}
-
-function chainPath(revision) {
-  return `chains/chain-${padRevision(revision)}.json`;
-}
-
-function padRevision(revision) {
-  if (!Number.isInteger(revision) || revision < 1 || revision > 9999) {
-    throw executeError('P5_CHECKPOINT_INVALID');
-  }
-  return String(revision).padStart(4, '0');
-}
-
-function parseRevision(value) {
-  const revision = Number(value);
-  if (!Number.isInteger(revision) || revision < 1 || revision > 9999) {
-    throw executeError('P5_CHECKPOINT_INVALID');
-  }
-  return revision;
-}
-
-function assertCandidateId(candidateId) {
-  if (!CANDIDATE_IDS.includes(candidateId)) throw executeError('P5_AUTHORITY_INVALID');
-}
-
 function frozenInstallResult(status, candidateId, currentChainSha256) {
   return Object.freeze({
     status,
@@ -1482,30 +1226,6 @@ function isGeneratedBasename(value) {
   return typeof value === 'string'
     && (value.startsWith(STAGE_PREFIX) || value.startsWith(BACKUP_PREFIX))
     && isPlainBasename(value);
-}
-
-function isPlainObject(value) {
-  return value !== null
-    && typeof value === 'object'
-    && !Array.isArray(value)
-    && Object.getPrototypeOf(value) === Object.prototype;
-}
-
-function cloneFileMap(files) {
-  return Object.freeze(Object.fromEntries(
-    Object.entries(files).map(([name, bytes]) => [name, Buffer.from(bytes)])
-  ));
-}
-
-function sortFileMap(files) {
-  return Object.fromEntries(Object.entries(files).sort(([left], [right]) => left.localeCompare(right)));
-}
-
-function sameFileMap(left, right) {
-  const leftNames = Object.keys(left).sort();
-  const rightNames = Object.keys(right).sort();
-  return sameStrings(leftNames, rightNames)
-    && leftNames.every((name) => left[name].equals(right[name]));
 }
 
 function sameStrings(left, right) {
