@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,6 +13,8 @@ import { buildFrozenGeneratorContext, prepareConstructionDesign } from '../src/c
 import { compilePreparedConstruction } from '../src/construction/workflow.js';
 import { buildDeterministicShadowReview } from '../src/playbook/shadow/runShadowReview.js';
 import { CandidateSelectionAgent } from '../src/construction/agents/candidateSelectionAgent.js';
+import { replayCandidate } from '../src/playbook/execute/replay.js';
+import { stableJson } from '../src/playbook/shadow/canonical.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const FIXTURES = path.join(ROOT, 'test/fixtures/playbook-execute');
@@ -39,15 +42,16 @@ test('P5 dependency gate denies forbidden, dynamic, computed, unresolved, and sy
       const root = await fs.mkdtemp(path.join(os.tmpdir(), `p5-dependency-${kind}-`));
       t.after(() => fs.rm(root, { recursive: true, force: true }));
       const entry = path.join(root, 'src/playbook/execute/entry.js');
-      const forbidden = path.join(root, 'src/playbook/p6/visual.js');
+      const forbidden = path.join(root, 'src/construction/agents/visualScoringAgent.js');
       await fs.mkdir(path.dirname(entry), { recursive: true });
       await fs.mkdir(path.dirname(forbidden), { recursive: true });
       await fs.writeFile(path.join(root, 'src/playbook/execute/eligibility.js'), 'export const eligibility = true;\n');
       await fs.writeFile(forbidden, 'export const forbidden = true;\n');
-      if (kind === 'direct') await fs.writeFile(entry, "import '../p6/visual.js';\n");
-      if (kind === 'dynamic') await fs.writeFile(entry, "await import('../p6/visual.js');\n");
-      if (kind === 'computed') await fs.writeFile(entry, "const target = '../p6/visual.js'; await import(target);\n");
-      if (kind === 'create-require') await fs.writeFile(entry, "import { createRequire } from 'node:module'; const load = createRequire(import.meta.url); load('../p6/visual.js');\n");
+      const specifier = '../../construction/agents/visualScoringAgent.js';
+      if (kind === 'direct') await fs.writeFile(entry, `import '${specifier}';\n`);
+      if (kind === 'dynamic') await fs.writeFile(entry, `await import('${specifier}');\n`);
+      if (kind === 'computed') await fs.writeFile(entry, `const target = '${specifier}'; await import(target);\n`);
+      if (kind === 'create-require') await fs.writeFile(entry, `import { createRequire } from 'node:module'; const load = createRequire(import.meta.url); load('${specifier}');\n`);
       if (kind === 'unresolved') await fs.writeFile(entry, "import './missing.js';\n");
       if (kind === 'symlink') {
         await fs.symlink(forbidden, path.join(root, 'src/playbook/execute/escape.js'));
@@ -79,123 +83,157 @@ test('P5 dependency gate rejects every reserved visual and P6 namespace', async 
   }
 });
 
-test('checked-in mock acceptance inputs drive byte-stable positive execution with three five-layer trees', async (t) => {
+test('P5 dependency gate closes repository-wide P6 and visual scoring paths with exact legacy exceptions', async (t) => {
+  for (const target of [
+    'src/p6/visual.js',
+    'src/construction/agents/visualScoringAgent.js',
+    'src/evaluation/fixedViewScorer.js',
+    'src/tools/screenshotCamera.js',
+    'src/selection/blindSelection.js',
+    'src/preferences/humanPreferenceModel.js',
+    'src/construction/agents/candidateSelectionAgentV2.js',
+    'src/construction/agents/visualizationAgentV2.js'
+  ]) {
+    await t.test(`reject ${target}`, async (t) => {
+      const root = await dependencyRoot(t);
+      await writeFixture(root, target, 'export const forbidden = true;\n');
+      await writeFixture(root, 'src/playbook/execute/entry.js', `import '${relativeImport('src/playbook/execute/entry.js', target)}';\n`);
+      const audit = await auditExecuteDependencyBoundary({ projectRoot: root });
+      assert.equal(audit.import_boundary_violation_count, 1);
+      assert.equal(audit.import_boundary_unresolved_count, 0);
+    });
+  }
+  await t.test('allow exact existing ranker and HTML preview only outside eligibility', async (t) => {
+    const root = await dependencyRoot(t);
+    await writeFixture(root, 'src/construction/agents/candidateSelectionAgent.js', 'export const ranker = true;\n');
+    await writeFixture(root, 'src/construction/agents/visualizationAgent.js', 'export const preview = true;\n');
+    await writeFixture(root, 'src/playbook/execute/entry.js', [
+      "import '../../construction/agents/candidateSelectionAgent.js';",
+      "import '../../construction/agents/visualizationAgent.js';",
+      ''
+    ].join('\n'));
+    const audit = await auditExecuteDependencyBoundary({ projectRoot: root });
+    assert.equal(audit.import_boundary_violation_count, 0);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
+    assert.equal(audit.eligibility_authority_violation_count, 0);
+  });
+});
+
+test('positive acceptance fixture produces exactly three eligible zero-repair five-layer candidates', async (t) => {
   const fixture = JSON.parse(await fs.readFile(path.join(FIXTURES, 'medieval-positive.json')));
   assert.deepEqual(Object.keys(fixture), ['schema_version', 'prompt', 'seed', 'expected_candidate_count', 'expected_checkpoint_layers']);
-  const outRoots = await Promise.all([0, 1].map(() => fs.mkdtemp(path.join(os.tmpdir(), 'p5-accept-positive-'))));
-  t.after(() => Promise.all(outRoots.map((root) => fs.rm(root, { recursive: true, force: true }))));
-  const results = [];
-  for (const outRoot of outRoots) results.push(await runPipeline({ prompt: fixture.prompt, seed: fixture.seed, mode: 'mock', playbook: 'execute', outRoot }));
-  for (const result of results) {
-    assert.equal(result.playbookExecution.candidate_count, fixture.expected_candidate_count);
-    assert.equal(result.playbookExecution.candidates.filter((row) => row.eligibility.status === 'eligible').length > 0, true);
-    for (const row of result.playbookExecution.candidates) {
-      const candidateRoot = path.join(result.outputDir, 'playbook-execute/candidates', row.candidate_id);
-      const chain = JSON.parse(await fs.readFile(path.join(candidateRoot, 'current-chain.json')));
-      assert.equal(chain.checkpoint_hashes.length, 5);
-      assert.deepEqual(chain.checkpoint_hashes.map((item) => item.layer), fixture.expected_checkpoint_layers);
-      if (row.eligibility.status === 'eligible') {
-        assert.equal(row.eligibility.hard_qa_ok, true);
-        assert.deepEqual(row.eligibility.unresolved_violated_core_rule_ids, []);
-      }
-    }
+  const roots = await acceptanceRoots(t, 'p5-accept-positive-');
+  const observed = { ranked: [], replays: [] };
+  const result = await runExecutablePlaybookPipeline(executeOptions(fixture, roots.outRoot, roots.worldRoot),
+    scenarioDependencies({ scenario: 'positive', observed }));
+  assert.equal(result.playbookExecution.candidate_count, fixture.expected_candidate_count);
+  assert.deepEqual(result.playbookExecution.candidates.map((row) => row.eligibility.status), ['eligible', 'eligible', 'eligible']);
+  assert.deepEqual(result.playbookExecution.candidates.map((row) => row.repair_attempt_count), [0, 0, 0]);
+  assert.deepEqual(observed.ranked, ['candidate-01', 'candidate-02', 'candidate-03']);
+  assert.deepEqual(observed.replays, []);
+  assert.equal(observed.installCount, 1);
+  for (const row of result.playbookExecution.candidates) {
+    assert.equal(row.eligibility.hard_qa_ok, true);
+    assert.deepEqual(row.eligibility.unresolved_violated_core_rule_ids, []);
+    const chain = JSON.parse(await fs.readFile(path.join(result.outputDir, 'playbook-execute/candidates', row.candidate_id, 'current-chain.json')));
+    assert.equal(chain.chain_revision, 1);
+    assert.deepEqual(chain.checkpoint_hashes.map((item) => item.layer), fixture.expected_checkpoint_layers);
   }
-  for (const id of ['candidate-01', 'candidate-02', 'candidate-03']) {
-    const chainBytes = await Promise.all(results.map((result) => fs.readFile(path.join(result.outputDir, 'playbook-execute/candidates', id, 'current-chain.json'))));
-    assert.deepEqual(chainBytes[1], chainBytes[0]);
-  }
-  assert.equal(results[0].llmUsage?.calls ?? 0, 0);
+  await roots.assertPreexistingUnchanged();
 });
 
-test('repairable mock fixture performs one exact massing replay and ranks only eligible rows', async (t) => {
+test('repairable acceptance fixture is provider-free and byte-identical across exact massing replays', async (t) => {
   const repairable = JSON.parse(await fs.readFile(path.join(FIXTURES, 'medieval-repairable.json')));
-  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-accept-repair-'));
-  t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
-  let rankedIds;
-  const volumes = repairable.initial_massing.volumes.map((row) => ({ ...row, shape: 'box' }));
-  const result = await runExecutablePlaybookPipeline({ playbook: 'execute', prompt: repairable.prompt,
-    mode: 'mock', outRoot, cwd: ROOT, seed: repairable.seed, critics: true }, {
-    createClient: () => { throw new Error('replay/provider client forbidden'); },
-    createEnvelope: async (input) => {
-      const envelope = structuredClone(await createFrozenDesignEnvelope(input));
-      if (input.candidateId !== 'candidate-01') envelope.repair_variant_preferences[0].variant_id = repairable.variant_id;
-      return envelope;
-    },
-    prepareDesign: async (input) => {
-      const prepared = await prepareConstructionDesign(input);
-      if (input.candidateId !== 'candidate-01') {
-        prepared.architecture = structuredClone(prepared.architecture);
-        prepared.architecture.volumes = structuredClone(volumes);
-        prepared.frozen_generator_context = buildFrozenGeneratorContext({ ...prepared.frozen_generator_context, architecture: prepared.architecture });
-      }
-      return prepared;
-    },
-    buildReview: async (input) => {
-      const review = structuredClone(await buildDeterministicShadowReview(input));
-      const index = review.input.seed === 1432164 ? 1 : review.input.seed === 1440083 ? 2 : 3;
-      if (index === 1) for (const row of review.assessments.slice(0, 15).filter((item) => item.status === 'violated')) satisfy(row);
-      else {
-        for (const row of review.assessments.slice(1, 15).filter((item) => item.status === 'violated')) satisfy(row);
-        violateHierarchy(review.assessments[2]);
-      }
-      refreshReview(review);
-      return review;
-    },
-    compilePrepared: async (input) => {
-      const compiled = await compilePreparedConstruction(input);
-      if (input.prepared.seed === 1448002 && input.outputDir.includes('p5-replay-candidate-03-')) {
-        compiled.blueprint.architecture.volumes = structuredClone(volumes);
-        await fs.writeFile(compiled.artifacts.blueprint, `${JSON.stringify(compiled.blueprint, null, 2)}\n`);
-      }
-      return compiled;
-    },
-    createSelectionAgent: () => ({ run(candidates, options) {
-      rankedIds = candidates.map((row) => row.id);
-      return new CandidateSelectionAgent().run(candidates, options);
-    } })
-  });
-  assert.deepEqual(result.playbookExecution.candidates.map((row) => row.repair_attempt_count), repairable.expected_attempt_counts);
-  assert.deepEqual(result.playbookExecution.candidates.map((row) => row.eligibility.status), repairable.expected_statuses);
-  assert.deepEqual(rankedIds, repairable.expected_ranked_candidate_ids);
-  const repairedRoot = path.join(result.outputDir, 'playbook-execute/candidates/candidate-02');
-  const initial = JSON.parse(await fs.readFile(path.join(repairedRoot, 'chains/chain-0001.json')));
-  const replayed = JSON.parse(await fs.readFile(path.join(repairedRoot, 'current-chain.json')));
-  assert.equal(replayed.chain_revision, 2);
-  assert.equal(replayed.eligibility.status, 'eligible');
-  assert.equal(replayed.eligibility.repair_budget_used, 1);
-  assert.equal(replayed.checkpoint_hashes[0].checkpoint_sha256, initial.checkpoint_hashes[0].checkpoint_sha256);
-  assert.deepEqual(replayed.checkpoint_hashes.slice(1).map((row) => row.layer), ['massing', 'structure', 'roof', 'facade']);
-  assert.equal(replayed.checkpoint_hashes.slice(1).every((row, index) => row.checkpoint_sha256 !== initial.checkpoint_hashes[index + 1].checkpoint_sha256), true);
-  const checkpointRevisions = await Promise.all(['brief/r0001.json', 'massing/r0002.json', 'structure/r0002.json', 'roof/r0002.json', 'facade/r0002.json']
-    .map((relative) => fs.readFile(path.join(repairedRoot, 'checkpoints', relative)).then(JSON.parse)));
-  assert.deepEqual(checkpointRevisions.map((checkpoint) => checkpoint.revision), [1, 2, 2, 2, 2]);
-  assert.equal(checkpointRevisions[0].replay_origin, null);
-  assert.equal(checkpointRevisions.slice(1).every((checkpoint) => checkpoint.replay_origin.base_chain_sha256 === replayed.parent_chain_sha256), true);
-  assert.deepEqual((await fs.readdir(path.join(repairedRoot, 'repairs'))).sort(),
-    ['attempt-01-patch.json', 'attempt-01-request.json', 'attempt-01-result.json']);
+  const runs = [];
+  for (let index = 0; index < 2; index += 1) {
+    const roots = await acceptanceRoots(t, `p5-accept-repair-${index}-`);
+    const observed = { ranked: [], replays: [], providerCalls: 0 };
+    const result = await runExecutablePlaybookPipeline(executeOptions(repairable, roots.outRoot, roots.worldRoot),
+      scenarioDependencies({ scenario: 'repairable', fixture: repairable, observed }));
+    await roots.assertPreexistingUnchanged();
+    runs.push({ result, observed, evidence: await repairedEvidence(result, observed) });
+  }
+  for (const { result, observed, evidence } of runs) {
+    assert.deepEqual(result.playbookExecution.candidates.map((row) => row.repair_attempt_count), repairable.expected_attempt_counts);
+    assert.deepEqual(result.playbookExecution.candidates.map((row) => row.eligibility.status), repairable.expected_statuses);
+    assert.deepEqual(observed.ranked, repairable.expected_ranked_candidate_ids);
+    assert.equal(observed.providerCalls, 0);
+    assert.equal(observed.installCount, 1);
+    for (const candidateId of observed.ranked) {
+      const ranked = result.playbookExecution.candidates.find((row) => row.candidate_id === candidateId);
+      assert.equal(ranked.eligibility.hard_qa_ok, true);
+      assert.deepEqual(ranked.eligibility.unresolved_violated_core_rule_ids, []);
+    }
+    assert.deepEqual(observed.replays.map((row) => row.candidate_id), ['candidate-02', 'candidate-03']);
+    assert.equal(evidence.chain.chain_revision, 2);
+    assert.equal(evidence.chain.eligibility.status, 'eligible');
+    assert.equal(evidence.chain.eligibility.repair_budget_used, 1);
+    assert.equal(evidence.chain.checkpoint_hashes[0].checkpoint_sha256, evidence.initial.checkpoint_hashes[0].checkpoint_sha256);
+    assert.equal(evidence.chain.checkpoint_hashes.slice(1).every((row, index) => row.checkpoint_sha256 !== evidence.initial.checkpoint_hashes[index + 1].checkpoint_sha256), true);
+    assert.deepEqual(evidence.revisions, [1, 2, 2, 2, 2]);
+    assert.deepEqual(evidence.replayOrigins, [null, 'massing', 'structure', 'roof', 'facade']);
+    assert.equal(evidence.chain.blueprint_sha256, evidence.blueprintSha256);
+    assert.deepEqual(evidence.persistedArtifactHashes, evidence.regeneratedArtifactHashes);
+  }
+  assert.deepEqual(runs[1].evidence.deterministicBytes, runs[0].evidence.deterministicBytes);
 });
 
-test('no-eligible mock fixture preserves three sanitized trees and installs nothing', async (t) => {
+test('no-eligible acceptance fixture exhausts one real repair for every unresolved candidate', async (t) => {
   const noEligible = JSON.parse(await fs.readFile(path.join(FIXTURES, 'medieval-no-eligible.json')));
-  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-accept-no-eligible-'));
-  t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
-  let installCount = 0;
-  await assert.rejects(runExecutablePlaybookPipeline({ playbook: 'execute', prompt: noEligible.prompt,
-    mode: 'mock', outRoot, cwd: ROOT, seed: noEligible.seed }, {
-    createEnvelope: async () => { throw new Error('private provider bytes /outside/secret'); },
-    installSelected: async () => { installCount += 1; }
-  }), { code: 'P5_NO_ELIGIBLE_CANDIDATE', message: 'P5_NO_ELIGIBLE_CANDIDATE' });
-  assert.equal(installCount, noEligible.expected_install_count);
-  const [runName] = await fs.readdir(outRoot);
-  const executeRoot = path.join(outRoot, runName, 'playbook-execute');
+  const roots = await acceptanceRoots(t, 'p5-accept-no-eligible-');
+  const observed = { ranked: [], replays: [], installCount: 0, providerCalls: 0 };
+  await assert.rejects(runExecutablePlaybookPipeline(executeOptions(noEligible, roots.outRoot, roots.worldRoot),
+    scenarioDependencies({ scenario: 'no-eligible', fixture: noEligible, observed })),
+  { code: 'P5_NO_ELIGIBLE_CANDIDATE', message: 'P5_NO_ELIGIBLE_CANDIDATE' });
+  assert.equal(observed.installCount, noEligible.expected_install_count);
+  assert.equal(observed.providerCalls, 0);
+  assert.deepEqual(observed.ranked, []);
+  assert.deepEqual(observed.replays.map((row) => row.candidate_id), ['candidate-01', 'candidate-02', 'candidate-03']);
+  const runNames = (await fs.readdir(roots.outRoot, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory() && entry.name !== 'pre-existing')
+    .map((entry) => entry.name);
+  assert.equal(runNames.length, 1);
+  const executeRoot = path.join(roots.outRoot, runNames[0], 'playbook-execute');
   assert.deepEqual((await fs.readdir(path.join(executeRoot, 'candidates'))).sort(), ['candidate-01', 'candidate-02', 'candidate-03']);
   for (const id of ['candidate-01', 'candidate-02', 'candidate-03']) {
-    const failure = await fs.readFile(path.join(executeRoot, 'candidates', id, 'failures/initial.json'), 'utf8');
-    assert.equal(failure.includes('private provider bytes'), false);
-    await assert.rejects(fs.access(path.join(executeRoot, 'candidates', id, 'current-chain.json')), { code: 'ENOENT' });
+    const root = path.join(executeRoot, 'candidates', id);
+    const chain = JSON.parse(await fs.readFile(path.join(root, 'current-chain.json')));
+    assert.equal(chain.chain_revision, 2);
+    assert.equal(chain.eligibility.status, 'unresolved-core-violation');
+    assert.equal(chain.eligibility.repair_budget_used, 1);
+    assert.deepEqual((await fs.readdir(path.join(root, 'repairs'))).sort(),
+      ['attempt-01-patch.json', 'attempt-01-request.json', 'attempt-01-result.json']);
+    await assert.rejects(fs.access(path.join(root, 'failures/initial.json')), { code: 'ENOENT' });
   }
   await assert.rejects(fs.access(path.join(executeRoot, 'selection.json')), { code: 'ENOENT' });
   assert.equal(noEligible.expected_selected_candidate_id, null);
+  await roots.assertPreexistingUnchanged();
+});
+
+test('injected real repair failure preserves accepted pointer inode and unrelated world bytes', async (t) => {
+  const fixture = JSON.parse(await fs.readFile(path.join(FIXTURES, 'medieval-repairable.json')));
+  const outRoot = await temporaryRoot(t, 'p5-accept-rollback-out-');
+  const worldRoot = await temporaryRoot(t, 'p5-accept-rollback-world-');
+  const unrelatedOut = path.join(outRoot, 'pre-existing.bin');
+  const unrelatedWorld = path.join(worldRoot, 'region.bin');
+  await fs.writeFile(unrelatedOut, Buffer.from([0, 1, 2, 255]));
+  await fs.writeFile(unrelatedWorld, Buffer.from('world-before\n'));
+  const observed = { ranked: [], replays: [], rollback: null };
+  const result = await runExecutablePlaybookPipeline({ ...executeOptions(fixture, outRoot), datapacksDir: worldRoot },
+    scenarioDependencies({ scenario: 'rollback', fixture, observed }));
+  assert.ok(result.playbookExecution.selected_candidate_id);
+  assert.ok(observed.rollback);
+  assert.deepEqual(observed.rollback.afterBytes, observed.rollback.beforeBytes);
+  assert.equal(observed.rollback.afterSha256, observed.rollback.beforeSha256);
+  assert.equal(observed.rollback.afterIno, observed.rollback.beforeIno);
+  assert.deepEqual(await fs.readFile(unrelatedOut), Buffer.from([0, 1, 2, 255]));
+  assert.deepEqual(await fs.readFile(unrelatedWorld), Buffer.from('world-before\n'));
+  const failure = JSON.parse(await fs.readFile(observed.rollback.failurePath));
+  assert.deepEqual(await fs.readdir(path.dirname(observed.rollback.failurePath)), ['attempt-01.json']);
+  assert.deepEqual(Object.keys(failure), ['attempt', 'base_chain_sha256', 'candidate_id', 'code', 'current_chain_sha256', 'repair_transaction_sha256', 'schema_version']);
+  assert.equal(failure.code, 'P5_REPLAY_FAILED');
+  assert.equal(failure.current_chain_sha256, failure.base_chain_sha256);
+  assert.equal(JSON.stringify(failure).includes('private'), false);
 });
 
 test('public P5 evidence makes no score, aesthetic, quality, or P6-open claim', async () => {
@@ -206,6 +244,193 @@ test('public P5 evidence makes no score, aesthetic, quality, or P6-open claim', 
   assert.match(text, /no playbook score|没有.*秘籍评分/iu);
   assert.match(text, /does not prove.*(?:quality|aesthetic)|不证明.*(?:质量|审美)/iu);
 });
+
+function executeOptions(fixture, outRoot, worldRoot) {
+  return {
+    playbook: 'execute', prompt: fixture.prompt, mode: 'mock', outRoot,
+    cwd: ROOT, seed: fixture.seed, critics: true, datapacksDir: worldRoot
+  };
+}
+
+function scenarioDependencies({ scenario, fixture, observed }) {
+  const volumes = (fixture?.initial_massing?.volumes || [
+    { id: 'side-b', role: 'secondary-mass', scale: [0.5, 0.5, 0.5], placement: { relation: 'attached-right', attach_to: 'main' } },
+    { id: 'main', role: 'primary-mass', scale: [0.4, 0.4, 0.4], placement: { relation: 'center' } },
+    { id: 'side-a', role: 'secondary-mass', scale: [0.3, 0.3, 0.3], placement: { relation: 'attached-left', attach_to: 'main' } }
+  ]).map((row) => ({ ...row, shape: 'box' }));
+  const candidateIndex = (seed) => seed === 1432164 ? 1 : seed === 1440083 ? 2 : 3;
+  const initiallyDefective = (index) => scenario === 'no-eligible' || scenario === 'repairable' && index > 1 || scenario === 'rollback' && index === 2;
+  const retainDefectAfterReplay = (index) => scenario === 'no-eligible' || scenario === 'repairable' && index === 3;
+  return {
+    createClient() {
+      observed.providerCalls = (observed.providerCalls || 0) + 1;
+      throw new Error('provider creation is forbidden');
+    },
+    async createEnvelope(input) {
+      const envelope = structuredClone(await createFrozenDesignEnvelope(input));
+      if (initiallyDefective(Number(input.candidateId.at(-1)))) {
+        envelope.repair_variant_preferences[0].variant_id = 'reduce-nondominant-secondary';
+      }
+      return envelope;
+    },
+    async prepareDesign(input) {
+      const prepared = await prepareConstructionDesign(input);
+      if (initiallyDefective(Number(input.candidateId.at(-1)))) {
+        prepared.architecture = structuredClone(prepared.architecture);
+        prepared.architecture.volumes = structuredClone(volumes);
+        prepared.frozen_generator_context = buildFrozenGeneratorContext({
+          ...prepared.frozen_generator_context,
+          architecture: prepared.architecture
+        });
+      }
+      return prepared;
+    },
+    async buildReview(input) {
+      const review = structuredClone(await buildDeterministicShadowReview(input));
+      const index = candidateIndex(review.input.seed);
+      for (const row of review.assessments.slice(0, 15).filter((item) => item.status === 'violated')) satisfy(row);
+      if (initiallyDefective(index)) violateHierarchy(review.assessments[2]);
+      refreshReview(review);
+      return review;
+    },
+    async compilePrepared(input) {
+      const compiled = await compilePreparedConstruction(input);
+      const index = candidateIndex(input.prepared.seed);
+      if (input.outputDir.includes(`p5-replay-candidate-0${index}-`) && retainDefectAfterReplay(index)) {
+        compiled.blueprint.architecture.volumes = structuredClone(volumes);
+        await fs.writeFile(compiled.artifacts.blueprint, `${JSON.stringify(compiled.blueprint, null, 2)}\n`);
+      }
+      return compiled;
+    },
+    async replay(input) {
+      if (scenario === 'rollback' && input.candidate.candidate_id === 'candidate-02') {
+        const candidateRoot = path.resolve(input.candidate.initial_result.outputDir, '..', '..', 'playbook-execute/candidates/candidate-02');
+        const pointer = path.join(candidateRoot, 'current-chain.json');
+        const beforeBytes = await fs.readFile(pointer);
+        const beforeStat = await fs.stat(pointer);
+        try {
+          await replayCandidate({ ...input,
+            faultInjector(boundary) {
+              if (boundary === 'downstream-compile') throw new Error('private repair failure body /outside/path');
+            } });
+          assert.fail('faulted replay unexpectedly completed');
+        } catch (error) {
+          const afterBytes = await fs.readFile(pointer);
+          const afterStat = await fs.stat(pointer);
+          observed.rollback = {
+            beforeBytes, afterBytes,
+            beforeSha256: digestBytes(beforeBytes), afterSha256: digestBytes(afterBytes),
+            beforeIno: beforeStat.ino, afterIno: afterStat.ino,
+            failurePath: path.join(candidateRoot, 'failures/attempt-01.json')
+          };
+          throw error;
+        }
+      }
+      const result = await replayCandidate(input);
+      observed.replays.push(result);
+      return result;
+    },
+    createSelectionAgent: () => ({
+      run(candidates, options) {
+        observed.ranked = candidates.map((row) => row.id);
+        return new CandidateSelectionAgent().run(candidates, options);
+      }
+    }),
+    async installSelected() {
+      observed.installCount = (observed.installCount || 0) + 1;
+      return undefined;
+    }
+  };
+}
+
+async function repairedEvidence(result, observed) {
+  const replay = observed.replays.find((row) => row.candidate_id === 'candidate-02');
+  assert.ok(replay);
+  const root = path.join(result.outputDir, 'playbook-execute/candidates/candidate-02');
+  const initialBytes = await fs.readFile(path.join(root, 'chains/chain-0001.json'));
+  const chainBytes = await fs.readFile(path.join(root, 'current-chain.json'));
+  const initial = JSON.parse(initialBytes);
+  const chain = JSON.parse(chainBytes);
+  const checkpointPaths = ['brief/r0001.json', 'massing/r0002.json', 'structure/r0002.json', 'roof/r0002.json', 'facade/r0002.json'];
+  const checkpoints = await Promise.all(checkpointPaths.map((relative) => fs.readFile(path.join(root, 'checkpoints', relative)).then((bytes) => JSON.parse(bytes))));
+  const repairPaths = ['attempt-01-request.json', 'attempt-01-patch.json', 'attempt-01-result.json'];
+  const repairBytes = await Promise.all(repairPaths.map((name) => fs.readFile(path.join(root, 'repairs', name))));
+  const facade = checkpoints.at(-1);
+  const blueprintBytes = await fs.readFile(replay.compiled_result.artifacts.blueprint);
+  const buildBytes = await fs.readFile(replay.compiled_result.artifacts.buildFunction);
+  const treeRows = await datapackRows(replay.compiled_result.artifacts.datapackDir);
+  const regeneratedArtifactHashes = {
+    operation_list_sha256: digestBytes(Buffer.from(stableJson(replay.compiled_result.blueprint.operations))),
+    build_function_sha256: digestBytes(buildBytes),
+    datapack_tree_sha256: digestBytes(Buffer.from(stableJson(treeRows)))
+  };
+  const persistedArtifactHashes = Object.fromEntries(Object.entries(facade.compiled_artifact_hashes)
+    .filter(([key]) => ['operation_list_sha256', 'build_function_sha256', 'datapack_tree_sha256'].includes(key)));
+  return {
+    initial, chain,
+    revisions: checkpoints.map((checkpoint) => checkpoint.revision),
+    replayOrigins: checkpoints.map((checkpoint) => checkpoint.replay_origin === null ? null : checkpoint.layer),
+    blueprintSha256: digestBytes(blueprintBytes),
+    persistedArtifactHashes, regeneratedArtifactHashes,
+    deterministicBytes: {
+      chain: chainBytes, repairs: repairBytes, blueprint: blueprintBytes,
+      operations: Buffer.from(stableJson(replay.compiled_result.blueprint.operations)),
+      build: buildBytes, tree: Buffer.from(stableJson(treeRows))
+    }
+  };
+}
+
+async function datapackRows(root) {
+  const rows = [];
+  await visit(root, 'architect_datapack');
+  rows.sort((left, right) => left.path.localeCompare(right.path));
+  return rows;
+  async function visit(absolute, relative) {
+    for (const name of (await fs.readdir(absolute)).sort()) {
+      const target = path.join(absolute, name);
+      const child = `${relative}/${name}`;
+      const stat = await fs.lstat(target);
+      assert.equal(stat.isSymbolicLink(), false);
+      if (stat.isDirectory()) await visit(target, child);
+      else {
+        assert.equal(stat.isFile(), true);
+        rows.push({ path: child, sha256: digestBytes(await fs.readFile(target)) });
+      }
+    }
+  }
+}
+
+function digestBytes(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+async function temporaryRoot(t, prefix) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  return root;
+}
+
+async function acceptanceRoots(t, prefix) {
+  const outRoot = await temporaryRoot(t, `${prefix}out-`);
+  const worldRoot = await temporaryRoot(t, `${prefix}world-`);
+  const expected = new Map([
+    [path.join(outRoot, 'pre-existing/root.bin'), Buffer.from([0, 1, 2, 255])],
+    [path.join(outRoot, 'pre-existing/nested/report.txt'), Buffer.from('output-before\n')],
+    [path.join(worldRoot, 'region/r.0.0.mca'), Buffer.from([255, 2, 1, 0])],
+    [path.join(worldRoot, 'level.dat'), Buffer.from('world-before\n')]
+  ]);
+  for (const [target, bytes] of expected) {
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, bytes);
+  }
+  return {
+    outRoot,
+    worldRoot,
+    async assertPreexistingUnchanged() {
+      for (const [target, bytes] of expected) assert.deepEqual(await fs.readFile(target), bytes);
+    }
+  };
+}
 
 function satisfy(row) {
   Object.assign(row, { status: 'satisfied', evidence_json_pointers: row.evidence_json_pointers.length ? row.evidence_json_pointers : ['/architecture'],
@@ -231,4 +456,23 @@ function refreshReview(review) {
     status_counts: counts(review.assessments),
     layer_status_counts: review.coverage.map((row) => ({ layer: row.layer, ...counts(review.assessments.filter((item) => item.design_layer === row.layer)) })),
     missing_evidence_rule_count: review.assessments.filter((row) => row.status === 'unknown').length };
+}
+
+async function dependencyRoot(t) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-repository-dependency-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await writeFixture(root, 'src/pipeline.js', 'export const pipeline = true;\n');
+  await writeFixture(root, 'src/playbook/execute/eligibility.js', 'export const eligibility = true;\n');
+  return root;
+}
+
+async function writeFixture(root, relative, bytes) {
+  const target = path.join(root, relative);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.writeFile(target, bytes);
+}
+
+function relativeImport(importer, target) {
+  const relative = path.posix.relative(path.posix.dirname(importer), target);
+  return relative.startsWith('.') ? relative : `./${relative}`;
 }

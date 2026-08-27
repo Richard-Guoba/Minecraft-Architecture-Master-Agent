@@ -71,7 +71,7 @@ function parseArgs(argv) {
     } else if (arg === '--candidates') {
       candidatesExplicit = true;
       const parsed = Number(argv[++i]);
-      if (!Number.isFinite(parsed) || parsed < 1) {
+      if (!Number.isFinite(parsed) || parsed < 1 || options.playbook === 'execute' && !Number.isInteger(parsed)) {
         if (options.playbook === 'execute') throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
         throw new Error(`无效候选数量: ${parsed}`);
       }
@@ -81,7 +81,7 @@ function parseArgs(argv) {
     } else if (arg === '--candidate-rounds') {
       candidateRoundsExplicit = true;
       const parsed = Number(argv[++i]);
-      if (!Number.isFinite(parsed) || parsed < 1) {
+      if (!Number.isFinite(parsed) || parsed < 1 || options.playbook === 'execute' && !Number.isInteger(parsed)) {
         if (options.playbook === 'execute') throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
         throw new Error(`无效候选轮数: ${parsed}`);
       }
