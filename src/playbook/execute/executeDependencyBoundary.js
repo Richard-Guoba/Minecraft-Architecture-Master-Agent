@@ -2,7 +2,23 @@ import { auditPlaybookSourceBoundary } from '../manual/manualDependencyBoundary.
 
 const ALLOWED_NONELIGIBILITY_DEPENDENCIES = Object.freeze([
   'src/construction/agents/candidateSelectionAgent.js',
+  'src/construction/agents/templateAestheticReviewAgent.js',
   'src/construction/agents/visualizationAgent.js'
+]);
+const FORBIDDEN_AUTHORITY_TOKENS = Object.freeze([
+  'p6',
+  'image',
+  'screenshot',
+  'camera',
+  'visual',
+  'visualization',
+  'aesthetic'
+]);
+const FORBIDDEN_AUTHORITY_TOKEN_PAIRS = Object.freeze([
+  Object.freeze(['fixed', 'view']),
+  Object.freeze(['blind', 'selection']),
+  Object.freeze(['human', 'preference']),
+  Object.freeze(['candidate', 'selection'])
 ]);
 
 export async function auditExecuteDependencyBoundary({ projectRoot }) {
@@ -58,15 +74,28 @@ export async function auditExecuteDependencyBoundary({ projectRoot }) {
 
 function isForbiddenExecuteDependency(relativePath) {
   if (ALLOWED_NONELIGIBILITY_DEPENDENCIES.includes(relativePath)) return false;
-  const normalized = relativePath.toLowerCase().replaceAll('-', '').replaceAll('_', '');
-  const segments = normalized.split('/');
-  return segments.some((segment) => segment.startsWith('p6'))
-    || segments.some((segment) => /^(?:image(?:client|model|provider|scor|evaluat)?|screenshot|camera|fixedview|blindselection|humanpreference)/u.test(segment))
-    || segments.some((segment) => /visual(?:scor|evaluat|model|ization)|aesthetic(?:scor|evaluat)|candidateselection/u.test(segment));
+  const tokens = tokenizeDependencyPath(relativePath);
+  if (tokens.some((token) => FORBIDDEN_AUTHORITY_TOKENS.includes(token))) return true;
+  return FORBIDDEN_AUTHORITY_TOKEN_PAIRS.some(([left, right]) =>
+    tokens.some((token, index) => token === left && tokens[index + 1] === right));
+}
+
+function tokenizeDependencyPath(value) {
+  return String(value)
+    .replace(/([A-Z]+)([A-Z][a-z])/gu, '$1 $2')
+    .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .filter(Boolean);
 }
 
 function classifyExecuteDependencyEdge(edge) {
-  const logicalForbidden = !ALLOWED_NONELIGIBILITY_DEPENDENCIES.includes(edge.logical_dependency_path)
+  const logicalAllowed = ALLOWED_NONELIGIBILITY_DEPENDENCIES.includes(edge.logical_dependency_path);
+  const realAllowed = ALLOWED_NONELIGIBILITY_DEPENDENCIES.includes(edge.real_dependency_path);
+  if (realAllowed && edge.logical_dependency_path !== edge.real_dependency_path) {
+    return `EXECUTE_FORBIDDEN_MODULE:${edge.logical_dependency_path} -> ${edge.real_dependency_path}`;
+  }
+  const logicalForbidden = !logicalAllowed
     && (isForbiddenExecuteDependency(edge.logical_dependency_path)
       || isForbiddenExecuteDependency(edge.specifier));
   const realForbidden = isForbiddenExecuteDependency(edge.real_dependency_path);

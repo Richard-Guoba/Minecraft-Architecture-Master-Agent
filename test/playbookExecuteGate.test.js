@@ -30,6 +30,7 @@ test('checked-in P5 graph is closed while the independent P4 boundary stays clos
   assert.equal(execute.eligibility_authority_unresolved_count, 0);
   assert.deepEqual(execute.allowed_noneligibility_dependencies, [
     'src/construction/agents/candidateSelectionAgent.js',
+    'src/construction/agents/templateAestheticReviewAgent.js',
     'src/construction/agents/visualizationAgent.js'
   ]);
   assert.equal(shadow.import_boundary_violation_count, 0);
@@ -103,12 +104,14 @@ test('P5 dependency gate closes repository-wide P6 and visual scoring paths with
       assert.equal(audit.import_boundary_unresolved_count, 0);
     });
   }
-  await t.test('allow exact existing ranker and HTML preview only outside eligibility', async (t) => {
+  await t.test('allow the three exact legacy dependencies only outside eligibility', async (t) => {
     const root = await dependencyRoot(t);
     await writeFixture(root, 'src/construction/agents/candidateSelectionAgent.js', 'export const ranker = true;\n');
+    await writeFixture(root, 'src/construction/agents/templateAestheticReviewAgent.js', 'export const scorer = true;\n');
     await writeFixture(root, 'src/construction/agents/visualizationAgent.js', 'export const preview = true;\n');
     await writeFixture(root, 'src/playbook/execute/entry.js', [
       "import '../../construction/agents/candidateSelectionAgent.js';",
+      "import '../../construction/agents/templateAestheticReviewAgent.js';",
       "import '../../construction/agents/visualizationAgent.js';",
       ''
     ].join('\n'));
@@ -117,20 +120,42 @@ test('P5 dependency gate closes repository-wide P6 and visual scoring paths with
     assert.equal(audit.import_boundary_unresolved_count, 0);
     assert.equal(audit.eligibility_authority_violation_count, 0);
   });
-  await t.test('deny both exact exceptions when eligibility imports them', async (t) => {
+  await t.test('deny all three exact exceptions when eligibility imports them', async (t) => {
     const root = await dependencyRoot(t);
     await writeFixture(root, 'src/construction/agents/candidateSelectionAgent.js', 'export const ranker = true;\n');
+    await writeFixture(root, 'src/construction/agents/templateAestheticReviewAgent.js', 'export const scorer = true;\n');
     await writeFixture(root, 'src/construction/agents/visualizationAgent.js', 'export const preview = true;\n');
     await writeFixture(root, 'src/playbook/execute/entry.js', 'export const execute = true;\n');
     await writeFixture(root, 'src/playbook/execute/eligibility.js', [
       "import '../../construction/agents/candidateSelectionAgent.js';",
+      "import '../../construction/agents/templateAestheticReviewAgent.js';",
       "import '../../construction/agents/visualizationAgent.js';",
       ''
     ].join('\n'));
     const audit = await auditExecuteDependencyBoundary({ projectRoot: root });
     assert.equal(audit.import_boundary_violation_count, 0);
-    assert.equal(audit.eligibility_authority_violation_count, 2);
+    assert.equal(audit.eligibility_authority_violation_count, 3);
     assert.equal(audit.eligibility_authority_unresolved_count, 0);
+  });
+  await t.test('deny aliases to the three exact legacy dependency inodes', async (t) => {
+    const root = await dependencyRoot(t);
+    const targets = [
+      ['src/construction/agents/candidateSelectionAgent.js', 'src/utils/ranker.js'],
+      ['src/construction/agents/templateAestheticReviewAgent.js', 'src/utils/scorer.js'],
+      ['src/construction/agents/visualizationAgent.js', 'src/utils/preview.js']
+    ];
+    for (const [target, alias] of targets) {
+      await writeFixture(root, target, 'export const legacy = true;\n');
+      const aliasPath = path.join(root, alias);
+      await fs.mkdir(path.dirname(aliasPath), { recursive: true });
+      await fs.symlink(path.join(root, target), aliasPath);
+    }
+    await writeFixture(root, 'src/playbook/execute/entry.js', targets
+      .map(([, alias]) => `import '${relativeImport('src/playbook/execute/entry.js', alias)}';`)
+      .join('\n'));
+    const audit = await auditExecuteDependencyBoundary({ projectRoot: root });
+    assert.equal(audit.import_boundary_violation_count, 3);
+    assert.equal(audit.import_boundary_unresolved_count, 0);
   });
 });
 
@@ -177,6 +202,56 @@ test('P5 dependency gate classifies logical and real paths for every visual-auth
     assert.deepEqual(audit.forbidden_dependency_imports,
       ['EXECUTE_FORBIDDEN_MODULE:src/p6/evaluator.js -> src/utils/helper.js']);
   });
+});
+
+test('P5 dependency gate uses bounded semantic tokens for visual authority', async (t) => {
+  for (const target of [
+    'src/evaluation/visual.js',
+    'src/visual/index.js',
+    'src/evaluation/visualReview.js',
+    'src/models/aestheticModel.js',
+    'src/evaluation/Visual-Scoring.js',
+    'src/evaluation/visual_evaluation.js',
+    'src/models/AestheticReview.js',
+    'src/construction/agents/templateAestheticReviewAgentV2.js',
+    'src/construction/agents/templateAestheticReviewAgent/index.js',
+    'src/providers/Image_ModelClient.js',
+    'src/tools/ScreenShotCamera.js',
+    'src/fixed_view/selector.js',
+    'src/blind-selection/agent.js',
+    'src/Human_Preference/model.js',
+    'src/phases/P6Review.js'
+  ]) {
+    await t.test(`reject ${target}`, async (t) => {
+      const root = await dependencyRoot(t);
+      await writeFixture(root, target, 'export const forbidden = true;\n');
+      await writeFixture(root, 'src/playbook/execute/entry.js',
+        `import '${relativeImport('src/playbook/execute/entry.js', target)}';\n`);
+      const audit = await auditExecuteDependencyBoundary({ projectRoot: root });
+      assert.equal(audit.import_boundary_violation_count, 1);
+      assert.equal(audit.import_boundary_unresolved_count, 0);
+    });
+  }
+
+  for (const target of [
+    'src/utils/provisional.js',
+    'src/models/imagery.js',
+    'src/tools/cameraderie.js',
+    'src/layout/fixedWidth.js',
+    'src/selection/blindfold.js',
+    'src/preferences/humanity.js',
+    'src/reviews/aesthete.js'
+  ]) {
+    await t.test(`allow unrelated ${target}`, async (t) => {
+      const root = await dependencyRoot(t);
+      await writeFixture(root, target, 'export const allowed = true;\n');
+      await writeFixture(root, 'src/playbook/execute/entry.js',
+        `import '${relativeImport('src/playbook/execute/entry.js', target)}';\n`);
+      const audit = await auditExecuteDependencyBoundary({ projectRoot: root });
+      assert.equal(audit.import_boundary_violation_count, 0);
+      assert.equal(audit.import_boundary_unresolved_count, 0);
+    });
+  }
 });
 
 test('positive acceptance fixture produces exactly three eligible zero-repair five-layer candidates', async (t) => {

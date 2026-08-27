@@ -37,14 +37,14 @@ npm run playbook:execute -- --mode mock --seed 424242 "Build a two-story medieva
 
 检查入库的 positive、repairable 和 no-eligible mock 输入。正例生成三个全部 eligible、零修复的五层证据树；repairable 场景只重放 massing 及其下游 structure/roof/facade，并保留 brief 字节；no-eligible 场景让三个候选各执行一次真实修复/replay 后仍保留 unresolved current chain，不发布 selection，也不调用安装器。相同输入、seed 与补丁的 repair evidence、checkpoint chain、blueprint、operation list、build function 和 datapack tree 字节可重复。注入的真实 replay 故障证明先前 current-chain 的字节、哈希与 inode，以及无关 output/world 字节全部不变；failure evidence 只含固定代码和权威哈希。repair/replay 不创建 provider client。
 
-依赖门禁复用 P4 已审阅的 ESM 解析与 fail-closed 规则，拒绝 computed import、`createRequire`、未解析边、symlink/realpath 逃逸和动态禁止边。P4 的独立边界仍然禁止 construction、pipeline、world 和 datapack I/O。P3 手动门禁保持 21 条审阅规则、15 条核心程序、6 条案例模式、5 个受管产物和零 drift。
+依赖门禁复用 P4 已审阅的 ESM 解析与 fail-closed 规则，拒绝 computed import、`createRequire`、未解析边、symlink/realpath 逃逸和动态禁止边。execute 非资格依赖只精确放行既有 `candidateSelectionAgent.js`、`templateAestheticReviewAgent.js` 和 `visualizationAgent.js` 三条路径，别名、改名和嵌套变体都拒绝；资格模块不能依赖其中任何一个。`templateAestheticReviewAgent.js` 是 P5 前既有、供不变 ranker 使用的结构化 blueprint 字段评分，不是 P6 图像、固定视角或视觉模型评价。P4 的独立边界仍然禁止 construction、pipeline、world 和 datapack I/O。P3 手动门禁保持 21 条审阅规则、15 条核心程序、6 条案例模式、5 个受管产物和零 drift。
 
 ## 新鲜门禁结果
 
 - 实施范围：Task 9 审阅基线 `e50195302990a860218c88ae28f73253e1a56636` 到本 Task 10 `feat(playbook): complete P5 executable design layer` 提交。
-- P5 精确门禁：388/388（合同、off 兼容、设计层、checkpoint、存储、资格、四类 repair、replay、orchestrator、真实 CLI、依赖和三场景 acceptance）。
+- P5 精确门禁：412/412（合同、off 兼容、设计层、checkpoint、存储、资格、四类 repair、replay、orchestrator、真实 CLI、依赖和三场景 acceptance）。
 - P4 精确兼容门禁：201/201。
-- 完整仓库回归：1436/1436，退出码 0。
+- 完整仓库回归：1460/1460，退出码 0。
 - P3：21 条审阅规则、15 条核心程序、6 条案例模式、5 个受管产物、0 managed drift。
 - 依赖：P5 与 P4 violation/unresolved 均为 0；P5 资格模块也不依赖 construction/pipeline/world/datapack I/O。
 - 卫生：`git diff --check` 为 0，`git ls-files out .local/architecture-playbook` 为空。
