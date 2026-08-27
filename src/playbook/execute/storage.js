@@ -489,13 +489,15 @@ export async function installExecuteSelection({ authority, files, fsImpl } = {})
       await assertBoundCandidates();
       return Object.freeze({ status: 'unchanged', artifact_hashes: normalized.artifactHashes });
     }
+    const assertRollbackAuthority = () => assertTreeAuthority(internal, ops, tree);
     await installSelectionGeneration({
       ops,
       tree,
       files: normalized.files,
       existing,
-      assertAuthority: async () => {
-        await assertTreeAuthority(internal, ops, tree);
+      assertRollbackAuthority,
+      assertForwardAuthority: async () => {
+        await assertRollbackAuthority();
         await assertBoundCandidates();
       }
     });

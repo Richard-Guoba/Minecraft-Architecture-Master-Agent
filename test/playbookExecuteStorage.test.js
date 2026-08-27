@@ -1398,6 +1398,105 @@ test('selection root-sync failure after promotion restores exact old selection a
   assert.equal(await generatedRootEntries(fixture.runDir), 0);
 });
 
+test('candidate-root swap during replacement promotion restores the exact old selection generation', async (t) => {
+  const fixture = await threeCandidateFixture(t);
+  const oldFiles = selectionFiles('old');
+  const replacement = selectionFiles('replacement');
+  await installExecuteSelection({ authority: fixture.authority, files: oldFiles });
+  const oldSelectionInodes = await selectionInodes(fixture.runDir);
+  const executeRoot = path.join(fixture.runDir, 'playbook-execute');
+  const candidatesRoot = path.join(executeRoot, 'candidates');
+  const firstRoot = path.join(candidatesRoot, 'candidate-01');
+  const secondRoot = path.join(candidatesRoot, 'candidate-02');
+  const parkedRoot = path.join(candidatesRoot, '.test-candidate-swap');
+  let swapped = false;
+  const swapCandidateRoots = async () => {
+    await fs.rename(firstRoot, parkedRoot);
+    await fs.rename(secondRoot, firstRoot);
+    await fs.rename(parkedRoot, secondRoot);
+  };
+  const fsImpl = fsWith({
+    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+      const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
+      if (!swapped && destinationName === 'selection.json'
+        && await pathContainsGeneratedName(`/proc/self/fd/${sourceHandle.fd}`, STAGE_PREFIX)) {
+        await swapCandidateRoots();
+        swapped = true;
+      }
+      return result;
+    }
+  });
+
+  await assertP5Failure(
+    installExecuteSelection({ authority: fixture.authority, files: replacement, fsImpl }),
+    'P5_INSTALL_FAILED',
+    fixture.root
+  );
+  assert.equal(swapped, true);
+  await swapCandidateRoots();
+  assert.deepEqual(await selectionInodes(fixture.runDir), oldSelectionInodes);
+  for (const name of SELECTION_TEST_PATHS) {
+    assert.deepEqual(await fs.readFile(path.join(executeRoot, name)), oldFiles[name]);
+  }
+  assert.equal(await generatedRootEntries(fixture.runDir), 0);
+});
+
+test('candidate-root swap rollback cleanup fault cannot displace the restored old selection', async (t) => {
+  const fixture = await threeCandidateFixture(t);
+  const oldFiles = selectionFiles('old');
+  await installExecuteSelection({ authority: fixture.authority, files: oldFiles });
+  const oldSelectionInodes = await selectionInodes(fixture.runDir);
+  const executeRoot = path.join(fixture.runDir, 'playbook-execute');
+  const candidatesRoot = path.join(executeRoot, 'candidates');
+  const firstRoot = path.join(candidatesRoot, 'candidate-01');
+  const secondRoot = path.join(candidatesRoot, 'candidate-02');
+  const parkedRoot = path.join(candidatesRoot, '.test-candidate-swap');
+  let swapped = false;
+  let cleanupFailed = false;
+  const swapCandidateRoots = async () => {
+    await fs.rename(firstRoot, parkedRoot);
+    await fs.rename(secondRoot, firstRoot);
+    await fs.rename(parkedRoot, secondRoot);
+  };
+  const fsImpl = fsWith({
+    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+      const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
+      if (!swapped && destinationName === 'selection.json'
+        && await pathContainsGeneratedName(`/proc/self/fd/${sourceHandle.fd}`, STAGE_PREFIX)) {
+        await swapCandidateRoots();
+        swapped = true;
+      }
+      return result;
+    },
+    async unlink(target) {
+      if (swapped && !cleanupFailed && await pathContainsGeneratedName(String(target), STAGE_PREFIX)) {
+        cleanupFailed = true;
+        throw new Error('RAW_ROLLBACK_CLEANUP_FAILURE');
+      }
+      return fs.unlink(target);
+    }
+  });
+
+  await assertP5Failure(
+    installExecuteSelection({ authority: fixture.authority, files: selectionFiles('replacement'), fsImpl }),
+    'P5_INSTALL_FAILED',
+    fixture.root,
+    'RAW_ROLLBACK_CLEANUP_FAILURE'
+  );
+  assert.equal(swapped, true);
+  assert.equal(cleanupFailed, true);
+  await swapCandidateRoots();
+  assert.deepEqual(await selectionInodes(fixture.runDir), oldSelectionInodes);
+  for (const name of SELECTION_TEST_PATHS) {
+    assert.deepEqual(await fs.readFile(path.join(executeRoot, name)), oldFiles[name]);
+  }
+  const residue = (await fs.readdir(executeRoot)).filter((name) => (
+    name.startsWith(STAGE_PREFIX) || name.startsWith(BACKUP_PREFIX)
+  ));
+  assert.equal(residue.length, 1);
+  assert.match(residue[0], new RegExp(`^${escapeRegex(STAGE_PREFIX)}`, 'u'));
+});
+
 test('selection faults after each successful partial promotion restore the exact old generation', async (t) => {
   for (let failAt = 1; failAt <= SELECTION_TEST_PATHS.length; failAt += 1) {
     await t.test(`promotion-${failAt}`, async (t) => {

@@ -8,14 +8,21 @@ const STAGE_PREFIX = '.playbook-execute.stage-';
 const BACKUP_PREFIX = '.playbook-execute.backup-';
 let transactionSequence = 0;
 
-export async function installSelectionGeneration({ ops, tree, files, existing, assertAuthority }) {
+export async function installSelectionGeneration({
+  ops,
+  tree,
+  files,
+  existing,
+  assertForwardAuthority,
+  assertRollbackAuthority
+}) {
   let stage;
   let backup;
   let committed = false;
   try {
-    stage = await createFlatGenerationDirectory(ops, tree, STAGE_PREFIX, files, assertAuthority);
+    stage = await createFlatGenerationDirectory(ops, tree, STAGE_PREFIX, files, assertForwardAuthority);
     if (existing) {
-      backup = await createFlatGenerationDirectory(ops, tree, BACKUP_PREFIX, null, assertAuthority);
+      backup = await createFlatGenerationDirectory(ops, tree, BACKUP_PREFIX, null, assertForwardAuthority);
       for (const name of SELECTION_PATHS) {
         await moveExpectedRegularFileNoReplace({
           ops,
@@ -26,7 +33,7 @@ export async function installSelectionGeneration({ ops, tree, files, existing, a
           destinationName: name,
           expectedIdentity: existing.identities[name],
           expectedBytes: existing.files[name],
-          assertAuthority
+          assertAuthority: assertForwardAuthority
         });
       }
       await backup.handle.sync();
@@ -42,12 +49,12 @@ export async function installSelectionGeneration({ ops, tree, files, existing, a
         destinationName: name,
         expectedIdentity: stage.identities[name],
         expectedBytes: files[name],
-        assertAuthority
+        assertAuthority: assertForwardAuthority
       });
     }
-    await verifySelectionGeneration(ops, tree, files, stage.identities, assertAuthority);
+    await verifySelectionGeneration(ops, tree, files, stage.identities, assertForwardAuthority);
     await tree.rootHandle.sync();
-    await verifySelectionGeneration(ops, tree, files, stage.identities, assertAuthority);
+    await verifySelectionGeneration(ops, tree, files, stage.identities, assertForwardAuthority);
     committed = true;
   } catch (error) {
     let rollbackFailed = false;
@@ -65,7 +72,7 @@ export async function installSelectionGeneration({ ops, tree, files, existing, a
               destinationName: name,
               expectedIdentity: stage.identities[name],
               expectedBytes: files[name],
-              assertAuthority
+              assertAuthority: assertRollbackAuthority
             });
           }
         } catch {
@@ -106,7 +113,8 @@ export async function installSelectionGeneration({ ops, tree, files, existing, a
                 name,
                 tree.rootHandle,
                 name
-              )
+              ),
+              beforeMove: assertRollbackAuthority
             });
           }
           await moveExpectedRegularFileNoReplace({
@@ -118,7 +126,7 @@ export async function installSelectionGeneration({ ops, tree, files, existing, a
             destinationName: name,
             expectedIdentity: existing.identities[name],
             expectedBytes: existing.files[name],
-            assertAuthority
+            assertAuthority: assertRollbackAuthority
           });
         } catch {
           rollbackFailed = true;
@@ -126,6 +134,7 @@ export async function installSelectionGeneration({ ops, tree, files, existing, a
       }
     }
     try {
+      await assertRollbackAuthority();
       await tree.rootHandle.sync();
     } catch {
       rollbackFailed = true;
@@ -138,7 +147,7 @@ export async function installSelectionGeneration({ ops, tree, files, existing, a
         files,
         stage.identities,
         false,
-        assertAuthority
+        assertRollbackAuthority
       );
     } catch {
       // Preserve a stage containing any unknown or swapped entry.
@@ -151,7 +160,7 @@ export async function installSelectionGeneration({ ops, tree, files, existing, a
         existing.files,
         existing.identities,
         false,
-        assertAuthority
+        assertRollbackAuthority
       );
     } catch {
       // Preserve a backup containing any old inode that could not be restored.
@@ -171,7 +180,7 @@ export async function installSelectionGeneration({ ops, tree, files, existing, a
       files,
       stage.identities,
       false,
-      assertAuthority
+      assertRollbackAuthority
     );
   } catch {
     // Empty stage retirement is postcommit and best-effort.
@@ -185,7 +194,7 @@ export async function installSelectionGeneration({ ops, tree, files, existing, a
         existing.files,
         existing.identities,
         true,
-        assertAuthority
+        assertRollbackAuthority
       );
     } catch {
       // The new manifest generation remains authoritative; old residue is fixed-prefix.
