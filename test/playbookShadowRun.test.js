@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,6 +14,11 @@ import {
 } from '../src/playbook/shadow/runShadowReview.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
+const P4_A9F6262_GOLDEN = JSON.parse(await fs.readFile(
+  path.join(ROOT, 'test/fixtures/playbook-execute/p4-a9f6262-mock-artifact-hashes.json'),
+  'utf8'
+));
+const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 test('mock orchestration produces exactly five stable artifacts', async () => {
   const blueprintBytes = blueprintBytesFor('A compact medieval timber house.');
@@ -44,9 +50,14 @@ test('mock orchestration produces exactly five stable artifacts', async () => {
   assert.doesNotMatch(report, /评分：|获胜/u);
 });
 
-test('deterministic review extraction preserves P4 review and all artifact bytes without a client', async () => {
+test('deterministic review extraction preserves independent a9f6262 P4 artifact hashes without a client', async () => {
   const blueprintBytes = blueprintBytesFor('A compact medieval timber house.');
   const clientFactory = () => { throw new Error('must not create a client'); };
+  assert.equal(P4_A9F6262_GOLDEN.base_commit, 'a9f6262');
+  assert.equal(P4_A9F6262_GOLDEN.fixture.mode, 'mock');
+  assert.equal(P4_A9F6262_GOLDEN.fixture.blueprint_relative_path, 'blueprint.json');
+  assert.equal(blueprintBytes.toString('utf8'), P4_A9F6262_GOLDEN.fixture.blueprint_utf8);
+  assert.equal(sha256(blueprintBytes), P4_A9F6262_GOLDEN.fixture.blueprint_sha256);
   const extracted = await buildDeterministicShadowReview({
     projectRoot: ROOT,
     blueprintBytes,
@@ -68,7 +79,23 @@ test('deterministic review extraction preserves P4 review and all artifact bytes
     createClient: clientFactory
   });
 
-  assert.deepEqual(Buffer.from(stableJson(extracted)), first['review.json']);
+  const extractedBytes = Buffer.from(stableJson(extracted));
+  assert.equal(sha256(extractedBytes), P4_A9F6262_GOLDEN.artifact_sha256['review.json']);
+  assert.equal(sha256(first['review.json']), P4_A9F6262_GOLDEN.artifact_sha256['review.json']);
+  for (const [name, expectedHash] of Object.entries(P4_A9F6262_GOLDEN.artifact_sha256)) {
+    assert.equal(sha256(first[name]), expectedHash, name);
+  }
+  const mutatedReview = JSON.parse(extractedBytes.toString('utf8'));
+  mutatedReview.summary.assessment_count = 20;
+  assert.notEqual(
+    sha256(Buffer.from(stableJson(mutatedReview))),
+    P4_A9F6262_GOLDEN.artifact_sha256['review.json']
+  );
+  mutatedReview.summary.assessment_count = extracted.summary.assessment_count;
+  assert.equal(
+    sha256(Buffer.from(stableJson(mutatedReview))),
+    P4_A9F6262_GOLDEN.artifact_sha256['review.json']
+  );
   assert.deepEqual(second, first);
 });
 

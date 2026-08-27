@@ -1,0 +1,16 @@
+{
+  "base_commit": "a9f6262",
+  "fixture": {
+    "blueprint_relative_path": "blueprint.json",
+    "mode": "mock",
+    "blueprint_sha256": "d54f6b6f6853b42a159a1208ae1354626fa767228f233e6365d1c8c4d816974f",
+    "blueprint_utf8": "{\"workflow\":\"construction_method_v1\",\"seed\":7,\"prompt\":\"A compact medieval timber house.\",\"architecture\":{\"style\":\"medieval\",\"style_family\":\"timber-frame\",\"typology\":\"house\",\"volumes\":[{\"id\":\"main\",\"shape\":\"box\",\"scale\":[1,1,1],\"placement\":{\"relation\":\"center\"},\"tags\":[\"primary-mass\"],\"purpose\":\"main-building-envelope\"},{\"id\":\"left\",\"shape\":\"box\",\"scale\":[0.4,0.6,0.5],\"placement\":{\"relation\":\"attached-west\",\"attach_to\":\"main\"},\"tags\":[\"secondary-mass\"]},{\"id\":\"right\",\"shape\":\"box\",\"scale\":[0.5,0.7,0.4],\"placement\":{\"relation\":\"attached-east\",\"attach_to\":\"main\"},\"tags\":[\"secondary-mass\"]}]},\"structure\":{\"structural_intent\":{\"floor_count\":2},\"load_paths\":[{\"from\":\"roof\",\"through\":\"post\",\"to\":\"foundation\"}]},\"roof\":{\"overhang\":1},\"facade\":{}}"
+  },
+  "artifact_sha256": {
+    "manifest.json": "4759d01f99fd3fd6bf3bba9bfd6fb5aae6c900098b0971fb5d4c08f6f18f2d63",
+    "review.json": "cd7ccaf031a47eee476487cdaf590a02bec96883a8011051618d1bc6f0ab99c3",
+    "prompt-packet.json": "bec0a73c3a59a342303fae58c3ff7f475fd5735710df359e1419f9d24c42fb80",
+    "explanation.json": "0188e23b48236fffe4d5cdf2a1c44b7052ffb5208e0aafaacb139f9bb130136b",
+    "report.md": "e6fb3fb595671872d8bf69fc243991410c9a576baecc93110a494d7d7d0763ee"
+  }
+}
