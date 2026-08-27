@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "base_commit": "ece476d39f63b5d0d4e6489a0f3154464b2496bd",
+  "prompt": "建造一座两层中世纪民居，三体块、深色坡屋顶、木框架与石质基座",
+  "seed": 424242,
+  "single": {
+    "summary_sha256": "74fef7910970046f743a74e6ee312d3513d054e6895d4d40a158ebaea29ab5f9",
+    "artifact_hashes": {
+      "blueprint": "82c169bfc8d78f1a92da8d55c29475c97bbf93d8de91d6b8665b28d7503d9174",
+      "buildFunction": "68ff458dd7b5bbf22249a8b6d1f418fc637fe1499971eae062ea85f4600cd829",
+      "clearFunction": "0539309cac15917ba87a596b8afd0ef5c9e912c625740d80dbd9484012277e23",
+      "runFunction": "568b2b7f3a56bd18743ddba22e6def4d56003dd536c3e18c9668fee7ad6d2631",
+      "rawBuild": "2fb6917b76242d3154b8d4367bb2a24f02f5b9b860c8d2ab034a8fc3a58834b9",
+      "previewHtml": "501e3964faf75f5879c221d6cd3e34edd4283dae87e05e363894eb27a1a060ff",
+      "report": "ecb1c84b2e40ab0e1baa0217fa41f0f582dc9ee58de2c079d0057157139af3a3",
+      "architectureScorecard": "19cc29a3854fe27559043ec5c0b4fc663a5f5eccd8e90d9e64cf2b8f6e2017db"
+    }
+  },
+  "candidate": {
+    "summary_sha256": "bca94f371933e4d330a78576a2f2a992f6eb9c270b5f2b51a2cce8504b8e7a4c",
+    "artifact_hashes": {
+      "blueprint": "20cff94d5bf5ba897cdf0c1fe983e097e9d9b1cdf82ad40ff2159995b33119c3",
+      "buildFunction": "631973cf34ded1e5cbadc2e109ef05b48fc102b36c21c28b4486381ce73539c4",
+      "clearFunction": "220bd03d4a4034541032922a7e4a6fd97dc57ec75dc70d0865f32b10cf424653",
+      "runFunction": "568b2b7f3a56bd18743ddba22e6def4d56003dd536c3e18c9668fee7ad6d2631",
+      "rawBuild": "351a3a9c2ea79b18a23654fbcf906173caeb61ed0b10693e2465626dee058b58",
+      "previewHtml": "fd7df1886c8e480fd271fa5b497002787c406c9fb516ce2511a1c47dc22ccb9f",
+      "report": "11b48e9262ee0edede72bfba8fe62005c0751dfcbd82b642b4a535305c2c65cf",
+      "architectureScorecard": "ae8edd0e274d9c8d0234afa77e097b6b66394d8d344ac865c7db0a29a174f482",
+      "candidateSelection": "36b93029145a623872225781901d3ca00e496d1959300318cb3cde8922f572ef",
+      "candidateSelectionReport": "092e4dded81e6f304ee9e603f7445fe1a306b4a356f02449195d04bf1f2e4b6b"
+    }
+  }
+}
