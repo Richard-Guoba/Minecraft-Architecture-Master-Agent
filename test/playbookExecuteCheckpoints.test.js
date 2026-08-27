@@ -282,6 +282,24 @@ test('eligible retains ordered neutral evidence and one consumed repair budget',
   }
 });
 
+test('eligibility contract preserves a reviewed-order cross-prefix neutral list', () => {
+  const neutral = createEligibilityRecord({
+    status: 'eligible',
+    hard_qa_ok: true,
+    unresolved_violated_core_rule_ids: [],
+    neutral_unknown_rule_ids: [
+      'rule:structure.compose-three-volumes',
+      'rule:roof.border-with-material-contrast'
+    ],
+    neutral_not_applicable_rule_ids: [],
+    repair_budget_used: 0
+  });
+  assert.deepEqual(neutral.neutral_unknown_rule_ids, [
+    'rule:structure.compose-three-volumes',
+    'rule:roof.border-with-material-contrast'
+  ]);
+});
+
 function checkpointInput(layer) {
   const index = LAYERS.indexOf(layer);
   return {

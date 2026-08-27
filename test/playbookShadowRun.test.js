@@ -3,9 +3,14 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { stableJson } from '../src/playbook/shadow/canonical.js';
 import { SHADOW_OUTPUT_FILES } from '../src/playbook/shadow/constants.js';
 import { validateManifest } from '../src/playbook/shadow/contracts.js';
-import { buildShadowArtifacts, runShadowReview } from '../src/playbook/shadow/runShadowReview.js';
+import {
+  buildDeterministicShadowReview,
+  buildShadowArtifacts,
+  runShadowReview
+} from '../src/playbook/shadow/runShadowReview.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
@@ -37,6 +42,34 @@ test('mock orchestration produces exactly five stable artifacts', async () => {
   assert.match(report, /没有视觉输入/u);
   assert.match(report, /没有修改建筑/u);
   assert.doesNotMatch(report, /评分：|获胜/u);
+});
+
+test('deterministic review extraction preserves P4 review and all artifact bytes without a client', async () => {
+  const blueprintBytes = blueprintBytesFor('A compact medieval timber house.');
+  const clientFactory = () => { throw new Error('must not create a client'); };
+  const extracted = await buildDeterministicShadowReview({
+    projectRoot: ROOT,
+    blueprintBytes,
+    blueprintRelativePath: 'blueprint.json',
+    createClient: clientFactory
+  });
+  const first = await buildShadowArtifacts({
+    projectRoot: ROOT,
+    blueprintBytes,
+    blueprintRelativePath: 'blueprint.json',
+    mode: 'mock',
+    createClient: clientFactory
+  });
+  const second = await buildShadowArtifacts({
+    projectRoot: ROOT,
+    blueprintBytes,
+    blueprintRelativePath: 'blueprint.json',
+    mode: 'mock',
+    createClient: clientFactory
+  });
+
+  assert.deepEqual(Buffer.from(stableJson(extracted)), first['review.json']);
+  assert.deepEqual(second, first);
 });
 
 test('LLM failure changes no authoritative review or prompt bytes', async () => {

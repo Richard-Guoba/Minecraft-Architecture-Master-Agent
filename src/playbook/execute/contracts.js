@@ -194,9 +194,9 @@ export function validateCheckpointEnvelope(value) {
 export function validateEligibilityRecord(value) {
   const data = canonicalObject(value, ELIGIBILITY_FIELDS, 'P5_AUTHORITY_INVALID');
   if (typeof data.hard_qa_ok !== 'boolean') fail('P5_AUTHORITY_INVALID');
-  assertCanonicalIds(data.unresolved_violated_core_rule_ids, RULE_ID, 'P5_AUTHORITY_INVALID');
-  assertCanonicalIds(data.neutral_unknown_rule_ids, RULE_ID, 'P5_AUTHORITY_INVALID');
-  assertCanonicalIds(data.neutral_not_applicable_rule_ids, RULE_ID, 'P5_AUTHORITY_INVALID');
+  assertUniqueIds(data.unresolved_violated_core_rule_ids, RULE_ID, 'P5_AUTHORITY_INVALID');
+  assertUniqueIds(data.neutral_unknown_rule_ids, RULE_ID, 'P5_AUTHORITY_INVALID');
+  assertUniqueIds(data.neutral_not_applicable_rule_ids, RULE_ID, 'P5_AUTHORITY_INVALID');
   assertDistinct(data.unresolved_violated_core_rule_ids, data.neutral_unknown_rule_ids, 'P5_AUTHORITY_INVALID');
   assertDistinct(data.unresolved_violated_core_rule_ids, data.neutral_not_applicable_rule_ids, 'P5_AUTHORITY_INVALID');
   assertDistinct(data.neutral_unknown_rule_ids, data.neutral_not_applicable_rule_ids, 'P5_AUTHORITY_INVALID');

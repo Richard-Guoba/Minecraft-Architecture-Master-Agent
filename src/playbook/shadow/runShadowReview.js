@@ -24,15 +24,10 @@ export async function buildShadowArtifacts({
   mode,
   createClient
 } = {}) {
-  const blueprint = parseBlueprintBytes(blueprintBytes);
-  const corpus = await loadShadowCorpus({ projectRoot });
-  const registry = validateCheckerRegistry(corpus.cards, createCheckerRegistry());
-  const review = evaluateShadowReview({
-    blueprint,
-    blueprintPath: blueprintRelativePath,
-    blueprintSha256: sha256(blueprintBytes),
-    corpus,
-    registry
+  const { blueprint, corpus, review } = await deterministicReviewInputs({
+    projectRoot,
+    blueprintBytes,
+    blueprintRelativePath
   });
   const packet = buildPromptPacket({
     review,
@@ -51,6 +46,36 @@ export async function buildShadowArtifacts({
     'manifest.json': Buffer.from(stableJson(manifest)),
     ...bodyFiles
   });
+}
+
+export async function buildDeterministicShadowReview({
+  projectRoot,
+  blueprintBytes,
+  blueprintRelativePath
+} = {}) {
+  return (await deterministicReviewInputs({
+    projectRoot,
+    blueprintBytes,
+    blueprintRelativePath
+  })).review;
+}
+
+async function deterministicReviewInputs({
+  projectRoot,
+  blueprintBytes,
+  blueprintRelativePath
+} = {}) {
+  const blueprint = parseBlueprintBytes(blueprintBytes);
+  const corpus = await loadShadowCorpus({ projectRoot });
+  const registry = validateCheckerRegistry(corpus.cards, createCheckerRegistry());
+  const review = evaluateShadowReview({
+    blueprint,
+    blueprintPath: blueprintRelativePath,
+    blueprintSha256: sha256(blueprintBytes),
+    corpus,
+    registry
+  });
+  return { blueprint, corpus, review };
 }
 
 export async function runShadowReview(options = {}) {
