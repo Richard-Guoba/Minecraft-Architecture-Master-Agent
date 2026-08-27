@@ -308,6 +308,63 @@ test('P5 dependency gate canonicalizes compound authority identifiers without su
   }
 });
 
+test('P5 dependency gate normalizes terminal conventional versions before authority decomposition', async (t) => {
+  for (const target of [
+    'src/evaluation/visualreviewv2.js',
+    'src/providers/imageclientv2.js',
+    'src/tools/screenshotreviewv2.js',
+    'src/models/aestheticreviewv2.js',
+    'src/construction/agents/candidateselectionagentv2.js',
+    'src/construction/agents/visualizationagentv2.js',
+    'src/evaluation/visualreviewv1.js',
+    'src/providers/imageclientv12.js',
+    'src/models/aestheticreviewv999.js',
+    'src/evaluation/visualReviewV2.js',
+    'src/evaluation/VisualReviewV2.js',
+    'src/evaluation/visual-review-v2.js',
+    'src/evaluation/visual_review_v2.js',
+    'src/evaluation/visualreview-v2.js',
+    'src/evaluation/visualreview_v2.js',
+    'src/evaluation/visualreviewv2/index.js',
+    'src/phases/p6v2/review.js'
+  ]) {
+    await t.test(`reject ${target}`, async (t) => {
+      const root = await dependencyRoot(t);
+      await writeFixture(root, target, 'export const forbidden = true;\n');
+      await writeFixture(root, 'src/playbook/execute/entry.js',
+        `import '${relativeImport('src/playbook/execute/entry.js', target)}';\n`);
+      const audit = await auditExecuteDependencyBoundary({ projectRoot: root });
+      assert.equal(audit.import_boundary_violation_count, 1);
+      assert.equal(audit.import_boundary_unresolved_count, 0);
+    });
+  }
+
+  for (const target of [
+    'src/evaluation/visualreviewv0.js',
+    'src/evaluation/visualreviewv01.js',
+    'src/evaluation/visualreviewv1000.js',
+    'src/phases/p60v2/review.js',
+    'src/tools/screen-shotgun-review-v2.js',
+    'src/reviews/provisionalreviewv2.js',
+    'src/models/imagerymodelv2.js',
+    'src/tools/cameraderiereviewv2.js',
+    'src/layout/fixedwidthviewv2.js',
+    'src/selection/blindfoldselectionv2.js',
+    'src/preferences/humanitypreferencev2.js',
+    'src/reviews/aesthetereviewv2.js'
+  ]) {
+    await t.test(`allow versioned adjacent word ${target}`, async (t) => {
+      const root = await dependencyRoot(t);
+      await writeFixture(root, target, 'export const allowed = true;\n');
+      await writeFixture(root, 'src/playbook/execute/entry.js',
+        `import '${relativeImport('src/playbook/execute/entry.js', target)}';\n`);
+      const audit = await auditExecuteDependencyBoundary({ projectRoot: root });
+      assert.equal(audit.import_boundary_violation_count, 0);
+      assert.equal(audit.import_boundary_unresolved_count, 0);
+    });
+  }
+});
+
 test('positive acceptance fixture produces exactly three eligible zero-repair five-layer candidates', async (t) => {
   const fixture = JSON.parse(await fs.readFile(path.join(FIXTURES, 'medieval-positive.json')));
   assert.deepEqual(Object.keys(fixture), ['schema_version', 'prompt', 'seed', 'expected_candidate_count', 'expected_checkpoint_layers']);

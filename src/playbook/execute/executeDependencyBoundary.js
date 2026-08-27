@@ -51,6 +51,7 @@ const CANONICAL_IDENTIFIER_WORDS = Object.freeze([
   'view',
   'shot'
 ]);
+const CONVENTIONAL_VERSION_SUFFIX = /v[1-9][0-9]{0,2}$/u;
 
 export async function auditExecuteDependencyBoundary({ projectRoot }) {
   const execute = await auditPlaybookSourceBoundary({
@@ -115,12 +116,18 @@ function normalizeDependencyIdentifiers(value) {
   const boundedTokens = String(value)
     .replace(/([A-Z]+)([A-Z][a-z])/gu, '$1 $2')
     .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
-    .replace(/([A-Za-z])([0-9])/gu, '$1 $2')
-    .replace(/([0-9])([A-Za-z])/gu, '$1 $2')
     .toLowerCase()
     .split(/[^a-z0-9]+/u)
     .filter(Boolean);
-  return boundedTokens.flatMap(splitCanonicalIdentifier);
+  return boundedTokens.flatMap((identifier) => {
+    const unversioned = identifier.replace(CONVENTIONAL_VERSION_SUFFIX, '');
+    if (!unversioned) return [];
+    return unversioned
+      .replace(/([a-z])([0-9])/gu, '$1 $2')
+      .replace(/([0-9])([a-z])/gu, '$1 $2')
+      .split(' ')
+      .flatMap(splitCanonicalIdentifier);
+  });
 }
 
 function splitCanonicalIdentifier(identifier) {
