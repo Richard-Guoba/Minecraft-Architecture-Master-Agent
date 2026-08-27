@@ -10,9 +10,15 @@ import {
 import { FacadeAgent } from '../src/construction/agents/facadeAgent.js';
 import { RoofAgent } from '../src/construction/agents/roofAgent.js';
 import { StructureAgent } from '../src/construction/agents/structureAgent.js';
+import { deriveBuildSpec as deriveNeutralBuildSpec } from '../src/construction/buildSpec.js';
+import { deriveBuildSpec as deriveWorkflowBuildSpec } from '../src/construction/workflow.js';
 
 const HASH = 'a'.repeat(64);
 const PROMPT = '建造一座两层中世纪民居，三体块、深色坡屋顶、木框架与石质基座';
+
+test('workflow re-exports the dependency-neutral build-spec implementation', () => {
+  assert.equal(deriveWorkflowBuildSpec, deriveNeutralBuildSpec);
+});
 
 test('prepareConstructionDesign preserves architect, planner, creative provider order and freezes only canonical context', async () => {
   const root = path.resolve('.tmp', `construction-design-stages-${Date.now()}-${Math.random()}`);
@@ -124,6 +130,33 @@ test('compileDesignLayers rejects non-empty effects until the typed applicator e
       () => compileDesignLayers({ prepared, resolvedEffectsByLayer: { massing: [{ kind: 'set-volume-role' }] } }),
       { code: 'P5_REPAIR_INVALID' }
     );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('compileDesignLayers rejects unsafe or unknown effect maps before compiling layers', async () => {
+  const root = path.resolve('.tmp', `construction-layer-effect-map-${Date.now()}-${Math.random()}`);
+  try {
+    const prepared = await prepareConstructionDesign({ prompt: PROMPT, mode: 'mock', outputDir: root, seed: 424242 });
+    const accessorMap = {};
+    Object.defineProperty(accessorMap, 'brief', { enumerable: true, get: () => [] });
+    const customPrototypeMap = Object.create({});
+    customPrototypeMap.brief = [];
+    const invalidMaps = [
+      { runtime: [{}] },
+      { struture: [] },
+      { roof: {} },
+      accessorMap,
+      customPrototypeMap
+    ];
+
+    for (const resolvedEffectsByLayer of invalidMaps) {
+      assert.throws(
+        () => compileDesignLayers({ prepared, resolvedEffectsByLayer }),
+        { code: 'P5_REPAIR_INVALID' }
+      );
+    }
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

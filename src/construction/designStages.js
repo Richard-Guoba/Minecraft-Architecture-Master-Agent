@@ -18,7 +18,8 @@ import { runCoarseSemanticVoxelShadow } from './learning/coarseSemanticVoxelShad
 import { createLlmClient } from '../llm/createLlmClient.js';
 import { ensureDir } from '../lib/fs.js';
 import { validateFrozenGeneratorContext, executeError } from '../playbook/execute/contracts.js';
-import { deriveBuildSpec } from './workflow.js';
+import { DESIGN_LAYER_ORDER } from '../playbook/execute/constants.js';
+import { deriveBuildSpec } from './buildSpec.js';
 
 export async function prepareConstructionDesign({
   prompt,
@@ -163,6 +164,7 @@ export function buildFrozenGeneratorContext(value) {
 }
 
 export function compileDesignLayers({ prepared, layerPayloads, resolvedEffectsByLayer = {} }) {
+  resolvedEffectsByLayer = validateResolvedEffectsByLayer(resolvedEffectsByLayer);
   const briefResult = compileBriefLayer({
     prepared,
     previousLayer: layerPayloads?.brief,
@@ -297,6 +299,31 @@ export function compileFacadeLayer({ prepared, brief, massing, structure, roof, 
 
 function rejectUnsupportedEffects(effects) {
   if (!Array.isArray(effects) || effects.length !== 0) throw executeError('P5_REPAIR_INVALID');
+}
+
+function validateResolvedEffectsByLayer(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw executeError('P5_REPAIR_INVALID');
+  }
+  if (Object.getOwnPropertySymbols(value).length !== 0 || Object.getOwnPropertyNames(value).length !== Object.keys(value).length) {
+    throw executeError('P5_REPAIR_INVALID');
+  }
+  const output = {};
+  for (const key of Object.keys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!DESIGN_LAYER_ORDER.includes(key) || !descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
+      throw executeError('P5_REPAIR_INVALID');
+    }
+    const effects = descriptor.value;
+    if (!Array.isArray(effects) || Object.getPrototypeOf(effects) !== Array.prototype || effects.length !== 0) {
+      throw executeError('P5_REPAIR_INVALID');
+    }
+    if (Object.getOwnPropertySymbols(effects).length !== 0 || Object.getOwnPropertyNames(effects).length !== 1) {
+      throw executeError('P5_REPAIR_INVALID');
+    }
+    output[key] = Object.freeze([]);
+  }
+  return Object.freeze(output);
 }
 
 function validateLayerPayload(value) {
