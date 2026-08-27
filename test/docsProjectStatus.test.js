@@ -31,6 +31,7 @@ test('project docs describe the residential renderer as a foundation only', () =
 test('architecture playbook docs describe the strict P4 boundary', () => {
   const readme = read('docs/architecture-playbook/README.md');
   const report = read('docs/architecture-playbook/reports/p4-shadow-guidance.md');
+  const p5Report = read('docs/architecture-playbook/reports/p5-executable-design-layer.md');
   assert.match(readme, /P4.*影子指导.*通过/u);
   assert.match(readme, /npm run playbook:shadow -- --run/u);
   assert.match(report, /21 条规则/u);
@@ -44,6 +45,9 @@ test('architecture playbook docs describe the strict P4 boundary', () => {
   assert.match(readme, /没有秘籍评分/u);
   assert.match(readme, /不证明质量或审美改善/u);
   assert.match(readme, /npm run playbook:execute -- --mode mock/u);
+  assert.match(readme, /selection-generations/u);
+  assert.match(p5Report, /current-chain\.json.*(?:pointer|指针)/iu);
+  assert.match(p5Report, /descriptor.*P5_INSTALL_FAILED/iu);
   assert.doesNotMatch(report, /P5 已开放|开放 P5/u);
   assert.doesNotMatch(report, /P6 已开放|已改善建筑审美/u);
 });

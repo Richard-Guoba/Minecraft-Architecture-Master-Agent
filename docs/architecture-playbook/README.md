@@ -29,7 +29,9 @@
 npm run playbook:execute -- --mode mock --seed 424242 "Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base"
 ```
 
-运行证据位于忽略的 `out/<run>/playbook-execute/`，包括三个候选目录、每个候选的五层 checkpoint、修复/失败证据、`selection.json` 和 `selection-report.md`。这些真实运行输出、provider transcript、生成数据包和世界文件不得提交。
+运行证据位于忽略的 `out/<run>/playbook-execute/`。三个候选目录保存哈希绑定的冻结设计、完整生成器上下文、五层 checkpoint、blueprint、硬 QA、P4 review 及修复/失败证据；每次接受的 chain body 都不可变，只有 `current-chain.json` 指针可以切换。根 `manifest.json` 是当前 selection 指针，指向 `selection-generations/selection-<manifest-sha256>/` 中不可变且完整的 `manifest.json`、`selection.json` 与 `selection-report.md`。CLI 继续显示 `playbook-execute/selection-report.md` 这个逻辑兼容名称；程序化 artifact 路径解析到当前不可变 generation。replay 工作目录位于同一受管 run 的 `candidate-work/`；成功只保留最终选中候选，失败或无资格结果不保留 workspace。这些真实运行输出、provider transcript、生成数据包和世界文件不得提交。
+
+最终 datapack 安装只发生在候选选择与权威重验之后。P5 安装器逐个 descriptor 校验源/目标身份，只复制已验证的普通文件到私有同级 stage，复核 tree hash 后以备份和原子 rename 提交；提交前任何失败都保留原 datapack，公开错误统一为 `P5_INSTALL_FAILED`。手动测试不得指向真实用户世界。
 
 P5 v0.1 只有四个可执行操作：`resize-or-reposition-volume`、`strengthen-primary-volume`、`reduce-support-volume-prominence` 和 `connect-support-path`。其余十一条核心程序仍要求证据；六条案例模式保持中立、非权威，不能影响资格或排序。
 

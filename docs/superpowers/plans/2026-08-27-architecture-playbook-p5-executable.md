@@ -665,17 +665,23 @@ Use the reviewed Linux no-replace primitive
 `/proc/self/fd/<fd>/<basename>` paths. Missing GNU support fails closed with
 `P5_INSTALL_FAILED`.
 
-- [ ] **Step 5: Implement whole-candidate snapshot promotion**
+- [ ] **Step 5: Implement immutable bodies and one atomic current pointer**
 
-Every candidate update stages a complete owned `candidate-0N` snapshot,
-including all prior immutable bodies plus new versioned bodies and one
-`current-chain.json`. Validate the staged tree from descriptor reads, chmod
-versioned bodies read-only, sync files/directories, reserve a no-replace backup,
-and atomically promote the complete directory. On failure restore the exact old
-directory before surfacing a sanitized code.
+Every candidate update publishes only new immutable version bodies, validates
+the complete prospective chain from descriptor reads, chmods bodies read-only,
+and syncs every file/directory before replacing `current-chain.json`. The pointer
+is the canonical candidate/revision/body-hash record and is the only mutable
+candidate authority. Its one same-directory fsynced atomic replacement must
+leave either the complete old or complete new chain authoritative; historical
+body inodes never change.
 
-Selection files are installed only after all candidate snapshots and use their
-own exact managed manifest.
+Selection files are installed only after all candidate snapshots. Publish the
+complete immutable `selection-generations/selection-<manifest-sha256>/`
+generation first, then replace only the root `manifest.json` pointer with one
+same-directory fsynced atomic rename. `selection.json` and
+`selection-report.md` are resolved inside that generation, never promoted as
+independent current files. Subprocess kill/restart tests cover every
+write/move/sync boundary for both pointer protocols.
 
 - [ ] **Step 6: Run focused GREEN and P4 regression**
 

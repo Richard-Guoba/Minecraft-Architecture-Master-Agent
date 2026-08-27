@@ -630,10 +630,13 @@ P5 artifacts live only below the ignored run directory:
 
 ```text
 out/<run>/playbook-execute/
-  manifest.json
+  manifest.json                         current selection pointer
   candidates/
     candidate-01/
-      current-chain.json
+      current-chain.json                current chain pointer
+      frozen/
+        frozen-design.json
+        frozen-generator-context.json
       chains/
         chain-0001.json
         chain-0002.json
@@ -643,7 +646,10 @@ out/<run>/playbook-execute/
         structure/r0001.json
         roof/r0001.json
         facade/r0001.json
+      blueprints/
+        chain-0001.json
       reviews/
+        chain-0001-hard-qa.json
         chain-0001-review.json
       repairs/
         attempt-01-request.json
@@ -652,8 +658,14 @@ out/<run>/playbook-execute/
       failures/
     candidate-02/
     candidate-03/
-  selection.json
-  selection-report.md
+  selection-generations/
+    selection-<manifest-sha256>/
+      manifest.json
+      selection.json
+      selection-report.md
+
+out/<run>/candidate-work/
+  <selected candidate workspace only after successful completion>
 ```
 
 Names are fixed, ASCII, and generated locally. Run IDs and candidate IDs cannot
@@ -663,11 +675,20 @@ All authoritative JSON is canonical and body hashes live in manifests. Every
 versioned body is immutable and read-only after promotion; the managed current
 pointer is replaced only through the atomic protocol below.
 
-Candidate artifacts are created in private staging directories. A complete
-candidate chain is promoted with no-overwrite semantics and ownership checks.
-All versioned bodies are immutable after promotion. `current-chain.json` is the
-only replaceable managed file: it is an atomic, hash-bound pointer record whose
-old version remains authoritative if replacement fails.
+Candidate immutable bodies are written, validated, made read-only, and synced
+before publication. All versioned bodies retain their original inode after
+promotion. `current-chain.json` is the only replaceable candidate file: it is a
+canonical `{ schema_version, candidate_id, chain_revision, chain_sha256 }`
+pointer whose single same-directory atomic replacement makes either the complete
+old or complete new chain authoritative.
+
+Selection publication first writes one immutable, complete generation and then
+replaces only the root `manifest.json` pointer. That pointer canonically binds
+the generation path and generation-manifest hash. Root `selection.json` and
+`selection-report.md` are logical compatibility names resolved through the
+pointer; they are never independently mutated current files. Replay workspace
+is run-owned, never placed in a global temporary directory, and final cleanup
+retains only the selected successful workspace.
 
 P5 must preserve unknown existing files and refuse unowned output. It must reject
 symlinked path components, traversal, control characters, malformed manifests,

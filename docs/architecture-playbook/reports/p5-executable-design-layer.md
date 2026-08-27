@@ -33,25 +33,31 @@ npm run playbook:execute -- --mode mock --seed 424242 "Build a two-story medieva
 
 六条案例模式是中立、非权威资料；它们不决定资格、补丁或排序。
 
+候选权威由已持久化的冻结设计、完整生成器上下文、checkpoint、blueprint、硬 QA 与 P4 review 共同绑定。接受的 chain body 保持不可变；`current-chain.json` 是唯一可替换的候选指针。selection 先写入完整不可变的 `selection-generations/selection-<manifest-sha256>/`，再只替换根 `manifest.json` 指针，因此进程中止后只会恢复为完整旧 generation 或完整新 generation。replay 只读取这些磁盘权威，不读取易变运行时设计字段，也不创建 provider client。
+
+最终 datapack 使用 descriptor 约束的身份/哈希校验安装器；它只复制普通文件到私有同级 stage，并在提交前同步和复核完整 tree hash。所有写入、权限、同步、rename、源交换和提交前清理故障都返回无敏感内容的 `P5_INSTALL_FAILED`，同时保留原 datapack；提交后的备份清理失败不撤销已完成的新 generation。
+
 ## 接受证据
 
-检查入库的 positive、repairable 和 no-eligible mock 输入。正例生成三个全部 eligible、零修复的五层证据树；repairable 场景只重放 massing 及其下游 structure/roof/facade，并保留 brief 字节；no-eligible 场景让三个候选各执行一次真实修复/replay 后仍保留 unresolved current chain，不发布 selection，也不调用安装器。相同输入、seed 与补丁的 repair evidence、checkpoint chain、blueprint、operation list、build function 和 datapack tree 字节可重复。注入的真实 replay 故障证明先前 current-chain 的字节、哈希与 inode，以及无关 output/world 字节全部不变；failure evidence 只含固定代码和权威哈希。repair/replay 不创建 provider client。
+检查入库的 positive、repairable 和 no-eligible mock 输入。正例生成三个全部 eligible、零修复的五层证据树；repairable 场景只重放 massing 及其下游 structure/roof/facade，并保留 brief 字节；no-eligible 场景让三个候选各执行一次真实修复/replay 后仍保留 unresolved current chain，不发布 selection，也不调用安装器。相同输入、seed 与补丁的 repair evidence、checkpoint chain、blueprint、operation list、build function 和 datapack tree 字节可重复。磁盘重启 replay 在丢弃运行时对象、主动 Concept Studio/Stage 7 以及 provider 构造必抛时仍重建相同输出；所有会影响输出的上下文字段都由持久化 body 和 chain hash 约束。硬 QA 会重新计算，P4 review 的 blueprint hash、workflow 与 seed 在初次资格、replay、存储读取和 selection 安装边界都绑定同一候选。
+
+candidate 与 selection 的每个写入、权限、移动和同步 kill point 都由独立子进程执行；重启后只观察到完整旧或完整新权威，且历史不可变 body inode 不变。注入的真实 replay 故障证明先前 current pointer 的字节、哈希与 inode，以及无关 output/world 字节全部不变；failure evidence 只含固定代码和权威哈希。成功只保留选中候选的 run-owned workspace，无资格/失败运行清空 workspace，且没有新的 `/tmp/p5-replay-*` 残留。repair/replay 不创建 provider client。
 
 依赖门禁复用 P4 已审阅的 ESM 解析与 fail-closed 规则，拒绝 computed import、`createRequire`、未解析边、symlink/realpath 逃逸和动态禁止边。保留概念在 camelCase、PascalCase、连字符、下划线、字母/数字拆分和完整连接形式下使用同一组有界标识符归一化；每个标识符还会在权威词分解前独立移除终端常规版本后缀 `v1` 至 `v999`（不接受零、前导零或四位数）。相邻普通词不会按子串误判。execute 非资格依赖只精确放行既有 `candidateSelectionAgent.js`、`templateAestheticReviewAgent.js` 和 `visualizationAgent.js` 三条路径，别名、改名和嵌套变体都拒绝；资格模块不能依赖其中任何一个。`templateAestheticReviewAgent.js` 是 P5 前既有、供不变 ranker 使用的结构化 blueprint 字段评分，不是 P6 图像、固定视角或视觉模型评价。P4 的独立边界仍然禁止 construction、pipeline、world 和 datapack I/O。P3 手动门禁保持 21 条审阅规则、15 条核心程序、6 条案例模式、5 个受管产物和零 drift。
 
 ## 新鲜门禁结果
 
-- 实施范围：Task 9 审阅基线 `e50195302990a860218c88ae28f73253e1a56636` 到本 Task 10 `feat(playbook): complete P5 executable design layer` 提交。
-- P5 精确门禁：469/469（合同、off 兼容、设计层、checkpoint、存储、资格、四类 repair、replay、orchestrator、真实 CLI、依赖和三场景 acceptance）。
+- 最终修复范围：全分支审阅基线 `f54ea59fbe6e82631687a2cd0710f018298a47e6` 到实现提交 `13a03891a891e54f9934a823f3d2c0d2f35851e5`。
+- P5 精确门禁：409/409（合同、扩展 off 兼容、设计层、checkpoint、存储与进程中止恢复、资格、四类 repair、磁盘 replay、orchestrator、真实安装器、直接 API、真实 CLI、依赖和三场景 acceptance）。
 - P4 精确兼容门禁：201/201。
-- 完整仓库回归：1517/1517，退出码 0。
+- 完整仓库回归：1457/1457，退出码 0。
 - P3：21 条审阅规则、15 条核心程序、6 条案例模式、5 个受管产物、0 managed drift。
-- 依赖：P5 与 P4 violation/unresolved 均为 0；P5 资格模块也不依赖 construction/pipeline/world/datapack I/O。
+- 独立依赖矩阵：142/142；checked-in P5/P4 graph 的 violation/unresolved 均为 0，P5 资格模块也不依赖 construction/pipeline/world/datapack I/O。
 - 卫生：`git diff --check` 为 0，`git ls-files out .local/architecture-playbook` 为空。
 
-入库 fixture SHA-256：positive `1e9e3808ca0e085d0c49e1b4870840be55a7e6eb6ffaf04d9942bd19750cf754`；repairable `bf244a5527a1237f555c2fbc1bd3b9956d7a80934ec47e63f393e91e61af10f7`；no-eligible `c3d12c9f564e2848b441df1ceb9afe55320765d88eff803977565f69d67df0e1`。
+入库 fixture SHA-256：positive `1e9e3808ca0e085d0c49e1b4870840be55a7e6eb6ffaf04d9942bd19750cf754`；repairable `bf244a5527a1237f555c2fbc1bd3b9956d7a80934ec47e63f393e91e61af10f7`；no-eligible `c3d12c9f564e2848b441df1ceb9afe55320765d88eff803977565f69d67df0e1`；base-generated 扩展 off 向量 `92d046a7380ce0a46d6d1a9fdd82a27a660c7f7a8c9e987146e637c99abd612f`。
 
-受控 positive mock 固定 seed 的三条 current-chain SHA-256 分别为 candidate-01 `ba73a2a9bfe9840ed4ecc5684e2205295e02ba9c9771bd4d12ba2b524c95caec`、candidate-02 `f3500397ac411793ddfadce332685b98c4234593fb93fc7734fea253b2d1883f`、candidate-03 `33dc155c142014ddfe045748fe66412efcb029d5819c4738124f46c22b88d514`。repairable candidate-02 replay chain 为 `49acb9bdd03880edb586d457f6b588b4e8adb05368bf2c4a5800107a789d5a22`；request/patch/result 分别为 `72e50cb91a0645922cdc070f1d66180d46d924474c664ee6f644a32ec56de0f0`、`65af7380ec3c240727bcfa834baaf09012db174aa43414d2c253218ad7fbe8f6`、`1c580065b16bf31261310d73c7ce4975df28daedda3fbc91d39f046463916b88`。重新生成的 blueprint、operation list、build function、datapack tree 哈希依次为 `4fe0850b6995e9f53af0e9fc4e92df188cd371569cef7fa34f62b180f3283f3d`、`5bac276192ba6650b67f9e25f0a26d00911ef463f527e59d0211f68b0f9511c4`、`110578a4f609391adb4b76c97b658ccfcdd458529bd60b686915caaa37e5a673`、`5ffc5a9637427611f0c4421d3a615950ea730fdbb0d8861a59cca1b5cb967b16`，与持久化 Task 8 权威完全相同，且独立根复跑字节相同。
+最终实现提交上的一次无 world 目标真实 mock 运行得到 candidate-01/02/03 chain SHA-256：`6343e9cbad3f38e9ecfae8f06b521ed592a001a3d8061476e494812c1fcb66d3`、`831be25fe333723ffb4aae674d0d3039cfbc0a8e773d204b4f52b4626341e311`、`8fbf22a708f9f223e950a5253957cd4948f8378c7dd0f0f2ab3c2f6aeb097eaf`；第三条 eligible 并被选择。selection manifest hash 为 `8251589598c720aea707d4dad2fbdd00eff1f909a390a02c39b90e5d5121cdeb`，其 generation 路径中的相同 hash 与根 pointer 完全绑定。受控 repair acceptance 则逐字节比较两次独立根运行的 request/patch/result、chain、blueprint、operation list、build function 与 datapack tree；报告不把测试桩的瞬时 hash 冒充生产权威。
 
 ## 声明限制
 
