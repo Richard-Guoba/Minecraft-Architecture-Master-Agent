@@ -65,6 +65,7 @@ export function createChainManifest(input) {
     || finalCheckpoint.design_review.p4_review_sha256 !== input.p4_review_sha256
     || finalCheckpoint.hard_qa.hard_qa_ok !== eligibility.hard_qa_ok
   ) failCheckpoint();
+  assertCheckpointOrigins(input, checkpoints);
   return validateChainManifest({
     schema_version: EXECUTE_SCHEMA_VERSION,
     candidate_id: input.candidate_id,
@@ -100,19 +101,29 @@ export function createEligibilityRecord(input) {
 function upstreamRows(layer, candidateId, envelopes) {
   const index = DESIGN_LAYER_ORDER.indexOf(layer);
   if (index < 0 || !Array.isArray(envelopes) || envelopes.length !== index) failCheckpoint();
-  return envelopes.map((envelope, position) => {
-    const validated = validateEnvelopeForLayer(envelope, DESIGN_LAYER_ORDER[position], candidateId);
-    return { layer: validated.checkpoint.layer, checkpoint_sha256: validated.checkpoint_sha256 };
-  });
+  return validateEnvelopeSequence(envelopes, candidateId).map(({ checkpoint, checkpoint_sha256 }) => ({
+    layer: checkpoint.layer,
+    checkpoint_sha256
+  }));
 }
 
 function fullCheckpointEnvelopes(candidateId, envelopes) {
   if (!Array.isArray(envelopes) || envelopes.length !== DESIGN_LAYER_ORDER.length) failCheckpoint();
-  return envelopes.map((envelope, position) => validateEnvelopeForLayer(
-    envelope,
-    DESIGN_LAYER_ORDER[position],
-    candidateId
-  ));
+  return validateEnvelopeSequence(envelopes, candidateId);
+}
+
+function validateEnvelopeSequence(envelopes, candidateId) {
+  const validated = [];
+  for (const [position, envelope] of envelopes.entries()) {
+    const current = validateEnvelopeForLayer(envelope, DESIGN_LAYER_ORDER[position], candidateId);
+    const expectedUpstream = validated.map(({ checkpoint, checkpoint_sha256 }) => ({
+      layer: checkpoint.layer,
+      checkpoint_sha256
+    }));
+    if (!sameLayerHashes(current.checkpoint.upstream_accepted_hashes, expectedUpstream)) failCheckpoint();
+    validated.push(current);
+  }
+  return validated;
 }
 
 function validateEnvelopeForLayer(envelope, layer, candidateId) {
@@ -128,6 +139,33 @@ function validateEnvelopeForLayer(envelope, layer, candidateId) {
     || validated.checkpoint.status !== 'accepted'
   ) failCheckpoint();
   return validated;
+}
+
+function assertCheckpointOrigins(input, checkpoints) {
+  if (input.created_from === 'initial') {
+    if (checkpoints.some(({ checkpoint }) => checkpoint.replay_origin !== null)) failCheckpoint();
+    return;
+  }
+  let replayStart = -1;
+  for (const [index, { checkpoint }] of checkpoints.entries()) {
+    const origin = checkpoint.replay_origin;
+    if (origin === null) {
+      if (replayStart >= 0) failCheckpoint();
+      continue;
+    }
+    if (replayStart < 0) replayStart = index;
+    if (
+      origin.base_chain_sha256 !== input.parent_chain_sha256
+      || origin.repair_transaction_sha256 !== input.repair_transaction_sha256
+    ) failCheckpoint();
+  }
+  if (replayStart < 0) failCheckpoint();
+}
+
+function sameLayerHashes(left, right) {
+  return left.length === right.length && left.every((row, index) => (
+    row.layer === right[index].layer && row.checkpoint_sha256 === right[index].checkpoint_sha256
+  ));
 }
 
 function assertExactInput(value, fields, code) {

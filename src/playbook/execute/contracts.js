@@ -49,7 +49,6 @@ const RECIPE_FRAGMENT_FIELDS = Object.freeze(['layer', 'payload']);
 const FIELD_PATCH_FIELDS = Object.freeze(['field', 'value']);
 const HARD_QA_FIELDS = Object.freeze(['hard_qa_ok', 'hard_qa_sha256']);
 const DESIGN_REVIEW_FIELDS = Object.freeze(['p4_review_sha256']);
-const INITIAL_REPLAY_ORIGIN_FIELDS = Object.freeze(['kind']);
 const REPLAY_REPLAY_ORIGIN_FIELDS = Object.freeze([
   'kind', 'base_chain_sha256', 'repair_transaction_sha256'
 ]);
@@ -210,7 +209,7 @@ export function validateChainManifest(value) {
   }
   assertNullableHash(data.repair_transaction_sha256, 'P5_CHECKPOINT_INVALID');
   validateEligibilityRecord(data.eligibility);
-  assertNonEmptyString(data.created_from, 'P5_CHECKPOINT_INVALID');
+  assertChainProvenance(data, 'P5_CHECKPOINT_INVALID');
   return deepFreeze(data);
 }
 
@@ -395,14 +394,22 @@ function assertDesignReview(value, code) {
 }
 
 function assertReplayOrigin(value, code) {
-  if (!isPlainObject(value)) fail(code);
-  if (value.kind === 'initial') {
-    assertExactObject(value, INITIAL_REPLAY_ORIGIN_FIELDS, code);
-    return;
-  }
-  if (value.kind !== 'replay') fail(code);
+  if (value === null) return;
+  if (!isPlainObject(value) || value.kind !== 'replay') fail(code);
   assertExactObject(value, REPLAY_REPLAY_ORIGIN_FIELDS, code);
   assertHash(value.base_chain_sha256, code);
+  assertHash(value.repair_transaction_sha256, code);
+}
+
+function assertChainProvenance(value, code) {
+  if (value.created_from === 'initial') {
+    if (value.chain_revision !== 1 || value.parent_chain_sha256 !== null || value.repair_transaction_sha256 !== null) {
+      fail(code);
+    }
+    return;
+  }
+  if (value.created_from !== 'replay' || value.chain_revision <= 1) fail(code);
+  assertHash(value.parent_chain_sha256, code);
   assertHash(value.repair_transaction_sha256, code);
 }
 

@@ -37,7 +37,7 @@ const INVALIDATES = {
   roof: ['facade'],
   facade: []
 };
-const CHECKPOINT_ENVELOPE_SHA256 = 'b662788a2efee69bd511f2cb50f5ba1bb2062d291879feed22a5fbcc76d1f8b1';
+const CHECKPOINT_ENVELOPE_SHA256 = '44db67f1de85dccdb9e0975d7fb5dc80532a83c3ff97155011f0f73b8fcb37aa';
 const REPAIR_ROWS = [
   {
     rule_id: 'rule:structure.compose-three-volumes',
@@ -500,7 +500,7 @@ function checkpointPayload(layer = 'massing') {
     hard_qa: { hard_qa_ok: true, hard_qa_sha256: HASH },
     design_review: { p4_review_sha256: HASH },
     invalidates_downstream: INVALIDATES[layer],
-    replay_origin: { kind: 'initial' }
+    replay_origin: null
   };
 }
 

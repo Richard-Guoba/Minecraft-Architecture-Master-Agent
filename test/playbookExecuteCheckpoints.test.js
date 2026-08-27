@@ -115,9 +115,7 @@ test('hashes the checkpoint body only from P4 canonical UTF-8 bytes', () => {
   "rejected_rule_ids": [
     "rule:facade.break-repetitive-bays"
   ],
-  "replay_origin": {
-    "kind": "initial"
-  },
+  "replay_origin": null,
   "revision": 1,
   "schema_version": 1,
   "selected_rule_ids": [
@@ -161,6 +159,22 @@ test('rejects checkpoint mutations across lifecycle, layer ownership, and hash a
   assert.throws(() => checkpointBytes(selfHash), { code: 'P5_CHECKPOINT_INVALID' });
 });
 
+test('rejects a well-formed transitive ancestry spliced from another accepted history', () => {
+  const primary = buildEnvelopes();
+  const alternateBrief = createCheckpointEnvelope({
+    ...checkpointInput('brief'),
+    revision: 2,
+    design_intent: { layer: 'brief', purpose: 'alternate-brief-intent' }
+  });
+  const alternateMassingInput = checkpointInput('massing');
+  alternateMassingInput.preceding_envelopes = [alternateBrief];
+  const alternateMassing = createCheckpointEnvelope(alternateMassingInput);
+  const splicedStructure = checkpointInput('structure');
+  splicedStructure.preceding_envelopes = [primary[0], alternateMassing];
+
+  assert.throws(() => createCheckpointEnvelope(splicedStructure), { code: 'P5_CHECKPOINT_INVALID' });
+});
+
 test('creates an immutable canonical chain with all five checkpoint hashes', () => {
   const checkpoints = buildEnvelopes();
   const chain = createChainManifest(chainInput(checkpoints));
@@ -190,6 +204,40 @@ test('rejects chain parent and checkpoint authority mutations', () => {
   }
 });
 
+test('rejects arbitrary and semantically inconsistent chain provenance', () => {
+  const checkpoints = buildEnvelopes();
+  const cases = [
+    ['arbitrary created_from', (input) => { input.created_from = 'anything'; }],
+    ['initial parent', (input) => { input.parent_chain_sha256 = DESIGN_HASH; }],
+    ['initial transaction', (input) => { input.repair_transaction_sha256 = CONTEXT_HASH; }],
+    ['replay null parent', (input) => { input.created_from = 'replay'; input.chain_revision = 2; input.repair_transaction_sha256 = DESIGN_HASH; }],
+    ['replay null transaction', (input) => { input.created_from = 'replay'; input.chain_revision = 2; input.parent_chain_sha256 = DESIGN_HASH; }]
+  ];
+  for (const [name, mutate] of cases) {
+    const input = chainInput(checkpoints);
+    mutate(input);
+    assert.throws(() => createChainManifest(input), { code: 'P5_CHECKPOINT_INVALID' }, name);
+  }
+});
+
+test('accepts only a contiguous replay suffix bound to its parent and transaction', () => {
+  const replay = buildReplayEnvelopes();
+  const accepted = chainInput(replay);
+  accepted.chain_revision = 2;
+  accepted.parent_chain_sha256 = DESIGN_HASH;
+  accepted.repair_transaction_sha256 = CONTEXT_HASH;
+  accepted.created_from = 'replay';
+  assert.equal(createChainManifest(accepted).created_from, 'replay');
+
+  const mismatch = clone(accepted);
+  mismatch.checkpoint_envelopes = buildReplayEnvelopes({ base_chain_sha256: ARTIFACT_HASH });
+  assert.throws(() => createChainManifest(mismatch), { code: 'P5_CHECKPOINT_INVALID' });
+
+  const gapped = clone(accepted);
+  gapped.checkpoint_envelopes = buildReplayEnvelopes({ null_roof_origin: true });
+  assert.throws(() => createChainManifest(gapped), { code: 'P5_CHECKPOINT_INVALID' });
+});
+
 test('creates exact score-free eligibility records and rejects forbidden fields', () => {
   const eligibility = createEligibilityRecord({
     status: 'eligible',
@@ -212,6 +260,28 @@ test('creates exact score-free eligibility records and rejects forbidden fields'
   }
 });
 
+test('eligible retains ordered neutral evidence and one consumed repair budget', () => {
+  const eligible = createEligibilityRecord({
+    status: 'eligible',
+    hard_qa_ok: true,
+    unresolved_violated_core_rule_ids: [],
+    neutral_unknown_rule_ids: ['rule:medieval.show-load-path'],
+    neutral_not_applicable_rule_ids: ['rule:structure.compose-three-volumes'],
+    repair_budget_used: 1
+  });
+  assert.equal(eligible.repair_budget_used, 1);
+  assert.deepEqual(eligible.neutral_unknown_rule_ids, ['rule:medieval.show-load-path']);
+  for (const mutate of [
+    (value) => { value.hard_qa_ok = false; },
+    (value) => { value.unresolved_violated_core_rule_ids = ['rule:medieval.show-load-path']; },
+    (value) => { value.repair_budget_used = 2; }
+  ]) {
+    const invalid = clone(eligible);
+    mutate(invalid);
+    assert.throws(() => createEligibilityRecord(invalid), { code: 'P5_AUTHORITY_INVALID' });
+  }
+});
+
 function checkpointInput(layer) {
   const index = LAYERS.indexOf(layer);
   return {
@@ -230,7 +300,7 @@ function checkpointInput(layer) {
     hard_qa: { hard_qa_ok: true, hard_qa_sha256: QA_HASH },
     design_review: { p4_review_sha256: REVIEW_HASH },
     invalidates_downstream: INVALIDATES[layer],
-    replay_origin: { kind: 'initial' }
+    replay_origin: null
   };
 }
 
@@ -242,6 +312,25 @@ function buildEnvelopes() {
     envelopes.push(createCheckpointEnvelope(input));
   }
   return envelopes;
+}
+
+function buildReplayEnvelopes({ base_chain_sha256 = DESIGN_HASH, null_roof_origin = false } = {}) {
+  const initial = buildEnvelopes();
+  const replay = initial.slice(0, 2);
+  for (const layer of LAYERS.slice(2)) {
+    const input = checkpointInput(layer);
+    input.revision = 2;
+    input.preceding_envelopes = replay;
+    input.replay_origin = layer === 'roof' && null_roof_origin
+      ? null
+      : {
+          kind: 'replay',
+          base_chain_sha256,
+          repair_transaction_sha256: CONTEXT_HASH
+        };
+    replay.push(createCheckpointEnvelope(input));
+  }
+  return replay;
 }
 
 function chainInput(checkpoint_envelopes) {
