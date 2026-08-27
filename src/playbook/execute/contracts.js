@@ -11,7 +11,7 @@ import {
 import { deepFreeze, sha256, stableJson } from '../shadow/canonical.js';
 
 const HASH = /^[a-f0-9]{64}$/u;
-const CANDIDATE_ID = /^candidate-[0-9]{2}$/u;
+const CANDIDATE_ID = /^candidate-0[1-3]$/u;
 const RULE_ID = /^rule:[a-z0-9][a-z0-9.-]*$/u;
 const REPAIR_ID = /^repair:[a-z0-9][a-z0-9:-]*$/u;
 const VARIANT_ID = /^[a-z][a-z0-9-]*$/u;
@@ -70,6 +70,15 @@ const SELECTION_FIELDS = Object.freeze([
 const SELECTION_CANDIDATE_FIELDS = Object.freeze([
   'candidate_id', 'seed', 'current_chain_sha256', 'hard_qa_sha256', 'p4_review_sha256',
   'eligibility', 'repair_attempt_count'
+]);
+const SELECTION_STORAGE_MANIFEST_FIELDS = Object.freeze([
+  'schema_version', 'managed_paths', 'artifact_hashes'
+]);
+const SELECTION_STORAGE_PATHS = Object.freeze([
+  'manifest.json', 'selection.json', 'selection-report.md'
+]);
+const SELECTION_STORAGE_BODY_PATHS = Object.freeze([
+  'selection.json', 'selection-report.md'
 ]);
 
 export class PlaybookExecuteError extends Error {
@@ -277,6 +286,21 @@ export function validateSelectionRecord(value) {
     }
   }
   assertContainer(data.ranker_result, 'P5_AUTHORITY_INVALID');
+  return deepFreeze(data);
+}
+
+export function validateExecuteSelectionManifest(value) {
+  const data = canonicalObject(
+    value,
+    SELECTION_STORAGE_MANIFEST_FIELDS,
+    'P5_AUTHORITY_INVALID'
+  );
+  assertSchemaVersion(data, 'P5_AUTHORITY_INVALID');
+  assertExactArray(data.managed_paths, SELECTION_STORAGE_PATHS, 'P5_AUTHORITY_INVALID');
+  assertExactObject(data.artifact_hashes, SELECTION_STORAGE_BODY_PATHS, 'P5_AUTHORITY_INVALID');
+  for (const name of SELECTION_STORAGE_BODY_PATHS) {
+    assertHash(data.artifact_hashes[name], 'P5_AUTHORITY_INVALID');
+  }
   return deepFreeze(data);
 }
 
