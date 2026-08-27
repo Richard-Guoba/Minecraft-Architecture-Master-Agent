@@ -37,7 +37,7 @@ const INVALIDATES = {
   roof: ['facade'],
   facade: []
 };
-const CHECKPOINT_ENVELOPE_SHA256 = '978e462f6e1a0dbfb360d0334b14c9e1c3a9e20c532f36de2387625433a1e952';
+const CHECKPOINT_ENVELOPE_SHA256 = 'b662788a2efee69bd511f2cb50f5ba1bb2062d291879feed22a5fbcc76d1f8b1';
 const REPAIR_ROWS = [
   {
     rule_id: 'rule:structure.compose-three-volumes',
@@ -339,23 +339,24 @@ test('every ID-bearing authoritative array rejects duplicated rows', () => {
   );
 
   const eligibilityWithUnresolved = {
+    status: 'unresolved-core-violation',
     hard_qa_ok: true,
-    unresolved_core_rule_ids: ['rule:medieval.show-load-path'],
-    neutral_rule_ids: ['rule:facade.break-repetitive-bays'],
-    repair_budget_used: 0,
-    status: 'unresolved-core-violation'
+    unresolved_violated_core_rule_ids: ['rule:medieval.show-load-path'],
+    neutral_unknown_rule_ids: ['rule:facade.break-repetitive-bays'],
+    neutral_not_applicable_rule_ids: [],
+    repair_budget_used: 0
   };
   assertDuplicateRowRejected(
     validateEligibilityRecord,
     eligibilityWithUnresolved,
-    ['unresolved_core_rule_ids'],
+    ['unresolved_violated_core_rule_ids'],
     0,
     'P5_AUTHORITY_INVALID'
   );
   assertDuplicateRowRejected(
     validateEligibilityRecord,
     eligibilityWithUnresolved,
-    ['neutral_rule_ids'],
+    ['neutral_unknown_rule_ids'],
     0,
     'P5_AUTHORITY_INVALID'
   );
@@ -493,13 +494,13 @@ function checkpointPayload(layer = 'massing') {
     selected_rule_ids: ['rule:medieval.show-load-path', 'rule:structure.compose-three-volumes'],
     rejected_rule_ids: ['rule:facade.break-repetitive-bays'],
     design_intent: { layer },
-    recipe_fragment: { id: `${layer}-recipe` },
+    recipe_fragment: { layer, payload: { id: `${layer}-recipe` } },
     field_patches: [{ field: 'role', value: 'primary' }],
     compiled_artifact_hashes: { blueprint: HASH },
-    hard_qa: { ok: true },
-    design_review: { status: 'satisfied' },
+    hard_qa: { hard_qa_ok: true, hard_qa_sha256: HASH },
+    design_review: { p4_review_sha256: HASH },
     invalidates_downstream: INVALIDATES[layer],
-    replay_origin: 'initial'
+    replay_origin: { kind: 'initial' }
   };
 }
 
@@ -512,11 +513,12 @@ function checkpointEnvelope() {
 
 function eligibility() {
   return {
+    status: 'eligible',
     hard_qa_ok: true,
-    unresolved_core_rule_ids: [],
-    neutral_rule_ids: ['rule:facade.break-repetitive-bays'],
-    repair_budget_used: 0,
-    status: 'eligible'
+    unresolved_violated_core_rule_ids: [],
+    neutral_unknown_rule_ids: ['rule:facade.break-repetitive-bays'],
+    neutral_not_applicable_rule_ids: [],
+    repair_budget_used: 0
   };
 }
 

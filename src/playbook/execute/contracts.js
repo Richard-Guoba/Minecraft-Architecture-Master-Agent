@@ -42,7 +42,16 @@ const CHAIN_FIELDS = Object.freeze([
   'eligibility', 'created_from'
 ]);
 const ELIGIBILITY_FIELDS = Object.freeze([
-  'hard_qa_ok', 'unresolved_core_rule_ids', 'neutral_rule_ids', 'repair_budget_used', 'status'
+  'status', 'hard_qa_ok', 'unresolved_violated_core_rule_ids', 'neutral_unknown_rule_ids',
+  'neutral_not_applicable_rule_ids', 'repair_budget_used'
+]);
+const RECIPE_FRAGMENT_FIELDS = Object.freeze(['layer', 'payload']);
+const FIELD_PATCH_FIELDS = Object.freeze(['field', 'value']);
+const HARD_QA_FIELDS = Object.freeze(['hard_qa_ok', 'hard_qa_sha256']);
+const DESIGN_REVIEW_FIELDS = Object.freeze(['p4_review_sha256']);
+const INITIAL_REPLAY_ORIGIN_FIELDS = Object.freeze(['kind']);
+const REPLAY_REPLAY_ORIGIN_FIELDS = Object.freeze([
+  'kind', 'base_chain_sha256', 'repair_transaction_sha256'
 ]);
 const PREFERENCE_FIELDS = Object.freeze(['repair_operation_id', 'variant_id']);
 const REQUEST_FIELDS = Object.freeze([
@@ -156,13 +165,13 @@ export function validateCheckpointPayload(value) {
   assertCanonicalIds(data.rejected_rule_ids, RULE_ID, 'P5_CHECKPOINT_INVALID');
   assertDistinct(data.selected_rule_ids, data.rejected_rule_ids, 'P5_CHECKPOINT_INVALID');
   assertContainer(data.design_intent, 'P5_CHECKPOINT_INVALID');
-  assertContainer(data.recipe_fragment, 'P5_CHECKPOINT_INVALID');
-  assertArray(data.field_patches, 'P5_CHECKPOINT_INVALID');
+  assertRecipeFragment(data.recipe_fragment, data.layer, 'P5_CHECKPOINT_INVALID');
+  assertFieldPatches(data.field_patches, 'P5_CHECKPOINT_INVALID');
   assertHashObject(data.compiled_artifact_hashes, 'P5_CHECKPOINT_INVALID');
-  assertContainer(data.hard_qa, 'P5_CHECKPOINT_INVALID');
-  assertContainer(data.design_review, 'P5_CHECKPOINT_INVALID');
+  assertHardQa(data.hard_qa, 'P5_CHECKPOINT_INVALID');
+  assertDesignReview(data.design_review, 'P5_CHECKPOINT_INVALID');
   assertExactArray(data.invalidates_downstream, INVALIDATES_BY_LAYER[data.layer], 'P5_CHECKPOINT_INVALID');
-  assertNonEmptyString(data.replay_origin, 'P5_CHECKPOINT_INVALID');
+  assertReplayOrigin(data.replay_origin, 'P5_CHECKPOINT_INVALID');
   return data;
 }
 
@@ -177,12 +186,15 @@ export function validateCheckpointEnvelope(value) {
 export function validateEligibilityRecord(value) {
   const data = canonicalObject(value, ELIGIBILITY_FIELDS, 'P5_AUTHORITY_INVALID');
   if (typeof data.hard_qa_ok !== 'boolean') fail('P5_AUTHORITY_INVALID');
-  assertCanonicalIds(data.unresolved_core_rule_ids, RULE_ID, 'P5_AUTHORITY_INVALID');
-  assertCanonicalIds(data.neutral_rule_ids, RULE_ID, 'P5_AUTHORITY_INVALID');
-  assertDistinct(data.unresolved_core_rule_ids, data.neutral_rule_ids, 'P5_AUTHORITY_INVALID');
+  assertCanonicalIds(data.unresolved_violated_core_rule_ids, RULE_ID, 'P5_AUTHORITY_INVALID');
+  assertCanonicalIds(data.neutral_unknown_rule_ids, RULE_ID, 'P5_AUTHORITY_INVALID');
+  assertCanonicalIds(data.neutral_not_applicable_rule_ids, RULE_ID, 'P5_AUTHORITY_INVALID');
+  assertDistinct(data.unresolved_violated_core_rule_ids, data.neutral_unknown_rule_ids, 'P5_AUTHORITY_INVALID');
+  assertDistinct(data.unresolved_violated_core_rule_ids, data.neutral_not_applicable_rule_ids, 'P5_AUTHORITY_INVALID');
+  assertDistinct(data.neutral_unknown_rule_ids, data.neutral_not_applicable_rule_ids, 'P5_AUTHORITY_INVALID');
   if (!Number.isInteger(data.repair_budget_used) || ![0, 1].includes(data.repair_budget_used)) fail('P5_AUTHORITY_INVALID');
   if (!ELIGIBILITY_STATUSES.includes(data.status)) fail('P5_AUTHORITY_INVALID');
-  if (data.status === 'eligible' && (!data.hard_qa_ok || data.unresolved_core_rule_ids.length !== 0)) fail('P5_AUTHORITY_INVALID');
+  if (data.status === 'eligible' && (!data.hard_qa_ok || data.unresolved_violated_core_rule_ids.length !== 0)) fail('P5_AUTHORITY_INVALID');
   return data;
 }
 
@@ -353,6 +365,45 @@ function assertLayerHashRows(value, layers, code) {
 function assertHashObject(value, code) {
   if (!isPlainObject(value) || Object.keys(value).length === 0) fail(code);
   for (const hash of Object.values(value)) assertHash(hash, code);
+}
+
+function assertRecipeFragment(value, layer, code) {
+  assertExactObject(value, RECIPE_FRAGMENT_FIELDS, code);
+  if (value.layer !== layer) fail(code);
+  assertContainer(value.payload, code);
+}
+
+function assertFieldPatches(value, code) {
+  assertArray(value, code);
+  for (const patch of value) {
+    assertExactObject(patch, FIELD_PATCH_FIELDS, code);
+    if (typeof patch.field !== 'string' || !VARIANT_ID.test(patch.field)) fail(code);
+    if (patch.value === null || ['string', 'number', 'boolean'].includes(typeof patch.value)) continue;
+    assertContainer(patch.value, code);
+  }
+}
+
+function assertHardQa(value, code) {
+  assertExactObject(value, HARD_QA_FIELDS, code);
+  if (typeof value.hard_qa_ok !== 'boolean') fail(code);
+  assertHash(value.hard_qa_sha256, code);
+}
+
+function assertDesignReview(value, code) {
+  assertExactObject(value, DESIGN_REVIEW_FIELDS, code);
+  assertHash(value.p4_review_sha256, code);
+}
+
+function assertReplayOrigin(value, code) {
+  if (!isPlainObject(value)) fail(code);
+  if (value.kind === 'initial') {
+    assertExactObject(value, INITIAL_REPLAY_ORIGIN_FIELDS, code);
+    return;
+  }
+  if (value.kind !== 'replay') fail(code);
+  assertExactObject(value, REPLAY_REPLAY_ORIGIN_FIELDS, code);
+  assertHash(value.base_chain_sha256, code);
+  assertHash(value.repair_transaction_sha256, code);
 }
 
 function assertRepairTuple(value, code) {
