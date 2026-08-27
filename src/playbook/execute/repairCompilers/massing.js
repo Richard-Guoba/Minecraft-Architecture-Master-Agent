@@ -72,6 +72,8 @@ function promoteLargest(volumes) {
 }
 function reduceSecondary(volumes) {
   const primary = onlyPrimary(volumes);
+  if (volumes.some((volume) => volume !== primary
+    && (!volume.placement.relation.startsWith('attached-') || volume.placement.attach_to !== primary.id))) invalid();
   const candidate = volumes.find((volume) => volume !== primary && product(volume) >= product(primary)
     && volume.role !== 'primary-mass' && volume.placement.relation.startsWith('attached-') && volume.placement.attach_to === primary.id);
   if (!candidate) invalid();

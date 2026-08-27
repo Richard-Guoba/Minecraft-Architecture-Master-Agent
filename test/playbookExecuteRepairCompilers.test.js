@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compileMassingRepair } from '../src/playbook/execute/repairCompilers/massing.js';
+import { chooseDefaultMassingVariant, compileMassingRepair } from '../src/playbook/execute/repairCompilers/massing.js';
 import { compileStructureRepair } from '../src/playbook/execute/repairCompilers/structure.js';
 import { applyLayerEffects } from '../src/playbook/execute/repairTransaction.js';
 import { checkPrimarySecondaryHierarchy, checkSubordinateSupportVolume, checkThreeVolumeComposition } from '../src/playbook/shadow/checkers/massing.js';
@@ -72,13 +72,36 @@ test('hierarchy variants use stable tie-breaking and the first strictly smaller 
 
 test('support reduction preserves attachment and reduces only an offending support', () => {
   const input = volumes();
+  input[0].placement = { relation: 'center' };
   input[1] = { ...input[1], role: 'support-volume', placement: { relation: 'attached-left', attach_to: 'main' }, scale: [5, 4, 4] };
-  input[2].scale = [2, 2, 2];
+  input[2] = { ...input[2], placement: { relation: 'attached-right', attach_to: 'main' }, scale: [2, 2, 2] };
+  const layerPayload = { volumes: input };
+  assert.equal(checkSubordinateSupportVolume(project(layerPayload)).status, 'violated');
   const patch = compileMassingRepair({
     request: request('repair:massing:reduce-support-volume-prominence', 'reduce-attached-support-scale', 'rule:structure.keep-support-volumes-subordinate'),
-    layerPayload: { volumes: input }
+    layerPayload
   });
   assert.deepEqual(patch.effects, [{ type: 'set-volume-scale-axis', volume_id: 'side-a', axis: 'y', value: 3 }]);
+  assert.equal(checkSubordinateSupportVolume(project(applyLayerEffects({ payload: layerPayload, operations: [patch] }))).status, 'satisfied');
+});
+
+test('support reduction rejects when an unchanged third volume would fail application invariants', () => {
+  const input = volumes();
+  input[0].placement = { relation: 'center' };
+  input[1] = { ...input[1], role: 'support-volume', placement: { relation: 'attached-left', attach_to: 'main' }, scale: [5, 4, 4] };
+  input[2] = { ...input[2], placement: { relation: 'detached-right' }, scale: [2, 2, 2] };
+  const layerPayload = { volumes: input };
+  const repairRequest = request(
+    'repair:massing:reduce-support-volume-prominence',
+    'reduce-attached-support-scale',
+    'rule:structure.keep-support-volumes-subordinate'
+  );
+
+  assert.throws(() => compileMassingRepair({ request: repairRequest, layerPayload }), { code: 'P5_REPAIR_INVALID' });
+  assert.throws(() => chooseDefaultMassingVariant({
+    repair_operation_id: repairRequest.repair_operation_id,
+    layerPayload
+  }), { code: 'P5_REPAIR_INVALID' });
 });
 
 test('structure repair derives its only load path from exact production source paths', () => {
@@ -107,20 +130,23 @@ test('structure repair derives its only load path from exact production source p
   assert.throws(() => compileStructureRepair({ request: request('repair:structure:connect-support-path', 'connect-known-structural-anchors', 'rule:medieval.show-load-path'), layerPayload: nestedAccessor }), { code: 'P5_REPAIR_INVALID' });
 });
 
-test('fractional Task 3 payloads compile through fixed-point units and change P4 outcomes', () => {
+test('all six variants compile and apply against Task 3 payloads while changing their intended P4 outcome', () => {
   const composition = { volumes: productionVolumes([1, 1, 1], [0.8, 0.8, 0.8], [0.6, 0.6, 0.6]) };
   composition.volumes[0].placement = { relation: 'offset' };
   composition.volumes[1].placement = { relation: 'detached-east' };
   composition.volumes[2].placement = { relation: 'detached-west' };
+  assert.equal(checkThreeVolumeComposition(project(composition)).status, 'violated');
   const centerPatch = compileMassingRepair({ request: request('repair:massing:resize-or-reposition-volume', 'center-primary-and-reattach-secondaries'), layerPayload: composition });
   assert.equal(checkThreeVolumeComposition(project(applyLayerEffects({ payload: composition, operations: [centerPatch] }))).status, 'satisfied');
 
   const equal = { volumes: productionVolumes([0.75, 0.75, 0.75], [0.75, 0.75, 0.75], [0.75, 0.75, 0.75]) };
+  assert.equal(checkThreeVolumeComposition(project(equal)).status, 'violated');
   const differentiatePatch = compileMassingRepair({ request: request('repair:massing:resize-or-reposition-volume', 'differentiate-equal-secondary-scale'), layerPayload: equal });
   assert.equal(checkThreeVolumeComposition(project(applyLayerEffects({ payload: equal, operations: [differentiatePatch] }))).status, 'satisfied');
 
   const roleless = { volumes: productionVolumes([1, 1, 1], [0.8, 0.8, 0.8], [0.6, 0.6, 0.6]) };
   for (const volume of roleless.volumes) { volume.role = 'architect-label'; volume.tags = []; delete volume.purpose; }
+  assert.equal(checkPrimarySecondaryHierarchy(project(roleless)).status, 'unknown');
   const promotePatch = compileMassingRepair({ request: request('repair:massing:strengthen-primary-volume', 'promote-largest-stable', 'rule:structure.create-primary-secondary-hierarchy'), layerPayload: roleless });
   const promoted = applyLayerEffects({ payload: roleless, operations: [promotePatch] });
   assert.equal(checkPrimarySecondaryHierarchy(project(promoted)).status, 'satisfied');
