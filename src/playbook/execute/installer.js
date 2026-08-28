@@ -1,4 +1,4 @@
-import { constants } from 'node:fs';
+import nativeFs, { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -144,15 +144,17 @@ async function installSnapshot({ parent, targetParent, snapshot, faultInjector, 
               fsImpl,
               parentHandle,
               basename,
-              handle: creation.handle,
+              handle: creation.boundHandle ?? creation.handle,
               expectedIdentity: creation.identity
             });
             if (observed) updatePartialFile(stagePartialSnapshot, file.path, observed);
             else stageCleanupSafe = false;
           } else if (openStarted) stageCleanupSafe = false;
           await close(creation.handle);
+          await close(creation.boundHandle);
           throw failure;
         }
+        await close(creation.boundHandle);
       }
       await syncDirectories(directoryHandles, faultInjector);
     } finally {
@@ -227,26 +229,79 @@ async function createBoundStageFile({
   creation,
   onCreated
 }) {
-  const create = async () => {
-    const handle = await fsImpl.open(entry(parentHandle, basename), WRITE_FLAGS, 0o600);
-    creation.handle = handle;
-    const opened = await handle.stat();
-    if (!opened.isFile()) invalid();
-    creation.identity = identity(opened);
-    onCreated(creation.identity);
+  const exactCreation = createStageFileSynchronously(parentHandle, basename);
+  const exactHandle = exactCreation.handle;
+  const createdIdentity = exactCreation.identity;
+  creation.handle = exactHandle;
+  creation.boundHandle = exactHandle;
+  creation.identity = createdIdentity;
+  onCreated(creation.identity);
+
+  let made;
+  try {
+    const created = () => creation;
+    made = typeof fsImpl.openBound === 'function'
+      ? await fsImpl.openBound(parentHandle, basename, created)
+      : creation;
+    const exactRetained = await exactHandle.stat();
+    const returnedRetained = await made?.handle?.stat();
     const named = await fsImpl.lstat(entry(parentHandle, basename));
-    if (named.isSymbolicLink() || !named.isFile()
-      || !sameIdentity(identity(named), creation.identity)) invalid();
-    return creation;
-  };
-  const made = typeof fsImpl.openBound === 'function'
-    ? await fsImpl.openBound(parentHandle, basename, create)
-    : await create();
-  const retained = await creation.handle.stat();
-  const named = await fsImpl.lstat(entry(parentHandle, basename));
-  if (made !== creation || !retained.isFile() || named.isSymbolicLink() || !named.isFile()
-    || !sameIdentity(identity(retained), creation.identity)
-    || !sameIdentity(identity(named), creation.identity)) invalid();
+    if (!exactRetained.isFile() || !returnedRetained?.isFile?.()
+      || named.isSymbolicLink() || !named.isFile()
+      || !sameIdentity(identity(exactRetained), createdIdentity)
+      || !sameIdentity(identity(returnedRetained), createdIdentity)
+      || !sameIdentity(made.identity, createdIdentity)
+      || !sameIdentity(identity(named), createdIdentity)) invalid();
+    creation.handle = made.handle;
+    creation.boundHandle = exactHandle;
+    creation.identity = createdIdentity;
+  } catch (error) {
+    creation.handle = exactHandle;
+    creation.boundHandle = exactHandle;
+    creation.identity = createdIdentity;
+    throw error;
+  }
+}
+
+function createStageFileSynchronously(parentHandle, basename) {
+  const fd = nativeFs.openSync(entry(parentHandle, basename), WRITE_FLAGS, 0o600);
+  let retained = false;
+  try {
+    const opened = nativeFs.fstatSync(fd);
+    if (!opened.isFile()) invalid();
+    const handle = new BoundStageFileHandle(fd);
+    retained = true;
+    return { handle, identity: Object.freeze(identity(opened)) };
+  } finally {
+    if (!retained) nativeFs.closeSync(fd);
+  }
+}
+
+class BoundStageFileHandle {
+  #closed = false;
+  #fd;
+
+  constructor(fd) {
+    this.#fd = fd;
+    Object.freeze(this);
+  }
+
+  get fd() { return this.#fd; }
+  async stat() { return nativeFs.fstatSync(this.#fd); }
+  async writeFile(bytes) { nativeFs.writeFileSync(this.#fd, bytes); }
+  async write(buffer, offset, length, position) {
+    return {
+      buffer,
+      bytesWritten: nativeFs.writeSync(this.#fd, buffer, offset, length, position)
+    };
+  }
+  async chmod(mode) { nativeFs.fchmodSync(this.#fd, mode); }
+  async sync() { nativeFs.fsyncSync(this.#fd); }
+  async close() {
+    if (this.#closed) return;
+    nativeFs.closeSync(this.#fd);
+    this.#closed = true;
+  }
 }
 
 async function observeRegisteredStageFile({

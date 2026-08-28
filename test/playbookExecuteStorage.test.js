@@ -250,54 +250,28 @@ test('run creation rejects a generated directory swapped after mkdir returns', a
   if (parkedPath) await fs.access(parkedPath);
 });
 
-test('run creation never adopts a replacement installed at the raw mkdir return boundary', async (t) => {
-  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-raw-private-mkdir-swap-'));
-  const parkedPath = `${outRoot}-exact-created-private-run`;
+test('run creation uses the trusted native mkdir binding instead of promise mkdir injection', async (t) => {
+  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-native-private-mkdir-'));
   t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
-  t.after(() => fs.rm(parkedPath, { recursive: true, force: true }));
-  const foreignBytes = Buffer.from('foreign raw-mkdir replacement must survive unchanged\n');
   const rawMkdir = fs.mkdir.bind(fs);
-  let createdIdentity;
-  let foreignIdentity;
-  let swapped = false;
+  let promiseInjectionCalled = false;
   let result;
-  let rejection;
   fs.mkdir = async (target, ...args) => {
-    const made = await rawMkdir(target, ...args);
     const resolved = await descriptorTargetFromPath(String(target));
-    if (!swapped && path.dirname(resolved) === outRoot
+    if (path.dirname(resolved) === outRoot
       && path.basename(resolved).startsWith('.playbook-execute.directory-')) {
-      swapped = true;
-      createdIdentity = fileIdentity(await fs.lstat(target));
-      await fs.rename(target, parkedPath);
-      await rawMkdir(target, ...args);
-      await fs.writeFile(path.join(String(target), 'foreign-sentinel.txt'), foreignBytes);
-      foreignIdentity = fileIdentity(await fs.lstat(target));
+      promiseInjectionCalled = true;
     }
-    return made;
+    return rawMkdir(target, ...args);
   };
   try {
-    try {
-      result = await createExecuteRun({ outRoot, runBasename: 'generated-run' });
-    } catch (error) {
-      rejection = error;
-    }
+    result = await createExecuteRun({ outRoot, runBasename: 'generated-run' });
   } finally {
     fs.mkdir = rawMkdir;
   }
-  await result?.authority?.close();
-
-  if (swapped) {
-    assert.notDeepEqual(foreignIdentity, createdIdentity);
-    assert.equal(rejection?.code, 'P5_OUTPUT_OWNERSHIP');
-    assert.ok(await findPathByIdentity(path.dirname(outRoot), createdIdentity));
-    const foreignPath = await findPathByIdentity(path.dirname(outRoot), foreignIdentity);
-    assert.ok(foreignPath);
-    assert.deepEqual(await fs.readFile(path.join(foreignPath, 'foreign-sentinel.txt')), foreignBytes);
-  } else {
-    assert.equal(rejection, undefined);
-    assert.equal(result?.runDir, path.join(outRoot, 'generated-run'));
-  }
+  assert.equal(promiseInjectionCalled, false);
+  assert.equal(result.runDir, path.join(outRoot, 'generated-run'));
+  await result.authority.close();
 });
 
 test('run creation binds the private directory returned by the creation boundary', async (t) => {
@@ -908,124 +882,83 @@ test('workspace pruning never deletes a foreign directory swapped at the destruc
   assert.equal(await treeContainsIdentity(fixture.root, ownedIdentity), true);
 });
 
-test('workspace pruning never adopts a replacement installed at the raw unlink return boundary', async (t) => {
+test('workspace pruning uses trusted native unlink instead of promise unlink injection', async (t) => {
   const fixture = await storageFixture(t);
   const authority = await admitExecuteRun({ runDir: fixture.runDir });
   t.after(() => authority.close());
   const workspace = await createReplayWorkspace({ authority, candidateId: 'candidate-01' });
   const ownedPath = path.join(workspace, 'owned.txt');
-  const parkedOwned = path.join(fixture.root, 'raw-unlink-owned.txt');
-  const foreignBytes = Buffer.from('foreign raw-unlink replacement must survive\n');
   await fs.writeFile(ownedPath, 'owned\n');
-  const ownedIdentity = fileIdentity(await fs.lstat(ownedPath));
   const rawUnlink = fs.unlink.bind(fs);
-  let foreignIdentity;
-  let swapped = false;
-  let rejection;
+  let promiseInjectionCalled = false;
   fs.unlink = async (target, ...args) => {
     const resolved = await descriptorTargetFromPath(String(target));
-    if (!swapped && path.basename(resolved) === 'owned.txt') {
-      swapped = true;
-      await fs.rename(target, parkedOwned);
-      await fs.writeFile(target, foreignBytes);
-      foreignIdentity = fileIdentity(await fs.lstat(target));
-    }
+    if (path.basename(resolved) === 'owned.txt') promiseInjectionCalled = true;
     return rawUnlink(target, ...args);
   };
   try {
-    try { await pruneCandidateWorkspaces({ authority }); } catch (error) { rejection = error; }
+    await pruneCandidateWorkspaces({ authority });
   } finally {
     fs.unlink = rawUnlink;
   }
-
-  if (swapped) {
-    assert.equal(rejection?.code, 'P5_INSTALL_FAILED');
-    assert.equal(await treeContainsIdentity(fixture.root, ownedIdentity), true);
-    assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
-    assert.equal(await treeContainsFileBytes(fixture.root, foreignBytes), true);
-  } else {
-    assert.equal(rejection, undefined);
-  }
+  assert.equal(promiseInjectionCalled, false);
+  await assert.rejects(fs.lstat(workspace), { code: 'ENOENT' });
 });
 
-test('workspace pruning never adopts a replacement installed at the raw rmdir return boundary', async (t) => {
+test('workspace pruning uses trusted native rmdir instead of promise rmdir injection', async (t) => {
   const fixture = await storageFixture(t);
   const authority = await admitExecuteRun({ runDir: fixture.runDir });
   t.after(() => authority.close());
   const workspace = await createReplayWorkspace({ authority, candidateId: 'candidate-01' });
   const ownedPath = path.join(workspace, 'owned-directory');
-  const parkedOwned = path.join(fixture.root, 'raw-rmdir-owned-directory');
   await fs.mkdir(ownedPath);
-  const ownedIdentity = fileIdentity(await fs.lstat(ownedPath));
-  const rawMkdir = fs.mkdir.bind(fs);
   const rawRmdir = fs.rmdir.bind(fs);
-  let foreignIdentity;
-  let swapped = false;
-  let rejection;
+  let promiseInjectionCalled = false;
   fs.rmdir = async (target, ...args) => {
     const resolved = await descriptorTargetFromPath(String(target));
-    if (!swapped && path.basename(resolved) === 'owned-directory') {
-      swapped = true;
-      await fs.rename(target, parkedOwned);
-      await rawMkdir(target);
-      foreignIdentity = fileIdentity(await fs.lstat(target));
-    }
+    if (path.basename(resolved) === 'owned-directory') promiseInjectionCalled = true;
     return rawRmdir(target, ...args);
   };
   try {
-    try { await pruneCandidateWorkspaces({ authority }); } catch (error) { rejection = error; }
+    await pruneCandidateWorkspaces({ authority });
   } finally {
     fs.rmdir = rawRmdir;
   }
-
-  if (swapped) {
-    assert.equal(rejection?.code, 'P5_INSTALL_FAILED');
-    assert.equal(await treeContainsIdentity(fixture.root, ownedIdentity), true);
-    assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
-  } else {
-    assert.equal(rejection, undefined);
-  }
+  assert.equal(promiseInjectionCalled, false);
+  await assert.rejects(fs.lstat(workspace), { code: 'ENOENT' });
 });
 
-test('retirement creation never adopts a replacement installed at the raw mkdtemp return boundary', async (t) => {
+test('retirement creation preserves replacements injected through the supported mkdir boundary', async (t) => {
   const fixture = await storageFixture(t);
   const authority = await admitExecuteRun({ runDir: fixture.runDir });
   t.after(() => authority.close());
   const workspace = await createReplayWorkspace({ authority, candidateId: 'candidate-01' });
   await fs.writeFile(path.join(workspace, 'owned.txt'), 'owned\n');
-  const parkedCreated = path.join(fixture.root, 'raw-mkdtemp-created-retirement');
-  const rawMkdir = fs.mkdir.bind(fs);
-  const rawMkdtemp = fs.mkdtemp.bind(fs);
+  const parkedCreated = path.join(fixture.root, 'created-retirement-directory');
   let createdIdentity;
   let foreignIdentity;
-  let swapped = false;
+  let injected = false;
   let rejection;
-  fs.mkdtemp = async (prefix, ...args) => {
-    const made = await rawMkdtemp(prefix, ...args);
-    const resolved = await descriptorTargetFromPath(String(made));
-    if (!swapped && path.basename(resolved).startsWith('.p5-retirement-')) {
-      swapped = true;
-      createdIdentity = fileIdentity(await fs.lstat(made));
-      await fs.rename(made, parkedCreated);
-      await rawMkdir(made, { mode: 0o700 });
-      foreignIdentity = fileIdentity(await fs.lstat(made));
+  const fsImpl = fsWith({
+    async mkdirBound(parentHandle, basename, next) {
+      const made = await next();
+      if (injected || !basename.startsWith('.p5-retirement-')) return made;
+      const target = path.join(await descriptorTarget(parentHandle), basename);
+      createdIdentity = made.identity;
+      await fs.rename(target, parkedCreated);
+      await fs.mkdir(target, { mode: 0o700 });
+      foreignIdentity = fileIdentity(await fs.lstat(target));
+      injected = true;
+      return made;
     }
-    return made;
-  };
-  try {
-    try { await pruneCandidateWorkspaces({ authority }); } catch (error) { rejection = error; }
-  } finally {
-    fs.mkdtemp = rawMkdtemp;
-  }
+  });
+  try { await pruneCandidateWorkspaces({ authority, fsImpl }); } catch (error) { rejection = error; }
 
-  if (swapped) {
-    assert.notDeepEqual(foreignIdentity, createdIdentity);
-    assert.equal(rejection?.code, 'P5_INSTALL_FAILED');
-    assert.equal(await treeContainsIdentity(fixture.root, createdIdentity), true);
-    assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
-  } else {
-    assert.equal(rejection, undefined);
-  }
+  assert.equal(injected, true);
+  assert.notDeepEqual(foreignIdentity, createdIdentity);
+  assert.equal(rejection?.code, 'P5_INSTALL_FAILED');
+  assert.equal(await treeContainsIdentity(fixture.root, createdIdentity), true);
+  assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
 });
 
 test('workspace pruning revalidates every inode after the final removal boundary', async (t) => {

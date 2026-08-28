@@ -36,39 +36,65 @@ test('P5 installer removes its exact partial stage on a pre-snapshot write failu
   assert.deepEqual(await snapshotTree(fixture.datapacksDir), parentBefore);
 });
 
-test('P5 installer reconciles a post-effect stage write and removes disposable topology', async (t) => {
-  const fixture = await installerFixture(t, {
+test('P5 installer binds raw stage open and reconciles full write before injected failure', async (t) => {
+  const rawOpenFixture = await installerFixture(t, {
     existingTarget: false,
     missingDatapacksTopology: true
   });
-  let injected = false;
-  const fsImpl = new Proxy(fs, { get(target, property) {
+  let rawOpenInjected = false;
+  const rawOpenFs = new Proxy(fs, { get(target, property) {
     if (property !== 'open') return Reflect.get(target, property);
     return async (targetPath, flags, ...args) => {
       const handle = await fs.open(targetPath, flags, ...args);
       const resolved = await descriptorTargetFromPath(String(targetPath));
-      if (injected || (flags & constants.O_WRONLY) === 0
+      if (rawOpenInjected || (flags & constants.O_WRONLY) === 0
         || !resolved.includes('.p5-install-stage-')) return handle;
-      return new Proxy(handle, { get(fileTarget, fileProperty) {
+      rawOpenInjected = true;
+      await handle.close();
+      throw new Error('RAW_POST_EFFECT_STAGE_OPEN');
+    };
+  } });
+
+  const installed = await installSelectedDatapackSafely(rawOpenFixture.source, {
+    datapacksDir: rawOpenFixture.datapacksDir,
+    expectedDatapackTreeSha256: rawOpenFixture.expectedHash,
+    fsImpl: rawOpenFs
+  });
+  assert.equal(rawOpenInjected, false);
+  assert.equal(installed, rawOpenFixture.target);
+  assert.deepEqual((await fs.readdir(rawOpenFixture.datapacksDir)).sort(), ['architect_datapack']);
+
+  const fullWriteFixture = await installerFixture(t, {
+    existingTarget: false,
+    missingDatapacksTopology: true
+  });
+  let fullWriteInjected = false;
+  const fullWriteFs = new Proxy(fs, { get(target, property) {
+    if (property !== 'openBound') return Reflect.get(target, property);
+    return async (parentHandle, basename, next) => {
+      const created = await next(parentHandle, basename);
+      const exactHandle = created.handle;
+      created.handle = new Proxy(exactHandle, { get(fileTarget, fileProperty) {
         if (fileProperty === 'writeFile') return async (...writeArgs) => {
           await fileTarget.writeFile(...writeArgs);
-          injected = true;
+          fullWriteInjected = true;
           throw new Error('RAW_POST_EFFECT_STAGE_WRITE');
         };
         const value = Reflect.get(fileTarget, fileProperty, fileTarget);
         return typeof value === 'function' ? value.bind(fileTarget) : value;
       } });
+      return created;
     };
   } });
 
-  await assert.rejects(installSelectedDatapackSafely(fixture.source, {
-    datapacksDir: fixture.datapacksDir,
-    expectedDatapackTreeSha256: fixture.expectedHash,
-    fsImpl
+  await assert.rejects(installSelectedDatapackSafely(fullWriteFixture.source, {
+    datapacksDir: fullWriteFixture.datapacksDir,
+    expectedDatapackTreeSha256: fullWriteFixture.expectedHash,
+    fsImpl: fullWriteFs
   }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
-  assert.equal(injected, true);
-  assert.deepEqual((await fs.readdir(fixture.root)).sort(), ['source']);
-  await assert.rejects(fs.lstat(path.join(fixture.root, 'world')), { code: 'ENOENT' });
+  assert.equal(fullWriteInjected, true);
+  assert.deepEqual((await fs.readdir(fullWriteFixture.root)).sort(), ['source']);
+  await assert.rejects(fs.lstat(path.join(fullWriteFixture.root, 'world')), { code: 'ENOENT' });
 });
 
 test('P5 installer reconciles exact stage ownership after every post-effect file failure', async (t) => {
@@ -79,42 +105,44 @@ test('P5 installer reconciles exact stage ownership after every post-effect file
     });
     let injected = false;
     const fsImpl = new Proxy(fs, { get(target, property) {
-      if (property === 'openBound' && boundary === 'open') {
+      if (property === 'openBound') {
         return async (parentHandle, basename, next) => {
-          await next(parentHandle, basename);
-          injected = true;
-          throw new Error('RAW_POST_EFFECT_STAGE_OPEN');
+          if (boundary === 'open') {
+            const named = await fs.lstat(`/proc/self/fd/${parentHandle.fd}/${basename}`);
+            const created = await next(parentHandle, basename);
+            assert.equal(named.isFile(), true);
+            assert.deepEqual(fileIdentity(named), created.identity);
+            injected = true;
+            throw new Error('RAW_POST_EFFECT_STAGE_OPEN');
+          }
+          const created = await next(parentHandle, basename);
+          const exactHandle = created.handle;
+          created.handle = new Proxy(exactHandle, { get(fileTarget, fileProperty) {
+            if (fileProperty === 'writeFile' && boundary === 'partial-write') {
+              return async (bytes) => {
+                const partial = Buffer.from(bytes).subarray(0, Math.max(1, Math.floor(bytes.length / 2)));
+                await fileTarget.write(partial, 0, partial.length, 0);
+                injected = true;
+                throw new Error('RAW_POST_EFFECT_PARTIAL_STAGE_WRITE');
+              };
+            }
+            if (fileProperty === 'sync' && boundary === 'sync') return async (...syncArgs) => {
+              const result = await fileTarget.sync(...syncArgs);
+              injected = true;
+              throw new Error('RAW_POST_EFFECT_STAGE_SYNC');
+            };
+            if (fileProperty === 'close' && boundary === 'close') return async (...closeArgs) => {
+              const result = await fileTarget.close(...closeArgs);
+              injected = true;
+              throw new Error('RAW_POST_EFFECT_STAGE_CLOSE');
+            };
+            const value = Reflect.get(fileTarget, fileProperty, fileTarget);
+            return typeof value === 'function' ? value.bind(fileTarget) : value;
+          } });
+          return created;
         };
       }
-      if (property !== 'open') return Reflect.get(target, property);
-      return async (targetPath, flags, ...args) => {
-        const handle = await fs.open(targetPath, flags, ...args);
-        const resolved = await descriptorTargetFromPath(String(targetPath));
-        if (injected || (flags & constants.O_WRONLY) === 0
-          || !resolved.includes('.p5-install-stage-')) return handle;
-        return new Proxy(handle, { get(fileTarget, fileProperty) {
-          if (fileProperty === 'writeFile' && boundary === 'partial-write') {
-            return async (bytes) => {
-              const partial = Buffer.from(bytes).subarray(0, Math.max(1, Math.floor(bytes.length / 2)));
-              await fileTarget.write(partial, 0, partial.length, 0);
-              injected = true;
-              throw new Error('RAW_POST_EFFECT_PARTIAL_STAGE_WRITE');
-            };
-          }
-          if (fileProperty === 'sync' && boundary === 'sync') return async (...syncArgs) => {
-            const result = await fileTarget.sync(...syncArgs);
-            injected = true;
-            throw new Error('RAW_POST_EFFECT_STAGE_SYNC');
-          };
-          if (fileProperty === 'close' && boundary === 'close') return async (...closeArgs) => {
-            const result = await fileTarget.close(...closeArgs);
-            injected = true;
-            throw new Error('RAW_POST_EFFECT_STAGE_CLOSE');
-          };
-          const value = Reflect.get(fileTarget, fileProperty, fileTarget);
-          return typeof value === 'function' ? value.bind(fileTarget) : value;
-        } });
-      };
+      return Reflect.get(target, property);
     } });
 
     await assert.rejects(installSelectedDatapackSafely(fixture.source, {
