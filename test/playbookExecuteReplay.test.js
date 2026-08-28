@@ -431,6 +431,7 @@ async function authorityTreeDigest(root) { const rows = []; async function walk(
 
 function replayStorageFs({ failCategory, failAt }) {
   const counts = {};
+  let bodyMoved = false;
   const tick = (category) => {
     counts[category] = (counts[category] ?? 0) + 1;
     if (category === failCategory && counts[category] === failAt) throw new Error(`RAW_REPLAY_STORAGE_${category}`);
@@ -448,7 +449,7 @@ function replayStorageFs({ failCategory, failAt }) {
         },
         async sync(...syncArgs) {
           if (inStage && !isDirectory) tick('fileSync');
-          if (isDirectory && path.basename(targetText) === 'candidate-01') tick('directorySync');
+          if (bodyMoved && isDirectory && path.basename(targetText) === 'candidate-01') tick('directorySync');
           return handle.sync(...syncArgs);
         }
       });
@@ -456,7 +457,11 @@ function replayStorageFs({ failCategory, failAt }) {
     async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
       if (sourceName.startsWith('.playbook-execute.stage-') && destinationName === 'current-chain.json') tick('pointerRename');
       else if (sourceName.startsWith('.playbook-execute.stage-')) tick('bodyRename');
-      return next(sourceHandle, sourceName, destinationHandle, destinationName);
+      const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
+      if (sourceName.startsWith('.playbook-execute.stage-') && destinationName !== 'current-chain.json') {
+        bodyMoved = true;
+      }
+      return result;
     },
     async link(source, destination) {
       if (path.basename(String(source)) === 'current-chain.json'

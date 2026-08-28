@@ -58,6 +58,22 @@ function crashFs(kind, killPoint) {
   };
   return new Proxy(fs, {
     get(target, property) {
+      if (property === 'mkdirBound') return async (parentHandle, basename, next) => {
+        const made = await next();
+        if (kind !== 'selection' || !basename.startsWith('.playbook-execute.stage-')) {
+          return made;
+        }
+        return {
+          ...made,
+          handle: wrapHandle(made.handle, {
+            async sync(...syncArgs) {
+              const result = await made.handle.sync(...syncArgs);
+              hit('generation-dir-sync');
+              return result;
+            }
+          })
+        };
+      };
       if (property === 'open') return async (filename, flags, ...args) => {
         const targetText = String(filename);
         const inStage = await containsGeneratedName(targetText, '.playbook-execute.stage-');
@@ -94,6 +110,8 @@ function crashFs(kind, killPoint) {
         sourceHandle, sourceName, destinationHandle, destinationName, next
       ) => {
         const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
+        if (kind === 'candidate' && sourceName === 'current-chain.json'
+          && destinationName.startsWith('.playbook-execute.backup-')) hit('pointer-retire');
         if (kind === 'candidate' && sourceName.startsWith('.playbook-execute.stage-')) {
           if (destinationName === 'current-chain.json') {
             pointerMoved = true;
@@ -104,6 +122,8 @@ function crashFs(kind, killPoint) {
       };
       if (property === 'renameNoReplace') return async (directoryHandle, sourceName, destinationName, next) => {
         const result = await next(directoryHandle, sourceName, destinationName);
+        if (kind === 'selection' && sourceName === 'manifest.json'
+          && destinationName.startsWith('.playbook-execute.backup-')) hit('pointer-retire');
         if (kind === 'selection' && destinationName.startsWith('selection-')) hit('generation-move');
         if (kind === 'selection' && destinationName === 'manifest.json') {
           pointerMoved = true;
@@ -114,13 +134,6 @@ function crashFs(kind, killPoint) {
       if (property === 'link') return async (source, destination) => {
         const result = await fs.link(source, destination);
         if (path.basename(String(destination)).startsWith('.playbook-execute.backup-')) hit('backup-link');
-        return result;
-      };
-      if (property === 'unlink') return async (targetPath, ...args) => {
-        const basename = path.basename(String(targetPath));
-        const result = await fs.unlink(targetPath, ...args);
-        if (kind === 'candidate' && basename === 'current-chain.json'
-          || kind === 'selection' && basename === 'manifest.json') hit('pointer-unlink');
         return result;
       };
       if (property === 'rename') return async (source, destination) => {

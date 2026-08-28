@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { resolveWorldDir } from '../../lib/minecraftWorlds.js';
 import { executeError } from './contracts.js';
 import { sha256, stableJson } from '../shadow/canonical.js';
-import { removeOwnedTree } from './ownedTree.js';
+import { createBoundDirectory, removeOwnedTree } from './ownedTree.js';
 
 const DIRECTORY_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
@@ -55,6 +55,9 @@ async function installSnapshot({ parent, targetParent, snapshot, faultInjector, 
   const stageName = `.p5-install-stage-${token}`;
   const backupName = `.p5-install-backup-${token}`;
   const ops = installerOperations(fsImpl);
+  let stageIdentity;
+  let stagePartialSnapshot;
+  let stageCleanupSafe = true;
   let stageSnapshot;
   let oldSnapshot;
   let committed = false;
@@ -66,27 +69,76 @@ async function installSnapshot({ parent, targetParent, snapshot, faultInjector, 
     if (oldSnapshot && !sameIdentity(oldSnapshot.rootIdentity, oldIdentity)) invalid();
     await hit(faultInjector, 'stage-mkdir');
     const stage = await createPromotedPrivateDirectory(parent, stageName, fsImpl);
+    stageIdentity = identity(await stage.stat());
+    stagePartialSnapshot = { rootIdentity: stageIdentity, files: [], identities: {} };
+    const directoryHandles = new Map([['', stage]]);
     try {
       const directories = [...snapshot.directories].sort((left, right) => depth(left) - depth(right) || left.localeCompare(right));
       for (const relative of directories) {
-        await fsImpl.mkdir(path.join(descriptor(stage), ...relative.split('/')), { recursive: false, mode: 0o700 });
+        const parentRelative = path.posix.dirname(relative) === '.' ? '' : path.posix.dirname(relative);
+        const parentHandle = directoryHandles.get(parentRelative);
+        let made;
+        try {
+          made = await createBoundDirectory({
+            ops,
+            parentHandle,
+            basename: path.posix.basename(relative),
+            fallbackCode: 'P5_INSTALL_FAILED'
+          });
+        } catch (error) {
+          stageCleanupSafe = false;
+          throw error;
+        }
+        directoryHandles.set(relative, made.handle);
+        stagePartialSnapshot.identities[relative] = made.identity;
       }
       for (const file of snapshot.files) {
         let handle;
         try {
           await hit(faultInjector, 'stage-write');
-          handle = await fsImpl.open(path.join(descriptor(stage), ...file.path.split('/')), WRITE_FLAGS, 0o600);
-          await handle.writeFile(file.bytes);
+          const parentRelative = path.posix.dirname(file.path) === '.' ? '' : path.posix.dirname(file.path);
+          const parentHandle = directoryHandles.get(parentRelative);
+          try {
+            handle = await fsImpl.open(
+              entry(parentHandle, path.posix.basename(file.path)), WRITE_FLAGS, 0o600
+            );
+          } catch (error) {
+            stageCleanupSafe = false;
+            throw error;
+          }
+          const opened = await handle.stat();
+          if (!opened.isFile()) invalid();
+          try {
+            await handle.writeFile(file.bytes);
+          } catch (error) {
+            stageCleanupSafe = false;
+            throw error;
+          }
+          stagePartialSnapshot.files.push({ path: file.path, bytes: Buffer.from(file.bytes) });
+          stagePartialSnapshot.identities[file.path] = identity(opened);
           await hit(faultInjector, 'stage-chmod');
           await handle.chmod(0o400);
           await hit(faultInjector, 'stage-file-sync');
           await handle.sync();
+          const completed = await handle.stat();
+          if (!completed.isFile()
+            || !sameIdentity(identity(completed), stagePartialSnapshot.identities[file.path])) {
+            invalid();
+          }
         } finally { await close(handle); }
       }
-      await syncDirectories(stage, snapshot.directories, fsImpl, faultInjector);
-    } finally { await close(stage); }
+      await syncDirectories(directoryHandles, faultInjector);
+    } finally {
+      await Promise.all(
+        [...directoryHandles.entries()].filter(([relative]) => relative).map(([, handle]) => close(handle))
+      );
+      await close(stage);
+    }
     const verified = await snapshotDatapack(entry(parent, stageName), fsImpl, false);
-    if (verified.treeSha256 !== snapshot.treeSha256) invalid();
+    if (verified.treeSha256 !== snapshot.treeSha256
+      || !sameIdentity(verified.rootIdentity, stageIdentity)
+      || !sameIdentityMaps(verified.identities, stagePartialSnapshot.identities)
+      || !sameSnapshotFiles(verified.files, stagePartialSnapshot.files)) invalid();
     stageSnapshot = verified;
     if (oldSnapshot) {
       await hit(faultInjector, 'backup-rename');
@@ -106,7 +158,9 @@ async function installSnapshot({ parent, targetParent, snapshot, faultInjector, 
     await assertDirectoryIdentity(parent, targetName, stageSnapshot.rootIdentity, fsImpl);
     const installed = await snapshotDatapack(entry(parent, targetName), fsImpl, false);
     if (installed.treeSha256 !== snapshot.treeSha256
-      || !sameIdentity(installed.rootIdentity, stageSnapshot.rootIdentity)) invalid();
+      || !sameIdentity(installed.rootIdentity, stageSnapshot.rootIdentity)
+      || !sameIdentityMaps(installed.identities, stageSnapshot.identities)
+      || !sameSnapshotFiles(installed.files, stageSnapshot.files)) invalid();
     committed = true;
   } catch (error) {
     if (!committed) {
@@ -118,7 +172,13 @@ async function installSnapshot({ parent, targetParent, snapshot, faultInjector, 
     throw error;
   } finally {
     if (!committed) {
-      await removeSnapshotDirectory(parent, stageName, stageSnapshot, ops, true);
+      await removeSnapshotDirectory(
+        parent,
+        stageName,
+        stageSnapshot ?? (stageCleanupSafe ? stagePartialSnapshot : { rootIdentity: stageIdentity }),
+        ops,
+        true
+      );
     }
   }
   if (oldSnapshot && await hasIdentity(parent, backupName, oldSnapshot.rootIdentity, fsImpl)) {
@@ -214,16 +274,16 @@ async function snapshotDatapack(root, fsImpl, requireDatapackBasename = true) {
   }
 }
 
-async function syncDirectories(rootHandle, directories, fsImpl, faultInjector) {
-  for (const relative of [...directories].sort((left, right) => depth(right) - depth(left))) {
-    const handle = await fsImpl.open(path.join(descriptor(rootHandle), ...relative.split('/')), DIRECTORY_FLAGS);
-    try {
-      await hit(faultInjector, 'stage-directory-sync');
-      await handle.sync();
-    } finally { await close(handle); }
+async function syncDirectories(directoryHandles, faultInjector) {
+  for (const [relative, handle] of [...directoryHandles.entries()].sort(([left], [right]) => (
+    depth(right) - depth(left) || right.localeCompare(left)
+  ))) {
+    if (!relative) continue;
+    await hit(faultInjector, 'stage-directory-sync');
+    await handle.sync();
   }
   await hit(faultInjector, 'stage-directory-sync');
-  await rootHandle.sync();
+  await directoryHandles.get('').sync();
 }
 
 async function openAbsoluteDirectory(absolutePath, fsImpl, { create }) {
@@ -310,21 +370,43 @@ async function hasIdentity(parent, name, expected, fsImpl) {
 async function createPrivateDirectory(parent, basename, fsImpl) {
   const beforeNames = (await fsImpl.readdir(descriptor(parent))).sort();
   if (beforeNames.includes(basename)) invalid();
-  await fsImpl.mkdir(entry(parent, basename), { recursive: false, mode: 0o700 });
-  const afterNames = (await fsImpl.readdir(descriptor(parent))).sort();
-  const expectedNames = [...beforeNames, basename].sort();
-  if (!sameStrings(afterNames, expectedNames)) invalid();
-  const before = await fsImpl.lstat(entry(parent, basename));
-  if (before.isSymbolicLink() || !before.isDirectory()) invalid();
-  const handle = await fsImpl.open(entry(parent, basename), DIRECTORY_FLAGS);
+  const ops = installerOperations(fsImpl);
+  const made = await createBoundDirectory({
+    ops,
+    parentHandle: parent,
+    basename,
+    fallbackCode: 'P5_INSTALL_FAILED'
+  });
+  const handle = made.handle;
   try {
+    const afterNames = (await fsImpl.readdir(descriptor(parent))).sort();
+    const expectedNames = [...beforeNames, basename].sort();
+    if (!sameStrings(afterNames, expectedNames)) invalid();
     const opened = await handle.stat();
     const after = await fsImpl.lstat(entry(parent, basename));
     if (!opened.isDirectory() || after.isSymbolicLink() || !after.isDirectory()
-      || !sameIdentity(identity(before), identity(opened))
+      || !sameIdentity(made.identity, identity(opened))
       || !sameIdentity(identity(opened), identity(after))) invalid();
     return handle;
   } catch (error) {
+    try {
+      if (await hasIdentity(parent, basename, made.identity, fsImpl)) {
+        await removeOwnedTree({
+          ops,
+          parentHandle: parent,
+          basename,
+          expectedIdentity: made.identity,
+          expectedFiles: {},
+          expectedIdentities: {},
+          requireComplete: true,
+          verifyBytes: true,
+          fallbackCode: 'P5_INSTALL_FAILED'
+        });
+        await syncParent(parent);
+      }
+    } catch {
+      // Preserve anything that no longer matches the exact empty creation.
+    }
     await close(handle);
     throw error;
   }
@@ -388,28 +470,55 @@ function installerOperations(fsImpl) {
   const custom = typeof fsImpl.renameNoReplace === 'function'
     ? fsImpl.renameNoReplace.bind(fsImpl)
     : null;
+  const customBetween = typeof fsImpl.renameNoReplaceBetween === 'function'
+    ? fsImpl.renameNoReplaceBetween.bind(fsImpl)
+    : null;
+  const customMkdirBound = typeof fsImpl.mkdirBound === 'function'
+    ? fsImpl.mkdirBound.bind(fsImpl)
+    : undefined;
+  const customRetireEntry = typeof fsImpl.retireEntry === 'function'
+    ? fsImpl.retireEntry.bind(fsImpl)
+    : undefined;
   return Object.freeze({
     open: fsImpl.open.bind(fsImpl),
     lstat: fsImpl.lstat.bind(fsImpl),
     readdir: fsImpl.readdir.bind(fsImpl),
-    unlink: fsImpl.unlink.bind(fsImpl),
-    rmdir: fsImpl.rmdir.bind(fsImpl),
+    mkdirBound: customMkdirBound,
+    retireEntry: customRetireEntry,
     renameNoReplace: custom
       ? (parent, sourceName, destinationName) => custom(
         parent, sourceName, destinationName, renameNoReplaceByDescriptor
       )
-      : renameNoReplaceByDescriptor
+      : renameNoReplaceByDescriptor,
+    renameNoReplaceBetween: customBetween
+      ? (sourceHandle, sourceName, destinationHandle, destinationName) => customBetween(
+        sourceHandle,
+        sourceName,
+        destinationHandle,
+        destinationName,
+        renameNoReplaceBetweenDescriptors
+      )
+      : renameNoReplaceBetweenDescriptors
   });
 }
 
 async function renameNoReplaceByDescriptor(parent, sourceName, destinationName) {
+  return renameNoReplaceBetweenDescriptors(parent, sourceName, parent, destinationName);
+}
+
+async function renameNoReplaceBetweenDescriptors(
+  sourceParent,
+  sourceName,
+  destinationParent,
+  destinationName
+) {
   await new Promise((resolve, reject) => {
     const child = spawn(MOVE_BINARY, [
       '--no-clobber',
       '--no-target-directory',
       `/proc/self/fd/3/${sourceName}`,
-      `/proc/self/fd/3/${destinationName}`
-    ], { stdio: ['ignore', 'ignore', 'ignore', parent.fd] });
+      `/proc/self/fd/4/${destinationName}`
+    ], { stdio: ['ignore', 'ignore', 'ignore', sourceParent.fd, destinationParent.fd] });
     child.once('error', reject);
     child.once('close', (code) => code === 0 ? resolve() : reject(executeError('P5_INSTALL_FAILED')));
   });
@@ -516,17 +625,20 @@ async function findNameByIdentity(parent, expectedIdentity, fsImpl) {
 }
 
 async function removeSnapshotDirectory(parent, name, snapshot, ops, allowMissing) {
-  if (!snapshot) return;
-  const expectedFiles = Object.fromEntries(snapshot.files.map((file) => [file.path, file.bytes]));
+  if (!snapshot?.rootIdentity) return;
+  const complete = Array.isArray(snapshot.files) && snapshot.identities;
+  const expectedFiles = complete
+    ? Object.fromEntries(snapshot.files.map((file) => [file.path, file.bytes]))
+    : {};
   await removeOwnedTree({
     ops,
     parentHandle: parent,
     basename: name,
     expectedIdentity: snapshot.rootIdentity,
     expectedFiles,
-    expectedIdentities: snapshot.identities,
+    expectedIdentities: complete ? snapshot.identities : {},
     requireComplete: true,
-    verifyBytes: true,
+    verifyBytes: Boolean(complete),
     allowMissing,
     fallbackCode: 'P5_INSTALL_FAILED'
   });
@@ -574,6 +686,11 @@ function sameIdentityMaps(left, right) {
   const names = Object.keys(left).sort();
   return sameStrings(names, Object.keys(right).sort())
     && names.every((name) => sameIdentity(left[name], right[name]));
+}
+function sameSnapshotFiles(left, right) {
+  return left.length === right.length && left.every((file, index) => (
+    file.path === right[index].path && file.bytes.equals(right[index].bytes)
+  ));
 }
 
 async function hit(injector, boundary) {

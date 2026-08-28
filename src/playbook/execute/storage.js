@@ -29,7 +29,7 @@ import {
 import {
   moveIdentityNoReplace
 } from './storageTransaction.js';
-import { removeOwnedTree } from './ownedTree.js';
+import { createBoundDirectory, removeOwnedTree, retireBoundEntry } from './ownedTree.js';
 
 const OUTPUT_BASENAME = 'playbook-execute';
 const CANDIDATES_BASENAME = 'candidates';
@@ -293,7 +293,8 @@ export async function installCandidateSnapshot({
       candidateId,
       stage.identity,
       incoming.files,
-      candidateId
+      candidateId,
+      stage.identities
     );
   } catch (error) {
     await closeHandle(stage?.handle);
@@ -316,7 +317,11 @@ export async function installCandidateSnapshot({
           candidateId,
           stage.identity,
           incoming.files,
-          { requireComplete: true, verifyBytes: true }
+          {
+            requireComplete: true,
+            verifyBytes: true,
+            expectedIdentities: stage.identities
+          }
         );
         newInstalled = false;
       } catch {
@@ -332,7 +337,12 @@ export async function installCandidateSnapshot({
           stage.basename,
           stage.identity,
           incoming.files,
-          { allowMissing: true, requireComplete: false, verifyBytes: false }
+          {
+            allowMissing: true,
+            requireComplete: false,
+            verifyBytes: false,
+            expectedIdentities: stage.identities
+          }
         );
       } catch {
         rollbackFailed = true;
@@ -407,14 +417,35 @@ export async function installInitialCandidateFailure({ authority, candidateId, f
     installed = true;
     await closeHandle(stage.handle); stage.handle = undefined;
     await syncDirectory(internal, ops, tree, tree.candidatesHandle);
-    await verifyCandidateDirectory(internal, ops, tree, candidateId, stage.identity, incoming.files, candidateId);
+    await verifyCandidateDirectory(
+      internal,
+      ops,
+      tree,
+      candidateId,
+      stage.identity,
+      incoming.files,
+      candidateId,
+      stage.identities
+    );
     return Object.freeze({ status: 'created', candidate_id: candidateId });
   } catch (error) {
     await closeHandle(stage?.handle);
     if (tree && stage) installed ||= await namedDirectoryHasIdentity(tree.candidatesHandle, ops, candidateId, stage.identity);
     try {
-      if (tree && stage) await removeVerifiedDirectory(internal, ops, tree, tree.candidatesHandle,
-        installed ? candidateId : stage.basename, stage.identity, incoming.files, { requireComplete: true, verifyBytes: true });
+      if (tree && stage) await removeVerifiedDirectory(
+        internal,
+        ops,
+        tree,
+        tree.candidatesHandle,
+        installed ? candidateId : stage.basename,
+        stage.identity,
+        incoming.files,
+        {
+          requireComplete: true,
+          verifyBytes: true,
+          expectedIdentities: stage.identities
+        }
+      );
     } catch {}
     throw publicError(error, error?.code === 'P5_OUTPUT_OWNERSHIP' ? 'P5_OUTPUT_OWNERSHIP' : 'P5_INSTALL_FAILED');
   } finally { await closeExecuteTree(tree); }
@@ -439,7 +470,8 @@ async function appendCandidateFailureRecord({ authority, candidateId, validated,
   }
   const bytes = Buffer.from(stableJson(validated));
   const ops = fsOperations(fsImpl ?? internal.ops.source);
-  let tree; let candidateHandle; let stageHandle; let stageBasename; let stageIdentity; let committed = false;
+  let tree; let candidateHandle; let stageHandle; let stageBasename; let stageIdentity;
+  let stageFileIdentity; let committed = false;
   try {
     tree = await openExecuteTree(internal, ops, { create: false });
     const existing = await inspectCandidate(internal, ops, tree, candidateId, { allowMissing: false });
@@ -450,14 +482,19 @@ async function appendCandidateFailureRecord({ authority, candidateId, validated,
     }
     candidateHandle = await openDirectoryEntry(ops, tree.candidatesHandle, candidateId, 'P5_OUTPUT_OWNERSHIP', 'P5_OUTPUT_OWNERSHIP');
     if (!sameIdentity(identity(await candidateHandle.stat()), existing.identity)) throw executeError('P5_OUTPUT_OWNERSHIP');
-    stageBasename = await unusedTemporaryBasename(internal, ops, tree, tree.candidatesHandle, STAGE_PREFIX);
-    await ops.mkdir(descriptorEntryPath(tree.candidatesHandle, stageBasename), { recursive: false, mode: 0o700 });
-    stageHandle = await openDirectoryEntry(ops, tree.candidatesHandle, stageBasename, 'P5_INSTALL_FAILED', 'P5_INSTALL_FAILED');
-    stageIdentity = identity(await stageHandle.stat());
+    ({ basename: stageBasename, handle: stageHandle, identity: stageIdentity }
+      = await createGeneratedStageDirectory(internal, ops, tree, tree.candidatesHandle));
     let fileHandle;
     try {
       fileHandle = await ops.open(descriptorEntryPath(stageHandle, fileName), WRITE_FLAGS, 0o600);
+      const opened = await fileHandle.stat();
+      if (!opened.isFile()) throw executeError('P5_INSTALL_FAILED');
+      stageFileIdentity = identity(opened);
       await fileHandle.writeFile(bytes); await fileHandle.sync(); await fileHandle.chmod(0o400); await fileHandle.sync();
+      const completed = await fileHandle.stat();
+      if (!completed.isFile() || !sameIdentity(identity(completed), stageFileIdentity)) {
+        throw executeError('P5_INSTALL_FAILED');
+      }
     } finally { await closeHandle(fileHandle); }
     await stageHandle.sync();
     await moveIdentityNoReplace({
@@ -470,10 +507,15 @@ async function appendCandidateFailureRecord({ authority, candidateId, validated,
         let pointer;
         try { pointer = JSON.parse(current.bytes.toString('utf8')); } catch { throw executeError('P5_STALE_BASE'); }
         if (pointer.chain_sha256 !== expectedCurrentChainSha256) throw executeError('P5_STALE_BASE');
+        await assertStageFileIdentity();
       },
       moveForward: () => ops.renameNoReplaceBetween(tree.candidatesHandle, stageBasename, candidateHandle, 'failures'),
       moveReverse: () => ops.renameNoReplaceBetween(candidateHandle, 'failures', tree.candidatesHandle, stageBasename),
-      afterMove: async () => { await candidateHandle.sync(); await tree.candidatesHandle.sync(); }
+      afterMove: async () => {
+        await assertStageFileIdentity();
+        await candidateHandle.sync();
+        await tree.candidatesHandle.sync();
+      }
     });
     const checked = await inspectCandidate(internal, ops, tree, candidateId, { allowMissing: false });
     if (!checked.files[`failures/${fileName}`]?.equals(bytes) || checked.validated.currentChainSha256 !== expectedCurrentChainSha256) {
@@ -511,9 +553,10 @@ async function appendCandidateFailureRecord({ authority, candidateId, validated,
           parentHandle: tree.candidatesHandle,
           basename: stageBasename,
           expectedIdentity: stageIdentity,
-          expectedFiles: { [fileName]: bytes },
+          expectedFiles: stageFileIdentity ? { [fileName]: bytes } : {},
+          expectedIdentities: stageFileIdentity ? { [fileName]: stageFileIdentity } : {},
           requireComplete: true,
-          verifyBytes: true,
+          verifyBytes: Boolean(stageFileIdentity),
           assertAuthority: () => assertTreeAuthority(internal, ops, tree),
           fallbackCode: 'P5_INSTALL_FAILED'
         });
@@ -523,6 +566,14 @@ async function appendCandidateFailureRecord({ authority, candidateId, validated,
     throw executeError(error?.code === 'P5_STALE_BASE' ? 'P5_STALE_BASE' : 'P5_INSTALL_FAILED');
   } finally {
     await closeHandles([stageHandle, candidateHandle]); await closeExecuteTree(tree);
+  }
+
+  async function assertStageFileIdentity() {
+    if (!stageFileIdentity) throw executeError('P5_INSTALL_FAILED');
+    const read = await readRegularFile(ops, stageHandle, fileName, 'P5_INSTALL_FAILED');
+    if (!sameIdentity(read.identity, stageFileIdentity)
+      || !read.bytes.equals(bytes)
+      || (read.mode & 0o777) !== 0o400) throw executeError('P5_INSTALL_FAILED');
   }
 }
 
@@ -596,6 +647,8 @@ async function publishSelectionGeneration({ internal, ops, tree, files, existing
   let generationsHandle;
   let stageHandle;
   let stageName;
+  let stageIdentity;
+  const stageIdentities = {};
   let pointerStage;
   let pointerStageRead;
   try {
@@ -605,10 +658,15 @@ async function publishSelectionGeneration({ internal, ops, tree, files, existing
       if (stat.isSymbolicLink() || !stat.isDirectory()) throw executeError('P5_OUTPUT_OWNERSHIP');
     } catch (error) {
       if (!isMissingError(error)) throw error;
-      await ops.mkdir(generationsPath, { recursive: false, mode: 0o700 });
-      await tree.rootHandle.sync();
+      const made = await createPrivateDirectory(
+        ops,
+        tree.rootHandle,
+        SELECTION_GENERATIONS_BASENAME,
+        'P5_OUTPUT_OWNERSHIP'
+      );
+      generationsHandle = made.handle;
     }
-    generationsHandle = await openDirectoryEntry(
+    generationsHandle ??= await openDirectoryEntry(
       ops, tree.rootHandle, SELECTION_GENERATIONS_BASENAME,
       'P5_INSTALL_FAILED', 'P5_OUTPUT_OWNERSHIP'
     );
@@ -632,24 +690,27 @@ async function publishSelectionGeneration({ internal, ops, tree, files, existing
       if (!isMissingError(error) && error?.code !== 'P5_INSTALL_FAILED') throw error;
     }
     if (!generationExists) {
-      stageName = await unusedTemporaryBasename(internal, ops, tree, generationsHandle, STAGE_PREFIX);
-      await ops.mkdir(descriptorEntryPath(generationsHandle, stageName), { recursive: false, mode: 0o700 });
-      stageHandle = await openDirectoryEntry(
-        ops, generationsHandle, stageName, 'P5_INSTALL_FAILED', 'P5_INSTALL_FAILED'
-      );
+      ({ basename: stageName, handle: stageHandle, identity: stageIdentity }
+        = await createGeneratedStageDirectory(internal, ops, tree, generationsHandle));
       for (const name of SELECTION_PATHS) {
         let handle;
         try {
           handle = await ops.open(descriptorEntryPath(stageHandle, name), WRITE_FLAGS, 0o600);
+          const opened = await handle.stat();
+          if (!opened.isFile()) throw executeError('P5_INSTALL_FAILED');
+          stageIdentities[name] = identity(opened);
           await handle.writeFile(files[name]);
           await handle.sync();
           await handle.chmod(0o400);
           await handle.sync();
+          const completed = await handle.stat();
+          if (!completed.isFile()
+            || !sameIdentity(identity(completed), stageIdentities[name])) {
+            throw executeError('P5_INSTALL_FAILED');
+          }
         } finally { await closeHandle(handle); }
       }
       await stageHandle.sync();
-      const stageIdentity = identity(await stageHandle.stat());
-      await closeHandle(stageHandle); stageHandle = undefined;
       await moveIdentityNoReplace({
         ops,
         sourceHandle: generationsHandle,
@@ -660,9 +721,17 @@ async function publishSelectionGeneration({ internal, ops, tree, files, existing
         expectedKind: 'directory',
         moveForward: () => ops.renameNoReplace(generationsHandle, stageName, generationName),
         moveReverse: () => ops.renameNoReplace(generationsHandle, generationName, stageName),
-        beforeMove: async () => { await assertTreeAuthority(internal, ops, tree); await assertBoundCandidates(); },
-        afterMove: () => generationsHandle.sync()
+        beforeMove: async () => {
+          await assertTreeAuthority(internal, ops, tree);
+          await assertBoundCandidates();
+          await assertSelectionStageIdentity();
+        },
+        afterMove: async () => {
+          await assertSelectionStageIdentity();
+          await generationsHandle.sync();
+        }
       });
+      await closeHandle(stageHandle); stageHandle = undefined;
       stageName = undefined;
     }
 
@@ -708,15 +777,37 @@ async function publishSelectionGeneration({ internal, ops, tree, files, existing
     throw error;
   } finally {
     await closeHandle(stageHandle);
-    if (stageName && generationsHandle) {
+    if (stageName && stageIdentity && generationsHandle) {
       try { await removeVerifiedDirectory(internal, ops, tree, generationsHandle, stageName,
-        identity(await ops.lstat(descriptorEntryPath(generationsHandle, stageName))), files,
-        { allowMissing: true, requireComplete: false, verifyBytes: false }); } catch {}
+        stageIdentity, files,
+        {
+          allowMissing: true,
+          requireComplete: false,
+          verifyBytes: false,
+          expectedIdentities: stageIdentities
+        }); } catch {}
     }
     if (pointerStage && pointerStageRead) {
       try { await unlinkBoundRegularFile(ops, tree.rootHandle, pointerStage, pointerStageRead); } catch {}
     }
     await closeHandle(generationsHandle);
+  }
+
+  async function assertSelectionStageIdentity() {
+    if (!stageHandle || !stageIdentity) throw executeError('P5_INSTALL_FAILED');
+    const retained = await stageHandle.stat();
+    const names = (await ops.readdir(descriptorPath(stageHandle))).sort();
+    if (!retained.isDirectory()
+      || !sameIdentity(identity(retained), stageIdentity)
+      || !sameStrings(names, [...SELECTION_PATHS].sort())) {
+      throw executeError('P5_INSTALL_FAILED');
+    }
+    for (const name of SELECTION_PATHS) {
+      const read = await readRegularFile(ops, stageHandle, name, 'P5_INSTALL_FAILED');
+      if (!sameIdentity(read.identity, stageIdentities[name])
+        || !read.bytes.equals(files[name])
+        || (read.mode & 0o777) !== 0o400) throw executeError('P5_INSTALL_FAILED');
+    }
   }
 }
 
@@ -754,15 +845,19 @@ async function openOrCreateAbsoluteDirectory(ops, absolutePath) {
     for (const component of components) {
       const target = descriptorEntryPath(current, component);
       let created = false;
+      let next;
       try {
         const stat = await ops.lstat(target);
         if (stat.isSymbolicLink() || !stat.isDirectory()) throw executeError('P5_OUTPUT_OWNERSHIP');
       } catch (error) {
         if (!isMissingError(error)) throw error;
-        await ops.mkdir(target, { recursive: false, mode: 0o700 });
+        const made = await createPrivateDirectory(
+          ops, current, component, 'P5_OUTPUT_OWNERSHIP'
+        );
+        next = made.handle;
         created = true;
       }
-      const next = await openDirectoryEntry(
+      next ??= await openDirectoryEntry(
         ops, current, component, 'P5_AUTHORITY_INVALID', 'P5_OUTPUT_OWNERSHIP'
       );
       if (created) await current.sync();
@@ -829,15 +924,20 @@ async function createPrivateDirectory(ops, parentHandle, basename, code) {
   const stageName = await unusedPrivateDirectoryBasename(ops, parentHandle);
   const beforeNames = (await ops.readdir(descriptorPath(parentHandle))).sort();
   if (beforeNames.includes(stageName) || beforeNames.includes(basename)) throw executeError(code);
-  await ops.mkdir(descriptorEntryPath(parentHandle, stageName), { recursive: false, mode: 0o700 });
-  const afterNames = (await ops.readdir(descriptorPath(parentHandle))).sort();
-  const expectedNames = [...beforeNames, stageName].sort();
-  if (!sameStrings(afterNames, expectedNames)) throw executeError(code);
-  const handle = await openDirectoryEntry(ops, parentHandle, stageName, code, code);
-  let createdIdentity;
+  const made = await createBoundDirectory({
+    ops,
+    parentHandle,
+    basename: stageName,
+    fallbackCode: code
+  });
+  const handle = made.handle;
+  let createdIdentity = made.identity;
   try {
+    const afterNames = (await ops.readdir(descriptorPath(parentHandle))).sort();
+    const expectedNames = [...beforeNames, stageName].sort();
+    if (!sameStrings(afterNames, expectedNames)) throw executeError(code);
     const opened = await handle.stat();
-    createdIdentity = identity(opened);
+    if (!sameIdentity(identity(opened), createdIdentity)) throw executeError(code);
     await handle.chmod(0o700);
     await assertNamedDirectoryIdentity(parentHandle, ops, stageName, createdIdentity, code);
     await moveIdentityNoReplace({
@@ -1157,42 +1257,15 @@ async function openOrCreateOwnedDirectory(internal, ops, parentHandle, basename,
     if (!create || !isMissingError(error)) throw error;
   }
   await assertRunAuthority(internal, ops);
-  let madeDirectory = false;
   let handle;
   let createdIdentity;
   try {
-    try {
-      await ops.mkdir(target, { recursive: false, mode: 0o700 });
-      madeDirectory = true;
-    } catch (error) {
-      if (!isAlreadyExistsError(error)) throw error;
-    }
-    if (!madeDirectory) {
-      await assertRunAuthority(internal, ops);
-      return {
-        handle: await openDirectoryEntry(
-          ops,
-          parentHandle,
-          basename,
-          'P5_INSTALL_FAILED',
-          'P5_OUTPUT_OWNERSHIP'
-        ),
-        created: false
-      };
-    }
-    const createdStat = await ops.lstat(target);
-    if (createdStat.isSymbolicLink() || !createdStat.isDirectory()) {
-      throw executeError('P5_INSTALL_FAILED');
-    }
-    createdIdentity = identity(createdStat);
-    await assertRunAuthority(internal, ops);
-    handle = await openDirectoryEntry(
-      ops,
-      parentHandle,
-      basename,
-      'P5_INSTALL_FAILED',
-      'P5_OUTPUT_OWNERSHIP'
+    const made = await createPrivateDirectory(
+      ops, parentHandle, basename, 'P5_OUTPUT_OWNERSHIP'
     );
+    handle = made.handle;
+    createdIdentity = made.identity;
+    await assertRunAuthority(internal, ops);
     const opened = await handle.stat();
     if (!opened.isDirectory() || !sameIdentity(identity(opened), createdIdentity)) {
       throw executeError('P5_INSTALL_FAILED');
@@ -1212,7 +1285,7 @@ async function openOrCreateOwnedDirectory(internal, ops, parentHandle, basename,
     return { handle, created: true };
   } catch (error) {
     try {
-      if (madeDirectory && createdIdentity) {
+      if (createdIdentity) {
         await removeVerifiedEmptyCreatedDirectory(
           internal,
           ops,
@@ -1227,7 +1300,7 @@ async function openOrCreateOwnedDirectory(internal, ops, parentHandle, basename,
       // Preserve a path that can no longer be proven to be our empty creation.
     }
     await closeHandle(handle);
-    throw publicError(error, 'P5_INSTALL_FAILED');
+    throw publicError(error, 'P5_OUTPUT_OWNERSHIP');
   }
 }
 
@@ -1474,20 +1547,21 @@ async function publishCandidateUpdate({ internal, ops, tree, existing, incoming,
       const parent = directoryHandles.get(parentName);
       const basename = path.posix.basename(directory);
       const target = descriptorEntryPath(parent, basename);
+      let child;
       try {
         const stat = await ops.lstat(target);
         if (stat.isSymbolicLink() || !stat.isDirectory()) throw executeError('P5_OUTPUT_OWNERSHIP');
       } catch (error) {
         if (!isMissingError(error)) throw error;
-        await ops.mkdir(target, { recursive: false, mode: 0o700 });
-        const created = await ops.lstat(target);
-        if (created.isSymbolicLink() || !created.isDirectory()) {
-          throw executeError('P5_OUTPUT_OWNERSHIP');
-        }
-        createdDirectories.push({ directory, parent, basename, identity: identity(created) });
-        await parent.sync();
+        const made = await createPrivateDirectory(
+          ops, parent, basename, 'P5_OUTPUT_OWNERSHIP'
+        );
+        child = made.handle;
+        createdDirectories.push({ directory, parent, basename, identity: made.identity });
       }
-      const child = await openDirectoryEntry(ops, parent, basename, 'P5_INSTALL_FAILED', 'P5_OUTPUT_OWNERSHIP');
+      child ??= await openDirectoryEntry(
+        ops, parent, basename, 'P5_INSTALL_FAILED', 'P5_OUTPUT_OWNERSHIP'
+      );
       directoryHandles.set(directory, child);
     }
 
@@ -1514,13 +1588,18 @@ async function publishCandidateUpdate({ internal, ops, tree, existing, incoming,
       const stageName = await unusedTemporaryBasename(internal, ops, tree, tree.candidatesHandle, STAGE_PREFIX);
       const stagePath = descriptorEntryPath(tree.candidatesHandle, stageName);
       let stageHandle;
+      let stageIdentity;
       try {
         stageHandle = await ops.open(stagePath, WRITE_FLAGS, 0o600);
+        stageIdentity = identity(await stageHandle.stat());
         await stageHandle.writeFile(bytes);
         await stageHandle.sync();
         await stageHandle.chmod(0o400);
         await stageHandle.sync();
-        const stageIdentity = identity(await stageHandle.stat());
+        const completed = await stageHandle.stat();
+        if (!sameIdentity(stageIdentity, identity(completed))) {
+          throw executeError('P5_INSTALL_FAILED');
+        }
         await closeHandle(stageHandle); stageHandle = undefined;
         await moveIdentityNoReplace({
           ops,
@@ -1537,7 +1616,16 @@ async function publishCandidateUpdate({ internal, ops, tree, existing, incoming,
         });
       } finally {
         await closeHandle(stageHandle);
-        try { await ops.unlink(stagePath); } catch {}
+        if (stageIdentity) {
+          try {
+            const remaining = await readRegularFileIfPresent(
+              ops, tree.candidatesHandle, stageName
+            );
+            if (remaining && sameIdentity(remaining.identity, stageIdentity)) {
+              await unlinkBoundRegularFile(ops, tree.candidatesHandle, stageName, remaining);
+            }
+          } catch {}
+        }
       }
     }
 
@@ -1603,37 +1691,16 @@ async function publishCandidateUpdate({ internal, ops, tree, existing, incoming,
 
 async function createCandidateStage(internal, ops, tree, incoming) {
   let basename;
-  for (let attempt = 0; attempt < 64; attempt += 1) {
-    basename = nextTemporaryBasename(STAGE_PREFIX);
-    try {
-      await assertTreeAuthority(internal, ops, tree);
-      await ops.mkdir(descriptorEntryPath(tree.candidatesHandle, basename), {
-        recursive: false,
-        mode: 0o700
-      });
-      break;
-    } catch (error) {
-      if (isAlreadyExistsError(error)) {
-        basename = undefined;
-        continue;
-      }
-      throw publicError(error, 'P5_INSTALL_FAILED');
-    }
-  }
-  if (!basename) throw executeError('P5_INSTALL_FAILED');
-
   let handle;
   let stageIdentity;
+  const ownedIdentities = {};
   try {
-    const stagePath = descriptorEntryPath(tree.candidatesHandle, basename);
-    const before = await ops.lstat(stagePath);
-    if (before.isSymbolicLink() || !before.isDirectory()) throw executeError('P5_INSTALL_FAILED');
-    handle = await ops.open(stagePath, DIRECTORY_FLAGS);
+    ({ basename, handle, identity: stageIdentity }
+      = await createGeneratedStageDirectory(internal, ops, tree, tree.candidatesHandle));
     await assertTreeAuthority(internal, ops, tree);
     await handle.chmod(0o700);
     const opened = await handle.stat();
-    stageIdentity = identity(opened);
-    if (!sameIdentity(identity(before), stageIdentity)) throw executeError('P5_INSTALL_FAILED');
+    if (!sameIdentity(identity(opened), stageIdentity)) throw executeError('P5_INSTALL_FAILED');
 
     const directoryHandles = new Map([['', handle]]);
     try {
@@ -1649,14 +1716,14 @@ async function createCandidateStage(internal, ops, tree, incoming) {
           stageIdentity,
           'P5_INSTALL_FAILED'
         );
-        await ops.mkdir(descriptorEntryPath(parent, basenamePart), { recursive: false, mode: 0o700 });
-        const child = await openDirectoryEntry(
+        const made = await createBoundDirectory({
           ops,
-          parent,
-          basenamePart,
-          'P5_INSTALL_FAILED',
-          'P5_INSTALL_FAILED'
-        );
+          parentHandle: parent,
+          basename: basenamePart,
+          fallbackCode: 'P5_INSTALL_FAILED'
+        });
+        const child = made.handle;
+        ownedIdentities[directory] = made.identity;
         directoryHandles.set(directory, child);
         await assertTreeAuthority(internal, ops, tree);
         await child.chmod(0o700);
@@ -1678,6 +1745,9 @@ async function createCandidateStage(internal, ops, tree, incoming) {
             'P5_INSTALL_FAILED'
           );
           fileHandle = await ops.open(descriptorEntryPath(parent, basenamePart), WRITE_FLAGS, 0o600);
+          const opened = await fileHandle.stat();
+          if (!opened.isFile()) throw executeError('P5_INSTALL_FAILED');
+          ownedIdentities[name] = identity(opened);
           await assertTreeAuthority(internal, ops, tree);
           await fileHandle.writeFile(bytes);
           await assertTreeAuthority(internal, ops, tree);
@@ -1687,6 +1757,11 @@ async function createCandidateStage(internal, ops, tree, incoming) {
             await fileHandle.chmod(0o400);
             await assertTreeAuthority(internal, ops, tree);
             await fileHandle.sync();
+          }
+          const completed = await fileHandle.stat();
+          if (!completed.isFile()
+            || !sameIdentity(identity(completed), ownedIdentities[name])) {
+            throw executeError('P5_INSTALL_FAILED');
           }
         } finally {
           await closeHandle(fileHandle);
@@ -1705,9 +1780,10 @@ async function createCandidateStage(internal, ops, tree, incoming) {
       basename,
       stageIdentity,
       incoming.files,
-      incoming.candidateId
+      incoming.candidateId,
+      ownedIdentities
     );
-    return { basename, handle, identity: stageIdentity };
+    return { basename, handle, identity: stageIdentity, identities: ownedIdentities };
   } catch (error) {
     await closeHandle(handle);
     if (stageIdentity) {
@@ -1720,7 +1796,12 @@ async function createCandidateStage(internal, ops, tree, incoming) {
           basename,
           stageIdentity,
           incoming.files,
-          { allowMissing: true, requireComplete: false, verifyBytes: false }
+          {
+            allowMissing: true,
+            requireComplete: false,
+            verifyBytes: false,
+            expectedIdentities: ownedIdentities
+          }
         );
       } catch {
         // Never remove a path whose identity or contents can no longer be verified.
@@ -1730,6 +1811,45 @@ async function createCandidateStage(internal, ops, tree, incoming) {
   }
 }
 
+async function createGeneratedStageDirectory(internal, ops, tree, parentHandle) {
+  for (let attempt = 0; attempt < 64; attempt += 1) {
+    const basename = nextTemporaryBasename(STAGE_PREFIX);
+    let made;
+    try {
+      await assertTreeAuthority(internal, ops, tree);
+      made = await createBoundDirectory({
+        ops,
+        parentHandle,
+        basename,
+        fallbackCode: 'P5_INSTALL_FAILED'
+      });
+      await assertTreeAuthority(internal, ops, tree);
+      return { basename, handle: made.handle, identity: made.identity };
+    } catch (error) {
+      if (made) {
+        try {
+          await removeOwnedTree({
+            ops,
+            parentHandle,
+            basename,
+            expectedIdentity: made.identity,
+            expectedFiles: {},
+            expectedIdentities: {},
+            requireComplete: true,
+            verifyBytes: true,
+            assertAuthority: () => assertTreeAuthority(internal, ops, tree),
+            fallbackCode: 'P5_INSTALL_FAILED'
+          });
+        } catch {}
+        await closeHandle(made.handle);
+      }
+      if (isAlreadyExistsError(error)) continue;
+      throw publicError(error, 'P5_INSTALL_FAILED');
+    }
+  }
+  throw executeError('P5_INSTALL_FAILED');
+}
+
 async function verifyCandidateDirectory(
   internal,
   ops,
@@ -1737,7 +1857,8 @@ async function verifyCandidateDirectory(
   basename,
   expectedIdentity,
   expectedFiles,
-  candidateId
+  candidateId,
+  expectedIdentities
 ) {
   await assertTreeAuthority(internal, ops, tree);
   const directory = await readDirectoryTree(
@@ -1748,6 +1869,14 @@ async function verifyCandidateDirectory(
   );
   if (!sameIdentity(directory.identity, expectedIdentity) || !sameFileMap(directory.files, expectedFiles)) {
     throw executeError('P5_INSTALL_FAILED');
+  }
+  if (expectedIdentities) {
+    const actualNames = Object.keys(directory.identities).filter(Boolean).sort();
+    const expectedNames = Object.keys(expectedIdentities).filter(Boolean).sort();
+    if (!sameStrings(actualNames, expectedNames)
+      || actualNames.some((name) => (
+        !sameIdentity(directory.identities[name], expectedIdentities[name])
+      ))) throw executeError('P5_INSTALL_FAILED');
   }
   validateCandidateEvidence(candidateId, directory.files, 'P5_INSTALL_FAILED');
   if (!sameStrings(directory.directories, expectedDirectoriesFor(expectedFiles))) {
@@ -1775,7 +1904,7 @@ async function removeVerifiedDirectory(
   basename,
   expectedIdentity,
   expectedFiles,
-  { allowMissing = false, requireComplete, verifyBytes }
+  { allowMissing = false, requireComplete, verifyBytes, expectedIdentities }
 ) {
   try {
     await assertTreeAuthority(internal, ops, tree);
@@ -1798,13 +1927,23 @@ async function removeVerifiedDirectory(
         if (!directory.files[name].equals(expectedFiles[name])) throw executeError('P5_INSTALL_FAILED');
       }
     }
+    if (expectedIdentities) {
+      const actualIdentityNames = Object.keys(directory.identities).filter(Boolean).sort();
+      const expectedIdentityNames = Object.keys(expectedIdentities).filter(Boolean).sort();
+      if (actualIdentityNames.some((name) => (
+        !expectedIdentities[name]
+        || !sameIdentity(directory.identities[name], expectedIdentities[name])
+      )) || (requireComplete && !sameStrings(actualIdentityNames, expectedIdentityNames))) {
+        throw executeError('P5_INSTALL_FAILED');
+      }
+    }
     await removeOwnedTree({
       ops,
       parentHandle,
       basename,
       expectedIdentity,
       expectedFiles,
-      expectedIdentities: directory.identities,
+      expectedIdentities: expectedIdentities ?? directory.identities,
       requireComplete,
       verifyBytes,
       allowMissing,
@@ -1864,6 +2003,7 @@ async function replaceBoundPointer({
   validateInstalled
 }) {
   let backupName;
+  let retiredName;
   try {
     await assertAuthority();
     if (currentRead) {
@@ -1880,8 +2020,22 @@ async function replaceBoundPointer({
       await assertAuthority();
       const finalSource = await readRegularFile(ops, pointerHandle, pointerName, 'P5_INSTALL_FAILED');
       if (!sameRegularRead(finalSource, currentRead)) throw executeError('P5_INSTALL_FAILED');
-      await ops.unlink(descriptorEntryPath(pointerHandle, pointerName));
-      await pointerHandle.sync();
+      retiredName = await unusedTemporaryBasename(
+        internal, ops, tree, stagingHandle, BACKUP_PREFIX
+      );
+      await moveBoundRegularFile({
+        ops,
+        sourceHandle: pointerHandle,
+        sourceName: pointerName,
+        destinationHandle: stagingHandle,
+        destinationName: retiredName,
+        expectedRead: currentRead,
+        beforeMove: assertAuthority,
+        afterMove: async () => {
+          await pointerHandle.sync();
+          if (pointerHandle !== stagingHandle) await stagingHandle.sync();
+        }
+      });
     } else if (await entryExists(ops, descriptorEntryPath(pointerHandle, pointerName))) {
       throw executeError('P5_INSTALL_FAILED');
     }
@@ -1912,15 +2066,15 @@ async function replaceBoundPointer({
   } catch (error) {
     await rollbackBoundPointer({
       internal, ops, tree, pointerHandle, pointerName, stagingHandle,
-      stageName, stageRead, currentRead, backupName, assertAuthority
+      stageName, stageRead, currentRead, backupName, retiredName, assertAuthority
     });
     throw error;
   }
 
-  if (backupName && currentRead) {
-    try { await unlinkBoundRegularFile(ops, stagingHandle, backupName, currentRead); }
+  for (const name of [backupName, retiredName].filter(Boolean)) {
+    try { await unlinkBoundRegularFile(ops, stagingHandle, name, currentRead); }
     catch {
-      // The new pointer is already durable. A verified fixed-prefix hardlink is safe residue.
+      // The new pointer is durable; ambiguous journals remain safe residue.
     }
   }
 }
@@ -2056,6 +2210,7 @@ async function rollbackBoundPointer({
   stageRead,
   currentRead,
   backupName,
+  retiredName,
   assertAuthority
 }) {
   let rollbackFailed = false;
@@ -2109,11 +2264,11 @@ async function rollbackBoundPointer({
     await pointerHandle.sync();
     if (pointerHandle !== stagingHandle) await stagingHandle.sync();
 
-    const remainingBackup = backupName
-      ? await readRegularFileIfPresent(ops, stagingHandle, backupName)
-      : null;
-    if (remainingBackup && currentRead && sameRegularRead(remainingBackup, currentRead)) {
-      await unlinkBoundRegularFile(ops, stagingHandle, backupName, currentRead);
+    for (const name of [backupName, retiredName].filter(Boolean)) {
+      const remaining = await readRegularFileIfPresent(ops, stagingHandle, name);
+      if (remaining && currentRead && sameRegularRead(remaining, currentRead)) {
+        await unlinkBoundRegularFile(ops, stagingHandle, name, currentRead);
+      }
     }
     const remainingStage = await readRegularFileIfPresent(ops, stagingHandle, stageName);
     if (remainingStage && sameRegularRead(remainingStage, stageRead)) {
@@ -2143,13 +2298,98 @@ async function reconcileRegularMove({
   return sourceAfter === null && destination !== null && sameRegularRead(destination, expectedRead);
 }
 
-async function unlinkBoundRegularFile(ops, handle, basename, expectedRead) {
-  const first = await readRegularFile(ops, handle, basename, 'P5_INSTALL_FAILED');
-  const second = await readRegularFile(ops, handle, basename, 'P5_INSTALL_FAILED');
-  if (!sameRegularRead(first, expectedRead) || !sameRegularRead(second, expectedRead)) {
+async function moveBoundRegularFile({
+  ops,
+  sourceHandle,
+  sourceName,
+  destinationHandle,
+  destinationName,
+  expectedRead,
+  beforeMove = async () => {},
+  afterMove = async () => {}
+}) {
+  await beforeMove();
+  const before = await readRegularFileIfPresent(ops, sourceHandle, sourceName);
+  if (!before || !sameRegularRead(before, expectedRead)
+    || await entryExists(ops, descriptorEntryPath(destinationHandle, destinationName))) {
     throw executeError('P5_INSTALL_FAILED');
   }
-  await ops.unlink(descriptorEntryPath(handle, basename));
+  let moveError;
+  try {
+    if (sourceHandle === destinationHandle) {
+      await ops.renameNoReplace(sourceHandle, sourceName, destinationName);
+    } else {
+      await ops.renameNoReplaceBetween(
+        sourceHandle, sourceName, destinationHandle, destinationName
+      );
+    }
+  } catch (error) {
+    moveError = error;
+  }
+  const source = await readRegularFileIfPresent(ops, sourceHandle, sourceName);
+  const destination = await readRegularFileIfPresent(ops, destinationHandle, destinationName);
+  if (source === null && destination && sameRegularRead(destination, expectedRead)) {
+    await afterMove();
+    if (moveError) throw publicError(moveError, 'P5_INSTALL_FAILED');
+    return;
+  }
+  if (source === null && destination) {
+    await reconcileRegularMove({
+      ops,
+      sourceHandle: destinationHandle,
+      sourceName: destinationName,
+      destinationHandle: sourceHandle,
+      destinationName: sourceName,
+      expectedRead: destination
+    });
+  }
+  throw executeError('P5_INSTALL_FAILED');
+}
+
+async function unlinkBoundRegularFile(ops, handle, basename, expectedRead) {
+  await retireBoundEntry({
+    ops,
+    parentHandle: handle,
+    basename,
+    expectedIdentity: expectedRead.identity,
+    expectedKind: 'file',
+    fallbackCode: 'P5_INSTALL_FAILED',
+    assertAuthority: async () => {
+      const first = await readRegularFile(ops, handle, basename, 'P5_INSTALL_FAILED');
+      const second = await readRegularFile(ops, handle, basename, 'P5_INSTALL_FAILED');
+      if (!sameRegularRead(first, expectedRead) || !sameRegularRead(second, expectedRead)) {
+        throw executeError('P5_INSTALL_FAILED');
+      }
+    },
+    destroy: async (retirementHandle, retiredName) => {
+      const target = descriptorEntryPath(retirementHandle, retiredName);
+      let fileHandle;
+      try {
+        const before = await fs.lstat(target);
+        if (before.isSymbolicLink() || !before.isFile()) {
+          throw executeError('P5_INSTALL_FAILED');
+        }
+        fileHandle = await fs.open(target, READ_FLAGS);
+        const opened = await fileHandle.stat();
+        const bytes = Buffer.from(await fileHandle.readFile());
+        const retained = await fileHandle.stat();
+        const named = await fs.lstat(target);
+        const retired = { bytes, identity: identity(retained), mode: retained.mode };
+        if (!opened.isFile() || !retained.isFile()
+          || named.isSymbolicLink() || !named.isFile()
+          || !sameIdentity(identity(before), identity(opened))
+          || !sameIdentity(identity(opened), identity(retained))
+          || !sameIdentity(identity(retained), identity(named))
+          || Number(retained.size) !== bytes.length
+          || !sameRegularRead(retired, expectedRead)) {
+          throw executeError('P5_INSTALL_FAILED');
+        }
+        await fs.unlink(target);
+      } finally {
+        await closeHandle(fileHandle);
+      }
+    }
+  });
 }
 
 async function readRegularFileIfPresent(ops, handle, basename) {
@@ -2348,16 +2588,21 @@ function fsOperations(source) {
   const customBetween = provided && typeof provided.renameNoReplaceBetween === 'function'
     ? provided.renameNoReplaceBetween.bind(provided)
     : null;
+  const customMkdirBound = provided && typeof provided.mkdirBound === 'function'
+    ? provided.mkdirBound.bind(provided)
+    : undefined;
+  const customRetireEntry = provided && typeof provided.retireEntry === 'function'
+    ? provided.retireEntry.bind(provided)
+    : undefined;
   return Object.freeze({
     source: provided,
     open: operation('open'),
     lstat: operation('lstat'),
-    mkdir: operation('mkdir'),
     readdir: operation('readdir'),
     link: operation('link'),
     rename: operation('rename'),
-    unlink: operation('unlink'),
-    rmdir: operation('rmdir'),
+    mkdirBound: customMkdirBound,
+    retireEntry: customRetireEntry,
     renameNoReplace: customRename
       ? (directoryHandle, sourceName, destinationName) => customRename(
         directoryHandle,

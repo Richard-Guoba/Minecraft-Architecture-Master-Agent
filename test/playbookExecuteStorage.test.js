@@ -31,7 +31,8 @@ import {
   installCandidateSnapshot,
   installExecuteSelection,
   pruneCandidateWorkspaces,
-  readCurrentCandidateSnapshot
+  readCurrentCandidateSnapshot,
+  removeReplayWorkspace
 } from '../src/playbook/execute/storage.js';
 
 const LAYERS = Object.freeze(['brief', 'massing', 'structure', 'roof', 'facade']);
@@ -249,6 +250,88 @@ test('run creation rejects a generated directory swapped after mkdir returns', a
   if (parkedPath) await fs.access(parkedPath);
 });
 
+test('run creation binds the private directory returned by the creation boundary', async (t) => {
+  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-private-run-swap-'));
+  const parkedPath = `${outRoot}-created-private-run`;
+  t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+  t.after(() => fs.rm(parkedPath, { recursive: true, force: true }));
+  const foreignBytes = Buffer.from('foreign private run must survive unchanged\n');
+  let swapped = false;
+  const swap = async (target) => {
+    if (swapped || !path.basename(String(target)).startsWith('.playbook-execute.directory-')) return;
+    swapped = true;
+    await fs.rename(target, parkedPath);
+    await fs.mkdir(target);
+    await fs.writeFile(path.join(String(target), 'foreign-sentinel.txt'), foreignBytes);
+  };
+  const fsImpl = fsWith({
+    async mkdir(target, ...args) {
+      const result = await fs.mkdir(target, ...args);
+      await swap(target);
+      return result;
+    },
+    async mkdirBound(parentHandle, basename, next) {
+      const result = await next(parentHandle, basename);
+      await swap(path.join(await descriptorTarget(parentHandle), basename));
+      return result;
+    }
+  });
+
+  await assert.rejects(createExecuteRun({
+    outRoot,
+    runBasename: 'generated-run',
+    fsImpl
+  }), { code: 'P5_OUTPUT_OWNERSHIP', message: 'P5_OUTPUT_OWNERSHIP' });
+  assert.equal(swapped, true);
+  assert.equal(await treeContainsFileBytes(outRoot, foreignBytes), true);
+  await fs.access(parkedPath);
+});
+
+test('output-root creation never adopts a directory swapped after creation', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-output-root-create-swap-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const outRoot = path.join(root, 'new-output-root');
+  const parkedPath = path.join(root, 'created-output-root');
+  const foreignBytes = Buffer.from('foreign output-root inode must remain unchanged\n');
+  let foreignIdentity;
+  let foreignBefore;
+  let swapped = false;
+  const swap = async (target) => {
+    const resolved = await descriptorTargetFromPath(String(target));
+    if (swapped || (resolved !== outRoot
+      && !path.basename(resolved).startsWith('.playbook-execute.directory-'))) return;
+    swapped = true;
+    await fs.rename(target, parkedPath);
+    await fs.mkdir(target);
+    await fs.writeFile(path.join(String(target), 'foreign-sentinel.txt'), foreignBytes);
+    foreignIdentity = fileIdentity(await fs.lstat(target));
+    foreignBefore = await inodeTree(target);
+  };
+  const fsImpl = fsWith({
+    async mkdir(target, ...args) {
+      const result = await fs.mkdir(target, ...args);
+      await swap(target);
+      return result;
+    },
+    async mkdirBound(parentHandle, basename, next) {
+      const made = await next();
+      await swap(path.join(await descriptorTarget(parentHandle), basename));
+      return made;
+    }
+  });
+
+  await assert.rejects(
+    createExecuteRun({ outRoot, runBasename: 'generated-run', fsImpl }),
+    { code: 'P5_OUTPUT_OWNERSHIP', message: 'P5_OUTPUT_OWNERSHIP' }
+  );
+  assert.equal(swapped, true);
+  const foreignPath = await findPathByIdentity(root, foreignIdentity);
+  assert.ok(foreignPath);
+  assert.deepEqual(await inodeTree(foreignPath), foreignBefore);
+  assert.deepEqual(await fs.readFile(path.join(foreignPath, 'foreign-sentinel.txt')), foreignBytes);
+  await fs.access(parkedPath);
+});
+
 test('replay workspace creation rejects a generated directory swapped after mkdir returns', async (t) => {
   const fixture = await storageFixture(t);
   const authority = await admitExecuteRun({ runDir: fixture.runDir });
@@ -292,7 +375,222 @@ test('replay workspace creation rejects a generated directory swapped after mkdi
   if (parkedPath) await fs.access(parkedPath);
 });
 
-test('workspace pruning preserves a foreign directory swapped at the removal syscall', async (t) => {
+test('replay workspace binds the private directory returned by the creation boundary', async (t) => {
+  const fixture = await storageFixture(t);
+  const authority = await admitExecuteRun({ runDir: fixture.runDir });
+  t.after(() => authority.close());
+  const initialWorkspace = await createReplayWorkspace({ authority, candidateId: 'candidate-01' });
+  await removeReplayWorkspace({ authority, workspacePath: initialWorkspace });
+  const parkedPath = path.join(fixture.root, 'created-private-workspace');
+  const foreignBytes = Buffer.from('foreign private workspace must survive unchanged\n');
+  let swapped = false;
+  const swap = async (target) => {
+    if (swapped || !path.basename(String(target)).startsWith('.playbook-execute.directory-')) return;
+    swapped = true;
+    await fs.rename(target, parkedPath);
+    await fs.mkdir(target);
+    await fs.writeFile(path.join(String(target), 'foreign-sentinel.txt'), foreignBytes);
+  };
+  const fsImpl = fsWith({
+    async mkdir(target, ...args) {
+      const result = await fs.mkdir(target, ...args);
+      await swap(target);
+      return result;
+    },
+    async mkdirBound(parentHandle, basename, next) {
+      const result = await next(parentHandle, basename);
+      await swap(path.join(await descriptorTarget(parentHandle), basename));
+      return result;
+    }
+  });
+
+  await assert.rejects(
+    createReplayWorkspace({ authority, candidateId: 'candidate-01', fsImpl }),
+    { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' }
+  );
+  assert.equal(swapped, true);
+  assert.equal(await treeContainsFileBytes(fixture.runDir, foreignBytes), true);
+  await fs.access(parkedPath);
+});
+
+test('every generated storage stage binds the exact directory created by its boundary', async (t) => {
+  const cases = [
+    {
+      name: 'candidate-install',
+      fixture: storageFixture,
+      run: async (fixture, fsImpl) => {
+        const authority = await admitExecuteRun({ runDir: fixture.runDir });
+        t.after(() => authority.close());
+        return installCandidateSnapshot({
+          authority, candidateId: 'candidate-01', ...initialSnapshot(), fsImpl
+        });
+      }
+    },
+    {
+      name: 'selection-generation',
+      fixture: threeCandidateFixture,
+      run: (fixture, fsImpl) => installExecuteSelection({
+        authority: fixture.authority, files: selectionFiles('bound-stage'), fsImpl
+      })
+    },
+    {
+      name: 'failure-evidence',
+      fixture: installedFixture,
+      run: (fixture, fsImpl) => appendCandidateFailureEvidence({
+        authority: fixture.authority,
+        candidateId: 'candidate-01',
+        expectedCurrentChainSha256: fixture.initial.chainHash,
+        evidence: failureEvidence(fixture.initial.chainHash),
+        fsImpl
+      })
+    }
+  ];
+
+  for (const entry of cases) await t.test(entry.name, async () => {
+    const fixture = await entry.fixture(t);
+    const parkedPath = path.join(fixture.root, `created-${entry.name}-stage`);
+    const foreignBytes = Buffer.from(`foreign ${entry.name} stage must remain unchanged\n`);
+    let createdIdentity;
+    let foreignIdentity;
+    let foreignBefore;
+    let swapped = false;
+    const swap = async (target) => {
+      if (swapped || !path.basename(String(target)).startsWith(STAGE_PREFIX)) return;
+      swapped = true;
+      createdIdentity = fileIdentity(await fs.lstat(target));
+      await fs.rename(target, parkedPath);
+      await fs.mkdir(target);
+      await fs.writeFile(path.join(String(target), 'foreign-sentinel.txt'), foreignBytes);
+      foreignIdentity = fileIdentity(await fs.lstat(target));
+      foreignBefore = await inodeTree(target);
+    };
+    const fsImpl = fsWith({
+      async mkdir(target, ...args) {
+        const result = await fs.mkdir(target, ...args);
+        await swap(target);
+        return result;
+      },
+      async mkdirBound(parentHandle, basename, next) {
+        const result = await next();
+        await swap(path.join(await descriptorTarget(parentHandle), basename));
+        return result;
+      }
+    });
+
+    await assert.rejects(entry.run(fixture, fsImpl), {
+      code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED'
+    });
+    assert.equal(swapped, true);
+    const foreignPath = await findPathByIdentity(fixture.root, foreignIdentity);
+    assert.ok(foreignPath);
+    assert.deepEqual(await inodeTree(foreignPath), foreignBefore);
+    assert.equal(await treeContainsIdentity(fixture.root, createdIdentity), true);
+    assert.deepEqual(await fs.readFile(path.join(foreignPath, 'foreign-sentinel.txt')), foreignBytes);
+  });
+});
+
+test('storage stages never adopt same-byte foreign file replacements', async (t) => {
+  const cases = [
+    {
+      name: 'candidate-install',
+      relative: 'frozen/frozen-design.json',
+      fixture: storageFixture,
+      matches: (sourceName, destinationName) => sourceName.startsWith(STAGE_PREFIX)
+        && destinationName === 'candidate-01',
+      run: async (fixture, fsImpl) => {
+        const authority = await admitExecuteRun({ runDir: fixture.runDir });
+        t.after(() => authority.close());
+        return installCandidateSnapshot({
+          authority, candidateId: 'candidate-01', ...initialSnapshot(), fsImpl
+        });
+      }
+    },
+    {
+      name: 'selection-generation',
+      relative: 'manifest.json',
+      fixture: threeCandidateFixture,
+      matches: (sourceName, destinationName) => sourceName.startsWith(STAGE_PREFIX)
+        && destinationName.startsWith('selection-'),
+      run: (fixture, fsImpl) => installExecuteSelection({
+        authority: fixture.authority, files: selectionFiles('same-byte-swap'), fsImpl
+      })
+    },
+    {
+      name: 'failure-evidence',
+      relative: 'attempt-01.json',
+      fixture: installedFixture,
+      matches: (sourceName, destinationName) => sourceName.startsWith(STAGE_PREFIX)
+        && destinationName === 'failures',
+      run: (fixture, fsImpl) => appendCandidateFailureEvidence({
+        authority: fixture.authority,
+        candidateId: 'candidate-01',
+        expectedCurrentChainSha256: fixture.initial.chainHash,
+        evidence: failureEvidence(fixture.initial.chainHash),
+        fsImpl
+      })
+    }
+  ];
+
+  for (const entry of cases) for (const moveBehavior of ['reject', 'continue']) {
+    await t.test(`${entry.name}-${moveBehavior}`, async () => {
+      const fixture = await entry.fixture(t);
+      const parkedPath = path.join(
+        fixture.root, `parked-owned-${entry.name}-${moveBehavior}-file`
+      );
+      let ownedIdentity;
+      let foreignIdentity;
+      let swapped = false;
+      const swap = async (sourceHandle, sourceName) => {
+        const target = path.join(
+          await descriptorTarget(sourceHandle), sourceName, ...entry.relative.split('/')
+        );
+        const stat = await fs.lstat(target);
+        const bytes = await fs.readFile(target);
+        ownedIdentity = fileIdentity(stat);
+        await fs.rename(target, parkedPath);
+        await fs.writeFile(target, bytes, { mode: stat.mode & 0o777 });
+        foreignIdentity = fileIdentity(await fs.lstat(target));
+        swapped = true;
+      };
+      const rejectMove = async (
+        sourceHandle, sourceName, destinationHandle, destinationName, next
+      ) => {
+        if (!swapped && entry.matches(sourceName, destinationName)) {
+          await swap(sourceHandle, sourceName);
+          if (moveBehavior === 'reject') {
+            throw new Error(`RAW_SAME_BYTE_STAGE_SWAP:${entry.name}`);
+          }
+        }
+        return next(sourceHandle, sourceName, destinationHandle, destinationName);
+      };
+      const fsImpl = fsWith({
+        async renameNoReplace(parentHandle, sourceName, destinationName, next) {
+          return rejectMove(
+            parentHandle, sourceName, parentHandle, destinationName,
+            () => next(parentHandle, sourceName, destinationName)
+          );
+        },
+        async renameNoReplaceBetween(
+          sourceHandle, sourceName, destinationHandle, destinationName, next
+        ) {
+          return rejectMove(
+            sourceHandle, sourceName, destinationHandle, destinationName,
+            () => next(sourceHandle, sourceName, destinationHandle, destinationName)
+          );
+        }
+      });
+
+      await assert.rejects(entry.run(fixture, fsImpl), {
+        code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED'
+      });
+      assert.equal(swapped, true);
+      assert.equal(await treeContainsIdentity(fixture.root, ownedIdentity), true);
+      assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
+    });
+  }
+});
+
+test('workspace pruning preserves a foreign directory swapped at the retirement boundary', async (t) => {
   const fixture = await storageFixture(t);
   const authority = await admitExecuteRun({ runDir: fixture.runDir });
   t.after(() => authority.close());
@@ -310,8 +608,10 @@ test('workspace pruning preserves a foreign directory swapped at the removal sys
     await fs.writeFile(path.join(String(target), 'foreign-sentinel.txt'), foreignBytes);
   };
   const fsImpl = fsWith({
-    async rm(target, ...args) { await swap(target); return fs.rm(target, ...args); },
-    async rmdir(target, ...args) { await swap(target); return fs.rmdir(target, ...args); }
+    async retireEntry(parentHandle, basename, expectedIdentity, next) {
+      await swap(path.join(await descriptorTarget(parentHandle), basename));
+      return next();
+    }
   });
 
   await assert.rejects(
@@ -321,6 +621,105 @@ test('workspace pruning preserves a foreign directory swapped at the removal sys
   assert.equal(swapped, true);
   assert.deepEqual(await fs.readFile(path.join(workspace, 'foreign-sentinel.txt')), foreignBytes);
   await fs.access(parkedPath);
+});
+
+test('workspace pruning never deletes a foreign file swapped at the destructive boundary', async (t) => {
+  const fixture = await storageFixture(t);
+  const authority = await admitExecuteRun({ runDir: fixture.runDir });
+  t.after(() => authority.close());
+  const workspace = await createReplayWorkspace({ authority, candidateId: 'candidate-01' });
+  const ownedPath = path.join(workspace, 'owned.txt');
+  const parkedOwned = path.join(fixture.root, 'parked-owned-file.txt');
+  await fs.writeFile(ownedPath, 'owned\n');
+  const ownedIdentity = fileIdentity(await fs.stat(ownedPath));
+  const foreignBytes = Buffer.from('foreign unlink inode must survive\n');
+  let foreignIdentity;
+  let swapped = false;
+  const swapFile = async (target) => {
+    const resolved = await descriptorTargetFromPath(String(target));
+    if (swapped || path.basename(resolved) !== 'owned.txt') return;
+    swapped = true;
+    await fs.rename(target, parkedOwned);
+    await fs.writeFile(target, foreignBytes);
+    foreignIdentity = fileIdentity(await fs.stat(target));
+  };
+  const swapTree = async (parentHandle, basename) => {
+    if (swapped || basename !== path.basename(workspace)) return;
+    const target = path.join(await descriptorTarget(parentHandle), basename);
+    const parkedTree = path.join(fixture.root, 'parked-owned-workspace');
+    await fs.rename(target, parkedTree);
+    await fs.mkdir(target);
+    await fs.writeFile(path.join(target, 'foreign-sentinel.txt'), foreignBytes);
+    foreignIdentity = fileIdentity(await fs.stat(path.join(target, 'foreign-sentinel.txt')));
+    swapped = true;
+  };
+  const fsImpl = fsWith({
+    async retireEntry(parentHandle, basename, expectedIdentity, next) {
+      if (basename === path.basename(workspace)) {
+        await swapFile(path.join(await descriptorTarget(parentHandle), basename, 'owned.txt'));
+      } else {
+        await swapTree(parentHandle, basename);
+      }
+      return next();
+    }
+  });
+
+  await assert.rejects(pruneCandidateWorkspaces({ authority, fsImpl }), {
+    code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED'
+  });
+  assert.equal(swapped, true);
+  assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
+  assert.equal(await treeContainsIdentity(fixture.root, ownedIdentity), true);
+  assert.equal(await treeContainsFileBytes(fixture.root, foreignBytes), true);
+});
+
+test('workspace pruning never deletes a foreign directory swapped at the destructive boundary', async (t) => {
+  const fixture = await storageFixture(t);
+  const authority = await admitExecuteRun({ runDir: fixture.runDir });
+  t.after(() => authority.close());
+  const workspace = await createReplayWorkspace({ authority, candidateId: 'candidate-01' });
+  const ownedPath = path.join(workspace, 'owned-directory');
+  const parkedOwned = path.join(fixture.root, 'parked-owned-directory');
+  await fs.mkdir(ownedPath);
+  const ownedIdentity = fileIdentity(await fs.stat(ownedPath));
+  let foreignIdentity;
+  let swapped = false;
+  const swapDirectory = async (target) => {
+    const resolved = await descriptorTargetFromPath(String(target));
+    if (swapped || path.basename(resolved) !== 'owned-directory') return;
+    swapped = true;
+    await fs.rename(target, parkedOwned);
+    await fs.mkdir(target);
+    foreignIdentity = fileIdentity(await fs.stat(target));
+  };
+  const swapTree = async (parentHandle, basename) => {
+    if (swapped || basename !== path.basename(workspace)) return;
+    const target = path.join(await descriptorTarget(parentHandle), basename);
+    const parkedTree = path.join(fixture.root, 'parked-owned-workspace-directory');
+    await fs.rename(target, parkedTree);
+    await fs.mkdir(target);
+    foreignIdentity = fileIdentity(await fs.stat(target));
+    swapped = true;
+  };
+  const fsImpl = fsWith({
+    async retireEntry(parentHandle, basename, expectedIdentity, next) {
+      if (basename === path.basename(workspace)) {
+        await swapDirectory(path.join(
+          await descriptorTarget(parentHandle), basename, 'owned-directory'
+        ));
+      } else {
+        await swapTree(parentHandle, basename);
+      }
+      return next();
+    }
+  });
+
+  await assert.rejects(pruneCandidateWorkspaces({ authority, fsImpl }), {
+    code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED'
+  });
+  assert.equal(swapped, true);
+  assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
+  assert.equal(await treeContainsIdentity(fixture.root, ownedIdentity), true);
 });
 
 test('candidate IDs are exactly candidate-01, candidate-02, and candidate-03', async (t) => {
@@ -766,14 +1165,15 @@ test('a private stage collision is retried and the colliding bytes are preserved
   const fixture = await storageFixture(t);
   let collisionName;
   const fsImpl = fsWith({
-    async mkdir(target, options) {
-      if (!collisionName && path.basename(String(target)).startsWith(STAGE_PREFIX)) {
-        collisionName = path.basename(String(target));
-        await fs.mkdir(target, options);
-        await fs.writeFile(path.join(String(target), 'foreign.txt'), 'collision bytes\n');
+    async mkdirBound(parentHandle, basename, next) {
+      if (!collisionName && basename.startsWith(STAGE_PREFIX)) {
+        collisionName = basename;
+        const target = path.join(await descriptorTarget(parentHandle), basename);
+        await fs.mkdir(target, { recursive: false, mode: 0o700 });
+        await fs.writeFile(path.join(target, 'foreign.txt'), 'collision bytes\n');
         throw Object.assign(new Error('RAW_STAGE_COLLISION'), { code: 'EEXIST' });
       }
-      return fs.mkdir(target, options);
+      return next();
     }
   });
   const authority = await admitExecuteRun({ runDir: fixture.runDir });
@@ -795,6 +1195,56 @@ test('a private stage collision is retried and the colliding bytes are preserved
     ), 'utf8'),
     'collision bytes\n'
   );
+});
+
+test('execute-tree creation never adopts a directory swapped after creation', async (t) => {
+  for (const basename of ['playbook-execute', 'candidates']) await t.test(basename, async (t) => {
+    const fixture = await storageFixture(t);
+    const expectedParent = basename === 'playbook-execute'
+      ? fixture.runDir
+      : path.join(fixture.runDir, 'playbook-execute');
+    const parkedPath = path.join(fixture.root, `created-${basename}`);
+    const foreignBytes = Buffer.from(`foreign ${basename} inode must remain unchanged\n`);
+    let foreignIdentity;
+    let foreignBefore;
+    let swapped = false;
+    const swap = async (target) => {
+      const resolved = await descriptorTargetFromPath(String(target));
+      if (swapped || path.dirname(resolved) !== expectedParent
+        || (path.basename(resolved) !== basename
+          && !path.basename(resolved).startsWith('.playbook-execute.directory-'))) return;
+      swapped = true;
+      await fs.rename(target, parkedPath);
+      await fs.mkdir(target);
+      await fs.writeFile(path.join(String(target), 'foreign-sentinel.txt'), foreignBytes);
+      foreignIdentity = fileIdentity(await fs.lstat(target));
+      foreignBefore = await inodeTree(target);
+    };
+    const fsImpl = fsWith({
+      async mkdir(target, ...args) {
+        const result = await fs.mkdir(target, ...args);
+        await swap(target);
+        return result;
+      },
+      async mkdirBound(parentHandle, generatedBasename, next) {
+        const made = await next();
+        await swap(path.join(await descriptorTarget(parentHandle), generatedBasename));
+        return made;
+      }
+    });
+    const authority = await admitExecuteRun({ runDir: fixture.runDir });
+    t.after(() => authority.close());
+
+    await assert.rejects(installCandidateSnapshot({
+      authority, candidateId: 'candidate-01', ...initialSnapshot(), fsImpl
+    }), { code: 'P5_OUTPUT_OWNERSHIP', message: 'P5_OUTPUT_OWNERSHIP' });
+    assert.equal(swapped, true);
+    const foreignPath = await findPathByIdentity(fixture.root, foreignIdentity);
+    assert.ok(foreignPath);
+    assert.deepEqual(await inodeTree(foreignPath), foreignBefore);
+    assert.deepEqual(await fs.readFile(path.join(foreignPath, 'foreign-sentinel.txt')), foreignBytes);
+    await fs.access(parkedPath);
+  });
 });
 
 test('first-install precommit failure removes only the topology created by that call', async (t) => {
@@ -826,25 +1276,25 @@ test('first-install precommit failure removes only the topology created by that 
   assert.deepEqual(await snapshotTree(fixture.root), before);
 });
 
-test('mkdir followed by directory open failure removes only the directory created by that call', async (t) => {
+test('bound directory callback failure removes only the directory created by that call', async (t) => {
   for (const basename of ['playbook-execute', 'candidates']) {
     await t.test(basename, async (t) => {
       const fixture = await storageFixture(t);
       const before = await snapshotTree(fixture.root);
-      const created = new Set();
       let failed = false;
+      const expectedParent = basename === 'playbook-execute'
+        ? fixture.runDir
+        : path.join(fixture.runDir, 'playbook-execute');
       const fsImpl = fsWith({
-        async mkdir(target, options) {
-          const result = await fs.mkdir(target, options);
-          if (path.basename(String(target)) === basename) created.add(String(target));
-          return result;
-        },
-        async open(target, flags, ...args) {
-          if (!failed && created.has(String(target))) {
+        async mkdirBound(parentHandle, generatedBasename, next) {
+          const made = await next();
+          if (!failed
+            && generatedBasename.startsWith('.playbook-execute.directory-')
+            && await descriptorTarget(parentHandle) === expectedParent) {
             failed = true;
-            throw new Error('RAW_CREATED_DIRECTORY_OPEN_FAILURE');
+            throw new Error('RAW_BOUND_DIRECTORY_CALLBACK_FAILURE');
           }
-          return fs.open(target, flags, ...args);
+          return made;
         }
       });
       const authority = await admitExecuteRun({ runDir: fixture.runDir });
@@ -857,9 +1307,9 @@ test('mkdir followed by directory open failure removes only the directory create
           ...initialSnapshot(),
           fsImpl
         }),
-        'P5_INSTALL_FAILED',
+        'P5_OUTPUT_OWNERSHIP',
         fixture.root,
-        'RAW_CREATED_DIRECTORY_OPEN_FAILURE'
+        'RAW_BOUND_DIRECTORY_CALLBACK_FAILURE'
       );
       assert.equal(failed, true);
       assert.deepEqual(await snapshotTree(fixture.root), before);
@@ -867,45 +1317,33 @@ test('mkdir followed by directory open failure removes only the directory create
   }
 });
 
-test('mkdir followed by parent sync failure restores exact first-install topology', async (t) => {
+test('private directory post-effect promotion failure restores exact first-install topology', async (t) => {
   for (const basename of ['playbook-execute', 'candidates']) {
     await t.test(basename, async (t) => {
       const fixture = await storageFixture(t);
       const before = await snapshotTree(fixture.root);
-      let created = false;
       let failed = false;
       const fsImpl = fsWith({
-        async mkdir(target, options) {
-          const result = await fs.mkdir(target, options);
-          if (path.basename(String(target)) === basename) created = true;
+        async renameNoReplace(parentHandle, sourceName, destinationName, next) {
+          const result = await next(parentHandle, sourceName, destinationName);
+          if (!failed && destinationName === basename
+            && sourceName.startsWith('.playbook-execute.directory-')) {
+            failed = true;
+            throw new Error('RAW_PRIVATE_DIRECTORY_POST_EFFECT_FAILURE');
+          }
           return result;
-        },
-        async open(target, flags, ...args) {
-          const handle = await fs.open(target, flags, ...args);
-          const targetBasename = path.basename(String(target));
-          const parentForCreated = basename === 'playbook-execute'
-            ? targetBasename === path.basename(fixture.runDir)
-            : targetBasename === 'playbook-execute';
-          if (!parentForCreated) return handle;
-          return wrapFileHandle(handle, {
-            async sync() {
-              if (created && !failed) {
-                failed = true;
-                throw new Error('RAW_CREATED_DIRECTORY_SYNC_FAILURE');
-              }
-              return handle.sync();
-            }
-          });
         }
       });
-      const authority = await admitExecuteRun({ runDir: fixture.runDir, fsImpl });
+      const authority = await admitExecuteRun({ runDir: fixture.runDir });
       t.after(() => authority.close());
 
       await assertP5Failure(
-        installCandidateSnapshot({ authority, candidateId: 'candidate-01', ...initialSnapshot() }),
-        'P5_INSTALL_FAILED',
+        installCandidateSnapshot({
+          authority, candidateId: 'candidate-01', ...initialSnapshot(), fsImpl
+        }),
+        'P5_OUTPUT_OWNERSHIP',
         fixture.root,
-        'RAW_CREATED_DIRECTORY_SYNC_FAILURE'
+        'RAW_PRIVATE_DIRECTORY_POST_EFFECT_FAILURE'
       );
       assert.equal(failed, true);
       assert.deepEqual(await snapshotTree(fixture.root), before);
@@ -913,7 +1351,7 @@ test('mkdir followed by parent sync failure restores exact first-install topolog
   }
 });
 
-test('post-mkdir authority failure restores exact first-install topology', async (t) => {
+test('post-creation authority failure restores exact first-install topology', async (t) => {
   for (const basename of ['playbook-execute', 'candidates']) {
     await t.test(basename, async (t) => {
       const fixture = await storageFixture(t);
@@ -921,10 +1359,17 @@ test('post-mkdir authority failure restores exact first-install topology', async
       let createdTarget;
       let failed = false;
       const fsImpl = fsWith({
-        async mkdir(target, options) {
-          const result = await fs.mkdir(target, options);
-          if (path.basename(String(target)) === basename) createdTarget = String(target);
-          return result;
+        async mkdirBound(parentHandle, generatedBasename, next) {
+          const made = await next();
+          const parent = await descriptorTarget(parentHandle);
+          const expectedParent = basename === 'playbook-execute'
+            ? fixture.runDir
+            : path.join(fixture.runDir, 'playbook-execute');
+          if (parent === expectedParent
+            && generatedBasename.startsWith('.playbook-execute.directory-')) {
+            createdTarget = path.join(parent, generatedBasename);
+          }
+          return made;
         },
         async lstat(target, ...args) {
           if (
@@ -958,13 +1403,10 @@ test('post-mkdir authority failure restores exact first-install topology', async
   }
 });
 
-test('first post-mkdir identity-probe ambiguity preserves created and foreign inodes', async (t) => {
+test('private creation boundary swap preserves created and foreign inodes', async (t) => {
   for (const basename of ['playbook-execute', 'candidates']) {
     await t.test(basename, async (t) => {
       const fixture = await storageFixture(t);
-      const canonical = basename === 'playbook-execute'
-        ? path.join(fixture.runDir, 'playbook-execute')
-        : path.join(fixture.runDir, 'playbook-execute', 'candidates');
       const parked = basename === 'playbook-execute'
         ? path.join(fixture.runDir, 'parked-ambiguous-playbook-execute')
         : path.join(fixture.runDir, 'playbook-execute', 'parked-ambiguous-candidates');
@@ -972,27 +1414,27 @@ test('first post-mkdir identity-probe ambiguity preserves created and foreign in
       let parkedBefore;
       let foreignBefore;
       let failed = false;
-      const postMkdirLstats = [];
       const fsImpl = fsWith({
-        async mkdir(target, options) {
-          const result = await fs.mkdir(target, options);
-          if (path.basename(String(target)) === basename) createdTarget = String(target);
-          return result;
-        },
-        async lstat(target, ...args) {
-          if (createdTarget && !failed) {
-            postMkdirLstats.push(String(target));
-            if (String(target) === createdTarget) {
-              failed = true;
-              parkedBefore = await inodeTree(canonical);
-              await fs.rename(canonical, parked);
-              await fs.mkdir(canonical);
-              await fs.writeFile(path.join(canonical, 'foreign.txt'), 'foreign ambiguous directory\n');
-              foreignBefore = await inodeTree(canonical);
-              throw new Error('RAW_FIRST_IDENTITY_PROBE_FAILURE');
-            }
+        async mkdirBound(parentHandle, generatedBasename, next) {
+          const made = await next();
+          const parent = await descriptorTarget(parentHandle);
+          const expectedParent = basename === 'playbook-execute'
+            ? fixture.runDir
+            : path.join(fixture.runDir, 'playbook-execute');
+          if (!failed && parent === expectedParent
+            && generatedBasename.startsWith('.playbook-execute.directory-')) {
+            failed = true;
+            createdTarget = path.join(parent, generatedBasename);
+            parkedBefore = await inodeTree(createdTarget);
+            await fs.rename(createdTarget, parked);
+            await fs.mkdir(createdTarget);
+            await fs.writeFile(
+              path.join(createdTarget, 'foreign.txt'), 'foreign ambiguous directory\n'
+            );
+            foreignBefore = await inodeTree(createdTarget);
+            throw new Error('RAW_PRIVATE_CREATION_SWAP');
           }
-          return fs.lstat(target, ...args);
+          return made;
         }
       });
       const authority = await admitExecuteRun({ runDir: fixture.runDir });
@@ -1005,19 +1447,18 @@ test('first post-mkdir identity-probe ambiguity preserves created and foreign in
           ...initialSnapshot(),
           fsImpl
         }),
-        'P5_INSTALL_FAILED',
+        'P5_OUTPUT_OWNERSHIP',
         fixture.root,
-        'RAW_FIRST_IDENTITY_PROBE_FAILURE|foreign ambiguous directory'
+        'RAW_PRIVATE_CREATION_SWAP|foreign ambiguous directory'
       );
       assert.equal(failed, true);
-      assert.deepEqual(postMkdirLstats, [createdTarget]);
       assert.deepEqual(await inodeTree(parked), parkedBefore);
-      assert.deepEqual(await inodeTree(canonical), foreignBefore);
+      assert.deepEqual(await inodeTree(createdTarget), foreignBefore);
     });
   }
 });
 
-test('EEXIST adoption is never rolled back as a directory created by this call', async (t) => {
+test('private creation collision is never adopted or rolled back as caller-owned', async (t) => {
   for (const basename of ['playbook-execute', 'candidates']) {
     await t.test(basename, async (t) => {
       const fixture = await storageFixture(t);
@@ -1025,25 +1466,20 @@ test('EEXIST adoption is never rolled back as a directory created by this call',
       let actorIdentity;
       let raced = false;
       const fsImpl = fsWith({
-        async mkdir(target, options) {
-          if (!raced && path.basename(String(target)) === basename) {
-            await fs.mkdir(target, options);
-            actorPath = basename === 'playbook-execute'
-              ? path.join(fixture.runDir, 'playbook-execute')
-              : path.join(fixture.runDir, 'playbook-execute', 'candidates');
+        async mkdirBound(parentHandle, generatedBasename, next) {
+          const parent = await descriptorTarget(parentHandle);
+          const expectedParent = basename === 'playbook-execute'
+            ? fixture.runDir
+            : path.join(fixture.runDir, 'playbook-execute');
+          if (!raced && parent === expectedParent
+            && generatedBasename.startsWith('.playbook-execute.directory-')) {
+            actorPath = path.join(parent, generatedBasename);
+            await fs.mkdir(actorPath, { recursive: false, mode: 0o700 });
             actorIdentity = fileIdentity(await fs.lstat(actorPath));
             raced = true;
             throw Object.assign(new Error('RAW_ACTOR_EEXIST'), { code: 'EEXIST' });
           }
-          return fs.mkdir(target, options);
-        },
-        async open(target, flags, ...args) {
-          if (
-            raced
-            && (flags & constants.O_WRONLY) !== 0
-            && await pathContainsGeneratedName(String(target), STAGE_PREFIX)
-          ) throw new Error('RAW_AFTER_EEXIST_FAILURE');
-          return fs.open(target, flags, ...args);
+          return next();
         }
       });
       const authority = await admitExecuteRun({ runDir: fixture.runDir });
@@ -1056,9 +1492,9 @@ test('EEXIST adoption is never rolled back as a directory created by this call',
           ...initialSnapshot(),
           fsImpl
         }),
-        'P5_INSTALL_FAILED',
+        'P5_OUTPUT_OWNERSHIP',
         fixture.root,
-        'RAW_AFTER_EEXIST_FAILURE'
+        'RAW_ACTOR_EEXIST'
       );
       assert.equal(raced, true);
       assert.deepEqual(fileIdentity(await fs.lstat(actorPath)), actorIdentity);
@@ -1082,8 +1518,8 @@ test('first-install cleanup identity swap preserves both created and foreign dir
       ) throw new Error('RAW_TRIGGER_CREATED_CLEANUP');
       return fs.open(target, flags, ...args);
     },
-    async rmdir(target, ...args) {
-      if (!swapped && path.basename(String(target)) === 'candidates') {
+    async retireEntry(parentHandle, basename, expectedIdentity, next) {
+      if (!swapped && basename === 'candidates') {
         await fs.rename(candidatesPath, parked);
         parkedBefore = await inodeTree(parked);
         await fs.mkdir(candidatesPath);
@@ -1091,7 +1527,7 @@ test('first-install cleanup identity swap preserves both created and foreign dir
         foreignIdentity = fileIdentity(await fs.lstat(candidatesPath));
         swapped = true;
       }
-      return fs.rmdir(target, ...args);
+      return next();
     }
   });
   const authority = await admitExecuteRun({ runDir: fixture.runDir });
@@ -1152,6 +1588,105 @@ test('candidate immutable-body and pointer precommit faults preserve old authori
   }
 });
 
+test('candidate immutable-body cleanup preserves a foreign inode swapped at retirement', async (t) => {
+  const fixture = await installedFixture(t);
+  const parkedPath = path.join(fixture.root, 'parked-candidate-body-stage');
+  const foreignBytes = Buffer.from('foreign candidate body stage must survive\n');
+  let ownedIdentity;
+  let foreignIdentity;
+  let moveFailed = false;
+  let swapped = false;
+  const swap = async (target) => {
+    if (swapped || !path.basename(String(target)).startsWith(STAGE_PREFIX)) return;
+    const stat = await fs.lstat(target);
+    if (!stat.isFile()) return;
+    swapped = true;
+    ownedIdentity = fileIdentity(stat);
+    await fs.rename(target, parkedPath);
+    await fs.writeFile(target, foreignBytes, { mode: 0o600 });
+    foreignIdentity = fileIdentity(await fs.lstat(target));
+  };
+  const fsImpl = fsWith({
+    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+      if (!moveFailed && sourceName.startsWith(STAGE_PREFIX)
+        && destinationName !== 'current-chain.json') {
+        moveFailed = true;
+        throw new Error('candidate body move failure');
+      }
+      return next(sourceHandle, sourceName, destinationHandle, destinationName);
+    },
+    async unlink(target, ...args) {
+      await swap(target);
+      return fs.unlink(target, ...args);
+    },
+    async retireEntry(parentHandle, basename, expectedIdentity, next) {
+      await swap(path.join(await descriptorTarget(parentHandle), basename));
+      return next();
+    }
+  });
+
+  await assert.rejects(installCandidateSnapshot({
+    authority: fixture.authority,
+    candidateId: 'candidate-01',
+    ...replaySnapshot(fixture.initial),
+    expectedPreviousChainSha256: fixture.initial.chainHash,
+    fsImpl
+  }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
+  assert.equal(moveFailed, true);
+  assert.equal(swapped, true);
+  assert.equal(await treeContainsIdentity(fixture.root, ownedIdentity), true);
+  assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
+  assert.equal(await treeContainsFileBytes(fixture.root, foreignBytes), true);
+});
+
+test('candidate update never adopts a swapped newly created version directory', async (t) => {
+  const fixture = await installedFixture(t);
+  const candidatePath = candidateDirectory(fixture.runDir, 'candidate-01');
+  const parkedPath = path.join(fixture.root, 'created-candidate-version-directory');
+  const foreignBytes = Buffer.from('foreign candidate version directory must remain unchanged\n');
+  let foreignIdentity;
+  let foreignBefore;
+  let swapped = false;
+  const swap = async (target) => {
+    const resolved = await descriptorTargetFromPath(String(target));
+    if (swapped || path.dirname(resolved) !== candidatePath
+      || (path.basename(resolved) !== 'repairs'
+        && !path.basename(resolved).startsWith('.playbook-execute.directory-'))) return;
+    swapped = true;
+    await fs.rename(target, parkedPath);
+    await fs.mkdir(target);
+    await fs.writeFile(path.join(String(target), 'foreign-sentinel.txt'), foreignBytes);
+    foreignIdentity = fileIdentity(await fs.lstat(target));
+    foreignBefore = await inodeTree(target);
+  };
+  const fsImpl = fsWith({
+    async mkdir(target, ...args) {
+      const result = await fs.mkdir(target, ...args);
+      await swap(target);
+      return result;
+    },
+    async mkdirBound(parentHandle, basename, next) {
+      const made = await next();
+      await swap(path.join(await descriptorTarget(parentHandle), basename));
+      return made;
+    }
+  });
+
+  await assert.rejects(installCandidateSnapshot({
+    authority: fixture.authority,
+    candidateId: 'candidate-01',
+    ...replaySnapshot(fixture.initial),
+    expectedPreviousChainSha256: fixture.initial.chainHash,
+    fsImpl
+  }), { code: 'P5_OUTPUT_OWNERSHIP', message: 'P5_OUTPUT_OWNERSHIP' });
+  assert.equal(swapped, true);
+  const foreignPath = await findPathByIdentity(fixture.root, foreignIdentity);
+  assert.ok(foreignPath);
+  assert.deepEqual(await inodeTree(foreignPath), foreignBefore);
+  assert.deepEqual(await fs.readFile(path.join(foreignPath, 'foreign-sentinel.txt')), foreignBytes);
+  await fs.access(parkedPath);
+});
+
 test('candidate pointer cleanup faults are postcommit and preserve historical bodies', async (t) => {
   const fixture = await installedFixture(t);
   const beforeTree = await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01'));
@@ -1163,11 +1698,11 @@ test('candidate pointer cleanup faults are postcommit and preserve historical bo
       if (path.basename(String(destination)).startsWith(BACKUP_PREFIX)) backupLinked = true;
       return result;
     },
-    async unlink(target) {
-      if (backupLinked && path.basename(String(target)).startsWith(BACKUP_PREFIX)) {
+    async retireEntry(parentHandle, basename, expectedIdentity, next) {
+      if (backupLinked && basename.startsWith(BACKUP_PREFIX)) {
         throw new Error('RAW_POINTER_FAULT:cleanup');
       }
-      return fs.unlink(target);
+      return next();
     }
   });
   const result = await installCandidateSnapshot({
@@ -1186,6 +1721,49 @@ test('candidate pointer cleanup faults are postcommit and preserve historical bo
   assertHistoricalRowsUnchanged(beforeTree.filter((row) => row.relative !== 'current-chain.json'),
     await inodeTree(candidateDirectory(fixture.runDir, 'candidate-01')));
   assert.deepEqual(await fs.readFile(fixture.unrelatedPath), fixture.unrelatedBytes);
+});
+
+test('candidate pointer cleanup preserves a foreign inode swapped at backup retirement', async (t) => {
+  const fixture = await installedFixture(t);
+  const candidateParent = path.dirname(candidateDirectory(fixture.runDir, 'candidate-01'));
+  const foreignBytes = Buffer.from('foreign candidate backup must survive\n');
+  const parkedPath = path.join(fixture.root, 'parked-candidate-pointer-backup');
+  let foreignIdentity;
+  let swapped = false;
+  const swap = async (target) => {
+    if (swapped || !path.basename(String(target)).startsWith(BACKUP_PREFIX)) return;
+    swapped = true;
+    await fs.rename(target, parkedPath);
+    await fs.writeFile(target, foreignBytes, { mode: 0o600 });
+    foreignIdentity = fileIdentity(await fs.stat(target));
+  };
+  const fsImpl = fsWith({
+    async unlink(target, ...args) { await swap(target); return fs.unlink(target, ...args); },
+    async retireEntry(parentHandle, basename, expectedIdentity, next) {
+      await swap(path.join(await descriptorTarget(parentHandle), basename));
+      return next(parentHandle, basename, expectedIdentity);
+    },
+    async renameNoReplace(sourceHandle, sourceName, destinationName, next) {
+      if (sourceName.startsWith(BACKUP_PREFIX)) {
+        await swap(path.join(await descriptorTarget(sourceHandle), sourceName));
+      }
+      return next(sourceHandle, sourceName, destinationName);
+    }
+  });
+
+  const replacement = replaySnapshot(fixture.initial);
+  const result = await installCandidateSnapshot({
+    authority: fixture.authority,
+    candidateId: 'candidate-01',
+    ...replacement,
+    expectedPreviousChainSha256: fixture.initial.chainHash,
+    fsImpl
+  });
+  assert.equal(result.current_chain_sha256, replacement.chainHash);
+  assert.equal(swapped, true);
+  assert.equal(await treeContainsIdentity(candidateParent, foreignIdentity), true);
+  assert.equal(await treeContainsFileBytes(candidateParent, foreignBytes), true);
+  await fs.access(parkedPath);
 });
 
 test('candidate pointer publication rejects a current-pointer swap before backup linking', async (t) => {
@@ -1219,6 +1797,51 @@ test('candidate pointer publication rejects a current-pointer swap before backup
   assert.deepEqual(await fs.readFile(parkedPath), oldBytes);
   assert.deepEqual(fileIdentity(await fs.stat(parkedPath)), oldIdentity);
   assert.deepEqual(await fs.readFile(pointerPath), foreignBytes);
+});
+
+test('candidate pointer publication preserves a foreign inode swapped at pointer retirement', async (t) => {
+  const fixture = await installedFixture(t);
+  const candidatePath = candidateDirectory(fixture.runDir, 'candidate-01');
+  const pointerPath = path.join(candidatePath, 'current-chain.json');
+  const parkedPath = path.join(path.dirname(candidatePath), '.reviewer-owned-pointer-at-retire');
+  const oldIdentity = fileIdentity(await fs.stat(pointerPath));
+  const foreignBytes = Buffer.from('{"foreign":"candidate unlink swap must survive"}\n');
+  let foreignIdentity;
+  let swapped = false;
+  const swap = async (target) => {
+    if (swapped || path.basename(String(target)) !== 'current-chain.json') return;
+    swapped = true;
+    await fs.rename(target, parkedPath);
+    await fs.writeFile(target, foreignBytes, { mode: 0o600 });
+    foreignIdentity = fileIdentity(await fs.stat(target));
+  };
+  const fsImpl = fsWith({
+    async unlink(target, ...args) { await swap(target); return fs.unlink(target, ...args); },
+    async renameNoReplace(sourceHandle, sourceName, destinationName, next) {
+      if (sourceName === 'current-chain.json') {
+        await swap(path.join(await descriptorTarget(sourceHandle), sourceName));
+      }
+      return next(sourceHandle, sourceName, destinationName);
+    },
+    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+      if (sourceName === 'current-chain.json') {
+        await swap(path.join(await descriptorTarget(sourceHandle), sourceName));
+      }
+      return next(sourceHandle, sourceName, destinationHandle, destinationName);
+    }
+  });
+
+  await assert.rejects(installCandidateSnapshot({
+    authority: fixture.authority,
+    candidateId: 'candidate-01',
+    ...replaySnapshot(fixture.initial),
+    expectedPreviousChainSha256: fixture.initial.chainHash,
+    fsImpl
+  }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
+  assert.equal(swapped, true);
+  assert.equal(await treeContainsIdentity(path.dirname(candidatePath), foreignIdentity), true);
+  assert.equal(await treeContainsIdentity(path.dirname(candidatePath), oldIdentity), true);
+  assert.equal(await treeContainsFileBytes(path.dirname(candidatePath), foreignBytes), true);
 });
 
 test('candidate pointer publication never overwrites a foreign pointer inserted at promotion', async (t) => {
@@ -1297,7 +1920,7 @@ test('candidate subprocess crashes reopen to one complete old-or-new chain', asy
   for (const killPoint of [
     'body-write:1', 'body-file-sync:1', 'body-file-sync:2', 'body-chmod:1',
     'body-move:1', 'candidate-dir-sync:1', 'pointer-write:1', 'backup-link:1',
-    'pointer-unlink:1', 'pointer-move:1', 'pointer-dir-sync:1'
+    'pointer-retire:1', 'pointer-move:1', 'pointer-dir-sync:1'
   ]) {
     await t.test(killPoint, async (t) => {
       const fixture = await installedFixture(t);
@@ -1332,6 +1955,7 @@ test('candidate subprocess crashes reopen to one complete old-or-new chain', asy
 });
 
 function candidatePointerFaultFs(failCategory) {
+  let bodyMoved = false;
   let pointerMoved = false;
   let failed = false;
   const fail = (category) => {
@@ -1356,7 +1980,8 @@ function candidatePointerFaultFs(failCategory) {
         },
         async sync(...syncArgs) {
           if (inStage && stat.isFile()) fail('fileSync');
-          if (candidateDirectoryHandle) fail(pointerMoved ? 'pointerDirSync' : 'parentSync');
+          if (candidateDirectoryHandle && pointerMoved) fail('pointerDirSync');
+          else if (candidateDirectoryHandle && bodyMoved) fail('parentSync');
           return handle.sync(...syncArgs);
         },
         async chmod(...chmodArgs) {
@@ -1370,6 +1995,7 @@ function candidatePointerFaultFs(failCategory) {
       else if (sourceName.startsWith(STAGE_PREFIX)) fail('bodyMove');
       const result = await next(sourceHandle, sourceName, destinationHandle, destinationName);
       if (destinationName === 'current-chain.json') pointerMoved = true;
+      else if (sourceName.startsWith(STAGE_PREFIX)) bodyMoved = true;
       return result;
     },
     async link(source, destination) {
@@ -1462,6 +2088,52 @@ test('selection publishes immutable complete generations through one current poi
   }
 });
 
+test('selection publication never adopts a swapped generations directory', async (t) => {
+  const fixture = await threeCandidateFixture(t);
+  const executeRoot = path.join(fixture.runDir, 'playbook-execute');
+  const parkedPath = path.join(fixture.root, 'created-selection-generations');
+  const foreignBytes = Buffer.from('foreign selection generations must remain unchanged\n');
+  let foreignIdentity;
+  let foreignBefore;
+  let swapped = false;
+  const swap = async (target) => {
+    const resolved = await descriptorTargetFromPath(String(target));
+    if (swapped || path.dirname(resolved) !== executeRoot
+      || (path.basename(resolved) !== 'selection-generations'
+        && !path.basename(resolved).startsWith('.playbook-execute.directory-'))) return;
+    swapped = true;
+    await fs.rename(target, parkedPath);
+    await fs.mkdir(target);
+    await fs.writeFile(path.join(String(target), 'foreign-sentinel.txt'), foreignBytes);
+    foreignIdentity = fileIdentity(await fs.lstat(target));
+    foreignBefore = await inodeTree(target);
+  };
+  const fsImpl = fsWith({
+    async mkdir(target, ...args) {
+      const result = await fs.mkdir(target, ...args);
+      await swap(target);
+      return result;
+    },
+    async mkdirBound(parentHandle, basename, next) {
+      const made = await next();
+      await swap(path.join(await descriptorTarget(parentHandle), basename));
+      return made;
+    }
+  });
+
+  await assert.rejects(installExecuteSelection({
+    authority: fixture.authority,
+    files: selectionFiles('generations-swap'),
+    fsImpl
+  }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
+  assert.equal(swapped, true);
+  const foreignPath = await findPathByIdentity(fixture.root, foreignIdentity);
+  assert.ok(foreignPath);
+  assert.deepEqual(await inodeTree(foreignPath), foreignBefore);
+  assert.deepEqual(await fs.readFile(path.join(foreignPath, 'foreign-sentinel.txt')), foreignBytes);
+  await fs.access(parkedPath);
+});
+
 test('selection identical and replacement paths update only one current pointer', async (t) => {
   const fixture = await threeCandidateFixture(t);
   const root = path.join(fixture.runDir, 'playbook-execute');
@@ -1541,11 +2213,11 @@ test('selection pointer backup cleanup faults are postcommit', async (t) => {
     authority: fixture.authority,
     files: replacementFiles,
     fsImpl: fsWith({
-      async unlink(target) {
-        if (path.basename(String(target)).startsWith(BACKUP_PREFIX)) {
+      async retireEntry(parentHandle, basename, expectedIdentity, next) {
+        if (basename.startsWith(BACKUP_PREFIX)) {
           throw new Error('RAW_SELECTION_POINTER_FAULT:cleanup');
         }
-        return fs.unlink(target);
+        return next();
       }
     })
   });
@@ -1556,6 +2228,47 @@ test('selection pointer backup cleanup faults are postcommit', async (t) => {
     assert.deepEqual(await fs.readFile(path.join(root, result.generation, name)), body);
   }
   assert.deepEqual(await inodeTree(path.join(root, first.generation)), firstGeneration);
+});
+
+test('selection pointer cleanup preserves a foreign inode swapped at backup retirement', async (t) => {
+  const fixture = await threeCandidateFixture(t);
+  const root = path.join(fixture.runDir, 'playbook-execute');
+  await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
+  const foreignBytes = Buffer.from('foreign selection backup must survive\n');
+  const parkedPath = path.join(fixture.root, 'parked-selection-pointer-backup');
+  let foreignIdentity;
+  let swapped = false;
+  const swap = async (target) => {
+    if (swapped || !path.basename(String(target)).startsWith(BACKUP_PREFIX)) return;
+    swapped = true;
+    await fs.rename(target, parkedPath);
+    await fs.writeFile(target, foreignBytes, { mode: 0o600 });
+    foreignIdentity = fileIdentity(await fs.stat(target));
+  };
+  const fsImpl = fsWith({
+    async unlink(target, ...args) { await swap(target); return fs.unlink(target, ...args); },
+    async retireEntry(parentHandle, basename, expectedIdentity, next) {
+      await swap(path.join(await descriptorTarget(parentHandle), basename));
+      return next(parentHandle, basename, expectedIdentity);
+    },
+    async renameNoReplace(sourceHandle, sourceName, destinationName, next) {
+      if (sourceName.startsWith(BACKUP_PREFIX)) {
+        await swap(path.join(await descriptorTarget(sourceHandle), sourceName));
+      }
+      return next(sourceHandle, sourceName, destinationName);
+    }
+  });
+
+  const result = await installExecuteSelection({
+    authority: fixture.authority,
+    files: selectionFiles('new'),
+    fsImpl
+  });
+  assert.equal(result.status, 'replaced');
+  assert.equal(swapped, true);
+  assert.equal(await treeContainsIdentity(root, foreignIdentity), true);
+  assert.equal(await treeContainsFileBytes(root, foreignBytes), true);
+  await fs.access(parkedPath);
 });
 
 test('selection pointer publication rejects a current-pointer swap before backup linking', async (t) => {
@@ -1588,6 +2301,44 @@ test('selection pointer publication rejects a current-pointer swap before backup
   assert.deepEqual(await fs.readFile(parkedPath), oldBytes);
   assert.deepEqual(fileIdentity(await fs.stat(parkedPath)), oldIdentity);
   assert.deepEqual(await fs.readFile(pointerPath), foreignBytes);
+});
+
+test('selection pointer publication preserves a foreign inode swapped at pointer retirement', async (t) => {
+  const fixture = await threeCandidateFixture(t);
+  const root = path.join(fixture.runDir, 'playbook-execute');
+  await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
+  const pointerPath = path.join(root, 'manifest.json');
+  const parkedPath = path.join(root, '.reviewer-owned-selection-at-retire');
+  const oldIdentity = fileIdentity(await fs.stat(pointerPath));
+  const foreignBytes = Buffer.from('{"foreign":"selection unlink swap must survive"}\n');
+  let foreignIdentity;
+  let swapped = false;
+  const swap = async (target) => {
+    if (swapped || path.basename(String(target)) !== 'manifest.json') return;
+    swapped = true;
+    await fs.rename(target, parkedPath);
+    await fs.writeFile(target, foreignBytes, { mode: 0o600 });
+    foreignIdentity = fileIdentity(await fs.stat(target));
+  };
+  const fsImpl = fsWith({
+    async unlink(target, ...args) { await swap(target); return fs.unlink(target, ...args); },
+    async renameNoReplace(sourceHandle, sourceName, destinationName, next) {
+      if (sourceName === 'manifest.json') {
+        await swap(path.join(await descriptorTarget(sourceHandle), sourceName));
+      }
+      return next(sourceHandle, sourceName, destinationName);
+    }
+  });
+
+  await assert.rejects(installExecuteSelection({
+    authority: fixture.authority,
+    files: selectionFiles('new'),
+    fsImpl
+  }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
+  assert.equal(swapped, true);
+  assert.equal(await treeContainsIdentity(root, foreignIdentity), true);
+  assert.equal(await treeContainsIdentity(root, oldIdentity), true);
+  assert.equal(await treeContainsFileBytes(root, foreignBytes), true);
 });
 
 test('selection pointer publication never overwrites a foreign pointer inserted at promotion', async (t) => {
@@ -1664,7 +2415,7 @@ test('selection subprocess crashes reopen to one complete old-or-new generation'
   for (const killPoint of [
     'generation-write:1', 'generation-file-sync:1', 'generation-file-sync:2',
     'generation-chmod:1', 'generation-dir-sync:1', 'generation-move:1',
-    'pointer-write:1', 'backup-link:1', 'pointer-unlink:1', 'pointer-move:1', 'pointer-dir-sync:1'
+    'pointer-write:1', 'backup-link:1', 'pointer-retire:1', 'pointer-move:1', 'pointer-dir-sync:1'
   ]) {
     await t.test(killPoint, async (t) => {
       const fixture = await threeCandidateFixture(t);
@@ -1690,7 +2441,7 @@ test('selection subprocess crashes reopen to one complete old-or-new generation'
         timeout: 30000
       });
       assert.equal(child.signal, 'SIGKILL', `${killPoint}: ${child.stderr}`);
-      if (killPoint === 'pointer-unlink:1') {
+      if (killPoint === 'pointer-retire:1') {
         const recovered = await installExecuteSelection({ authority: fixture.authority, files: oldFiles });
         assert.equal(recovered.status, 'unchanged');
       }
@@ -1761,6 +2512,19 @@ function selectionPointerFaultFs(failCategory) {
     }
   };
   return fsWith({
+    async mkdirBound(parentHandle, basename, next) {
+      const made = await next();
+      if (!basename.startsWith(STAGE_PREFIX)) return made;
+      return {
+        ...made,
+        handle: wrapFileHandle(made.handle, {
+          async sync(...syncArgs) {
+            fail('stageDirSync');
+            return made.handle.sync(...syncArgs);
+          }
+        })
+      };
+    },
     async open(target, flags, ...args) {
       const targetText = String(target);
       const inStage = await pathContainsGeneratedName(targetText, STAGE_PREFIX);
@@ -2231,112 +2995,6 @@ function selectionFiles(marker = 'selected') {
   return { 'manifest.json': manifest, 'selection.json': selection, 'selection-report.md': report };
 }
 
-async function replacementOperationCounts(t) {
-  const fixture = await installedFixture(t);
-  const counts = {};
-  await installCandidateSnapshot({
-    authority: fixture.authority,
-    candidateId: 'candidate-01',
-    ...replaySnapshot(fixture.initial),
-    expectedPreviousChainSha256: fixture.initial.chainHash,
-    fsImpl: instrumentedFs({ counts })
-  });
-  return counts;
-}
-
-async function candidateRetirementOperationCounts(t) {
-  const fixture = await installedFixture(t);
-  const counts = {};
-  await installCandidateSnapshot({
-    authority: fixture.authority,
-    candidateId: 'candidate-01',
-    ...replaySnapshot(fixture.initial),
-    expectedPreviousChainSha256: fixture.initial.chainHash,
-    fsImpl: instrumentedFs({ counts })
-  });
-  return counts;
-}
-
-async function selectionRetirementOperationCounts(t) {
-  const fixture = await threeCandidateFixture(t);
-  await installExecuteSelection({ authority: fixture.authority, files: selectionFiles('old') });
-  const counts = {};
-  await installExecuteSelection({
-    authority: fixture.authority,
-    files: selectionFiles('new'),
-    fsImpl: retirementFs({ counts })
-  });
-  return counts;
-}
-
-function retirementFs({ failCategory, failAt, counts = {} }) {
-  const tick = (category) => {
-    counts[category] = (counts[category] ?? 0) + 1;
-    if (category === failCategory && counts[category] === failAt) {
-      throw new Error(`RAW_INJECTED_${category}_${failAt}`);
-    }
-  };
-  return fsWith({
-    async unlink(target) {
-      if (await pathContainsGeneratedName(String(target), BACKUP_PREFIX)) tick('retireUnlink');
-      return fs.unlink(target);
-    },
-    async rmdir(target) {
-      if (await pathContainsGeneratedName(String(target), BACKUP_PREFIX)) tick('retireRmdir');
-      return fs.rmdir(target);
-    }
-  });
-}
-
-function instrumentedFs({ failCategory, failAt, counts = {} }) {
-  const tick = (category) => {
-    counts[category] = (counts[category] ?? 0) + 1;
-    if (failCategory === category && counts[category] === failAt) {
-      throw new Error(`RAW_INJECTED_${category}_${failAt}`);
-    }
-  };
-  return fsWith({
-    async open(target, flags, ...args) {
-      const targetText = String(target);
-      const inStage = await pathContainsGeneratedName(targetText, STAGE_PREFIX);
-      if (inStage && (flags & constants.O_WRONLY) !== 0) tick('exclusiveWrite');
-      const handle = await fs.open(target, flags, ...args);
-      const stat = await handle.stat();
-      const isDirectory = stat.isDirectory();
-      return wrapFileHandle(handle, {
-        async chmod(...chmodArgs) {
-          if (inStage) tick('chmod');
-          return handle.chmod(...chmodArgs);
-        },
-        async writeFile(...writeArgs) {
-          if (inStage && path.basename(targetText) === 'current-chain.json') tick('pointerWrite');
-          return handle.writeFile(...writeArgs);
-        },
-        async sync(...syncArgs) {
-          tick(isDirectory ? 'directorySync' : 'fileSync');
-          return handle.sync(...syncArgs);
-        }
-      });
-    },
-    async renameNoReplace(directoryHandle, sourceName, destinationName, next) {
-      if (sourceName === 'candidate-01' && destinationName.startsWith(BACKUP_PREFIX)) tick('backupRename');
-      if (sourceName.startsWith(STAGE_PREFIX) && destinationName === 'candidate-01') tick('finalRename');
-      return next(directoryHandle, sourceName, destinationName);
-    },
-    async unlink(target) {
-      if (await pathContainsGeneratedName(String(target), BACKUP_PREFIX)) {
-        tick('cleanup');
-        tick('retireUnlink');
-      }
-      return fs.unlink(target);
-    },
-    async rmdir(target) {
-      if (await pathContainsGeneratedName(String(target), BACKUP_PREFIX)) tick('retireRmdir');
-      return fs.rmdir(target);
-    }
-  });
-}
-
 function failureAppendFs({ failCategory, failAt, failRollbackCleanup = false }) {
   const counts = {}; let attached = false;
   const tick = (category) => {
@@ -2344,6 +3002,19 @@ function failureAppendFs({ failCategory, failAt, failRollbackCleanup = false }) 
     if (category === failCategory && counts[category] === failAt) throw new Error(`RAW_FAILURE_APPEND_${category}_${failAt}`);
   };
   return fsWith({
+    async mkdirBound(parentHandle, basename, next) {
+      const made = await next();
+      if (!basename.startsWith(STAGE_PREFIX)) return made;
+      return {
+        ...made,
+        handle: wrapFileHandle(made.handle, {
+          async sync(...syncArgs) {
+            tick('stageDirSync');
+            return made.handle.sync(...syncArgs);
+          }
+        })
+      };
+    },
     async open(target, flags, ...args) {
       const targetText = String(target); const inStage = await pathContainsGeneratedName(targetText, STAGE_PREFIX);
       if (inStage && (flags & constants.O_WRONLY) !== 0) tick('exclusiveWrite');
@@ -2372,9 +3043,11 @@ function failureAppendFs({ failCategory, failAt, failRollbackCleanup = false }) 
       if (attached && resolved.includes('/candidate-01')) tick('postAttachInspect');
       return fs.readdir(target, ...args);
     },
-    async unlink(target) {
-      if (failRollbackCleanup && await pathContainsGeneratedName(String(target), STAGE_PREFIX)) throw new Error('RAW_ROLLBACK_CLEANUP');
-      return fs.unlink(target);
+    async retireEntry(parentHandle, basename, expectedIdentity, next) {
+      if (failRollbackCleanup && basename.startsWith(STAGE_PREFIX)) {
+        throw new Error('RAW_ROLLBACK_CLEANUP');
+      }
+      return next();
     }
   });
 }
@@ -2433,6 +3106,29 @@ async function treeContainsFileBytes(root, expected) {
     } else if (stat.isFile() && (await fs.readFile(target)).equals(expected)) return true;
   }
   return false;
+}
+
+async function treeContainsIdentity(root, expected) {
+  if (!expected) return false;
+  const stat = await fs.lstat(root);
+  if (stat.dev === expected.dev && stat.ino === expected.ino) return true;
+  if (!stat.isDirectory()) return false;
+  for (const name of await fs.readdir(root)) {
+    if (await treeContainsIdentity(path.join(root, name), expected)) return true;
+  }
+  return false;
+}
+
+async function findPathByIdentity(root, expected) {
+  if (!expected) return null;
+  const stat = await fs.lstat(root);
+  if (stat.dev === expected.dev && stat.ino === expected.ino) return root;
+  if (!stat.isDirectory()) return null;
+  for (const name of await fs.readdir(root)) {
+    const found = await findPathByIdentity(path.join(root, name), expected);
+    if (found) return found;
+  }
+  return null;
 }
 
 async function inodeTree(root) {

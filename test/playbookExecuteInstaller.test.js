@@ -22,6 +22,19 @@ test('P5 installer preserves exact old datapack inodes on every precommit fault'
   }
 });
 
+test('P5 installer removes its exact partial stage on a pre-snapshot write failure', async (t) => {
+  const fixture = await installerFixture(t);
+  const parentBefore = await snapshotTree(fixture.datapacksDir);
+  await assert.rejects(installSelectedDatapackSafely(fixture.source, {
+    datapacksDir: fixture.datapacksDir,
+    expectedDatapackTreeSha256: fixture.expectedHash,
+    faultInjector(boundary) {
+      if (boundary === 'stage-write') throw new Error(`private stage write ${fixture.root}`);
+    }
+  }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
+  assert.deepEqual(await snapshotTree(fixture.datapacksDir), parentBefore);
+});
+
 test('P5 installer copies the validated snapshot and rejects symlinks', async (t) => {
   const fixture = await installerFixture(t);
   const originalBuild = await fs.readFile(path.join(fixture.source, 'data/architect/function/build.mcfunction'));
@@ -202,6 +215,136 @@ test('P5 installer never adopts a swapped generated world component', async (t) 
   if (parkedCreated) await fs.access(parked);
 });
 
+test('P5 installer binds every private directory returned by its creation boundary', async (t) => {
+  for (const kind of ['install-stage', 'created-topology']) await t.test(kind, async (t) => {
+    const fixture = await installerFixture(t, {
+      existingTarget: kind === 'install-stage',
+      missingDatapacksTopology: kind === 'created-topology'
+    });
+    const parkedPath = `${fixture.root}-parked-${kind}`;
+    t.after(() => fs.rm(parkedPath, { recursive: true, force: true }));
+    const foreignBytes = Buffer.from(`foreign private ${kind} must survive unchanged\n`);
+    let foreignIdentity;
+    let foreignBefore;
+    let swapped = false;
+    const swap = async (targetPath) => {
+      if (swapped || !path.basename(String(targetPath)).startsWith('.p5-private-directory-')) return;
+      swapped = true;
+      await fs.rename(targetPath, parkedPath);
+      await fs.mkdir(targetPath);
+      await fs.writeFile(path.join(String(targetPath), 'foreign-sentinel.txt'), foreignBytes);
+      foreignIdentity = fileIdentity(await fs.stat(targetPath));
+      foreignBefore = await snapshotTree(String(targetPath));
+    };
+    const fsImpl = new Proxy(fs, { get(target, property) {
+      if (property === 'mkdir') return async (targetPath, ...args) => {
+        const result = await fs.mkdir(targetPath, ...args);
+        await swap(targetPath);
+        return result;
+      };
+      if (property === 'mkdirBound') return async (parentHandle, basename, next) => {
+        const result = await next(parentHandle, basename);
+        await swap(`/proc/self/fd/${parentHandle.fd}/${basename}`);
+        return result;
+      };
+      return Reflect.get(target, property);
+    } });
+
+    await assert.rejects(installSelectedDatapackSafely(fixture.source, {
+      datapacksDir: fixture.datapacksDir,
+      expectedDatapackTreeSha256: fixture.expectedHash,
+      fsImpl
+    }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
+    assert.equal(swapped, true);
+    const foreignPath = await findPathByIdentity(fixture.root, foreignIdentity);
+    assert.ok(foreignPath);
+    assert.deepEqual(await snapshotTree(foreignPath), foreignBefore);
+    assert.deepEqual(await fs.readFile(path.join(foreignPath, 'foreign-sentinel.txt')), foreignBytes);
+    await fs.access(parkedPath);
+  });
+});
+
+test('P5 installer never adopts a swapped nested stage directory', async (t) => {
+  const fixture = await installerFixture(t);
+  const parkedPath = path.join(fixture.root, 'created-installer-stage-child');
+  const foreignBytes = Buffer.from('foreign installer stage child must remain unchanged\n');
+  let foreignIdentity;
+  let foreignBefore;
+  let swapped = false;
+  const swap = async (targetPath) => {
+    const resolved = await descriptorTargetFromPath(String(targetPath));
+    if (swapped || path.basename(resolved) !== 'data'
+      || !resolved.includes('.p5-install-stage-')) return;
+    swapped = true;
+    await fs.rename(targetPath, parkedPath);
+    await fs.mkdir(targetPath);
+    await fs.writeFile(path.join(String(targetPath), 'foreign-sentinel.txt'), foreignBytes);
+    foreignIdentity = fileIdentity(await fs.lstat(targetPath));
+    foreignBefore = await snapshotTree(String(targetPath));
+  };
+  const fsImpl = new Proxy(fs, { get(target, property) {
+    if (property === 'mkdir') return async (targetPath, ...args) => {
+      const result = await fs.mkdir(targetPath, ...args);
+      await swap(targetPath);
+      return result;
+    };
+    if (property === 'mkdirBound') return async (parentHandle, basename, next) => {
+      const made = await next();
+      await swap(`/proc/self/fd/${parentHandle.fd}/${basename}`);
+      return made;
+    };
+    return Reflect.get(target, property);
+  } });
+
+  await assert.rejects(installSelectedDatapackSafely(fixture.source, {
+    datapacksDir: fixture.datapacksDir,
+    expectedDatapackTreeSha256: fixture.expectedHash,
+    fsImpl
+  }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
+  assert.equal(swapped, true);
+  const foreignPath = await findPathByIdentity(fixture.root, foreignIdentity);
+  assert.ok(foreignPath);
+  assert.deepEqual(await snapshotTree(foreignPath), foreignBefore);
+  assert.deepEqual(await fs.readFile(path.join(foreignPath, 'foreign-sentinel.txt')), foreignBytes);
+  await fs.access(parkedPath);
+});
+
+test('P5 installer never adopts a same-byte foreign stage file at promotion', async (t) => {
+  const fixture = await installerFixture(t);
+  const before = await snapshotTree(fixture.target);
+  const parkedPath = path.join(fixture.root, 'parked-owned-installer-stage-file');
+  let ownedIdentity;
+  let foreignIdentity;
+  let swapped = false;
+  const fsImpl = new Proxy(fs, { get(target, property) {
+    if (property !== 'renameNoReplace') return Reflect.get(target, property);
+    return async (parentHandle, sourceName, destinationName, next) => {
+      if (!swapped && sourceName.startsWith('.p5-install-stage-')
+        && destinationName === 'architect_datapack') {
+        const stageFile = `/proc/self/fd/${parentHandle.fd}/${sourceName}/pack.mcmeta`;
+        const stat = await fs.lstat(stageFile);
+        const bytes = await fs.readFile(stageFile);
+        ownedIdentity = fileIdentity(stat);
+        await fs.rename(stageFile, parkedPath);
+        await fs.writeFile(stageFile, bytes, { mode: stat.mode & 0o777 });
+        foreignIdentity = fileIdentity(await fs.lstat(stageFile));
+        swapped = true;
+      }
+      return next(parentHandle, sourceName, destinationName);
+    };
+  } });
+
+  await assert.rejects(installSelectedDatapackSafely(fixture.source, {
+    datapacksDir: fixture.datapacksDir,
+    expectedDatapackTreeSha256: fixture.expectedHash,
+    fsImpl
+  }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
+  assert.equal(swapped, true);
+  assert.deepEqual(await snapshotTree(fixture.target), before);
+  assert.ok(await findPathByIdentity(fixture.root, ownedIdentity));
+  assert.ok(await findPathByIdentity(fixture.root, foreignIdentity));
+});
+
 test('P5 installer restores exact old authority across target swaps and no-replace collisions', async (t) => {
   for (const kind of ['target-swap', 'backup-collision', 'promote-collision']) {
     await t.test(kind, async (t) => {
@@ -265,12 +408,14 @@ test('P5 installer reconciles post-effect rollback moves and preserves old autho
           }
           return result;
         };
-        if (property === 'rmdir' && kind === 'rollback-cleanup') return async (targetPath, ...args) => {
-          if (path.basename(String(targetPath)).startsWith('.p5-install-stage-')) {
+        if (property === 'retireEntry' && kind === 'rollback-cleanup') return async (
+          parentHandle, basename, expectedIdentity, next
+        ) => {
+          if (basename.startsWith('.p5-install-stage-')) {
             rollbackInjected = true;
             throw new Error('private rollback cleanup failure');
           }
-          return fs.rmdir(targetPath, ...args);
+          return next();
         };
         return Reflect.get(target, property);
       } });
@@ -345,6 +490,31 @@ async function treeContainsBytes(root, expected) {
     } else if (stat.isFile() && (await fs.readFile(target)).equals(expected)) return true;
   }
   return false;
+}
+
+async function findPathByIdentity(root, expected) {
+  const stat = await fs.lstat(root);
+  if (stat.dev === expected?.dev && stat.ino === expected?.ino) return root;
+  if (!stat.isDirectory()) return null;
+  for (const name of await fs.readdir(root)) {
+    const found = await findPathByIdentity(path.join(root, name), expected);
+    if (found) return found;
+  }
+  return null;
+}
+
+async function descriptorTargetFromPath(target) {
+  const match = target.match(/^\/proc\/self\/fd\/(\d+)/u);
+  if (!match) return target;
+  try {
+    return `${await fs.readlink(`/proc/self/fd/${match[1]}`)}${target.slice(match[0].length)}`;
+  } catch {
+    return target;
+  }
+}
+
+function fileIdentity(stat) {
+  return { dev: stat.dev, ino: stat.ino };
 }
 
 function digest(bytes) {
