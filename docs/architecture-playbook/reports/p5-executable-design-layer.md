@@ -35,7 +35,9 @@ npm run playbook:execute -- --mode mock --seed 424242 "Build a two-story medieva
 
 候选权威由已持久化的冻结设计、完整生成器上下文、checkpoint、blueprint、硬 QA 与 P4 review 共同绑定。接受的 chain body 保持不可变；`current-chain.json` 是唯一可替换的候选指针。selection 先写入完整不可变的 `selection-generations/selection-<manifest-sha256>/`，再只替换根 `manifest.json` 指针，因此进程中止后只会恢复为完整旧 generation 或完整新 generation。replay 只读取这些磁盘权威，不读取易变运行时设计字段，也不创建 provider client。
 
-最终 datapack 使用 descriptor 约束的身份/哈希校验安装器；它只复制普通文件到私有同级 stage，并在提交前同步和复核完整 tree hash。run、workspace、候选/selection stage、安装 stage 和本次调用新建的 world/datapack 父目录都在非递归创建后、首次异步让出前同步记录新 inode，随后要求 retained no-follow handle、创建边界返回 handle 与命名 entry 同时匹配该来源，再 no-replace 移动到最终名称；不能仅凭 `mkdir()` 返回成功或稍后的同名 open 推断创建权。candidate/selection pointer stage 也从 exclusive open 起保留创建 handle，首次 named read 和发布必须匹配该 inode。每次移动都根据源/目标的实际 inode 调和，包括“移动已生效后抛错”；碰撞或交换得到的外来 inode 会保留。安装 stage 的每个文件在 exclusive open 后、写入前登记 inode；post-effect open、partial/full write、sync 与 close 故障会调和该精确对象的实际字节，只有身份仍确定时才清理实际 partial snapshot 和本次创建的父拓扑。共享清理器先把精确 public entry no-replace 移入随机 capability-private retirement namespace；每个 private unlink/rmdir 都先经过最后一个可注入删除边界，再复核完整预期 tree 和 retained root-to-leaf inode chain，并在不让出事件循环的最终 identity 检查后立即删除。活动 execute 路径没有 recursive `rm`，也没有直接破坏 public/final basename 的 syscall。所有提交前写入、权限、同步、移动、源/目标交换和清理故障都返回无敏感内容的 `P5_INSTALL_FAILED`，同时恢复原 datapack 的完整字节、inode 和调用前父目录拓扑；提交后的备份清理失败不撤销已完成的新 generation，也不能把已经提交的外部安装报告为失败。
+最终 datapack 使用 descriptor 约束的身份/哈希校验安装器；它只复制普通文件到私有同级 stage，并在提交前同步和复核完整 tree hash。run、workspace、候选/selection stage、安装 stage 和本次调用新建的 world/datapack 父目录都在非递归创建后、首次异步让出前同步记录新 inode，随后要求 retained no-follow handle、创建边界返回 handle 与命名 entry 同时匹配该来源，再 no-replace 移动到最终名称；不能仅凭 `mkdir()` 返回成功或稍后的同名 open 推断创建权。candidate/selection pointer stage 也从 exclusive open 起保留创建 handle，首次 named read 和发布必须匹配该 inode。每次移动都根据源/目标的实际 inode 调和，包括“移动已生效后抛错”；碰撞或交换得到的外来 inode 会保留。安装 stage 的每个文件由受信任的同步 exclusive open 创建，并在进入任何可注入或异步 callback 前立即保留返回 descriptor、`fstat` 并登记 inode；post-effect open、partial/full write、sync 与 close 故障会调和该精确对象的实际字节，只有身份仍确定时才清理实际 partial snapshot 和本次创建的父拓扑。共享清理器先把精确 public entry no-replace 移入随机 capability-private retirement namespace；每个 private unlink/rmdir 都先经过最后一个可注入删除边界，再复核完整预期 tree 和 retained root-to-leaf inode chain，并在不让出事件循环的最终 identity 检查后立即删除。活动 execute 路径没有 recursive `rm`，也没有直接破坏 public/final basename 的 syscall。所有提交前写入、权限、同步、移动、源/目标交换和清理故障都返回无敏感内容的 `P5_INSTALL_FAILED`，同时恢复原 datapack 的完整字节、inode 和调用前父目录拓扑；提交后的备份清理失败不撤销已完成的新 generation，也不能把已经提交的外部安装报告为失败。
+
+这里的保证覆盖全部文档化 JavaScript 异步让出点和 fault-injection hook。实现信任 Node 原生同步绑定，并假设相邻同步 syscall 之间不存在恶意同 UID 写者；标准 Node/POSIX 没有创建目录并返回 retained directory descriptor 的 `mkdir`，也没有 inode-conditional `unlink`/`rmdir`。独立 peer-process 在相邻同步 syscall 间竞争不属于绑定的 P5/P4 威胁模型；所有受支持 hook 的替换、碰撞和 post-effect 区间仍有强制回归并 fail closed。
 
 ## 接受证据
 
@@ -49,12 +51,13 @@ candidate 与 selection 的每个写入、权限、移动和同步 kill point �
 
 ## 新鲜门禁结果
 
-- 最终修复范围：全分支审阅基线 `f54ea59fbe6e82631687a2cd0710f018298a47e6` 到 final-boundary remediation 实现提交 `37e9dd4b968918039e139bb43875a8f956bfd658`。
-- P5 精确门禁：483/483（合同、扩展 off 兼容、设计层、checkpoint、存储与进程中止恢复、资格、四类 repair、磁盘 replay、orchestrator、真实安装器、直接 API、真实 CLI、依赖、controlled-seam 与 natural-production-authority acceptance，以及 raw create-return、retirement creation、final unlink/rmdir、pointer creation-handle 与 installer post-effect file 回归）。
-- P4 精确兼容门禁：201/201。
+- 最终修复范围：全分支审阅基线 `f54ea59fbe6e82631687a2cd0710f018298a47e6`，经 final-boundary 实现/文档提交 `37e9dd4b968918039e139bb43875a8f956bfd658` / `59a3121ca0c5c48ca57f1040b245526bb987d6ec`，到 installer-stage ownership 实现提交 `d5677ef19e289e463a6feb75717f758d41a86ee1`。
+- P5 计划文件范围加安装器的精确门禁：484/484（合同、扩展 off 兼容、设计层、checkpoint、存储与进程中止恢复、资格、四类 repair、磁盘 replay、orchestrator、真实安装器、真实 CLI、依赖、controlled-seam 与 natural-production-authority acceptance，以及受支持 creation/removal/pointer/stage-file hook 回归）。
+- `test/candidatePipeline.test.js` 是独立的直接 API 范围：5/5；controller 在 `59a3121` 把它与上述 484 项合并运行时为 489/489。本次提交仍分别报告两个命令范围，不把 5 项重复计入 P5 计划门禁。
+- `59a3121` 文档检查点的兼容/广度证据保持：P4 精确兼容门禁 201/201。
 - 存储专项：198/198；安装器专项：26/26；candidate/selection 独立进程 SIGKILL 矩阵：24/24。
-- 完整仓库回归：1537/1537，退出码 0。
-- P3 聚焦兼容门禁：325/325；受管审计保持 21 条审阅规则、15 条核心程序、6 条案例模式、5 个受管产物、0 managed drift。
+- `59a3121` 文档检查点的完整仓库回归：1537/1537，退出码 0。
+- `59a3121` 文档检查点的 P3 聚焦兼容门禁：325/325；受管审计保持 21 条审阅规则、15 条核心程序、6 条案例模式、5 个受管产物、0 managed drift。
 - 独立依赖矩阵：150/150；checked-in P5/P4 graph 的 violation/unresolved 均为 0，P5 资格模块也不依赖 construction/pipeline/world/datapack I/O。
 - 卫生：`git diff --check` 为 0，`git ls-files out .local/architecture-playbook` 为空。
 
