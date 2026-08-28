@@ -93,39 +93,66 @@ async function installSnapshot({ parent, targetParent, snapshot, faultInjector, 
         stagePartialSnapshot.identities[relative] = made.identity;
       }
       for (const file of snapshot.files) {
-        let handle;
+        const parentRelative = path.posix.dirname(file.path) === '.' ? '' : path.posix.dirname(file.path);
+        const parentHandle = directoryHandles.get(parentRelative);
+        const basename = path.posix.basename(file.path);
+        const creation = {};
+        let openStarted = false;
+        let failure;
         try {
           await hit(faultInjector, 'stage-write');
-          const parentRelative = path.posix.dirname(file.path) === '.' ? '' : path.posix.dirname(file.path);
-          const parentHandle = directoryHandles.get(parentRelative);
-          try {
-            handle = await fsImpl.open(
-              entry(parentHandle, path.posix.basename(file.path)), WRITE_FLAGS, 0o600
-            );
-          } catch (error) {
-            stageCleanupSafe = false;
-            throw error;
-          }
-          const opened = await handle.stat();
-          if (!opened.isFile()) invalid();
-          try {
-            await handle.writeFile(file.bytes);
-          } catch (error) {
-            stageCleanupSafe = false;
-            throw error;
-          }
-          stagePartialSnapshot.files.push({ path: file.path, bytes: Buffer.from(file.bytes) });
-          stagePartialSnapshot.identities[file.path] = identity(opened);
+          openStarted = true;
+          await createBoundStageFile({
+            fsImpl,
+            parentHandle,
+            basename,
+            creation,
+            onCreated(createdIdentity) {
+              stagePartialSnapshot.files.push({ path: file.path, bytes: Buffer.alloc(0) });
+              stagePartialSnapshot.identities[file.path] = createdIdentity;
+            }
+          });
+          await creation.handle.writeFile(file.bytes);
+          const written = await observeRegisteredStageFile({
+            fsImpl,
+            parentHandle,
+            basename,
+            handle: creation.handle,
+            expectedIdentity: creation.identity
+          });
+          if (!written?.equals(file.bytes)) invalid();
+          updatePartialFile(stagePartialSnapshot, file.path, written);
           await hit(faultInjector, 'stage-chmod');
-          await handle.chmod(0o400);
+          await creation.handle.chmod(0o400);
           await hit(faultInjector, 'stage-file-sync');
-          await handle.sync();
-          const completed = await handle.stat();
+          await creation.handle.sync();
+          const completed = await creation.handle.stat();
           if (!completed.isFile()
             || !sameIdentity(identity(completed), stagePartialSnapshot.identities[file.path])) {
             invalid();
           }
-        } finally { await close(handle); }
+        } catch (error) {
+          failure = error;
+        }
+        if (creation.handle) {
+          try { await creation.handle.close(); }
+          catch (error) { failure ??= error; }
+        }
+        if (failure) {
+          if (creation.identity) {
+            const observed = await observeRegisteredStageFile({
+              fsImpl,
+              parentHandle,
+              basename,
+              handle: creation.handle,
+              expectedIdentity: creation.identity
+            });
+            if (observed) updatePartialFile(stagePartialSnapshot, file.path, observed);
+            else stageCleanupSafe = false;
+          } else if (openStarted) stageCleanupSafe = false;
+          await close(creation.handle);
+          throw failure;
+        }
       }
       await syncDirectories(directoryHandles, faultInjector);
     } finally {
@@ -191,6 +218,93 @@ async function installSnapshot({ parent, targetParent, snapshot, faultInjector, 
     }
   }
   return path.join(targetParent, targetName);
+}
+
+async function createBoundStageFile({
+  fsImpl,
+  parentHandle,
+  basename,
+  creation,
+  onCreated
+}) {
+  const create = async () => {
+    const handle = await fsImpl.open(entry(parentHandle, basename), WRITE_FLAGS, 0o600);
+    creation.handle = handle;
+    const opened = await handle.stat();
+    if (!opened.isFile()) invalid();
+    creation.identity = identity(opened);
+    onCreated(creation.identity);
+    const named = await fsImpl.lstat(entry(parentHandle, basename));
+    if (named.isSymbolicLink() || !named.isFile()
+      || !sameIdentity(identity(named), creation.identity)) invalid();
+    return creation;
+  };
+  const made = typeof fsImpl.openBound === 'function'
+    ? await fsImpl.openBound(parentHandle, basename, create)
+    : await create();
+  const retained = await creation.handle.stat();
+  const named = await fsImpl.lstat(entry(parentHandle, basename));
+  if (made !== creation || !retained.isFile() || named.isSymbolicLink() || !named.isFile()
+    || !sameIdentity(identity(retained), creation.identity)
+    || !sameIdentity(identity(named), creation.identity)) invalid();
+}
+
+async function observeRegisteredStageFile({
+  fsImpl,
+  parentHandle,
+  basename,
+  handle,
+  expectedIdentity
+}) {
+  const target = entry(parentHandle, basename);
+  try {
+    const before = await handle?.stat();
+    if (before?.isFile() && sameIdentity(identity(before), expectedIdentity)) {
+      const namedBefore = await fsImpl.lstat(target);
+      const bytes = Buffer.from(await fs.readFile(descriptor(handle)));
+      const retained = await handle.stat();
+      const namedAfter = await fsImpl.lstat(target);
+      if (!namedBefore.isSymbolicLink() && namedBefore.isFile()
+        && !namedAfter.isSymbolicLink() && namedAfter.isFile()
+        && retained.isFile()
+        && sameIdentity(identity(namedBefore), expectedIdentity)
+        && sameIdentity(identity(namedAfter), expectedIdentity)
+        && sameIdentity(identity(retained), expectedIdentity)
+        && Number(retained.size) === bytes.length) return bytes;
+    }
+  } catch {
+    // A post-effect close can invalidate the retained descriptor; reopen by the
+    // already registered creation identity below.
+  }
+
+  let reopened;
+  try {
+    const namedBefore = await fsImpl.lstat(target);
+    if (namedBefore.isSymbolicLink() || !namedBefore.isFile()
+      || !sameIdentity(identity(namedBefore), expectedIdentity)) return null;
+    reopened = await fsImpl.open(target, READ_FLAGS);
+    const opened = await reopened.stat();
+    const bytes = Buffer.from(await reopened.readFile());
+    const retained = await reopened.stat();
+    const namedAfter = await fsImpl.lstat(target);
+    if (!opened.isFile() || !retained.isFile()
+      || namedAfter.isSymbolicLink() || !namedAfter.isFile()
+      || !sameIdentity(identity(opened), expectedIdentity)
+      || !sameIdentity(identity(retained), expectedIdentity)
+      || !sameIdentity(identity(namedAfter), expectedIdentity)
+      || Number(retained.size) !== bytes.length) return null;
+    return bytes;
+  } catch {
+    return null;
+  } finally {
+    await close(reopened);
+  }
+}
+
+function updatePartialFile(snapshot, relative, bytes) {
+  const file = snapshot.files.find((entry) => entry.path === relative);
+  if (!file) invalid();
+  file.bytes = Buffer.from(bytes);
 }
 
 async function snapshotDatapack(root, fsImpl, requireDatapackBasename = true) {
@@ -479,12 +593,16 @@ function installerOperations(fsImpl) {
   const customRetireEntry = typeof fsImpl.retireEntry === 'function'
     ? fsImpl.retireEntry.bind(fsImpl)
     : undefined;
+  const customRemoveBound = typeof fsImpl.removeBound === 'function'
+    ? fsImpl.removeBound.bind(fsImpl)
+    : undefined;
   return Object.freeze({
     open: fsImpl.open.bind(fsImpl),
     lstat: fsImpl.lstat.bind(fsImpl),
     readdir: fsImpl.readdir.bind(fsImpl),
     mkdirBound: customMkdirBound,
     retireEntry: customRetireEntry,
+    removeBound: customRemoveBound,
     renameNoReplace: custom
       ? (parent, sourceName, destinationName) => custom(
         parent, sourceName, destinationName, renameNoReplaceByDescriptor

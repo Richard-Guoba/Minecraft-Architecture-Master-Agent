@@ -250,6 +250,56 @@ test('run creation rejects a generated directory swapped after mkdir returns', a
   if (parkedPath) await fs.access(parkedPath);
 });
 
+test('run creation never adopts a replacement installed at the raw mkdir return boundary', async (t) => {
+  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-raw-private-mkdir-swap-'));
+  const parkedPath = `${outRoot}-exact-created-private-run`;
+  t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+  t.after(() => fs.rm(parkedPath, { recursive: true, force: true }));
+  const foreignBytes = Buffer.from('foreign raw-mkdir replacement must survive unchanged\n');
+  const rawMkdir = fs.mkdir.bind(fs);
+  let createdIdentity;
+  let foreignIdentity;
+  let swapped = false;
+  let result;
+  let rejection;
+  fs.mkdir = async (target, ...args) => {
+    const made = await rawMkdir(target, ...args);
+    const resolved = await descriptorTargetFromPath(String(target));
+    if (!swapped && path.dirname(resolved) === outRoot
+      && path.basename(resolved).startsWith('.playbook-execute.directory-')) {
+      swapped = true;
+      createdIdentity = fileIdentity(await fs.lstat(target));
+      await fs.rename(target, parkedPath);
+      await rawMkdir(target, ...args);
+      await fs.writeFile(path.join(String(target), 'foreign-sentinel.txt'), foreignBytes);
+      foreignIdentity = fileIdentity(await fs.lstat(target));
+    }
+    return made;
+  };
+  try {
+    try {
+      result = await createExecuteRun({ outRoot, runBasename: 'generated-run' });
+    } catch (error) {
+      rejection = error;
+    }
+  } finally {
+    fs.mkdir = rawMkdir;
+  }
+  await result?.authority?.close();
+
+  if (swapped) {
+    assert.notDeepEqual(foreignIdentity, createdIdentity);
+    assert.equal(rejection?.code, 'P5_OUTPUT_OWNERSHIP');
+    assert.ok(await findPathByIdentity(path.dirname(outRoot), createdIdentity));
+    const foreignPath = await findPathByIdentity(path.dirname(outRoot), foreignIdentity);
+    assert.ok(foreignPath);
+    assert.deepEqual(await fs.readFile(path.join(foreignPath, 'foreign-sentinel.txt')), foreignBytes);
+  } else {
+    assert.equal(rejection, undefined);
+    assert.equal(result?.runDir, path.join(outRoot, 'generated-run'));
+  }
+});
+
 test('run creation binds the private directory returned by the creation boundary', async (t) => {
   const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-private-run-swap-'));
   const parkedPath = `${outRoot}-created-private-run`;
@@ -285,6 +335,52 @@ test('run creation binds the private directory returned by the creation boundary
   assert.equal(swapped, true);
   assert.equal(await treeContainsFileBytes(outRoot, foreignBytes), true);
   await fs.access(parkedPath);
+});
+
+test('run creation rejects a foreign handle returned in place of the exact created directory', async (t) => {
+  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-private-return-swap-'));
+  const parkedPath = `${outRoot}-exact-created-return`;
+  t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+  t.after(() => fs.rm(parkedPath, { recursive: true, force: true }));
+  const foreignBytes = Buffer.from('foreign returned creation handle must survive unchanged\n');
+  let createdIdentity;
+  let foreignIdentity;
+  let swapped = false;
+  const fsImpl = fsWith({
+    async mkdirBound(parentHandle, basename, next) {
+      const made = await next();
+      if (swapped || !basename.startsWith('.playbook-execute.directory-')) return made;
+      const target = path.join(await descriptorTarget(parentHandle), basename);
+      createdIdentity = made.identity;
+      await fs.rename(target, parkedPath);
+      await fs.mkdir(target);
+      await fs.writeFile(path.join(target, 'foreign-sentinel.txt'), foreignBytes);
+      const foreignHandle = await fs.open(
+        target,
+        constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
+      );
+      foreignIdentity = fileIdentity(await foreignHandle.stat());
+      swapped = true;
+      return { handle: foreignHandle, identity: foreignIdentity };
+    }
+  });
+
+  let result;
+  let rejection;
+  try { result = await createExecuteRun({ outRoot, runBasename: 'generated-run', fsImpl }); }
+  catch (error) { rejection = error; }
+  await result?.authority?.close();
+  assert.equal(swapped, true);
+  assert.notDeepEqual(foreignIdentity, createdIdentity);
+  assert.equal(rejection?.code, 'P5_OUTPUT_OWNERSHIP');
+  assert.deepEqual(fileIdentity(await fs.lstat(parkedPath)), createdIdentity);
+  const foreignName = (await fs.readdir(outRoot)).find((name) => (
+    name.startsWith('.playbook-execute.directory-')
+  ));
+  assert.ok(foreignName);
+  const foreignPath = path.join(outRoot, foreignName);
+  assert.deepEqual(fileIdentity(await fs.lstat(foreignPath)), foreignIdentity);
+  assert.deepEqual(await fs.readFile(path.join(foreignPath, 'foreign-sentinel.txt')), foreignBytes);
 });
 
 test('output-root creation never adopts a directory swapped after creation', async (t) => {
@@ -590,6 +686,96 @@ test('storage stages never adopt same-byte foreign file replacements', async (t)
   }
 });
 
+test('candidate and selection pointers reject same-byte stage replacement before first read', async (t) => {
+  const cases = [
+    {
+      name: 'candidate',
+      keys: 'candidate_id,chain_revision,chain_sha256,schema_version',
+      fixture: installedFixture,
+      pointerPath: (fixture) => path.join(
+        candidateDirectory(fixture.runDir, 'candidate-01'), 'current-chain.json'
+      ),
+      run: (fixture, fsImpl) => installCandidateSnapshot({
+        authority: fixture.authority,
+        candidateId: 'candidate-01',
+        ...replaySnapshot(fixture.initial),
+        expectedPreviousChainSha256: fixture.initial.chainHash,
+        fsImpl
+      })
+    },
+    {
+      name: 'selection',
+      keys: 'generation,manifest_sha256,schema_version',
+      fixture: async (context) => {
+        const fixture = await threeCandidateFixture(context);
+        await installExecuteSelection({
+          authority: fixture.authority,
+          files: selectionFiles('old')
+        });
+        return fixture;
+      },
+      pointerPath: (fixture) => path.join(fixture.runDir, 'playbook-execute', 'manifest.json'),
+      run: (fixture, fsImpl) => installExecuteSelection({
+        authority: fixture.authority,
+        files: selectionFiles('same-byte-pointer-stage-swap'),
+        fsImpl
+      })
+    }
+  ];
+
+  for (const entry of cases) await t.test(entry.name, async (context) => {
+    const fixture = await entry.fixture(context);
+    const canonicalPointer = entry.pointerPath(fixture);
+    const oldBytes = await fs.readFile(canonicalPointer);
+    const oldIdentity = fileIdentity(await fs.lstat(canonicalPointer));
+    const parkedPath = path.join(fixture.root, `parked-owned-${entry.name}-pointer-stage`);
+    let ownedIdentity;
+    let foreignIdentity;
+    let swapped = false;
+    const isPointer = (bytes) => {
+      try {
+        return Object.keys(JSON.parse(bytes)).sort().join(',') === entry.keys;
+      } catch { return false; }
+    };
+    const fsImpl = fsWith({
+      async open(target, flags, ...args) {
+        const handle = await fs.open(target, flags, ...args);
+        if ((flags & constants.O_WRONLY) === 0) return handle;
+        let written;
+        return wrapFileHandle(handle, {
+          async writeFile(bytes, ...writeArgs) {
+            written = Buffer.from(bytes);
+            return handle.writeFile(bytes, ...writeArgs);
+          },
+          async sync(...syncArgs) {
+            const result = await handle.sync(...syncArgs);
+            if (!swapped && written && isPointer(written)) {
+              const resolved = await descriptorTargetFromPath(String(target));
+              const stat = await handle.stat();
+              ownedIdentity = fileIdentity(stat);
+              await fs.rename(resolved, parkedPath);
+              await fs.writeFile(resolved, written, { mode: stat.mode & 0o777 });
+              foreignIdentity = fileIdentity(await fs.lstat(resolved));
+              swapped = true;
+            }
+            return result;
+          }
+        });
+      }
+    });
+
+    let rejection;
+    try { await entry.run(fixture, fsImpl); } catch (error) { rejection = error; }
+    assert.equal(swapped, true);
+    assert.equal(rejection?.code, 'P5_INSTALL_FAILED');
+    assert.equal(rejection?.message, 'P5_INSTALL_FAILED');
+    assert.deepEqual(await fs.readFile(canonicalPointer), oldBytes);
+    assert.deepEqual(fileIdentity(await fs.lstat(canonicalPointer)), oldIdentity);
+    assert.equal(await treeContainsIdentity(fixture.root, ownedIdentity), true);
+    assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
+  });
+});
+
 test('workspace pruning preserves a foreign directory swapped at the retirement boundary', async (t) => {
   const fixture = await storageFixture(t);
   const authority = await admitExecuteRun({ runDir: fixture.runDir });
@@ -720,6 +906,202 @@ test('workspace pruning never deletes a foreign directory swapped at the destruc
   assert.equal(swapped, true);
   assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
   assert.equal(await treeContainsIdentity(fixture.root, ownedIdentity), true);
+});
+
+test('workspace pruning never adopts a replacement installed at the raw unlink return boundary', async (t) => {
+  const fixture = await storageFixture(t);
+  const authority = await admitExecuteRun({ runDir: fixture.runDir });
+  t.after(() => authority.close());
+  const workspace = await createReplayWorkspace({ authority, candidateId: 'candidate-01' });
+  const ownedPath = path.join(workspace, 'owned.txt');
+  const parkedOwned = path.join(fixture.root, 'raw-unlink-owned.txt');
+  const foreignBytes = Buffer.from('foreign raw-unlink replacement must survive\n');
+  await fs.writeFile(ownedPath, 'owned\n');
+  const ownedIdentity = fileIdentity(await fs.lstat(ownedPath));
+  const rawUnlink = fs.unlink.bind(fs);
+  let foreignIdentity;
+  let swapped = false;
+  let rejection;
+  fs.unlink = async (target, ...args) => {
+    const resolved = await descriptorTargetFromPath(String(target));
+    if (!swapped && path.basename(resolved) === 'owned.txt') {
+      swapped = true;
+      await fs.rename(target, parkedOwned);
+      await fs.writeFile(target, foreignBytes);
+      foreignIdentity = fileIdentity(await fs.lstat(target));
+    }
+    return rawUnlink(target, ...args);
+  };
+  try {
+    try { await pruneCandidateWorkspaces({ authority }); } catch (error) { rejection = error; }
+  } finally {
+    fs.unlink = rawUnlink;
+  }
+
+  if (swapped) {
+    assert.equal(rejection?.code, 'P5_INSTALL_FAILED');
+    assert.equal(await treeContainsIdentity(fixture.root, ownedIdentity), true);
+    assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
+    assert.equal(await treeContainsFileBytes(fixture.root, foreignBytes), true);
+  } else {
+    assert.equal(rejection, undefined);
+  }
+});
+
+test('workspace pruning never adopts a replacement installed at the raw rmdir return boundary', async (t) => {
+  const fixture = await storageFixture(t);
+  const authority = await admitExecuteRun({ runDir: fixture.runDir });
+  t.after(() => authority.close());
+  const workspace = await createReplayWorkspace({ authority, candidateId: 'candidate-01' });
+  const ownedPath = path.join(workspace, 'owned-directory');
+  const parkedOwned = path.join(fixture.root, 'raw-rmdir-owned-directory');
+  await fs.mkdir(ownedPath);
+  const ownedIdentity = fileIdentity(await fs.lstat(ownedPath));
+  const rawMkdir = fs.mkdir.bind(fs);
+  const rawRmdir = fs.rmdir.bind(fs);
+  let foreignIdentity;
+  let swapped = false;
+  let rejection;
+  fs.rmdir = async (target, ...args) => {
+    const resolved = await descriptorTargetFromPath(String(target));
+    if (!swapped && path.basename(resolved) === 'owned-directory') {
+      swapped = true;
+      await fs.rename(target, parkedOwned);
+      await rawMkdir(target);
+      foreignIdentity = fileIdentity(await fs.lstat(target));
+    }
+    return rawRmdir(target, ...args);
+  };
+  try {
+    try { await pruneCandidateWorkspaces({ authority }); } catch (error) { rejection = error; }
+  } finally {
+    fs.rmdir = rawRmdir;
+  }
+
+  if (swapped) {
+    assert.equal(rejection?.code, 'P5_INSTALL_FAILED');
+    assert.equal(await treeContainsIdentity(fixture.root, ownedIdentity), true);
+    assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
+  } else {
+    assert.equal(rejection, undefined);
+  }
+});
+
+test('retirement creation never adopts a replacement installed at the raw mkdtemp return boundary', async (t) => {
+  const fixture = await storageFixture(t);
+  const authority = await admitExecuteRun({ runDir: fixture.runDir });
+  t.after(() => authority.close());
+  const workspace = await createReplayWorkspace({ authority, candidateId: 'candidate-01' });
+  await fs.writeFile(path.join(workspace, 'owned.txt'), 'owned\n');
+  const parkedCreated = path.join(fixture.root, 'raw-mkdtemp-created-retirement');
+  const rawMkdir = fs.mkdir.bind(fs);
+  const rawMkdtemp = fs.mkdtemp.bind(fs);
+  let createdIdentity;
+  let foreignIdentity;
+  let swapped = false;
+  let rejection;
+  fs.mkdtemp = async (prefix, ...args) => {
+    const made = await rawMkdtemp(prefix, ...args);
+    const resolved = await descriptorTargetFromPath(String(made));
+    if (!swapped && path.basename(resolved).startsWith('.p5-retirement-')) {
+      swapped = true;
+      createdIdentity = fileIdentity(await fs.lstat(made));
+      await fs.rename(made, parkedCreated);
+      await rawMkdir(made, { mode: 0o700 });
+      foreignIdentity = fileIdentity(await fs.lstat(made));
+    }
+    return made;
+  };
+  try {
+    try { await pruneCandidateWorkspaces({ authority }); } catch (error) { rejection = error; }
+  } finally {
+    fs.mkdtemp = rawMkdtemp;
+  }
+
+  if (swapped) {
+    assert.notDeepEqual(foreignIdentity, createdIdentity);
+    assert.equal(rejection?.code, 'P5_INSTALL_FAILED');
+    assert.equal(await treeContainsIdentity(fixture.root, createdIdentity), true);
+    assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
+  } else {
+    assert.equal(rejection, undefined);
+  }
+});
+
+test('workspace pruning revalidates every inode after the final removal boundary', async (t) => {
+  const cases = [
+    {
+      name: 'nested-file',
+      kind: 'file',
+      matches: (basename, expectedKind) => basename === 'owned.txt' && expectedKind === 'file',
+      async prepare(workspace) {
+        const target = path.join(workspace, 'owned.txt');
+        await fs.writeFile(target, 'owned\n');
+        return fileIdentity(await fs.lstat(target));
+      }
+    },
+    {
+      name: 'nested-directory',
+      kind: 'directory',
+      matches: (basename, expectedKind) => basename === 'owned-directory'
+        && expectedKind === 'directory',
+      async prepare(workspace) {
+        const target = path.join(workspace, 'owned-directory');
+        await fs.mkdir(target);
+        return fileIdentity(await fs.lstat(target));
+      }
+    },
+    {
+      name: 'retired-root',
+      kind: 'directory',
+      matches: (basename, expectedKind) => basename === 'owned-entry'
+        && expectedKind === 'directory',
+      async prepare(workspace) { return fileIdentity(await fs.lstat(workspace)); }
+    },
+    {
+      name: 'retirement-namespace',
+      kind: 'directory',
+      matches: (basename, expectedKind) => basename.startsWith('.p5-retirement-')
+        && expectedKind === 'directory',
+      async prepare() { return undefined; }
+    }
+  ];
+
+  for (const entry of cases) await t.test(entry.name, async (t) => {
+    const fixture = await storageFixture(t);
+    const authority = await admitExecuteRun({ runDir: fixture.runDir });
+    t.after(() => authority.close());
+    const workspace = await createReplayWorkspace({ authority, candidateId: 'candidate-01' });
+    let ownedIdentity = await entry.prepare(workspace);
+    const parkedOwned = path.join(fixture.root, `final-boundary-${entry.name}-owned`);
+    const foreignBytes = Buffer.from(`foreign final ${entry.name} replacement must survive\n`);
+    let foreignIdentity;
+    let swapped = false;
+    const fsImpl = fsWith({
+      async removeBound(parentHandle, basename, expectedIdentity, expectedKind, next) {
+        if (swapped || !entry.matches(basename, expectedKind)) return next();
+        const target = path.join(await descriptorTarget(parentHandle), basename);
+        ownedIdentity ??= fileIdentity(await fs.lstat(target));
+        assert.deepEqual(fileIdentity(await fs.lstat(target)), expectedIdentity);
+        swapped = true;
+        await fs.rename(target, parkedOwned);
+        if (entry.kind === 'file') await fs.writeFile(target, foreignBytes);
+        else await fs.mkdir(target);
+        foreignIdentity = fileIdentity(await fs.lstat(target));
+        return next();
+      }
+    });
+
+    let rejection;
+    try { await pruneCandidateWorkspaces({ authority, fsImpl }); } catch (error) { rejection = error; }
+    assert.equal(swapped, true);
+    assert.equal(rejection?.code, 'P5_INSTALL_FAILED');
+    assert.equal(await treeContainsIdentity(fixture.root, ownedIdentity), true);
+    assert.equal(await treeContainsIdentity(fixture.root, foreignIdentity), true);
+    if (entry.kind === 'file') {
+      assert.equal(await treeContainsFileBytes(fixture.root, foreignBytes), true);
+    }
+  });
 });
 
 test('candidate IDs are exactly candidate-01, candidate-02, and candidate-03', async (t) => {

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -33,6 +34,98 @@ test('P5 installer removes its exact partial stage on a pre-snapshot write failu
     }
   }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
   assert.deepEqual(await snapshotTree(fixture.datapacksDir), parentBefore);
+});
+
+test('P5 installer reconciles a post-effect stage write and removes disposable topology', async (t) => {
+  const fixture = await installerFixture(t, {
+    existingTarget: false,
+    missingDatapacksTopology: true
+  });
+  let injected = false;
+  const fsImpl = new Proxy(fs, { get(target, property) {
+    if (property !== 'open') return Reflect.get(target, property);
+    return async (targetPath, flags, ...args) => {
+      const handle = await fs.open(targetPath, flags, ...args);
+      const resolved = await descriptorTargetFromPath(String(targetPath));
+      if (injected || (flags & constants.O_WRONLY) === 0
+        || !resolved.includes('.p5-install-stage-')) return handle;
+      return new Proxy(handle, { get(fileTarget, fileProperty) {
+        if (fileProperty === 'writeFile') return async (...writeArgs) => {
+          await fileTarget.writeFile(...writeArgs);
+          injected = true;
+          throw new Error('RAW_POST_EFFECT_STAGE_WRITE');
+        };
+        const value = Reflect.get(fileTarget, fileProperty, fileTarget);
+        return typeof value === 'function' ? value.bind(fileTarget) : value;
+      } });
+    };
+  } });
+
+  await assert.rejects(installSelectedDatapackSafely(fixture.source, {
+    datapacksDir: fixture.datapacksDir,
+    expectedDatapackTreeSha256: fixture.expectedHash,
+    fsImpl
+  }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
+  assert.equal(injected, true);
+  assert.deepEqual((await fs.readdir(fixture.root)).sort(), ['source']);
+  await assert.rejects(fs.lstat(path.join(fixture.root, 'world')), { code: 'ENOENT' });
+});
+
+test('P5 installer reconciles exact stage ownership after every post-effect file failure', async (t) => {
+  for (const boundary of ['open', 'partial-write', 'sync', 'close']) await t.test(boundary, async (t) => {
+    const fixture = await installerFixture(t, {
+      existingTarget: false,
+      missingDatapacksTopology: true
+    });
+    let injected = false;
+    const fsImpl = new Proxy(fs, { get(target, property) {
+      if (property === 'openBound' && boundary === 'open') {
+        return async (parentHandle, basename, next) => {
+          await next(parentHandle, basename);
+          injected = true;
+          throw new Error('RAW_POST_EFFECT_STAGE_OPEN');
+        };
+      }
+      if (property !== 'open') return Reflect.get(target, property);
+      return async (targetPath, flags, ...args) => {
+        const handle = await fs.open(targetPath, flags, ...args);
+        const resolved = await descriptorTargetFromPath(String(targetPath));
+        if (injected || (flags & constants.O_WRONLY) === 0
+          || !resolved.includes('.p5-install-stage-')) return handle;
+        return new Proxy(handle, { get(fileTarget, fileProperty) {
+          if (fileProperty === 'writeFile' && boundary === 'partial-write') {
+            return async (bytes) => {
+              const partial = Buffer.from(bytes).subarray(0, Math.max(1, Math.floor(bytes.length / 2)));
+              await fileTarget.write(partial, 0, partial.length, 0);
+              injected = true;
+              throw new Error('RAW_POST_EFFECT_PARTIAL_STAGE_WRITE');
+            };
+          }
+          if (fileProperty === 'sync' && boundary === 'sync') return async (...syncArgs) => {
+            const result = await fileTarget.sync(...syncArgs);
+            injected = true;
+            throw new Error('RAW_POST_EFFECT_STAGE_SYNC');
+          };
+          if (fileProperty === 'close' && boundary === 'close') return async (...closeArgs) => {
+            const result = await fileTarget.close(...closeArgs);
+            injected = true;
+            throw new Error('RAW_POST_EFFECT_STAGE_CLOSE');
+          };
+          const value = Reflect.get(fileTarget, fileProperty, fileTarget);
+          return typeof value === 'function' ? value.bind(fileTarget) : value;
+        } });
+      };
+    } });
+
+    await assert.rejects(installSelectedDatapackSafely(fixture.source, {
+      datapacksDir: fixture.datapacksDir,
+      expectedDatapackTreeSha256: fixture.expectedHash,
+      fsImpl
+    }), { code: 'P5_INSTALL_FAILED', message: 'P5_INSTALL_FAILED' });
+    assert.equal(injected, true);
+    assert.deepEqual((await fs.readdir(fixture.root)).sort(), ['source']);
+    await assert.rejects(fs.lstat(path.join(fixture.root, 'world')), { code: 'ENOENT' });
+  });
 });
 
 test('P5 installer copies the validated snapshot and rejects symlinks', async (t) => {
