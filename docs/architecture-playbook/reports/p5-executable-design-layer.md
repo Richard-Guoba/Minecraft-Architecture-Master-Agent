@@ -35,7 +35,7 @@ npm run playbook:execute -- --mode mock --seed 424242 "Build a two-story medieva
 
 候选权威由已持久化的冻结设计、完整生成器上下文、checkpoint、blueprint、硬 QA 与 P4 review 共同绑定。接受的 chain body 保持不可变；`current-chain.json` 是唯一可替换的候选指针。selection 先写入完整不可变的 `selection-generations/selection-<manifest-sha256>/`，再只替换根 `manifest.json` 指针，因此进程中止后只会恢复为完整旧 generation 或完整新 generation。replay 只读取这些磁盘权威，不读取易变运行时设计字段，也不创建 provider client。
 
-最终 datapack 使用 descriptor 约束的身份/哈希校验安装器；它只复制普通文件到私有同级 stage，并在提交前同步和复核完整 tree hash。run、workspace、安装 stage 和本次调用新建的 world/datapack 父目录先以私有名称打开并保留 inode，再 no-replace 移动到最终名称。每次移动都根据源/目标的实际 inode 调和，包括“移动已生效后抛错”；碰撞或交换得到的外来 inode 会隔离/保留。共享递归清理器在 unlink/rmdir 前持续保留并复核每层目录和普通文件 descriptor，不再对已释放的 basename 调用 recursive `rm`。所有提交前写入、权限、同步、移动、源/目标交换和清理故障都返回无敏感内容的 `P5_INSTALL_FAILED`，同时恢复原 datapack 的完整字节、inode 和调用前父目录拓扑；提交后的备份清理失败不撤销已完成的新 generation，也不能把已经提交的外部安装报告为失败。
+最终 datapack 使用 descriptor 约束的身份/哈希校验安装器；它只复制普通文件到私有同级 stage，并在提交前同步和复核完整 tree hash。run、workspace、候选/selection stage、安装 stage 和本次调用新建的 world/datapack 父目录都把 raw create 与 no-follow open 作为一个完整边界，立即保留本次创建的精确 inode，再 no-replace 移动到最终名称；不能仅凭 `mkdir()` 返回成功采用同名目录。每次移动都根据源/目标的实际 inode 调和，包括“移动已生效后抛错”；碰撞或交换得到的外来 inode 会保留。stage 在创建时记录完整目录/文件 identity map，提交前后及清理时都使用这份原始权威，不能因外来文件字节相同而采用或删除它。共享清理器先把精确 public entry no-replace 移入随机 capability-private retirement namespace，再在每次 private unlink/rmdir 前复核完整预期 tree 和 retained root-to-leaf inode chain；活动 execute 路径没有 recursive `rm`，也没有直接破坏 public/final basename 的 syscall。所有提交前写入、权限、同步、移动、源/目标交换和清理故障都返回无敏感内容的 `P5_INSTALL_FAILED`，同时恢复原 datapack 的完整字节、inode 和调用前父目录拓扑；提交后的备份清理失败不撤销已完成的新 generation，也不能把已经提交的外部安装报告为失败。
 
 ## 接受证据
 
@@ -43,18 +43,19 @@ npm run playbook:execute -- --mode mock --seed 424242 "Build a two-story medieva
 
 另有独立的 `natural-production-authority.json`：它不给 orchestrator 传入任何依赖替换，使用生产 mock 设计、硬 QA、P4 review、eligibility、replay、selection 和真实安装器，并只把最终 datapack 安装到测试创建的 disposable root。该输入自然观察到 candidate-01/02/03 的 attempt 数为 `[1, 1, 0]`、状态为 `[repair-invalid, repair-invalid, eligible]`，选择 candidate-03，且安装后的普通文件树与选中 datapack 逐字节相同。这是当前唯一的自然生产权威 acceptance 声明；没有证据的三场景自然性声明已明确撤回。磁盘重启 replay 在丢弃运行时对象、主动 Concept Studio/Stage 7 以及 provider 构造必抛时仍重建相同输出；所有会影响输出的上下文字段都由持久化 body 和 chain hash 约束。硬 QA 会重新计算，P4 review 的 blueprint hash、workflow 与 seed 在初次资格、replay、存储读取和 selection 安装边界都绑定同一候选。
 
-candidate 与 selection 的每个写入、权限、移动和同步 kill point 都由独立子进程执行；矩阵还覆盖 backup hardlink 完成后、旧 pointer 已移除但新 pointer 尚未移动的窗口。重启只接受唯一、canonical 且能绑定既有 chain/generation 的恢复 journal，因此只观察到完整旧或完整新权威，且历史不可变 body inode 不变。注入的真实 replay 故障证明先前 current pointer 的字节、哈希与 inode，以及无关 output/world 字节全部不变；failure evidence 只含固定代码和权威哈希。selection/install 前先删除未选中 workspace；任何后续提交前失败也删除选中 workspace。外部安装提交成功后才标记选中 workspace 为保留，后提交清理/authority-close 故障为非致命；无资格/失败运行不保留候选 workspace，且没有新的 `/tmp/p5-replay-*` 残留。repair/replay 不创建 provider client。
+candidate 与 selection 的每个写入、权限、移动和同步 kill point 都由独立子进程执行。pointer 替换先把精确旧 pointer no-replace 移入已验证的私有 journal，再提升 staged pointer；矩阵覆盖 `pointer-retire:1`，即旧 pointer 已进入 journal 而新 pointer 尚未移动的窗口。重启只接受唯一、canonical 且能绑定既有 chain/generation 的恢复 journal，因此只观察到完整旧或完整新权威，且历史不可变 body inode 不变。注入的真实 replay 故障证明先前 current pointer 的字节、哈希与 inode，以及无关 output/world 字节全部不变；failure evidence 只含固定代码和权威哈希。selection/install 前先删除未选中 workspace；任何后续提交前失败也删除选中 workspace。外部安装提交成功后才标记选中 workspace 为保留，后提交清理/authority-close 故障为非致命；无资格/失败运行不保留候选 workspace，且没有新的 `/tmp/p5-replay-*` 残留。repair/replay 不创建 provider client。
 
 依赖门禁复用 P4 已审阅的 ESM 解析与 fail-closed 规则，拒绝 computed import、`createRequire`、未解析边、symlink/realpath 逃逸和动态禁止边。保留概念在 camelCase、PascalCase、连字符、下划线、字母/数字拆分和完整连接形式下使用同一组有界标识符归一化；每个标识符还会在权威词分解前独立移除终端常规版本后缀 `v1` 至 `v999`（不接受零、前导零或四位数）。相邻普通词不会按子串误判。execute 非资格依赖只精确放行既有 `candidateSelectionAgent.js`、`templateAestheticReviewAgent.js` 和 `visualizationAgent.js` 三条路径，别名、改名和嵌套变体都拒绝；资格模块不能依赖其中任何一个。`templateAestheticReviewAgent.js` 是 P5 前既有、供不变 ranker 使用的结构化 blueprint 字段评分，不是 P6 图像、固定视角或视觉模型评价。P4 的独立边界仍然禁止 construction、pipeline、world 和 datapack I/O。P3 手动门禁保持 21 条审阅规则、15 条核心程序、6 条案例模式、5 个受管产物和零 drift。
 
 ## 新鲜门禁结果
 
-- 最终修复范围：全分支审阅基线 `f54ea59fbe6e82631687a2cd0710f018298a47e6` 到 scoped-rework 实现提交 `11ced43cd8a68a1c2ceba6a962af0b8f7159dc94`。
-- P5 精确门禁：433/433（合同、扩展 off 兼容、设计层、checkpoint、存储与进程中止恢复、资格、四类 repair、磁盘 replay、orchestrator、真实安装器、直接 API、真实 CLI、依赖、controlled-seam 与 natural-production-authority acceptance）。
+- 最终修复范围：全分支审阅基线 `f54ea59fbe6e82631687a2cd0710f018298a47e6` 到 ownership-protocol finishing 实现提交 `dc4811d0a35e0fa2944ddbcc23a4b5ba78e7ee1f`。
+- P5 精确门禁：465/465（合同、扩展 off 兼容、设计层、checkpoint、存储与进程中止恢复、资格、四类 repair、磁盘 replay、orchestrator、真实安装器、直接 API、真实 CLI、依赖、controlled-seam 与 natural-production-authority acceptance，以及 complete-creation/private-retirement/same-byte foreign replacement 回归）。
 - P4 精确兼容门禁：201/201。
-- 完整仓库回归：1486/1486，退出码 0。
+- 存储专项：185/185；安装器专项：20/20；candidate/selection 独立进程 SIGKILL 矩阵：24/24。
+- 完整仓库回归：1518/1518，退出码 0。
 - P3：21 条审阅规则、15 条核心程序、6 条案例模式、5 个受管产物、0 managed drift。
-- 独立依赖矩阵：142/142；checked-in P5/P4 graph 的 violation/unresolved 均为 0，P5 资格模块也不依赖 construction/pipeline/world/datapack I/O。
+- 独立依赖矩阵：150/150；checked-in P5/P4 graph 的 violation/unresolved 均为 0，P5 资格模块也不依赖 construction/pipeline/world/datapack I/O。
 - 卫生：`git diff --check` 为 0，`git ls-files out .local/architecture-playbook` 为空。
 
 入库 fixture SHA-256：controlled positive `1e9e3808ca0e085d0c49e1b4870840be55a7e6eb6ffaf04d9942bd19750cf754`；controlled repairable `bf244a5527a1237f555c2fbc1bd3b9956d7a80934ec47e63f393e91e61af10f7`；controlled no-eligible `c3d12c9f564e2848b441df1ceb9afe55320765d88eff803977565f69d67df0e1`；natural production authority `0727d0ee8fde696ccbc4cd2cf2512f34bce3c511a42852a8e13637d42dadffa1`；base-generated 扩展 off 向量 `92d046a7380ce0a46d6d1a9fdd82a27a660c7f7a8c9e987146e637c99abd612f`。
