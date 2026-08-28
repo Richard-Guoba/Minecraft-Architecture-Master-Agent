@@ -35,7 +35,7 @@ npm run playbook:execute -- --mode mock --seed 424242 "Build a two-story medieva
 
 候选权威由已持久化的冻结设计、完整生成器上下文、checkpoint、blueprint、硬 QA 与 P4 review 共同绑定。接受的 chain body 保持不可变；`current-chain.json` 是唯一可替换的候选指针。selection 先写入完整不可变的 `selection-generations/selection-<manifest-sha256>/`，再只替换根 `manifest.json` 指针，因此进程中止后只会恢复为完整旧 generation 或完整新 generation。replay 只读取这些磁盘权威，不读取易变运行时设计字段，也不创建 provider client。
 
-最终 datapack 使用 descriptor 约束的身份/哈希校验安装器；它只复制普通文件到私有同级 stage，并在提交前同步和复核完整 tree hash。run、workspace、候选/selection stage、安装 stage 和本次调用新建的 world/datapack 父目录都把 raw create 与 no-follow open 作为一个完整边界，立即保留本次创建的精确 inode，再 no-replace 移动到最终名称；不能仅凭 `mkdir()` 返回成功采用同名目录。每次移动都根据源/目标的实际 inode 调和，包括“移动已生效后抛错”；碰撞或交换得到的外来 inode 会保留。stage 在创建时记录完整目录/文件 identity map，提交前后及清理时都使用这份原始权威，不能因外来文件字节相同而采用或删除它。共享清理器先把精确 public entry no-replace 移入随机 capability-private retirement namespace，再在每次 private unlink/rmdir 前复核完整预期 tree 和 retained root-to-leaf inode chain；活动 execute 路径没有 recursive `rm`，也没有直接破坏 public/final basename 的 syscall。所有提交前写入、权限、同步、移动、源/目标交换和清理故障都返回无敏感内容的 `P5_INSTALL_FAILED`，同时恢复原 datapack 的完整字节、inode 和调用前父目录拓扑；提交后的备份清理失败不撤销已完成的新 generation，也不能把已经提交的外部安装报告为失败。
+最终 datapack 使用 descriptor 约束的身份/哈希校验安装器；它只复制普通文件到私有同级 stage，并在提交前同步和复核完整 tree hash。run、workspace、候选/selection stage、安装 stage 和本次调用新建的 world/datapack 父目录都在非递归创建后、首次异步让出前同步记录新 inode，随后要求 retained no-follow handle、创建边界返回 handle 与命名 entry 同时匹配该来源，再 no-replace 移动到最终名称；不能仅凭 `mkdir()` 返回成功或稍后的同名 open 推断创建权。candidate/selection pointer stage 也从 exclusive open 起保留创建 handle，首次 named read 和发布必须匹配该 inode。每次移动都根据源/目标的实际 inode 调和，包括“移动已生效后抛错”；碰撞或交换得到的外来 inode 会保留。安装 stage 的每个文件在 exclusive open 后、写入前登记 inode；post-effect open、partial/full write、sync 与 close 故障会调和该精确对象的实际字节，只有身份仍确定时才清理实际 partial snapshot 和本次创建的父拓扑。共享清理器先把精确 public entry no-replace 移入随机 capability-private retirement namespace；每个 private unlink/rmdir 都先经过最后一个可注入删除边界，再复核完整预期 tree 和 retained root-to-leaf inode chain，并在不让出事件循环的最终 identity 检查后立即删除。活动 execute 路径没有 recursive `rm`，也没有直接破坏 public/final basename 的 syscall。所有提交前写入、权限、同步、移动、源/目标交换和清理故障都返回无敏感内容的 `P5_INSTALL_FAILED`，同时恢复原 datapack 的完整字节、inode 和调用前父目录拓扑；提交后的备份清理失败不撤销已完成的新 generation，也不能把已经提交的外部安装报告为失败。
 
 ## 接受证据
 
@@ -49,12 +49,12 @@ candidate 与 selection 的每个写入、权限、移动和同步 kill point �
 
 ## 新鲜门禁结果
 
-- 最终修复范围：全分支审阅基线 `f54ea59fbe6e82631687a2cd0710f018298a47e6` 到 ownership-protocol finishing 实现提交 `dc4811d0a35e0fa2944ddbcc23a4b5ba78e7ee1f`。
-- P5 精确门禁：465/465（合同、扩展 off 兼容、设计层、checkpoint、存储与进程中止恢复、资格、四类 repair、磁盘 replay、orchestrator、真实安装器、直接 API、真实 CLI、依赖、controlled-seam 与 natural-production-authority acceptance，以及 complete-creation/private-retirement/same-byte foreign replacement 回归）。
+- 最终修复范围：全分支审阅基线 `f54ea59fbe6e82631687a2cd0710f018298a47e6` 到 final-boundary remediation 实现提交 `37e9dd4b968918039e139bb43875a8f956bfd658`。
+- P5 精确门禁：483/483（合同、扩展 off 兼容、设计层、checkpoint、存储与进程中止恢复、资格、四类 repair、磁盘 replay、orchestrator、真实安装器、直接 API、真实 CLI、依赖、controlled-seam 与 natural-production-authority acceptance，以及 raw create-return、retirement creation、final unlink/rmdir、pointer creation-handle 与 installer post-effect file 回归）。
 - P4 精确兼容门禁：201/201。
-- 存储专项：185/185；安装器专项：20/20；candidate/selection 独立进程 SIGKILL 矩阵：24/24。
-- 完整仓库回归：1518/1518，退出码 0。
-- P3：21 条审阅规则、15 条核心程序、6 条案例模式、5 个受管产物、0 managed drift。
+- 存储专项：198/198；安装器专项：26/26；candidate/selection 独立进程 SIGKILL 矩阵：24/24。
+- 完整仓库回归：1537/1537，退出码 0。
+- P3 聚焦兼容门禁：325/325；受管审计保持 21 条审阅规则、15 条核心程序、6 条案例模式、5 个受管产物、0 managed drift。
 - 独立依赖矩阵：150/150；checked-in P5/P4 graph 的 violation/unresolved 均为 0，P5 资格模块也不依赖 construction/pipeline/world/datapack I/O。
 - 卫生：`git diff --check` 为 0，`git ls-files out .local/architecture-playbook` 为空。
 
