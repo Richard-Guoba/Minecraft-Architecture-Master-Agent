@@ -6,6 +6,16 @@ P5 已实现一个 opt-in、default-off 的最小确定性控制循环。默认 
 npm run playbook:execute -- --mode mock --seed 424242 "Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base"
 ```
 
+## Local Codex channel
+
+P5 can opt into the locally authenticated Codex CLI without changing its artifact, eligibility, repair, or replay contracts:
+
+```bash
+npm run playbook:execute -- --mode llm --llm-provider codex "Build a compact medieval stone gatehouse"
+```
+
+Explicit Codex selection is fail-closed. The child uses `codex exec --sandbox read-only`, prompts arrive through stdin, and model selection remains under the local Codex configuration. Deterministic replay remains LLM-free, and the checked-in P5 gate continues to use deterministic mock fixtures rather than a live service.
+
 ## 可执行边界
 
 每次 execute 运行固定生成三个候选，并为 `brief`、`massing`、`structure`、`roof`、`facade` 保存五层不可变 checkpoint。每个候选最多消耗一次原子修复预算。硬 QA、P4 确定性资格审查和原有候选排序器是三个独立权威。

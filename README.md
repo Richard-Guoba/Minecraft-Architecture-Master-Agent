@@ -53,6 +53,25 @@ Mock mode is the safest reproducible end-to-end check. For LLM mode, copy `.env.
 npm start -- --mode llm "建一个日式茶屋住宅，深檐木格栅，水景庭院，动线安静"
 ```
 
+To use your locally installed and authenticated Codex CLI for the P5 design loop:
+
+```bash
+codex
+npm run playbook:execute -- --mode llm --llm-provider codex "Build a compact medieval stone gatehouse"
+```
+
+The first command is a setup check: complete local sign-in if Codex requests it, then exit the interactive session. The workflow uses `codex exec --sandbox read-only`, sends each agent prompt through standard input, and uses the model selected by your local Codex configuration. Codex cannot modify the repository through this channel, but prompt context is sent through your logged-in Codex service account.
+
+The Codex adapter distinguishes these failures:
+
+- `CODEX_UNAVAILABLE`: install Codex or put `codex` on `PATH`.
+- `CODEX_SETUP_REQUIRED`: run `codex` and complete sign-in.
+- `CODEX_TIMEOUT`: increase `CODEX_TIMEOUT_MS`; the default is 600000 ms per request.
+- `CODEX_EXECUTION_FAILED`: run `codex` directly to verify the local installation.
+- `CODEX_PROTOCOL_INVALID`: update Codex and retry; the workflow requires a JSON object.
+
+The P5 command preserves P5's public error boundary, so a design-stage provider failure is reported as `P5_DESIGN_INVALID`. If that occurs, perform the `codex` setup check above before retrying.
+
 ## Generate a datapack
 
 A run writes an ignored directory below `out/` containing the main artifacts:
