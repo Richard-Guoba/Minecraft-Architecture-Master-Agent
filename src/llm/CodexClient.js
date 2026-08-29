@@ -2,23 +2,36 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { parseJsonContent } from './parseJsonContent.js';
 
 const DEFAULT_CODEX_ARGS = ['exec', '--sandbox', 'read-only'];
-const DEFAULT_TIMEOUT_MS = 120000;
+const DEFAULT_TIMEOUT_MS = 600000;
+const MAX_DIAGNOSTIC_BYTES = 65536;
+const MAX_STREAM_DIAGNOSTIC_BYTES = MAX_DIAGNOSTIC_BYTES / 2;
+const TERMINATION_GRACE_MS = 1000;
+
+export class CodexClientError extends Error {
+  constructor(code, message, { cause, diagnosticBytes = 0 } = {}) {
+    super(message, cause ? { cause } : undefined);
+    this.name = 'CodexClientError';
+    this.code = code;
+    this.diagnosticBytes = diagnosticBytes;
+  }
+}
 
 export class CodexClient {
   constructor({
     command = process.env.CODEX_COMMAND || 'codex',
     args = process.env.CODEX_ARGS,
     timeoutMs = process.env.CODEX_TIMEOUT_MS,
-    cwd = process.cwd()
+    cwd = process.cwd(),
+    tempRoot = os.tmpdir()
   } = {}) {
     this.name = 'codex';
     this.command = command;
     this.args = normalizeArgs(args);
     this.timeoutMs = normalizeTimeout(timeoutMs);
     this.cwd = cwd;
+    this.tempRoot = tempRoot;
   }
 
   isConfigured() {
@@ -27,14 +40,17 @@ export class CodexClient {
 
   async chatJson({ system, user }) {
     if (!this.isConfigured()) {
-      throw new Error('Codex CLI is not configured.');
+      throw unavailableError();
     }
 
-    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mc-architect-codex-'));
+    const tempDir = await fs.mkdtemp(path.join(this.tempRoot, 'mc-architect-codex-'));
     try {
       const schemaPath = path.join(tempDir, 'response.schema.json');
       const outputPath = path.join(tempDir, 'response.json');
-      await fs.writeFile(schemaPath, JSON.stringify(responseSchema(), null, 2), 'utf8');
+      await fs.writeFile(schemaPath, JSON.stringify(responseSchema(), null, 2), {
+        encoding: 'utf8',
+        mode: 0o600
+      });
 
       const prompt = buildPrompt(system, user);
       const args = [
@@ -46,23 +62,13 @@ export class CodexClient {
         '-'
       ];
 
-      const { stdout, stderr } = await runProcess(this.command, args, {
+      await runProcess(this.command, args, {
         cwd: this.cwd,
         input: prompt,
         timeoutMs: this.timeoutMs
       });
 
-      const output = await readOptional(outputPath);
-      const content = output.trim() ? output : stdout;
-      if (!content.trim()) {
-        throw new Error(`Codex CLI returned no JSON output. ${stderr.slice(0, 300)}`);
-      }
-
-      try {
-        return JSON.parse(content);
-      } catch {
-        return parseJsonContent(content);
-      }
+      return await readJsonObject(outputPath);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
@@ -102,51 +108,130 @@ function normalizeTimeout(timeoutMs) {
 
 function runProcess(command, args, { cwd, input, timeoutMs }) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd,
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+    let child;
+    try {
+      child = spawn(command, args, {
+        cwd,
+        windowsHide: true,
+        shell: false,
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+    } catch (cause) {
+      reject(unavailableError(cause));
+      return;
+    }
 
-    let stdout = '';
-    let stderr = '';
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`Codex CLI timed out after ${timeoutMs}ms.`));
+    let settled = false;
+    let timedOut = false;
+    let stdout = Buffer.alloc(0);
+    let stderr = Buffer.alloc(0);
+    let forceTimer;
+    let timer;
+    const finish = (callback) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(forceTimer);
+      callback();
+    };
+
+    timer = setTimeout(() => {
+      if (settled) return;
+      timedOut = true;
+      child.kill('SIGTERM');
+      forceTimer = setTimeout(() => {
+        if (!settled) child.kill('SIGKILL');
+      }, TERMINATION_GRACE_MS);
     }, timeoutMs);
 
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
     child.stdout.on('data', (chunk) => {
-      stdout += chunk;
+      stdout = appendBounded(stdout, chunk);
     });
     child.stderr.on('data', (chunk) => {
-      stderr += chunk;
+      stderr = appendBounded(stderr, chunk);
     });
-    child.on('error', (error) => {
-      clearTimeout(timer);
-      reject(new Error(`Codex CLI could not be started: ${error.message}`));
+    child.on('error', (cause) => {
+      finish(() => reject(unavailableError(cause)));
     });
     child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0) {
-        resolve({ stdout, stderr });
-        return;
-      }
-      reject(new Error(`Codex CLI failed with exit code ${code}. ${stderr || stdout}`));
+      finish(() => {
+        const diagnosticBytes = stdout.length + stderr.length;
+        if (timedOut) {
+          reject(new CodexClientError(
+            'CODEX_TIMEOUT',
+            `Codex CLI timed out after ${timeoutMs}ms.`,
+            { diagnosticBytes }
+          ));
+        } else if (code === 0) {
+          resolve({
+            stdout: stdout.toString('utf8'),
+            stderr: stderr.toString('utf8')
+          });
+        } else if (looksLikeSetupFailure(stderr.toString('utf8'))) {
+          reject(new CodexClientError(
+            'CODEX_SETUP_REQUIRED',
+            'Codex CLI authentication/setup is required. Run `codex` in a terminal and sign in.',
+            { diagnosticBytes }
+          ));
+        } else {
+          reject(new CodexClientError(
+            'CODEX_EXECUTION_FAILED',
+            `Codex CLI execution failed (exit code ${code}).`,
+            { diagnosticBytes }
+          ));
+        }
+      });
     });
 
+    child.stdin.on('error', () => {});
     child.stdin.end(input);
   });
 }
 
-async function readOptional(filePath) {
+async function readJsonObject(filePath) {
+  let content;
   try {
-    return await fs.readFile(filePath, 'utf8');
-  } catch (error) {
-    if (error.code === 'ENOENT') return '';
-    throw error;
+    content = await fs.readFile(filePath, 'utf8');
+  } catch {
+    throw protocolError();
   }
+
+  if (!content.trim()) throw protocolError();
+  let value;
+  try {
+    value = JSON.parse(content);
+  } catch {
+    throw protocolError();
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw protocolError();
+  }
+  return value;
+}
+
+function appendBounded(current, chunk) {
+  if (current.length >= MAX_STREAM_DIAGNOSTIC_BYTES) return current;
+  return Buffer.concat([current, Buffer.from(chunk)])
+    .subarray(0, MAX_STREAM_DIAGNOSTIC_BYTES);
+}
+
+function looksLikeSetupFailure(stderr) {
+  return /(?:not logged in|log in|login|sign in|authentication|credentials)/iu.test(stderr);
+}
+
+function unavailableError(cause) {
+  return new CodexClientError(
+    'CODEX_UNAVAILABLE',
+    'Codex CLI is unavailable. Install it and ensure `codex` is on PATH.',
+    { cause }
+  );
+}
+
+function protocolError() {
+  return new CodexClientError(
+    'CODEX_PROTOCOL_INVALID',
+    'Codex CLI returned invalid JSON output.'
+  );
 }
 
 function splitArgs(value) {
