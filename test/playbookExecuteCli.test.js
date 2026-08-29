@@ -11,6 +11,39 @@ const CLI = path.join(ROOT, 'src/index.js');
 const PROMPT = 'Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base';
 const CHILD_ENV = { PATH: process.env.PATH, HOME: process.env.HOME, LANG: process.env.LANG || 'C.UTF-8' };
 
+test('execute CLI forwards the exact local Codex provider command', async () => {
+  let received;
+  const errors = [];
+  const status = await runCli({
+    argv: ['--playbook', 'execute', '--mode', 'llm', '--llm-provider', 'codex', PROMPT],
+    runPipelineImpl: async (options) => {
+      received = options;
+      throw Object.assign(new Error('P5_AUTHORITY_INVALID'), {
+        code: 'P5_AUTHORITY_INVALID'
+      });
+    },
+    writeError: (value) => errors.push(value)
+  });
+
+  assert.equal(status, 1);
+  assert.equal(received.mode, 'llm');
+  assert.equal(received.llmProvider, 'codex');
+  assert.deepEqual(errors, ['P5_AUTHORITY_INVALID']);
+});
+
+test('CLI help documents the local Codex provider selector', () => {
+  const result = spawnSync(process.execPath, [CLI, '--help'], {
+    cwd: ROOT,
+    env: CHILD_ENV,
+    encoding: 'utf8',
+    timeout: 30000
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /--llm-provider .*codex/u);
+  assert.match(result.stdout, /local authenticated Codex CLI/iu);
+});
+
 test('execute CLI applies exact omitted 3/1 defaults and prints only stable P5 authority', async (t) => {
   const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-cli-'));
   t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
@@ -53,6 +86,11 @@ test('execute CLI rejects malformed or incompatible P5 options before output', a
     ['--playbook', 'execute', '--seed', 'private-input-bytes'],
     ['--playbook', 'execute', '--coarse-voxel-mode', 'private-mode'],
     ['--playbook', 'execute', '--coarse-voxel-provider', 'private-provider'],
+    ['--playbook', 'execute', '--mode', 'llm', '--llm-provider'],
+    ['--playbook', 'execute', '--mode', 'llm', '--llm-provider', 'private-provider'],
+    ['--playbook', 'execute', '--mode', 'mock', '--llm-provider', 'codex'],
+    ['--playbook', 'execute', '--mode', 'auto', '--llm-provider', 'codex'],
+    ['--playbook', 'execute', '--mode', 'llm', '--llm-provider', 'codex', '--llm-provider', 'codex'],
     ['--playbook', 'execute', '--coarse-voxel-mode', 'shadow', '--coarse-voxel-provider', 'artifact', '--coarse-voxel-plan', 'private-plan.json']
   ];
   for (const argv of cases) {
@@ -89,6 +127,7 @@ test('execute CLI rejects duplicate semantic singleton aliases before side effec
     ['--candidates', '3', '--candidates', '3'],
     ['--candidate-rounds', '1', '--candidate-rounds', '1'],
     ['--mode', 'mock', '--mode', 'mock'],
+    ['--llm-provider', 'codex', '--llm-provider', 'codex'],
     ['--seed', '424242', '--seed', '424242'],
     ['--neural-retrieval', '--no-neural-retrieval'],
     ['--datapacks-dir', path.join(outRoot, 'world'), '--datapacks-target', 'build-lab'],

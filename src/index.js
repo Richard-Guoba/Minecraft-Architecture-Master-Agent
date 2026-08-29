@@ -7,6 +7,7 @@ import { launchConfiguredMinecraft } from './lib/launcher.js';
 import { listWorlds } from './lib/minecraftWorlds.js';
 import { formatLlmUsage } from './construction/workflow.js';
 import { listCuratedTemplatePrompts, resolveCuratedTemplatePrompt } from './construction/curatedTemplatePromptLibrary.js';
+import { LLM_PROVIDERS, normalizeLlmProvider } from './llm/createLlmClient.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -18,6 +19,7 @@ const DATAPACK_TARGETS = {
 function parseArgs(argv) {
   const options = {
     mode: 'mock',
+    llmProvider: undefined,
     mcVersion: process.env.MC_VERSION || '1.21',
     out: path.join(projectRoot, 'out'),
     seed: undefined,
@@ -46,6 +48,7 @@ function parseArgs(argv) {
   const promptParts = [];
   let candidatesExplicit = false;
   let candidateRoundsExplicit = false;
+  let llmProviderSeen = false;
   const playbookIndexes = argv.flatMap((arg, index) => arg === '--playbook' ? [index] : []);
   if (playbookIndexes.length > 1) throw p5CliError('P5_OPTIONS_INCOMPATIBLE');
   if (playbookIndexes.length === 1) {
@@ -60,6 +63,16 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === '--mode') {
       options.mode = argv[++i] || options.mode;
+    } else if (arg === '--llm-provider') {
+      if (llmProviderSeen) throw new Error('Duplicate --llm-provider option.');
+      llmProviderSeen = true;
+      const value = argv[++i];
+      if (!value || value.startsWith('--')) throw new Error('--llm-provider requires a value.');
+      const normalized = normalizeLlmProvider(value);
+      if (!LLM_PROVIDERS.includes(normalized)) {
+        throw new Error(`Unsupported LLM provider: ${value}`);
+      }
+      options.llmProvider = normalized;
     } else if (arg === '--mc-version') {
       options.mcVersion = argv[++i] || options.mcVersion;
     } else if (arg === '--out') {
@@ -151,6 +164,10 @@ function parseArgs(argv) {
     }
   }
 
+  if (options.llmProvider !== undefined && options.mode !== 'llm') {
+    throw new Error('--llm-provider requires --mode llm.');
+  }
+
   if (options.playbook === 'execute') {
     if (!candidatesExplicit) options.candidates = 3;
     if (!candidateRoundsExplicit) options.candidateRounds = 1;
@@ -178,6 +195,7 @@ function assertExecuteSingletonOptions(argv) {
   const groups = new Map(Object.entries({
     '--playbook': 'playbook',
     '--mode': 'mode',
+    '--llm-provider': 'llm-provider',
     '--mc-version': 'mc-version',
     '--out': 'out',
     '--seed': 'seed',
@@ -248,6 +266,7 @@ Usage:
 
 Options:
   --mode mock|llm|auto       Use local mock mode, force your configured API, or auto-detect API config. Defaults to mock.
+  --llm-provider <provider>  Select auto, codex, openai, openai-compatible, or zhipu. With codex, use the local authenticated Codex CLI; requires --mode llm.
   --mc-version 1.21          Target Minecraft Java version. v1 exports 1.21 datapacks.
   --out <dir>                Output root directory. Defaults to ./out.
   --seed <number>            Deterministic design seed. Omit it to generate a random seed.
@@ -281,7 +300,7 @@ Options:
   construction_method_v1 is the only active generation pipeline.
   Stage 7 shadow supports deterministic baseline and validated artifact comparison.
   Runtime: Node.js.
-  API: configure your own provider in .env and use --mode llm.
+  LLM: configure an API in .env or select the local authenticated Codex CLI, then use --mode llm.
   Mock: use --mode mock when no API key is available.
 `);
 }
@@ -340,6 +359,7 @@ export async function main({ argv = process.argv.slice(2), runPipelineImpl = run
   const result = await runPipelineImpl({
     prompt: finalPrompt,
     mode: options.mode,
+    llmProvider: options.llmProvider,
     mcVersion: options.mcVersion,
     outRoot: options.out,
     seed: options.seed,
