@@ -75,7 +75,12 @@ export async function runExecutablePlaybookPipeline(options = {}, dependencies =
     const ranked = deps.createSelectionAgent().run(eligibleRecords.map((record) => record.rankerRecord), { targetScore, scope: 'playbook-execute' });
     const selected = records.find((record) => record.candidateId === ranked.selected_candidate_id);
     const selection = createSelection(records, selected, ranked);
-    if (!selected) throw executeError('P5_NO_ELIGIBLE_CANDIDATE');
+    if (!selected) {
+      if (records.every((record) => record.failureCode === 'P5_DESIGN_INVALID')) {
+        throw executeError('P5_DESIGN_INVALID');
+      }
+      throw executeError('P5_NO_ELIGIBLE_CANDIDATE');
+    }
     const selectedArtifactHashes = await revalidateSelected({ authority, selected });
     const selectionBytes = Buffer.from(stableJson(selection));
     stage = 'selection-render';
@@ -199,10 +204,11 @@ async function executeCandidate({ index, normalized, seedPlan, runDir, projectRo
       }
     } catch {}
     const stage = frozenDesignSha256 === null ? 'design' : contextSha256 === null || result === undefined ? 'compile' : hardQaSha256 === null ? 'hard-qa' : 'p4-review';
+    const sanitized = sanitizeExecuteError(error, stage === 'design' ? 'P5_DESIGN_INVALID' : 'P5_REPLAY_FAILED');
     await installInitialFailure({ authority, candidateId, stage,
-      code: sanitizeExecuteError(error, stage === 'design' ? 'P5_DESIGN_INVALID' : 'P5_REPLAY_FAILED').code,
+      code: sanitized.code,
       frozenDesignSha256, contextSha256, blueprintSha256, hardQa, hardQaSha256, review, reviewSha256 });
-    return failedRecord(candidateId, seed, fallbackEligibility(hardQa, 0));
+    return failedRecord(candidateId, seed, fallbackEligibility(hardQa, 0), sanitized.code);
   }
 }
 
@@ -235,8 +241,8 @@ function acceptedRecord(candidateId, seed, repairAttempts, current) {
     reviewSha256: current.chain.p4_review_sha256, playbookEligibility: current.eligibility, result: current.result,
     rankerRecord: { id: candidateId, ok: true, round: 1, index: Number(candidateId.at(-1)), seed, result: current.result } };
 }
-function failedRecord(candidateId, seed, eligibility) { return { candidateId, seed, repairAttempts: 0, currentChainSha256: null,
-  hardQaSha256: null, reviewSha256: null, playbookEligibility: eligibility, result: undefined, rankerRecord: undefined }; }
+function failedRecord(candidateId, seed, eligibility, failureCode = null) { return { candidateId, seed, repairAttempts: 0, currentChainSha256: null,
+  hardQaSha256: null, reviewSha256: null, playbookEligibility: eligibility, result: undefined, rankerRecord: undefined, failureCode }; }
 function createSelection(records, selected, ranked) { return validateSelectionRecord({ schema_version: 1, mode: 'execute', candidate_count: 3,
   candidates: records.map((record) => ({ candidate_id: record.candidateId, seed: record.seed, current_chain_sha256: record.currentChainSha256,
     hard_qa_sha256: record.hardQaSha256, p4_review_sha256: record.reviewSha256, eligibility: record.playbookEligibility,

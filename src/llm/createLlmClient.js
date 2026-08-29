@@ -66,8 +66,8 @@ class FallbackLlmClient {
 function createCodexClient(env, cwd) {
   return new CodexClient({
     command: env.CODEX_COMMAND || 'codex',
-    args: env.CODEX_ARGS,
-    timeoutMs: env.CODEX_TIMEOUT_MS,
+    args: env.CODEX_ARGS ?? '',
+    timeoutMs: env.CODEX_TIMEOUT_MS ?? '',
     cwd
   });
 }

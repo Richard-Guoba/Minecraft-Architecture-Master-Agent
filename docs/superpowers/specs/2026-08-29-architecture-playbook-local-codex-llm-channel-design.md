@@ -93,7 +93,7 @@ For each request it will:
 2. Write a JSON output schema that requires a top-level object.
 3. Construct a prompt from the `system` and `user` inputs.
 4. Spawn the configured executable directly, without a shell.
-5. Invoke non-interactive `codex exec` with a read-only sandbox, an output-schema path, a final-output path, and `-` for standard-input prompting.
+5. Invoke non-interactive `codex exec` with an enforced read-only sandbox, ephemeral session storage, no color, an output-schema path, a final-output path, and `-` for standard-input prompting.
 6. Send the prompt on standard input and close the stream.
 7. Wait for successful completion within the configured timeout.
 8. Read and strictly parse the final-output file as JSON.
@@ -108,11 +108,11 @@ The default executable and arguments remain configurable:
 
 ```dotenv
 CODEX_COMMAND=codex
-CODEX_ARGS=exec --sandbox read-only
+CODEX_ARGS=exec --sandbox read-only --ephemeral --color never
 CODEX_TIMEOUT_MS=600000
 ```
 
-The longer default timeout reflects that one playbook run can make several sequential design calls and that a local Codex request may reasonably exceed two minutes. The timeout applies to each Codex request rather than to the whole pipeline.
+The longer default timeout reflects that one playbook run can make several sequential design calls and that a local Codex request may reasonably exceed two minutes. The timeout applies to each Codex request rather than to the whole pipeline. `CODEX_ARGS` may contribute safe optional exec flags, but the adapter owns and de-duplicates the sandbox, ephemeral, color, schema, final-output, and stdin-prompt arguments. Conflicting or bypass arguments fail with `CODEX_CONFIGURATION_INVALID` before a child is spawned.
 
 Implementation requirements:
 
@@ -121,10 +121,10 @@ Implementation requirements:
 - Preserve the user's normal local Codex authentication and configuration discovery.
 - Do not add a model flag, so the local Codex default remains authoritative.
 - Bound captured standard output and standard error to prevent an unbounded child process from consuming memory.
-- On timeout, request graceful termination, escalate to forced termination after a short grace period, and wait for the child to be reaped.
+- On timeout, terminate the child process tree, escalate to forced termination after a short grace period, and wait for its inherited streams to close.
 - Settle the request promise exactly once even if timeout, exit, and stream errors race.
 - Clean temporary files in a `finally` path.
-- Treat a missing output file, empty output, non-object JSON, or malformed JSON as a provider failure.
+- Treat a missing output file, empty output, non-object JSON, malformed JSON, or output larger than 1 MiB as a provider failure.
 - Do not attempt to repair malformed Codex output from console text.
 
 ## Error Model
@@ -136,6 +136,7 @@ Failures are categorized internally so diagnostics remain actionable:
 - **Timeout:** the configured per-request deadline expires.
 - **Execution:** Codex exits non-zero.
 - **Protocol:** output is missing, empty, malformed, or not a JSON object.
+- **Configuration:** optional arguments conflict with the enforced read-only JSON protocol.
 - **Contract:** an existing downstream stage validator rejects the object's content.
 
 The user-facing error identifies the Codex channel and the category, with a concise next action where appropriate. It must not include the complete prompt, environment variables, authentication material, or unbounded stdout/stderr. A short sanitized diagnostic excerpt may be included when it contains no prompt content or secrets.
@@ -147,11 +148,12 @@ Explicit Codex errors propagate to the workflow's existing failure boundary. The
 The spawned Codex process is an external local executable selected by configuration. The implementation will:
 
 - Default to `codex` and never invoke through a shell.
-- Run with Codex's read-only sandbox so the LLM channel cannot edit repository files.
+- Enforce Codex's read-only sandbox and reject writable/bypass argument overrides so the LLM channel cannot edit repository files.
+- Use ephemeral execution so Codex does not persist session rollout files.
 - Pass the prompt only through standard input.
 - Avoid logging prompts, environment contents, or raw model output in provider errors.
 - Create temporary schema and output files with user-private access through the platform's secure temporary-directory mechanism.
-- Always remove those files after use.
+- Bound the final JSON output file to 1 MiB and always remove temporary files after use.
 
 The process runs from the project root and uses the user's existing Codex configuration and authentication. Therefore, project context supplied in prompts may be sent to the Codex service under the user's logged-in account; documentation will make this boundary explicit.
 

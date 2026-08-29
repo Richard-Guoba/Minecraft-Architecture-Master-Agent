@@ -60,7 +60,9 @@ codex
 npm run playbook:execute -- --mode llm --llm-provider codex "Build a compact medieval stone gatehouse"
 ```
 
-The first command is a setup check: complete local sign-in if Codex requests it, then exit the interactive session. The workflow uses `codex exec --sandbox read-only`, sends each agent prompt through standard input, and uses the model selected by your local Codex configuration. Codex cannot modify the repository through this channel, but prompt context is sent through your logged-in Codex service account.
+The first command is a setup check: complete local sign-in if Codex requests it, then exit the interactive session. The workflow enforces `codex exec --sandbox read-only --ephemeral --color never`, sends each agent prompt through standard input, and uses the model selected by your local Codex configuration. Codex cannot modify the repository through this channel, and ephemeral execution does not persist session rollout files, but prompt context is sent through your logged-in Codex service account.
+
+`CODEX_ARGS` may add safe optional `codex exec` flags such as `--model`, but it cannot replace the enforced read-only/ephemeral flags, grant writable directories, bypass the sandbox, or replace the schema/final-output protocol. The adapter accepts at most 1 MiB from the final JSON output file.
 
 The Codex adapter distinguishes these failures:
 
@@ -69,6 +71,7 @@ The Codex adapter distinguishes these failures:
 - `CODEX_TIMEOUT`: increase `CODEX_TIMEOUT_MS`; the default is 600000 ms per request.
 - `CODEX_EXECUTION_FAILED`: run `codex` directly to verify the local installation.
 - `CODEX_PROTOCOL_INVALID`: update Codex and retry; the workflow requires a JSON object.
+- `CODEX_CONFIGURATION_INVALID`: remove unsafe or protocol-conflicting values from `CODEX_ARGS`.
 
 The P5 command preserves P5's public error boundary, so a design-stage provider failure is reported as `P5_DESIGN_INVALID`. If that occurs, perform the `codex` setup check above before retrying.
 

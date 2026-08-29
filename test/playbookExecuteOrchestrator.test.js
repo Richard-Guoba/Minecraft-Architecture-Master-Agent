@@ -353,7 +353,7 @@ test('reviewed corpus order survives the complete lifecycle and reversed order f
   await assert.rejects(runExecutablePlaybookPipeline({
     playbook: 'execute', prompt, mode: 'mock', seed: 424242, outRoot: reversedRoot, cwd: projectRoot
   }, { createEnvelope: (input) => reviewedSubsetEnvelope(input, [...orderedRuleIds].reverse()) }), {
-    code: 'P5_NO_ELIGIBLE_CANDIDATE'
+    code: 'P5_DESIGN_INVALID'
   });
   const [runName] = await fs.readdir(reversedRoot);
   for (const candidateId of ['candidate-01', 'candidate-02', 'candidate-03']) {
@@ -504,7 +504,7 @@ test('selection installation binds candidate rows and selected current review bo
   assert.equal(selectedRow.eligibility.status, 'eligible');
 });
 
-test('no eligible candidate retains three immutable failures and never installs or publishes selection', async (t) => {
+test('three design failures retain immutable evidence and expose P5_DESIGN_INVALID', async (t) => {
   const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-no-eligible-'));
   t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
   let envelopeCalls = 0;
@@ -513,7 +513,7 @@ test('no eligible candidate retains three immutable failures and never installs 
     outRoot, cwd: path.resolve(import.meta.dirname, '..'), seed: 9 }, {
     createEnvelope: async () => { envelopeCalls += 1; throw new Error('private provider body'); },
     installSelected: async () => { installCalls += 1; }
-  }), { code: 'P5_NO_ELIGIBLE_CANDIDATE', message: 'P5_NO_ELIGIBLE_CANDIDATE' });
+  }), { code: 'P5_DESIGN_INVALID', message: 'P5_DESIGN_INVALID' });
   assert.equal(envelopeCalls, 3);
   assert.equal(installCalls, 0);
   const [runName] = await fs.readdir(outRoot);

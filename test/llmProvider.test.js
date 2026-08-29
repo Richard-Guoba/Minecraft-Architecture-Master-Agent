@@ -103,6 +103,28 @@ test('environment-selected Codex is fail-closed', () => {
   assert.equal('clients' in client, false);
 });
 
+test('an explicit environment does not inherit ambient Codex arguments or timeout', () => {
+  const previousArgs = process.env.CODEX_ARGS;
+  const previousTimeout = process.env.CODEX_TIMEOUT_MS;
+  process.env.CODEX_ARGS = 'exec --sandbox workspace-write';
+  process.env.CODEX_TIMEOUT_MS = '1';
+  try {
+    const client = createLlmClient({
+      env: { LLM_PROVIDER: 'codex', CODEX_COMMAND: 'codex' },
+      cwd: process.cwd()
+    });
+    assert.deepEqual(client.args, [
+      'exec', '--sandbox', 'read-only', '--ephemeral', '--color', 'never'
+    ]);
+    assert.equal(client.timeoutMs, 600000);
+  } finally {
+    if (previousArgs === undefined) delete process.env.CODEX_ARGS;
+    else process.env.CODEX_ARGS = previousArgs;
+    if (previousTimeout === undefined) delete process.env.CODEX_TIMEOUT_MS;
+    else process.env.CODEX_TIMEOUT_MS = previousTimeout;
+  }
+});
+
 test('auto remains the only fallback policy', () => {
   const client = createLlmClient({
     provider: 'auto',

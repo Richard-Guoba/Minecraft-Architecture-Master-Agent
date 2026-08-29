@@ -265,7 +265,7 @@ Usage:
   npm start -- --list-worlds
 
 Options:
-  --mode mock|llm|auto       Use local mock mode, force your configured API, or auto-detect API config. Defaults to mock.
+  --mode mock|llm|auto       Use local mock mode, force your configured LLM provider, or auto-detect provider config. Defaults to mock.
   --llm-provider <provider>  Select auto, codex, openai, openai-compatible, or zhipu. With codex, use the local authenticated Codex CLI; requires --mode llm.
   --mc-version 1.21          Target Minecraft Java version. v1 exports 1.21 datapacks.
   --out <dir>                Output root directory. Defaults to ./out.

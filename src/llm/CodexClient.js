@@ -3,11 +3,20 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-const DEFAULT_CODEX_ARGS = ['exec', '--sandbox', 'read-only'];
+const ENFORCED_CODEX_ARGS = Object.freeze([
+  'exec', '--sandbox', 'read-only', '--ephemeral', '--color', 'never'
+]);
 const DEFAULT_TIMEOUT_MS = 600000;
 const MAX_DIAGNOSTIC_BYTES = 65536;
 const MAX_STREAM_DIAGNOSTIC_BYTES = MAX_DIAGNOSTIC_BYTES / 2;
+const MAX_RESPONSE_BYTES = 1048576;
 const TERMINATION_GRACE_MS = 1000;
+const TERMINATION_REAP_MS = 1000;
+const TERMINATION_POLL_MS = 20;
+const SAFE_VALUE_OPTIONS = new Set(['--model', '-m', '--profile', '-p', '--local-provider']);
+const SAFE_BOOLEAN_OPTIONS = new Set([
+  '--oss', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules', '--strict-config', '--search', '--json'
+]);
 
 export class CodexClientError extends Error {
   constructor(code, message, { cause, diagnosticBytes = 0 } = {}) {
@@ -24,7 +33,8 @@ export class CodexClient {
     args = process.env.CODEX_ARGS,
     timeoutMs = process.env.CODEX_TIMEOUT_MS,
     cwd = process.cwd(),
-    tempRoot = os.tmpdir()
+    tempRoot = os.tmpdir(),
+    spawnImpl = spawn
   } = {}) {
     this.name = 'codex';
     this.command = command;
@@ -32,6 +42,7 @@ export class CodexClient {
     this.timeoutMs = normalizeTimeout(timeoutMs);
     this.cwd = cwd;
     this.tempRoot = tempRoot;
+    this.spawnImpl = spawnImpl;
   }
 
   isConfigured() {
@@ -65,7 +76,8 @@ export class CodexClient {
       await runProcess(this.command, args, {
         cwd: this.cwd,
         input: prompt,
-        timeoutMs: this.timeoutMs
+        timeoutMs: this.timeoutMs,
+        spawnImpl: this.spawnImpl
       });
 
       return await readJsonObject(outputPath);
@@ -96,9 +108,93 @@ function buildPrompt(system, user) {
 }
 
 function normalizeArgs(args) {
-  if (Array.isArray(args)) return args.length ? args : DEFAULT_CODEX_ARGS;
-  const parsed = splitArgs(args || '');
-  return parsed.length ? parsed : DEFAULT_CODEX_ARGS;
+  const parsed = Array.isArray(args) ? [...args] : splitArgs(args || '');
+  if (parsed[0] === 'exec') parsed.shift();
+  if (parsed.includes('exec')) throw configurationError();
+
+  const extras = [];
+  for (let index = 0; index < parsed.length; index += 1) {
+    const argument = parsed[index];
+    if (argument === '--sandbox' || argument === '-s') {
+      if (parsed[index + 1] !== 'read-only') throw configurationError();
+      index += 1;
+      continue;
+    }
+    if (argument.startsWith('--sandbox=') || argument.startsWith('-s=')) {
+      if (argument.slice(argument.indexOf('=') + 1) !== 'read-only') throw configurationError();
+      continue;
+    }
+    if (/^-s.+/u.test(argument)) {
+      if (argument !== '-sread-only') throw configurationError();
+      continue;
+    }
+    if (argument === '--ephemeral') continue;
+    if (argument === '--color') {
+      if (!parsed[index + 1]) throw configurationError();
+      index += 1;
+      continue;
+    }
+    if (argument.startsWith('--color=')) continue;
+    if (isForbiddenArgument(argument)) throw configurationError();
+    if (argument === '-c' || argument === '--config') {
+      const config = parsed[index + 1];
+      if (!config || isUnsafeConfigOverride(config)) throw configurationError();
+      extras.push(argument, config);
+      index += 1;
+      continue;
+    }
+    if (argument.startsWith('-c=') || argument.startsWith('--config=')) {
+      const config = argument.slice(argument.indexOf('=') + 1);
+      if (!config || isUnsafeConfigOverride(config)) throw configurationError();
+      extras.push(argument);
+      continue;
+    }
+    if (SAFE_VALUE_OPTIONS.has(argument)) {
+      const value = parsed[index + 1];
+      if (!value || value.startsWith('-')) throw configurationError();
+      extras.push(argument, value);
+      index += 1;
+      continue;
+    }
+    const equalsOption = [...SAFE_VALUE_OPTIONS]
+      .filter((option) => option.startsWith('--'))
+      .find((option) => argument.startsWith(`${option}=`));
+    if (equalsOption && argument.length > equalsOption.length + 1) {
+      extras.push(argument);
+      continue;
+    }
+    if (SAFE_BOOLEAN_OPTIONS.has(argument)) {
+      extras.push(argument);
+      continue;
+    }
+    throw configurationError();
+  }
+  return [...ENFORCED_CODEX_ARGS, ...extras];
+}
+
+function isForbiddenArgument(argument) {
+  return argument === '-'
+    || argument === '--full-auto'
+    || argument === '--dangerously-bypass-approvals-and-sandbox'
+    || argument === '--yolo'
+    || argument === '--dangerously-bypass-hook-trust'
+    || argument === '--'
+    || argument === '--add-dir'
+    || argument.startsWith('--add-dir=')
+    || argument === '--output-schema'
+    || argument.startsWith('--output-schema=')
+    || argument === '--output-last-message'
+    || argument.startsWith('--output-last-message=')
+    || argument === '-o'
+    || /^-o.+/u.test(argument);
+}
+
+function isUnsafeConfigOverride(value) {
+  const key = String(value).split('=', 1)[0].trim().toLowerCase();
+  return key === 'approval_policy'
+    || key === 'ask_for_approval'
+    || key === 'sandbox_mode'
+    || key.startsWith('sandbox_permissions');
 }
 
 function normalizeTimeout(timeoutMs) {
@@ -106,12 +202,13 @@ function normalizeTimeout(timeoutMs) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TIMEOUT_MS;
 }
 
-function runProcess(command, args, { cwd, input, timeoutMs }) {
+function runProcess(command, args, { cwd, input, timeoutMs, spawnImpl }) {
   return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawn(command, args, {
+      child = spawnImpl(command, args, {
         cwd,
+        detached: process.platform !== 'win32',
         windowsHide: true,
         shell: false,
         stdio: ['pipe', 'pipe', 'pipe']
@@ -125,6 +222,12 @@ function runProcess(command, args, { cwd, input, timeoutMs }) {
     let timedOut = false;
     let stdout = Buffer.alloc(0);
     let stderr = Buffer.alloc(0);
+    let spawned = false;
+    let runtimeError;
+    let terminationStarted = false;
+    let forceCompleted = false;
+    let closeObserved = false;
+    let closeCode;
     let forceTimer;
     let timer;
     const finish = (callback) => {
@@ -135,25 +238,8 @@ function runProcess(command, args, { cwd, input, timeoutMs }) {
       callback();
     };
 
-    timer = setTimeout(() => {
-      if (settled) return;
-      timedOut = true;
-      child.kill('SIGTERM');
-      forceTimer = setTimeout(() => {
-        if (!settled) child.kill('SIGKILL');
-      }, TERMINATION_GRACE_MS);
-    }, timeoutMs);
-
-    child.stdout.on('data', (chunk) => {
-      stdout = appendBounded(stdout, chunk);
-    });
-    child.stderr.on('data', (chunk) => {
-      stderr = appendBounded(stderr, chunk);
-    });
-    child.on('error', (cause) => {
-      finish(() => reject(unavailableError(cause)));
-    });
-    child.on('close', (code) => {
+    const settleFromClose = () => {
+      if (!closeObserved || terminationStarted && !forceCompleted) return;
       finish(() => {
         const diagnosticBytes = stdout.length + stderr.length;
         if (timedOut) {
@@ -162,7 +248,13 @@ function runProcess(command, args, { cwd, input, timeoutMs }) {
             `Codex CLI timed out after ${timeoutMs}ms.`,
             { diagnosticBytes }
           ));
-        } else if (code === 0) {
+        } else if (runtimeError) {
+          reject(new CodexClientError(
+            'CODEX_EXECUTION_FAILED',
+            'Codex CLI execution failed.',
+            { cause: runtimeError, diagnosticBytes }
+          ));
+        } else if (closeCode === 0) {
           resolve({
             stdout: stdout.toString('utf8'),
             stderr: stderr.toString('utf8')
@@ -176,11 +268,68 @@ function runProcess(command, args, { cwd, input, timeoutMs }) {
         } else {
           reject(new CodexClientError(
             'CODEX_EXECUTION_FAILED',
-            `Codex CLI execution failed (exit code ${code}).`,
+            `Codex CLI execution failed (exit code ${closeCode}).`,
             { diagnosticBytes }
           ));
         }
       });
+    };
+
+    const completeForcedTermination = async () => {
+      if (settled) return;
+      try {
+        const terminated = await forceProcessTree(child);
+        if (!terminated) runtimeError ||= new Error('Codex process tree cleanup did not complete.');
+      } catch (cause) {
+        runtimeError ||= cause;
+      }
+      forceCompleted = true;
+      settleFromClose();
+    };
+
+    const rememberRuntimeError = (cause) => {
+      runtimeError ||= cause;
+      terminate(false);
+    };
+
+    const terminate = (isTimeout) => {
+      if (isTimeout) timedOut = true;
+      else clearTimeout(timer);
+      if (settled || terminationStarted) return;
+      terminationStarted = true;
+      if (process.platform === 'win32') {
+        void completeForcedTermination();
+      } else {
+        try {
+          signalProcessTree(child, 'SIGTERM');
+        } catch (cause) {
+          runtimeError ||= cause;
+        }
+        forceTimer = setTimeout(completeForcedTermination, TERMINATION_GRACE_MS);
+      }
+    };
+
+    timer = setTimeout(() => {
+      terminate(true);
+    }, timeoutMs);
+
+    child.once('spawn', () => { spawned = true; });
+    child.stdout.on('data', (chunk) => {
+      stdout = appendBounded(stdout, chunk);
+    });
+    child.stdout.on('error', rememberRuntimeError);
+    child.stderr.on('data', (chunk) => {
+      stderr = appendBounded(stderr, chunk);
+    });
+    child.stderr.on('error', rememberRuntimeError);
+    child.on('error', (cause) => {
+      if (!spawned) finish(() => reject(unavailableError(cause)));
+      else rememberRuntimeError(cause);
+    });
+    child.on('close', (code) => {
+      closeObserved = true;
+      closeCode = code;
+      settleFromClose();
     });
 
     child.stdin.on('error', () => {});
@@ -189,24 +338,95 @@ function runProcess(command, args, { cwd, input, timeoutMs }) {
 }
 
 async function readJsonObject(filePath) {
-  let content;
+  let handle;
   try {
-    content = await fs.readFile(filePath, 'utf8');
+    handle = await fs.open(filePath, 'r');
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > MAX_RESPONSE_BYTES) throw protocolError();
+    const bytes = Buffer.alloc(MAX_RESPONSE_BYTES + 1);
+    let length = 0;
+    while (length < bytes.length) {
+      const { bytesRead } = await handle.read(bytes, length, bytes.length - length, length);
+      if (bytesRead === 0) break;
+      length += bytesRead;
+    }
+    if (length > MAX_RESPONSE_BYTES) throw protocolError();
+    const content = bytes.subarray(0, length).toString('utf8');
+    if (!content.trim()) throw protocolError();
+    const value = JSON.parse(content);
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) throw protocolError();
+    return value;
   } catch {
     throw protocolError();
+  } finally {
+    await handle?.close().catch(() => {});
   }
+}
 
-  if (!content.trim()) throw protocolError();
-  let value;
+function signalProcessTree(child, signal) {
+  if (!child.pid) return false;
+  if (process.platform === 'win32') return child.kill(signal);
   try {
-    value = JSON.parse(content);
-  } catch {
-    throw protocolError();
+    process.kill(-child.pid, signal);
+    return true;
+  } catch (error) {
+    if (error?.code !== 'ESRCH') throw error;
+    return child.kill(signal);
   }
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    throw protocolError();
+}
+
+async function forceProcessTree(child) {
+  if (!child.pid) return false;
+  if (process.platform !== 'win32') {
+    signalProcessTree(child, 'SIGKILL');
+    return await waitForProcessGroupExit(child.pid);
   }
-  return value;
+  return await new Promise((resolve) => {
+    let killer;
+    try {
+      killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+        windowsHide: true,
+        shell: false,
+        stdio: 'ignore'
+      });
+    } catch {
+      try { child.kill('SIGKILL'); } catch {}
+      resolve(false);
+      return;
+    }
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      if (!ok) {
+        try { child.kill('SIGKILL'); } catch {}
+      }
+      resolve(ok);
+    };
+    killer.once('error', () => finish(false));
+    killer.once('close', (code) => finish(code === 0));
+  });
+}
+
+async function waitForProcessGroupExit(processGroupId) {
+  const deadline = Date.now() + TERMINATION_REAP_MS;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(-processGroupId, 0);
+    } catch (error) {
+      if (error?.code === 'ESRCH') return true;
+      if (error?.code !== 'EPERM') throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, TERMINATION_POLL_MS));
+  }
+  try {
+    process.kill(-processGroupId, 0);
+    return false;
+  } catch (error) {
+    if (error?.code === 'ESRCH') return true;
+    if (error?.code === 'EPERM') return false;
+    throw error;
+  }
 }
 
 function appendBounded(current, chunk) {
@@ -224,6 +444,13 @@ function unavailableError(cause) {
     'CODEX_UNAVAILABLE',
     'Codex CLI is unavailable. Install it and ensure `codex` is on PATH.',
     { cause }
+  );
+}
+
+function configurationError() {
+  return new CodexClientError(
+    'CODEX_CONFIGURATION_INVALID',
+    'Codex CLI arguments conflict with the enforced read-only JSON protocol.'
   );
 }
 

@@ -42,6 +42,40 @@ test('CLI help documents the local Codex provider selector', () => {
   assert.equal(result.status, 0);
   assert.match(result.stdout, /--llm-provider .*codex/u);
   assert.match(result.stdout, /local authenticated Codex CLI/iu);
+  assert.match(result.stdout, /configured LLM provider/iu);
+  assert.doesNotMatch(result.stdout, /force your configured API/iu);
+});
+
+test('exact Codex execute CLI path reaches an offline fake and fails closed as P5_DESIGN_INVALID', async (t) => {
+  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-cli-codex-fake-'));
+  t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+  const fakeCodex = path.join(outRoot, 'fake-codex-auth');
+  await fs.copyFile(path.join(ROOT, 'test/fixtures/fakeCodexCli.js'), fakeCodex);
+  await fs.chmod(fakeCodex, 0o700);
+  const result = spawnSync(process.execPath, [
+    CLI, '--playbook', 'execute', '--mode', 'llm', '--llm-provider', 'codex',
+    '--seed', '424242', '--out', outRoot, PROMPT
+  ], {
+    cwd: ROOT,
+    env: {
+      ...CHILD_ENV,
+      CODEX_COMMAND: fakeCodex,
+      CODEX_ARGS: 'exec --sandbox read-only'
+    },
+    encoding: 'utf8',
+    timeout: 30000
+  });
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, '');
+  assert.equal(result.stderr, 'P5_DESIGN_INVALID\n');
+  assert.doesNotMatch(result.stderr, /private|fake-codex|\/tmp\//u);
+  const trace = JSON.parse(await fs.readFile(path.join(outRoot, 'trace.json'), 'utf8'));
+  assert.deepEqual(trace.args.slice(0, 3), ['exec', '--sandbox', 'read-only']);
+  assert.equal(trace.args.includes('--ephemeral'), true);
+  const [runName] = (await fs.readdir(outRoot)).filter((name) => !name.startsWith('fake-codex') && name !== 'trace.json');
+  const candidatesRoot = path.join(outRoot, runName, 'playbook-execute', 'candidates');
+  assert.deepEqual((await fs.readdir(candidatesRoot)).sort(), ['candidate-01', 'candidate-02', 'candidate-03']);
 });
 
 test('execute CLI applies exact omitted 3/1 defaults and prints only stable P5 authority', async (t) => {

@@ -14,7 +14,7 @@ P5 can opt into the locally authenticated Codex CLI without changing its artifac
 npm run playbook:execute -- --mode llm --llm-provider codex "Build a compact medieval stone gatehouse"
 ```
 
-Explicit Codex selection is fail-closed. The child uses `codex exec --sandbox read-only`, prompts arrive through stdin, and model selection remains under the local Codex configuration. Deterministic replay remains LLM-free, and the checked-in P5 gate continues to use deterministic mock fixtures rather than a live service.
+Explicit Codex selection is fail-closed. The child enforces `codex exec --sandbox read-only --ephemeral --color never`, prompts arrive through stdin, session rollout files are not persisted, and model selection remains under the local Codex configuration. Unsafe `CODEX_ARGS` overrides fail before execution, and the final JSON response is capped at 1 MiB. Deterministic replay remains LLM-free, and the checked-in P5 gate continues to use deterministic mock fixtures rather than a live service.
 
 ## 可执行边界
 

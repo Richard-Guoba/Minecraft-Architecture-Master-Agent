@@ -15,7 +15,7 @@
 - The public command is exactly `npm run playbook:execute -- --mode llm --llm-provider codex "Build ..."`.
 - Explicit `codex` selection and `LLM_PROVIDER=codex` are fail-closed; only `auto` may fall back.
 - Keep the existing `chatJson({ system, user })` agent contract.
-- Spawn Codex directly with `shell: false`, pass the prompt through stdin, and retain `exec --sandbox read-only` defaults.
+- Spawn Codex directly with `shell: false`, pass the prompt through stdin, and enforce `exec --sandbox read-only --ephemeral --color never`.
 - Do not add a model option or model argument; use the local Codex default.
 - Use `CODEX_COMMAND`, `CODEX_ARGS`, and a per-request default `CODEX_TIMEOUT_MS=600000`.
 - Do not expose prompts, environment values, authentication material, or raw unbounded child output in errors.
@@ -189,7 +189,7 @@ git commit -m "feat: make Codex provider selection strict"
 
 **Interfaces:**
 - Consumes: `new CodexClient({ command, args, timeoutMs, cwd, tempRoot })` and `chatJson({ system, user })`.
-- Produces: a top-level JSON object or `CodexClientError` with one of `CODEX_UNAVAILABLE`, `CODEX_SETUP_REQUIRED`, `CODEX_TIMEOUT`, `CODEX_EXECUTION_FAILED`, `CODEX_PROTOCOL_INVALID`.
+- Produces: a top-level JSON object or `CodexClientError` with one of `CODEX_UNAVAILABLE`, `CODEX_SETUP_REQUIRED`, `CODEX_TIMEOUT`, `CODEX_EXECUTION_FAILED`, `CODEX_PROTOCOL_INVALID`, `CODEX_CONFIGURATION_INVALID`.
 
 - [ ] **Step 1: Create a deterministic fake Codex executable**
 
@@ -801,7 +801,7 @@ codex
 npm run playbook:execute -- --mode llm --llm-provider codex "Build a compact medieval stone gatehouse"
 ```
 
-The first command is a setup check: complete local sign-in if Codex requests it, then exit the interactive session. The workflow uses `codex exec --sandbox read-only`, sends each agent prompt through standard input, and uses the model selected by your local Codex configuration. Codex cannot modify the repository through this channel, but prompt context is sent through your logged-in Codex service account.
+The first command is a setup check: complete local sign-in if Codex requests it, then exit the interactive session. The workflow enforces `codex exec --sandbox read-only --ephemeral --color never`, sends each agent prompt through standard input, and uses the model selected by your local Codex configuration. Codex cannot modify the repository through this channel, and session rollout files are not persisted, but prompt context is sent through your logged-in Codex service account.
 
 If the command fails, check the reported category:
 
@@ -810,6 +810,7 @@ If the command fails, check the reported category:
 - `CODEX_TIMEOUT`: increase `CODEX_TIMEOUT_MS`; the default is 600000 ms per request.
 - `CODEX_EXECUTION_FAILED`: run `codex` directly to verify the local installation.
 - `CODEX_PROTOCOL_INVALID`: update Codex and retry; the workflow requires a JSON object.
+- `CODEX_CONFIGURATION_INVALID`: remove unsafe or protocol-conflicting values from `CODEX_ARGS`.
 ````
 
 - [ ] **Step 3: Update Architecture Playbook documentation**
