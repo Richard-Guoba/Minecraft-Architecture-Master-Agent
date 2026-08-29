@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node.js 20+ ESM, built-in `node:test`, `node:child_process`, `node:fs/promises`, Codex CLI `exec`
 
-**Spec:** `docs/superpowers/specs/2026-08-29-local-codex-llm-channel-design.md`
+**Spec:** `docs/superpowers/specs/2026-08-29-architecture-playbook-local-codex-llm-channel-design.md`
 
 ## Global Constraints
 
