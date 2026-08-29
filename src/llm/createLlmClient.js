@@ -1,29 +1,39 @@
 import { CodexClient } from './CodexClient.js';
 import { ZhipuClient } from './ZhipuClient.js';
 
-export function createLlmClient({ env = process.env, cwd = process.cwd() } = {}) {
-  const provider = normalizeProvider(env.LLM_PROVIDER || 'zhipu');
+export const LLM_PROVIDERS = Object.freeze([
+  'auto',
+  'codex',
+  'openai',
+  'openai-compatible',
+  'zhipu'
+]);
 
-  if (provider === 'zhipu') {
+export function createLlmClient({ env = process.env, cwd = process.cwd(), provider } = {}) {
+  const originalProvider = provider === undefined ? env.LLM_PROVIDER || 'zhipu' : provider;
+  const selected = normalizeLlmProvider(originalProvider);
+  if (!LLM_PROVIDERS.includes(selected)) {
+    throw new Error(`Unsupported LLM provider: ${String(originalProvider)}`);
+  }
+
+  if (selected === 'zhipu') {
     return createZhipuClient(env);
   }
-  if (provider === 'openai' || provider === 'openai-compatible') {
+  if (selected === 'openai' || selected === 'openai-compatible') {
     return createOpenAiCompatibleClient(env);
   }
-  if (provider === 'auto') {
-    return new FallbackLlmClient([
-      createCodexClient(env, cwd),
-      createConfiguredApiClient(env)
-    ]);
-  }
-  if (provider === 'codex') {
-    return new FallbackLlmClient([
-      createCodexClient(env, cwd),
-      createConfiguredApiClient(env)
-    ]);
+  if (selected === 'codex') {
+    return createCodexClient(env, cwd);
   }
 
-  throw new Error(`Unsupported LLM_PROVIDER: ${env.LLM_PROVIDER}`);
+  return new FallbackLlmClient([
+    createCodexClient(env, cwd),
+    createConfiguredApiClient(env)
+  ]);
+}
+
+export function normalizeLlmProvider(provider) {
+  return String(provider).trim().toLowerCase().replace(/_/gu, '-');
 }
 
 class FallbackLlmClient {
@@ -95,8 +105,4 @@ function defaultOpenAiCompatibleModel(env) {
   const baseUrl = String(env.OPENAI_BASE_URL || '').toLowerCase();
   if (baseUrl.includes('api.deepseek.com')) return 'deepseek-v4-pro';
   return undefined;
-}
-
-function normalizeProvider(provider) {
-  return String(provider).trim().toLowerCase().replace(/_/g, '-');
 }

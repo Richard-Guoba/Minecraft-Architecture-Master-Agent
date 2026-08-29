@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLlmClient } from '../src/llm/createLlmClient.js';
+import {
+  createLlmClient,
+  LLM_PROVIDERS,
+  normalizeLlmProvider
+} from '../src/llm/createLlmClient.js';
 
 test('defaults to the Zhipu API channel', () => {
   const client = createLlmClient({ env: {}, cwd: process.cwd() });
@@ -68,4 +72,58 @@ test('does not switch the default away from Zhipu when OpenAI-compatible vars ex
   });
 
   assert.equal(client.name, 'zhipu');
+});
+
+test('request provider override wins over LLM_PROVIDER', () => {
+  const client = createLlmClient({
+    provider: 'codex',
+    env: {
+      LLM_PROVIDER: 'zhipu',
+      ZHIPU_API_KEY: 'must-not-be-selected',
+      CODEX_COMMAND: 'missing-codex-for-selection-test'
+    },
+    cwd: process.cwd()
+  });
+
+  assert.equal(client.name, 'codex');
+  assert.equal('clients' in client, false);
+});
+
+test('environment-selected Codex is fail-closed', () => {
+  const client = createLlmClient({
+    env: {
+      LLM_PROVIDER: 'codex',
+      CODEX_COMMAND: 'missing-codex-for-selection-test',
+      ZHIPU_API_KEY: 'must-not-be-used'
+    },
+    cwd: process.cwd()
+  });
+
+  assert.equal(client.name, 'codex');
+  assert.equal('clients' in client, false);
+});
+
+test('auto remains the only fallback policy', () => {
+  const client = createLlmClient({
+    provider: 'auto',
+    env: {
+      ZHIPU_API_KEY: 'configured-api',
+      ZHIPU_BASE_URL: 'https://example.test/api/paas/v4'
+    },
+    cwd: process.cwd()
+  });
+
+  assert.equal(client.name, 'codex -> zhipu');
+  assert.equal(Array.isArray(client.clients), true);
+});
+
+test('normalizes provider aliases and rejects unsupported overrides', () => {
+  assert.equal(normalizeLlmProvider(' OPENAI_COMPATIBLE '), 'openai-compatible');
+  assert.deepEqual(LLM_PROVIDERS, [
+    'auto', 'codex', 'openai', 'openai-compatible', 'zhipu'
+  ]);
+  assert.throws(
+    () => createLlmClient({ provider: 'private-provider-value', env: {} }),
+    /Unsupported LLM provider: private-provider-value/u
+  );
 });
