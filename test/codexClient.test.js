@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +9,18 @@ import * as codexModule from '../src/llm/CodexClient.js';
 const { CodexClient } = codexModule;
 const FIXTURE = path.resolve(import.meta.dirname, 'fixtures/fakeCodexCli.js');
 const ROOT = path.resolve(import.meta.dirname, '..');
+
+test('fake Codex fixture exits harmlessly when discovered without protocol arguments', () => {
+  const result = spawnSync(process.execPath, [FIXTURE], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    timeout: 2000
+  });
+
+  assert.equal(result.signal, null);
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, '');
+});
 
 async function fixture(t, scenario, { timeoutMs = 2000 } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-client-test-'));

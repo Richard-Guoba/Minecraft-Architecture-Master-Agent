@@ -10,6 +10,7 @@ const scenario = valueAfter('--scenario') || 'success';
 const outputPath = valueAfter('-o');
 const schemaPath = valueAfter('--output-schema');
 const tracePath = valueAfter('--trace');
+if (!outputPath || !schemaPath) process.exit(0);
 let input = '';
 process.stdin.setEncoding('utf8');
 for await (const chunk of process.stdin) input += chunk;
