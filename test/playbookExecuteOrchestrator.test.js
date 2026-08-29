@@ -25,6 +25,33 @@ import {
   pruneCandidateWorkspaces
 } from '../src/playbook/execute/storage.js';
 
+test('execute orchestration forwards the request-scoped LLM provider', async (t) => {
+  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p5-provider-forward-'));
+  t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+  const calls = [];
+
+  await assert.rejects(runExecutablePlaybookPipeline({
+    playbook: 'execute',
+    prompt: 'Build a medieval gatehouse',
+    mode: 'llm',
+    llmProvider: 'codex',
+    outRoot,
+    cwd: path.resolve(import.meta.dirname, '..')
+  }, {
+    createClient: (options) => {
+      calls.push(options);
+      throw Object.assign(new Error('private dependency stop'), {
+        code: 'P5_AUTHORITY_INVALID'
+      });
+    }
+  }), { code: 'P5_AUTHORITY_INVALID' });
+
+  assert.deepEqual(calls, [{
+    cwd: path.resolve(import.meta.dirname, '..'),
+    provider: 'codex'
+  }]);
+});
+
 test('execute orchestration rejects unknown dependency authority before work', async () => {
   await assert.rejects(
     runExecutablePlaybookPipeline({}, { unexpected: () => {} }),

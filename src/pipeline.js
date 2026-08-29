@@ -7,6 +7,7 @@ import { CandidateSelectionAgent } from './construction/agents/candidateSelectio
 import { candidateSeedFor, installSelectedDatapack } from './construction/candidatePipelineSupport.js';
 import { validateExecuteOptions, validatePlaybookMode } from './playbook/execute/contracts.js';
 import { runExecutablePlaybookPipeline } from './playbook/execute/orchestrator.js';
+import { LLM_PROVIDERS, normalizeLlmProvider } from './llm/createLlmClient.js';
 export { candidateSeedFor } from './construction/candidatePipelineSupport.js';
 
 const MAX_RANDOM_SEED = 2147483647;
@@ -15,6 +16,7 @@ const DEFAULT_CANDIDATE_TARGET_SCORE = 95;
 export async function runPipeline({
   prompt,
   mode = 'mock',
+  llmProvider,
   mcVersion = '1.21',
   outRoot,
   seed,
@@ -35,6 +37,7 @@ export async function runPipeline({
   playbook = 'off'
 }) {
   validatePlaybookMode(playbook);
+  const selectedLlmProvider = validateLlmProviderOption({ mode, llmProvider, playbook });
   if (playbook === 'execute') {
     const executeOptions = validateExecuteOptions({ playbook,
       ...(candidates !== undefined ? { candidates } : {}),
@@ -44,7 +47,7 @@ export async function runPipeline({
       throw Object.assign(new Error('P5_OPTIONS_INCOMPATIBLE'), { code: 'P5_OPTIONS_INCOMPATIBLE' });
     }
     return runExecutablePlaybookPipeline({
-      prompt, mode, mcVersion, outRoot, seed,
+      prompt, mode, llmProvider: selectedLlmProvider, mcVersion, outRoot, seed,
       candidates: executeOptions.candidates,
       candidateRounds: executeOptions.candidateRounds,
       candidateTargetScore, candidateForceRounds: executeOptions.candidateForceRounds,
@@ -66,6 +69,7 @@ export async function runPipeline({
     return runCandidatePipeline({
       prompt,
       mode,
+      llmProvider: selectedLlmProvider,
       mcVersion,
       outRoot,
       seed,
@@ -93,6 +97,7 @@ export async function runPipeline({
   const result = await runConstructionWorkflow({
     prompt,
     mode,
+    llmProvider: selectedLlmProvider,
     mcVersion,
     outputDir,
     seed: seedPlan.seed,
@@ -119,6 +124,7 @@ export async function runPipeline({
 export async function runCandidatePipeline({
   prompt,
   mode = 'mock',
+  llmProvider,
   mcVersion = '1.21',
   outRoot,
   seed,
@@ -139,6 +145,7 @@ export async function runCandidatePipeline({
   playbook = 'off'
 }) {
   validatePlaybookMode(playbook);
+  const selectedLlmProvider = validateLlmProviderOption({ mode, llmProvider, playbook });
   if (playbook === 'execute') {
     const executeOptions = validateExecuteOptions({
       playbook,
@@ -147,7 +154,7 @@ export async function runCandidatePipeline({
       candidateForceRounds
     });
     return runExecutablePlaybookPipeline({
-      prompt, mode, mcVersion, outRoot, seed,
+      prompt, mode, llmProvider: selectedLlmProvider, mcVersion, outRoot, seed,
       candidates: executeOptions.candidates,
       candidateRounds: executeOptions.candidateRounds,
       candidateTargetScore,
@@ -188,6 +195,7 @@ export async function runCandidatePipeline({
         const result = await runConstructionWorkflow({
           prompt: roundPrompt,
           mode,
+          llmProvider: selectedLlmProvider,
           mcVersion,
           outputDir: candidateDir,
           seed: candidateSeed,
@@ -333,6 +341,20 @@ export async function runCandidatePipeline({
     candidateSelection,
     artifacts: selectedResult.artifacts
   };
+}
+
+function validateLlmProviderOption({ mode, llmProvider, playbook }) {
+  if (llmProvider === undefined) return undefined;
+  const normalized = normalizeLlmProvider(llmProvider);
+  if (!LLM_PROVIDERS.includes(normalized) || mode !== 'llm') {
+    if (playbook === 'execute') {
+      throw Object.assign(new Error('P5_OPTIONS_INCOMPATIBLE'), {
+        code: 'P5_OPTIONS_INCOMPATIBLE'
+      });
+    }
+    throw new Error('Explicit --llm-provider requires --mode llm and a supported provider.');
+  }
+  return normalized;
 }
 
 export function resolveSeed(seed) {

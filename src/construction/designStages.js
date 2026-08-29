@@ -25,6 +25,7 @@ import { applyLayerEffects } from '../playbook/execute/repairTransaction.js';
 export async function prepareConstructionDesign({
   prompt,
   mode = 'mock',
+  llmProvider: requestedLlmProvider,
   mcVersion = '1.21',
   outputDir,
   seed,
@@ -45,7 +46,10 @@ export async function prepareConstructionDesign({
   if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
 
   await ensureDir(outputDir);
-  const llmClient = injectedLlmClient || createLlmClient({ cwd });
+  const llmClient = injectedLlmClient || createLlmClient({
+    cwd,
+    provider: requestedLlmProvider
+  });
   const llmProvider = mode === 'mock' ? 'disabled-by-mock-mode' : llmClient.name;
 
   let architecture = await new ConstructionArchitectAgent({ llmClient, mode }).run(prompt);

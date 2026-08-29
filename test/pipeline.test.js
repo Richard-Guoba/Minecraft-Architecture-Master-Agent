@@ -4,6 +4,26 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runPipeline } from '../src/pipeline.js';
 
+test('rejects unsupported or mode-incompatible provider selection before output', async (t) => {
+  const parent = path.resolve('.tmp', `pipeline-provider-invalid-${Date.now()}`);
+  t.after(() => fs.rm(parent, { recursive: true, force: true }));
+
+  for (const [mode, llmProvider] of [
+    ['mock', 'codex'],
+    ['auto', 'codex'],
+    ['llm', 'private-provider']
+  ]) {
+    const outRoot = path.join(parent, `${mode}-${llmProvider}`);
+    await assert.rejects(runPipeline({
+      prompt: 'Build a gatehouse',
+      mode,
+      llmProvider,
+      outRoot
+    }));
+    await assert.rejects(fs.access(outRoot), { code: 'ENOENT' });
+  }
+});
+
 test('runs the construction-method workflow as the single active pipeline', async () => {
   const root = path.resolve('.tmp', `architect-test-${Date.now()}`);
   try {

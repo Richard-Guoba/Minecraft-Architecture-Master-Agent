@@ -128,7 +128,9 @@ async function executeCandidate({ index, normalized, seedPlan, runDir, projectRo
   let frozenDesign; let prepared; let compiled; let result; let hardQa; let review;
   let frozenDesignSha256 = null; let contextSha256 = null; let blueprintSha256 = null; let hardQaSha256 = null; let reviewSha256 = null;
   try {
-    const client = normalized.mode === 'mock' ? undefined : deps.createClient({ cwd: projectRoot });
+    const client = normalized.mode === 'mock'
+      ? undefined
+      : deps.createClient({ cwd: projectRoot, provider: normalized.llmProvider });
     frozenDesign = await deps.createEnvelope({ mode: normalized.mode, candidateId, seed, prompt: normalized.prompt, cards, client });
     frozenDesignSha256 = sha256(stableJson(frozenDesign));
     prepared = await deps.prepareDesign({ prompt: normalized.prompt, mode: normalized.mode, mcVersion: normalized.mcVersion,
