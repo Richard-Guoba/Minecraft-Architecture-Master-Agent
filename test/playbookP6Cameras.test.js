@@ -28,6 +28,7 @@ test('derives the approved six cameras from inclusive asymmetric bounds', () => 
   });
 
   assert.deepEqual(manifest.views.map(view => view.view_id), P6_VIEW_IDS);
+  assert.deepEqual(manifest.views.map(view => view.framing_multiplier), Array(6).fill('1.000000'));
   assert.deepEqual(manifest.views.map(view => view.position), [
     { x: '10.000000', y: '11.200000', z: '67.750000' },
     { x: '53.750000', y: '11.200000', z: '22.000000' },
@@ -67,7 +68,7 @@ test('shared perspective framing applies one multiplier per view to every soluti
   ];
   const shared = deriveSharedFraming({ solutions });
   assert.deepEqual(Object.keys(shared.view_multipliers), P6_VIEW_IDS);
-  assert.equal(shared.view_multipliers['entry-eye'], '1.000000');
+  assert.ok(Number(shared.view_multipliers['entry-eye']) > 1, 'oversized cohort expands entry-eye southward');
   assert.ok(Number(shared.view_multipliers['front-south']) > 1, 'tall cohort member needs a shared expansion');
 
   const manifests = solutions.map(item => deriveFixedViewManifest({
@@ -94,7 +95,16 @@ test('shared perspective framing applies one multiplier per view to every soluti
       ) < 0.00002, `view ${P6_VIEW_IDS[viewIndex]} uses the cohort multiplier`);
     }
   }
-  assert.deepEqual(manifests.map(item => item.views.at(-1).position.z), ['42.000000', '26.000000', '14.000000', '18.000000']);
+  for (const [index, manifest] of manifests.entries()) {
+    const entryView = manifest.views.at(-1);
+    assert.equal(entryView.framing_multiplier, shared.view_multipliers['entry-eye']);
+    assert.equal(entryView.position.y, decimal6(solutions[index].main_entry.y + 1.62));
+    assert.equal(
+      entryView.position.z,
+      decimal6(solutions[index].main_entry.z + 8 * Number(shared.view_multipliers['entry-eye']))
+    );
+    for (const view of manifest.views) assertAllCornersFit(view, solutions[index].bounds);
+  }
 });
 
 test('camera derivation rejects empty cohorts and invalid geometry or entry semantics', () => {
@@ -118,6 +128,31 @@ test('camera derivation rejects empty cohorts and invalid geometry or entry sema
     solutionId: 'candidate-best', blueprintSha256: HASH_A,
     bounds: ASYMMETRIC_BOUNDS, mainEntry: SOUTH_ENTRY
   }), { code: 'P6_CAMERA_PROTOCOL_INVALID' });
+  assert.throws(() => deriveFixedViewManifest({
+    solutionId: 'playbook-candidate-01', blueprintSha256: HASH_A,
+    bounds: ASYMMETRIC_BOUNDS, mainEntry: SOUTH_ENTRY
+  }), { code: 'P6_CAMERA_PROTOCOL_INVALID' });
+  assert.throws(() => deriveFixedViewManifest({
+    solutionId: 'playbook-candidate-01', blueprintSha256: HASH_A,
+    buildFunctionSha256: Symbol('build'), bounds: ASYMMETRIC_BOUNDS, mainEntry: SOUTH_ENTRY
+  }), error => error?.code === 'P6_CAMERA_PROTOCOL_INVALID' && error?.name === 'P6ContractError');
+  for (const buildFunctionSha256 of [123, '', 'A'.repeat(64), 'b'.repeat(63)]) {
+    assert.throws(() => deriveFixedViewManifest({
+      solutionId: 'playbook-candidate-01', blueprintSha256: HASH_A,
+      buildFunctionSha256, bounds: ASYMMETRIC_BOUNDS, mainEntry: SOUTH_ENTRY
+    }), { code: 'P6_CAMERA_PROTOCOL_INVALID' });
+  }
+  const invalidShared = {
+    horizontal_fov_degrees: 70,
+    aspect_ratio: '16:9',
+    view_multipliers: Object.fromEntries(P6_VIEW_IDS.map(viewId => [viewId, '1.000000']))
+  };
+  invalidShared.view_multipliers['front-south'] = '01.000000';
+  assert.throws(() => deriveFixedViewManifest({
+    solutionId: 'playbook-candidate-01', blueprintSha256: HASH_A,
+    buildFunctionSha256: HASH_B, bounds: ASYMMETRIC_BOUNDS,
+    mainEntry: SOUTH_ENTRY, sharedFraming: invalidShared
+  }), { code: 'P6_CAMERA_PROTOCOL_INVALID' });
 });
 
 function solution(solution_id, bounds) {
@@ -140,3 +175,31 @@ function distance(view) {
     Number(view.position.z) - Number(view.target.z)
   ).toFixed(5));
 }
+
+function assertAllCornersFit(view, bounds) {
+  const position = numericPoint(view.position);
+  const target = numericPoint(view.target);
+  const forward = normalize(subtract(target, position));
+  const referenceUp = Math.abs(forward.y) > 0.999 ? { x: 0, y: 0, z: -1 } : { x: 0, y: 1, z: 0 };
+  const right = normalize(cross(forward, referenceUp));
+  const up = normalize(cross(right, forward));
+  const horizontal = Math.tan(70 * Math.PI / 360);
+  const vertical = horizontal / (16 / 9);
+  for (const x of [bounds.minX - 0.5, bounds.maxX + 0.5]) {
+    for (const y of [bounds.minY - 0.5, bounds.maxY + 0.5]) {
+      for (const z of [bounds.minZ - 0.5, bounds.maxZ + 0.5]) {
+        const relative = subtract({ x, y, z }, position);
+        const depth = dot(relative, forward);
+        assert.ok(depth > 0, `${view.view_id} corner is in front of camera`);
+        assert.ok(Math.abs(dot(relative, right) / depth) <= horizontal, `${view.view_id} horizontal fit`);
+        assert.ok(Math.abs(dot(relative, up) / depth) <= vertical, `${view.view_id} vertical fit`);
+      }
+    }
+  }
+}
+
+function numericPoint(point) { return { x: Number(point.x), y: Number(point.y), z: Number(point.z) }; }
+function subtract(left, right) { return { x: left.x - right.x, y: left.y - right.y, z: left.z - right.z }; }
+function dot(left, right) { return left.x * right.x + left.y * right.y + left.z * right.z; }
+function cross(left, right) { return { x: left.y * right.z - left.z * right.y, y: left.z * right.x - left.x * right.z, z: left.x * right.y - left.y * right.x }; }
+function normalize(vector) { const length = Math.hypot(vector.x, vector.y, vector.z); return { x: vector.x / length, y: vector.y / length, z: vector.z / length }; }

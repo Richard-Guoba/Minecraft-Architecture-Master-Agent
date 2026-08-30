@@ -1,6 +1,7 @@
-import { deepFreeze, sha256 } from '../shadow/canonical.js';
+import { deepFreeze, sha256, stableJson } from '../shadow/canonical.js';
 import { P6_VIEW_IDS, P6_VISUAL_SETTINGS } from './constants.js';
-import { p6Error } from './contracts.js';
+import { deriveFixedViewManifest } from './cameras.js';
+import { p6Error, validateCameraManifest } from './contracts.js';
 import { encodeRgbaPng } from './png.js';
 
 export const P6_REFERENCE_PALETTE = deepFreeze({
@@ -16,6 +17,7 @@ export const P6_REFERENCE_PALETTE = deepFreeze({
 });
 
 const MAX_VOXELS = 2_000_000;
+const DECIMAL6 = /^-?(0|[1-9]\d*)\.\d{6}$/u;
 const FACE_DEFINITIONS = Object.freeze([
   face(1, 0, 0, 0.82, [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]]),
   face(-1, 0, 0, 0.74, [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 0]]),
@@ -65,12 +67,48 @@ export function renderReferenceView({
 }
 
 export function renderReferenceViews({ solution, cameraManifest, settings } = {}) {
+  try {
+    return renderReferenceViewsValidated({ solution, cameraManifest, settings });
+  } catch (error) {
+    if (error?.code === 'P6_CAMERA_PROTOCOL_INVALID' || error?.code === 'P6_RENDER_FAILED') throw error;
+    failed();
+  }
+}
+
+function renderReferenceViewsValidated({ solution, cameraManifest, settings }) {
+  validateSettings(settings);
+  let manifest;
+  try { manifest = validateCameraManifest(cameraManifest); } catch { throw p6Error('P6_CAMERA_PROTOCOL_INVALID'); }
   if (!plain(solution) || typeof solution.solution_id !== 'string'
-    || !plain(cameraManifest) || cameraManifest.solution_id !== solution.solution_id
-    || !Array.isArray(cameraManifest.views) || cameraManifest.views.length !== P6_VIEW_IDS.length) failed();
+    || typeof solution.blueprint_sha256 !== 'string'
+    || typeof solution.build_function_sha256 !== 'string'
+    || solution.solution_id !== manifest.solution_id
+    || solution.blueprint_sha256 !== manifest.blueprint_sha256
+    || solution.build_function_sha256 !== manifest.build_function_sha256) failed();
   const blueprint = solution.blueprint;
   const operations = solution.operations ?? blueprint?.operations;
-  return cameraManifest.views.map((camera, index) => {
+  if (!plain(blueprint) || solution.blueprint_sha256 !== sha256(stableJson(blueprint))) failed();
+  if (!Array.isArray(operations) || !Array.isArray(blueprint.operations)
+    || stableJson(operations) !== stableJson(blueprint.operations)) failed();
+  const blueprintBounds = normalizeBounds(blueprint.bounds);
+  const solutionBounds = normalizeBounds(solution.bounds);
+  if (!sameBounds(blueprintBounds, solutionBounds) || !sameBounds(blueprintBounds, normalizeBounds(manifest.bounds))) failed();
+  const entry = normalizeSolutionEntry(solution.main_entry, solutionBounds);
+  const expected = deriveFixedViewManifest({
+    solutionId: solution.solution_id,
+    blueprintSha256: solution.blueprint_sha256,
+    buildFunctionSha256: solution.build_function_sha256,
+    bounds: solutionBounds,
+    mainEntry: entry,
+    sharedFraming: {
+      horizontal_fov_degrees: P6_VISUAL_SETTINGS.horizontal_fov_degrees,
+      aspect_ratio: P6_VISUAL_SETTINGS.aspect_ratio,
+      view_multipliers: Object.fromEntries(manifest.views.map(view => [view.view_id, view.framing_multiplier]))
+    }
+  });
+  if (stableJson(manifest.views) !== stableJson(expected.views)
+    || stableJson(manifest.main_entry) !== stableJson(expected.main_entry)) failed();
+  return manifest.views.map((camera, index) => {
     if (camera.view_id !== P6_VIEW_IDS[index]) failed();
     const bytes = renderReferenceView({ blueprint, operations, camera, settings });
     return {
@@ -238,9 +276,29 @@ function normalizeBounds(bounds) {
 
 function numericPoint(point) {
   if (!plain(point)) failed();
+  if (![point.x, point.y, point.z].every(value => typeof value === 'string' && DECIMAL6.test(value))) failed();
   const result = { x: Number(point.x), y: Number(point.y), z: Number(point.z) };
   if (!Object.values(result).every(Number.isFinite)) failed();
   return result;
+}
+
+function normalizeSolutionEntry(entry, bounds) {
+  if (!plain(entry)) failed();
+  const result = {
+    x: entry.x ?? entry.center_x,
+    y: entry.y ?? entry.center_y,
+    z: entry.z ?? entry.center_z,
+    facing: entry.facing ?? entry.side
+  };
+  if (![result.x, result.y, result.z].every(Number.isFinite) || result.facing !== 'south'
+    || result.x < bounds.minX || result.x > bounds.maxX
+    || result.y < bounds.minY || result.y > bounds.maxY || result.z !== bounds.maxZ) failed();
+  return result;
+}
+
+function sameBounds(left, right) {
+  return left.minX === right.minX && left.minY === right.minY && left.minZ === right.minZ
+    && left.maxX === right.maxX && left.maxY === right.maxY && left.maxZ === right.maxZ;
 }
 
 function shade(color, factor) {

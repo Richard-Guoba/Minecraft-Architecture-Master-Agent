@@ -23,6 +23,7 @@ import {
   p6Error,
   sanitizeP6Error,
   validateCameraManifest,
+  validateCameraManifestCohort,
   validateCaptureManifest,
   validateCohortManifest,
   validateComparisonManifest,
@@ -127,6 +128,7 @@ test('visual settings and camera manifests enforce fixed authority hashes and si
   assert.deepEqual(manifest.views.map((item) => item.view_id), P6_VIEW_IDS);
   assert.equal(manifest.request_sha256, P6_PROTOCOL_FILE_HASHES['fixed-request.json']);
   assert.equal(manifest.settings_sha256, P6_PROTOCOL_FILE_HASHES['visual-settings.json']);
+  assert.deepEqual(manifest.views.map(view => view.framing_multiplier), Array(6).fill('1.000000'));
 
   const swappedViews = validCameraManifest();
   [swappedViews.views[0], swappedViews.views[1]] = [swappedViews.views[1], swappedViews.views[0]];
@@ -136,6 +138,14 @@ test('visual settings and camera manifests enforce fixed authority hashes and si
   delete missingEntryOffset.views[5].entry_offset_blocks;
   assert.throws(() => validateCameraManifest(missingEntryOffset), { code: 'P6_CAMERA_PROTOCOL_INVALID' });
 
+  const missingFraming = validCameraManifest();
+  delete missingFraming.views[0].framing_multiplier;
+  assert.throws(() => validateCameraManifest(missingFraming), { code: 'P6_CAMERA_PROTOCOL_INVALID' });
+
+  const invalidFraming = validCameraManifest();
+  invalidFraming.views[0].framing_multiplier = '0.999999';
+  assert.throws(() => validateCameraManifest(invalidFraming), { code: 'P6_CAMERA_PROTOCOL_INVALID' });
+
   const wrongRequestHash = validCameraManifest();
   wrongRequestHash.request_sha256 = hashFor('mutated-request');
   assert.throws(() => validateCameraManifest(wrongRequestHash), { code: 'P6_AUTHORITY_INVALID' });
@@ -143,6 +153,18 @@ test('visual settings and camera manifests enforce fixed authority hashes and si
   const wrongSettingsHash = validCameraManifest();
   wrongSettingsHash.settings_sha256 = hashFor('mutated-settings');
   assert.throws(() => validateCameraManifest(wrongSettingsHash), { code: 'P6_AUTHORITY_INVALID' });
+});
+
+test('camera manifest cohort requires exact identities and shared per-view framing', () => {
+  const manifests = [
+    'playbook-candidate-01',
+    'playbook-candidate-02',
+    'playbook-candidate-03',
+    'baseline-current'
+  ].map(solutionId => ({ ...validCameraManifest(), solution_id: solutionId }));
+  assert.equal(validateCameraManifestCohort(manifests).length, 4);
+  manifests[2].views[4].framing_multiplier = '1.250000';
+  assert.throws(() => validateCameraManifestCohort(manifests), { code: 'P6_CAMERA_PROTOCOL_INVALID' });
 });
 
 test('cohort and capture manifests preserve frozen authorities and require complete capture metadata', () => {
@@ -372,6 +394,7 @@ function cameraView(view_id, px, py, pz, tx, ty, tz) {
     view_id,
     purpose: cameraPurpose(view_id),
     horizontal_fov_degrees: 70,
+    framing_multiplier: '1.000000',
     position: { x: px, y: py, z: pz },
     target: { x: tx, y: ty, z: tz }
   };

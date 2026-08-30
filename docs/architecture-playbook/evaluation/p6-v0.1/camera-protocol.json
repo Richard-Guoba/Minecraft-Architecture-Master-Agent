@@ -40,6 +40,8 @@
       "view_id": "entry-eye"
     }
   ],
+  "framing_multiplier_format": "six-decimal-string-greater-than-or-equal-to-one",
+  "framing_validation_policy": "all-eight-full-block-corners-fit-after-six-decimal-rounding",
   "protocol_version": "0.1.0",
   "schema_version": 1
 }

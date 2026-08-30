@@ -77,7 +77,7 @@ const CAMERA_MANIFEST_FIELDS = Object.freeze([
 ]);
 const BOUNDS_FIELDS = Object.freeze(['min_x', 'min_y', 'min_z', 'max_x', 'max_y', 'max_z']);
 const MAIN_ENTRY_FIELDS = Object.freeze(['center_x', 'center_y', 'center_z', 'facing']);
-const CAMERA_VIEW_FIELDS = Object.freeze(['view_id', 'purpose', 'horizontal_fov_degrees', 'position', 'target']);
+const CAMERA_VIEW_FIELDS = Object.freeze(['view_id', 'purpose', 'horizontal_fov_degrees', 'framing_multiplier', 'position', 'target']);
 const ENTRY_VIEW_FIELDS = Object.freeze([...CAMERA_VIEW_FIELDS, 'entry_offset_blocks']);
 const POINT_FIELDS = Object.freeze(['x', 'y', 'z']);
 const COHORT_MANIFEST_FIELDS = Object.freeze([
@@ -304,6 +304,7 @@ export function validateCameraManifest(value) {
     assertLiteral(view.view_id, expectedViewId, 'P6_CAMERA_PROTOCOL_INVALID');
     assertLiteral(view.purpose, expectedPurpose, 'P6_CAMERA_PROTOCOL_INVALID');
     assertLiteral(view.horizontal_fov_degrees, P6_VISUAL_SETTINGS.horizontal_fov_degrees, 'P6_CAMERA_PROTOCOL_INVALID');
+    assertFramingMultiplier(view.framing_multiplier, 'P6_CAMERA_PROTOCOL_INVALID');
     assertPoint(view.position, 'P6_CAMERA_PROTOCOL_INVALID');
     assertPoint(view.target, 'P6_CAMERA_PROTOCOL_INVALID');
     if (isEntry) {
@@ -311,6 +312,28 @@ export function validateCameraManifest(value) {
     }
   }
   return data;
+}
+
+export function validateCameraManifestCohort(value) {
+  const expectedIds = [
+    'playbook-candidate-01',
+    'playbook-candidate-02',
+    'playbook-candidate-03',
+    'baseline-current'
+  ];
+  if (!Array.isArray(value) || value.length !== expectedIds.length) fail('P6_CAMERA_PROTOCOL_INVALID');
+  const manifests = value.map((manifest, index) => {
+    const validated = validateCameraManifest(manifest);
+    assertLiteral(validated.solution_id, expectedIds[index], 'P6_CAMERA_PROTOCOL_INVALID');
+    return validated;
+  });
+  for (const viewIndex of P6_VIEW_IDS.keys()) {
+    const expected = manifests[0].views[viewIndex].framing_multiplier;
+    for (const manifest of manifests.slice(1)) {
+      assertLiteral(manifest.views[viewIndex].framing_multiplier, expected, 'P6_CAMERA_PROTOCOL_INVALID');
+    }
+  }
+  return manifests;
 }
 
 export function validateCohortManifest(value) {
@@ -627,6 +650,10 @@ function assertHash(value, code) {
 
 function assertDecimal(value, code) {
   if (typeof value !== 'string' || !DECIMAL.test(value)) fail(code);
+}
+
+function assertFramingMultiplier(value, code) {
+  if (typeof value !== 'string' || !/^(?:[1-9]\d*)\.\d{6}$/u.test(value) || Number(value) < 1) fail(code);
 }
 
 function assertInteger(value, code) {

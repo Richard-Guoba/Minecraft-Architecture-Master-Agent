@@ -41,7 +41,6 @@ export function deriveSharedFraming({
     };
   });
   const view_multipliers = Object.fromEntries(P6_VIEW_IDS.map(viewId => {
-    if (viewId === 'entry-eye') return [viewId, '1.000000'];
     let sharedMultiplier = 1;
     for (const solution of normalized) {
       const view = baseViews(solution.bounds, solution.mainEntry).find(item => item.view_id === viewId);
@@ -52,7 +51,11 @@ export function deriveSharedFraming({
         aspect: aspectNumber
       }));
     }
-    const roundedUp = Math.ceil((sharedMultiplier - Number.EPSILON) * 1_000_000) / 1_000_000;
+    let roundedUp = Math.ceil((sharedMultiplier - Number.EPSILON) * 1_000_000) / 1_000_000;
+    while (!normalized.every(solution => {
+      const view = baseViews(solution.bounds, solution.mainEntry).find(item => item.view_id === viewId);
+      return fitsPersisted(solution.bounds, view, roundedUp, fov, aspectNumber);
+    })) roundedUp += 0.000001;
     return [viewId, decimal6(roundedUp)];
   }));
   return deepFreeze({
@@ -65,24 +68,25 @@ export function deriveSharedFraming({
 export function deriveFixedViewManifest({
   solutionId,
   blueprintSha256,
-  buildFunctionSha256 = blueprintSha256,
+  buildFunctionSha256,
   bounds,
   mainEntry,
   sharedFraming
 } = {}) {
-  if (!SOLUTION_IDS.includes(solutionId) || !HASH.test(blueprintSha256) || !HASH.test(buildFunctionSha256)) invalid();
+  if (!SOLUTION_IDS.includes(solutionId)
+    || typeof blueprintSha256 !== 'string' || !HASH.test(blueprintSha256)
+    || typeof buildFunctionSha256 !== 'string' || !HASH.test(buildFunctionSha256)) invalid();
   const normalizedBounds = normalizeBounds(bounds);
   const normalizedEntry = normalizeEntry(mainEntry, normalizedBounds);
   const multipliers = normalizeFraming(sharedFraming);
   const views = baseViews(normalizedBounds, normalizedEntry).map(view => {
-    const multiplier = view.view_id === 'entry-eye' ? 1 : multipliers[view.view_id];
-    const position = view.view_id === 'entry-eye'
-      ? view.position
-      : scaleFromTarget(view.position, view.target, multiplier);
+    const multiplier = multipliers[view.view_id];
+    const position = scaledPosition(view, multiplier);
     const result = {
       view_id: view.view_id,
       purpose: P6_CAMERA_VIEW_PURPOSES[view.view_id],
       horizontal_fov_degrees: P6_VISUAL_SETTINGS.horizontal_fov_degrees,
+      framing_multiplier: decimal6(multiplier),
       position: point6(position),
       target: point6(view.target)
     };
@@ -154,8 +158,18 @@ function framingMultiplier({ bounds, view, horizontalFovDegrees, aspect }) {
 }
 
 function fits(bounds, view, multiplier, horizontalFovDegrees, aspect) {
-  const position = scaleFromTarget(view.position, view.target, multiplier);
-  const basis = cameraBasis(position, view.target);
+  const position = scaledPosition(view, multiplier);
+  return fitsFromPosition(bounds, position, view.target, horizontalFovDegrees, aspect);
+}
+
+function fitsPersisted(bounds, view, multiplier, horizontalFovDegrees, aspect) {
+  const position = numericPoint(point6(scaledPosition(view, multiplier)));
+  const target = numericPoint(point6(view.target));
+  return fitsFromPosition(bounds, position, target, horizontalFovDegrees, aspect);
+}
+
+function fitsFromPosition(bounds, position, target, horizontalFovDegrees, aspect) {
+  const basis = cameraBasis(position, target);
   const horizontalTangent = Math.tan(horizontalFovDegrees * Math.PI / 360);
   const verticalTangent = horizontalTangent / aspect;
   for (const corner of boundsCorners(bounds)) {
@@ -193,8 +207,7 @@ function normalizeFraming(sharedFraming) {
     || Object.keys(sharedFraming.view_multipliers).length !== P6_VIEW_IDS.length) invalid();
   return Object.fromEntries(P6_VIEW_IDS.map(viewId => {
     const value = sharedFraming.view_multipliers[viewId];
-    if (typeof value !== 'string' || !/^\d+\.\d{6}$/u.test(value) || Number(value) < 1) invalid();
-    if (viewId === 'entry-eye' && value !== '1.000000') invalid();
+    if (typeof value !== 'string' || !/^(?:[1-9]\d*)\.\d{6}$/u.test(value) || Number(value) < 1) invalid();
     return [viewId, Number(value)];
   }));
 }
@@ -251,6 +264,17 @@ function scaleFromTarget(position, target, multiplier) {
     z: target.z + (position.z - target.z) * multiplier
   };
 }
+
+function scaledPosition(view, multiplier) {
+  if (view.view_id !== 'entry-eye') return scaleFromTarget(view.position, view.target, multiplier);
+  return {
+    x: view.position.x,
+    y: view.position.y,
+    z: view.target.z + (view.position.z - view.target.z) * multiplier
+  };
+}
+
+function numericPoint(point) { return { x: Number(point.x), y: Number(point.y), z: Number(point.z) }; }
 
 function view(view_id, position, target) { return { view_id, position, target }; }
 function subtract(left, right) { return { x: left.x - right.x, y: left.y - right.y, z: left.z - right.z }; }

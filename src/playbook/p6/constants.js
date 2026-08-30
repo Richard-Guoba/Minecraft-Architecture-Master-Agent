@@ -75,6 +75,8 @@ export const P6_CAMERA_PROTOCOL = deepFreeze({
   decimal_precision: 6,
   distance_override_policy: 'uniform-per-view-across-solutions-only',
   entry_eye_offset_blocks: 8,
+  framing_multiplier_format: 'six-decimal-string-greater-than-or-equal-to-one',
+  framing_validation_policy: 'all-eight-full-block-corners-fit-after-six-decimal-rounding',
   formulas: [
     {
       position_formula: '(centerX, eyeY, maxZ + far)',

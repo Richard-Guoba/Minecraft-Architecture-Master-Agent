@@ -53,74 +53,80 @@
         {
           "additionalProperties": false,
           "properties": {
+            "framing_multiplier": { "pattern": "^(?:[1-9]\\d*)\\.\\d{6}$", "type": "string" },
             "horizontal_fov_degrees": { "const": 70 },
             "position": { "$ref": "#/$defs/point" },
             "purpose": { "const": "principal-facade-hierarchy" },
             "target": { "$ref": "#/$defs/point" },
             "view_id": { "const": "front-south" }
           },
-          "required": ["view_id", "purpose", "horizontal_fov_degrees", "position", "target"],
+          "required": ["view_id", "purpose", "horizontal_fov_degrees", "framing_multiplier", "position", "target"],
           "type": "object"
         },
         {
           "additionalProperties": false,
           "properties": {
+            "framing_multiplier": { "pattern": "^(?:[1-9]\\d*)\\.\\d{6}$", "type": "string" },
             "horizontal_fov_degrees": { "const": 70 },
             "position": { "$ref": "#/$defs/point" },
             "purpose": { "const": "side-facade-depth" },
             "target": { "$ref": "#/$defs/point" },
             "view_id": { "const": "side-east" }
           },
-          "required": ["view_id", "purpose", "horizontal_fov_degrees", "position", "target"],
+          "required": ["view_id", "purpose", "horizontal_fov_degrees", "framing_multiplier", "position", "target"],
           "type": "object"
         },
         {
           "additionalProperties": false,
           "properties": {
+            "framing_multiplier": { "pattern": "^(?:[1-9]\\d*)\\.\\d{6}$", "type": "string" },
             "horizontal_fov_degrees": { "const": 70 },
             "position": { "$ref": "#/$defs/point" },
             "purpose": { "const": "volume-attachment-roof-silhouette" },
             "target": { "$ref": "#/$defs/point" },
             "view_id": { "const": "quarter-southeast" }
           },
-          "required": ["view_id", "purpose", "horizontal_fov_degrees", "position", "target"],
+          "required": ["view_id", "purpose", "horizontal_fov_degrees", "framing_multiplier", "position", "target"],
           "type": "object"
         },
         {
           "additionalProperties": false,
           "properties": {
+            "framing_multiplier": { "pattern": "^(?:[1-9]\\d*)\\.\\d{6}$", "type": "string" },
             "horizontal_fov_degrees": { "const": 70 },
             "position": { "$ref": "#/$defs/point" },
             "purpose": { "const": "opposite-volume-relationship" },
             "target": { "$ref": "#/$defs/point" },
             "view_id": { "const": "quarter-southwest" }
           },
-          "required": ["view_id", "purpose", "horizontal_fov_degrees", "position", "target"],
+          "required": ["view_id", "purpose", "horizontal_fov_degrees", "framing_multiplier", "position", "target"],
           "type": "object"
         },
         {
           "additionalProperties": false,
           "properties": {
+            "framing_multiplier": { "pattern": "^(?:[1-9]\\d*)\\.\\d{6}$", "type": "string" },
             "horizontal_fov_degrees": { "const": 70 },
             "position": { "$ref": "#/$defs/point" },
             "purpose": { "const": "roof-composition-footprint" },
             "target": { "$ref": "#/$defs/point" },
             "view_id": { "const": "roof-birdseye" }
           },
-          "required": ["view_id", "purpose", "horizontal_fov_degrees", "position", "target"],
+          "required": ["view_id", "purpose", "horizontal_fov_degrees", "framing_multiplier", "position", "target"],
           "type": "object"
         },
         {
           "additionalProperties": false,
           "properties": {
             "entry_offset_blocks": { "const": 8 },
+            "framing_multiplier": { "pattern": "^(?:[1-9]\\d*)\\.\\d{6}$", "type": "string" },
             "horizontal_fov_degrees": { "const": 70 },
             "position": { "$ref": "#/$defs/point" },
             "purpose": { "const": "approach-scale-entrance-legibility" },
             "target": { "$ref": "#/$defs/point" },
             "view_id": { "const": "entry-eye" }
           },
-          "required": ["view_id", "purpose", "horizontal_fov_degrees", "position", "target", "entry_offset_blocks"],
+          "required": ["view_id", "purpose", "horizontal_fov_degrees", "framing_multiplier", "position", "target", "entry_offset_blocks"],
           "type": "object"
         }
       ],

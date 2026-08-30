@@ -5,6 +5,8 @@
     "decimal_precision": { "const": 6 },
     "distance_override_policy": { "const": "uniform-per-view-across-solutions-only" },
     "entry_eye_offset_blocks": { "const": 8 },
+    "framing_multiplier_format": { "const": "six-decimal-string-greater-than-or-equal-to-one" },
+    "framing_validation_policy": { "const": "all-eight-full-block-corners-fit-after-six-decimal-rounding" },
     "formulas": {
       "items": false,
       "maxItems": 6,
@@ -88,6 +90,8 @@
     "decimal_precision",
     "distance_override_policy",
     "entry_eye_offset_blocks",
+    "framing_multiplier_format",
+    "framing_validation_policy",
     "formulas"
   ],
   "title": "P6 Camera Protocol",
