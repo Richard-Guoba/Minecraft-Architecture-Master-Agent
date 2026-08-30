@@ -135,6 +135,12 @@ export const P6_OBSERVATION_CRITERIA_DOCUMENT = deepFreeze({
 
 export const P6_PREFERENCE_VALUES = deepFreeze(['left', 'right', 'tie']);
 export const P6_PREFERENCE_CONFIDENCE = deepFreeze(['low', 'medium', 'high']);
+export const P6_COMPARISON_ALIASES = deepFreeze([
+  'solution-A',
+  'solution-B',
+  'solution-C',
+  'solution-D'
+]);
 export const P6_REASON_TAGS = deepFreeze([
   'massing',
   'hierarchy',

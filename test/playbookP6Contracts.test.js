@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   P6_CAMERA_PROTOCOL,
   P6_ERROR_CODES,
+  P6_COMPARISON_ALIASES,
   P6_FIXED_PROMPT,
   P6_FIXED_REQUEST,
   P6_OBSERVATION_CRITERIA,
@@ -50,13 +51,6 @@ const PUBLIC_SCHEMA_FILES = [
   'reason-tags.schema.json',
   'visual-settings.schema.json'
 ];
-const OPAQUE_CODES = Object.freeze([
-  'opaque-solution-alpha',
-  'opaque-solution-bravo',
-  'opaque-solution-charlie',
-  'opaque-solution-delta'
-]);
-
 test('exports frozen literals and public errors without private detail leakage', () => {
   assert.equal(P6_PROTOCOL_VERSION, '0.1.0');
   assert.equal(P6_FIXED_PROMPT, 'Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base');
@@ -85,6 +79,7 @@ test('exports frozen literals and public errors without private detail leakage',
     'entry-eye'
   ]);
   assert.equal(new Set(P6_VIEW_IDS).size, 6);
+  assert.deepEqual(P6_COMPARISON_ALIASES, ['solution-A', 'solution-B', 'solution-C', 'solution-D']);
   assert.ok(P6_ERROR_CODES.includes('P6_GATE_FAILED'));
 
   const error = p6Error('P6_CAPTURE_INVALID');
@@ -201,12 +196,25 @@ test('observations, comparisons, preferences, and gate results stay exact and ca
   const observation = validateObservation(validObservation());
   assert.equal(observation.rating, 'usable');
   assert.deepEqual(observation.view_ids, ['front-south', 'entry-eye']);
-  const unorderedViews = validObservation();
-  unorderedViews.view_ids = ['entry-eye', 'front-south'];
-  assert.throws(() => validateObservation(unorderedViews), { code: 'P6_OBSERVATION_INVALID' });
+  const reorderedViews = validObservation();
+  reorderedViews.view_ids = ['entry-eye', 'front-south'];
+  assert.deepEqual(validateObservation(reorderedViews).view_ids, ['entry-eye', 'front-south']);
+  const duplicateViews = validObservation();
+  duplicateViews.view_ids = ['front-south', 'front-south'];
+  assert.throws(() => validateObservation(duplicateViews), { code: 'P6_OBSERVATION_INVALID' });
+  const unknownView = validObservation();
+  unknownView.view_ids = ['front-south', 'rear-north'];
+  assert.throws(() => validateObservation(unknownView), { code: 'P6_OBSERVATION_INVALID' });
+
+  const reorderedTags = validPreferenceRecord();
+  reorderedTags.reason_tags = ['facade', 'massing'];
+  assert.deepEqual(validatePreferenceRecord(reorderedTags).reason_tags, ['facade', 'massing']);
   const duplicateTags = validPreferenceRecord();
   duplicateTags.reason_tags = ['massing', 'massing'];
   assert.throws(() => validatePreferenceRecord(duplicateTags), { code: 'P6_COMPARISON_INVALID' });
+  const unknownTag = validPreferenceRecord();
+  unknownTag.reason_tags = ['massing', 'not-a-tag'];
+  assert.throws(() => validatePreferenceRecord(unknownTag), { code: 'P6_COMPARISON_INVALID' });
 
   const comparison = validateComparisonManifest(validComparisonManifest());
   assert.deepEqual(comparison.pairs.map((pair) => pair.pair_id), [
@@ -217,15 +225,22 @@ test('observations, comparisons, preferences, and gate results stay exact and ca
     'pair-05',
     'pair-06'
   ]);
-  const wrongPairOrder = validComparisonManifest();
-  [wrongPairOrder.pairs[0], wrongPairOrder.pairs[1]] = [wrongPairOrder.pairs[1], wrongPairOrder.pairs[0]];
-  assert.throws(() => validateComparisonManifest(wrongPairOrder), { code: 'P6_COMPARISON_INVALID' });
+  const reversedSlotOrientation = validComparisonManifest();
+  reversedSlotOrientation.pairs[0] = pair('pair-01', 'solution-B', 'solution-A');
+  reversedSlotOrientation.pairs[3] = pair('pair-04', 'solution-C', 'solution-B');
+  assert.deepEqual(validateComparisonManifest(reversedSlotOrientation).pairs[0], reversedSlotOrientation.pairs[0]);
+  const wrongPairBinding = validComparisonManifest();
+  wrongPairBinding.pairs[0] = pair('pair-01', 'solution-C', 'solution-A');
+  assert.throws(() => validateComparisonManifest(wrongPairBinding), { code: 'P6_COMPARISON_INVALID' });
 
   const gate = validateGateResult(validGateResult());
   assert.equal(gate.outcome, 'inconclusive');
   assert.equal(gate.failures.length, 1);
   const winningGate = validGateResult('playbook-supported');
   assert.deepEqual(validateGateResult(winningGate).failures, []);
+  const invalidWinningGate = validGateResult('playbook-supported');
+  invalidWinningGate.failures = [{ code: 'P6_GATE_FAILED', stage: 'gate', subject_id: 'gate-01' }];
+  assert.throws(() => validateGateResult(invalidWinningGate), { code: 'P6_GATE_FAILED' });
   const missingFailures = validGateResult();
   delete missingFailures.failures;
   assert.throws(() => validateGateResult(missingFailures), { code: 'P6_GATE_FAILED' });
@@ -389,7 +404,12 @@ function cohortSolution(solution_id, playbook_mode, slot_index, label) {
 
 function validCaptureManifest() {
   const images = [];
-  for (const [solutionIndex, solution_id] of OPAQUE_CODES.entries()) {
+  for (const [solutionIndex, solution_id] of [
+    'opaque-solution-alpha',
+    'opaque-solution-bravo',
+    'opaque-solution-charlie',
+    'opaque-solution-delta'
+  ].entries()) {
     for (const [viewIndex, view_id] of P6_VIEW_IDS.entries()) {
       images.push({
         screenshot_id: `capture-${String(solutionIndex * P6_VIEW_IDS.length + viewIndex + 1).padStart(2, '0')}-opaque`,
@@ -463,14 +483,14 @@ function validComparisonManifest() {
     capture_manifest_hash: hashFor('comparison-capture'),
     identity_map_sha256: hashFor('comparison-identity'),
     randomization_sha256: hashFor('comparison-randomization'),
-    solution_codes: [...OPAQUE_CODES],
+    solution_codes: [...P6_COMPARISON_ALIASES],
     pairs: [
-      pair('pair-01', OPAQUE_CODES[0], OPAQUE_CODES[1]),
-      pair('pair-02', OPAQUE_CODES[0], OPAQUE_CODES[2]),
-      pair('pair-03', OPAQUE_CODES[0], OPAQUE_CODES[3]),
-      pair('pair-04', OPAQUE_CODES[1], OPAQUE_CODES[2]),
-      pair('pair-05', OPAQUE_CODES[1], OPAQUE_CODES[3]),
-      pair('pair-06', OPAQUE_CODES[2], OPAQUE_CODES[3])
+      pair('pair-01', P6_COMPARISON_ALIASES[0], P6_COMPARISON_ALIASES[1]),
+      pair('pair-02', P6_COMPARISON_ALIASES[0], P6_COMPARISON_ALIASES[2]),
+      pair('pair-03', P6_COMPARISON_ALIASES[0], P6_COMPARISON_ALIASES[3]),
+      pair('pair-04', P6_COMPARISON_ALIASES[1], P6_COMPARISON_ALIASES[2]),
+      pair('pair-05', P6_COMPARISON_ALIASES[1], P6_COMPARISON_ALIASES[3]),
+      pair('pair-06', P6_COMPARISON_ALIASES[2], P6_COMPARISON_ALIASES[3])
     ],
     generated_at: '2026-08-30T10:05:00.000Z'
   };
@@ -569,32 +589,25 @@ function invalidCaptureManifestForSchema() {
 
 function invalidObservationForSchema() {
   const value = validObservation();
-  value.evidence_regions[0].region_kind = 'rect';
-  value.evidence_regions[0].region = null;
+  value.view_ids = ['entry-eye', 'entry-eye'];
   return value;
 }
 
 function invalidComparisonManifestForSchema() {
   const value = validComparisonManifest();
-  value.pairs[0].pair_id = 'pair-99';
+  value.pairs[0] = pair('pair-01', 'solution-C', 'solution-A');
   return value;
 }
 
 function invalidPreferenceRecordForSchema() {
   const value = validPreferenceRecord();
-  value.reviewer_kind = 'model-assisted';
+  value.reason_tags = ['massing', 'massing'];
   return value;
 }
 
 function invalidGateResultForSchema() {
-  const value = validGateResult();
-  value.failures = [
-    {
-      code: 'P6_GATE_FAILED',
-      stage: 'observation',
-      subject_id: ''
-    }
-  ];
+  const value = validGateResult('playbook-supported');
+  value.generated_at = '2026-08-30 10:20:00Z';
   return value;
 }
 
@@ -640,7 +653,6 @@ function applySchema(schema, value, path, errors, rootSchema) {
     const branches = schema.oneOf.map((branch) => validateSchemaValue(branch, value, path, rootSchema));
     const matches = branches.filter((entry) => entry.length === 0).length;
     if (matches !== 1) errors.push(`${path}:oneOf`);
-    return;
   }
   if (schema.if) {
     const ifErrors = validateSchemaValue(schema.if, value, path, rootSchema);
@@ -651,7 +663,7 @@ function applySchema(schema, value, path, errors, rootSchema) {
   if (schema.const !== undefined && !deepEqualSchema(value, schema.const)) errors.push(`${path}:const`);
   if (schema.enum && !schema.enum.some((item) => deepEqualSchema(item, value))) errors.push(`${path}:enum`);
   if (schema.pattern && (typeof value !== 'string' || !(new RegExp(schema.pattern, 'u')).test(value))) errors.push(`${path}:pattern`);
-  if (schema.format === 'date-time' && (typeof value !== 'string' || Number.isNaN(Date.parse(value)))) errors.push(`${path}:format`);
+  if (schema.format === 'date-time' && (typeof value !== 'string' || !isRfc3339DateTime(value))) errors.push(`${path}:format`);
   if (schema.minLength !== undefined && (typeof value !== 'string' || value.length < schema.minLength)) errors.push(`${path}:minLength`);
   if (schema.maxLength !== undefined && (typeof value !== 'string' || value.length > schema.maxLength)) errors.push(`${path}:maxLength`);
   if (schema.minimum !== undefined && (typeof value !== 'number' || value < schema.minimum)) errors.push(`${path}:minimum`);
@@ -723,6 +735,11 @@ function resolveRef(rootSchema, ref) {
   let current = rootSchema;
   for (const segment of segments) current = current[segment];
   return current;
+}
+
+function isRfc3339DateTime(value) {
+  const expression = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u;
+  return expression.test(value) && !Number.isNaN(Date.parse(value));
 }
 
 function hashFor(label) {

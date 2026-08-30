@@ -93,5 +93,36 @@
     "generated_at"
   ],
   "title": "P6 Gate Result",
-  "type": "object"
+  "type": "object",
+  "oneOf": [
+    {
+      "properties": {
+        "outcome": { "const": "playbook-supported" },
+        "next_action": { "const": "open-p7" },
+        "failures": {
+          "maxItems": 0,
+          "minItems": 0,
+          "type": "array"
+        }
+      }
+    },
+    {
+      "properties": {
+        "outcome": { "enum": ["inconclusive", "baseline-supported", "capture-invalid"] },
+        "next_action": {
+          "enum": [
+            "review-rule-to-checker-mapping",
+            "review-executable-design-layer-expression",
+            "review-frozen-cohort-generation",
+            "review-camera-capture-validity",
+            "review-visual-observation-wording"
+          ]
+        },
+        "failures": {
+          "minItems": 1,
+          "type": "array"
+        }
+      }
+    }
+  ]
 }

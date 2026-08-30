@@ -24,10 +24,15 @@
     "randomization_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
     "schema_version": { "const": 1 },
     "solution_codes": {
-      "items": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+      "items": false,
       "maxItems": 4,
       "minItems": 4,
-      "uniqueItems": true,
+      "prefixItems": [
+        { "const": "solution-A" },
+        { "const": "solution-B" },
+        { "const": "solution-C" },
+        { "const": "solution-D" }
+      ],
       "type": "array"
     }
   },
@@ -59,78 +64,169 @@
       ],
       "type": "array"
     },
-    "pairBase": {
-      "additionalProperties": false,
-      "properties": {
-        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
-        "pair_id": { "pattern": "^pair-\\d{2}$", "type": "string" },
-        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
-        "view_ids": { "$ref": "#/$defs/views" }
-      },
-      "required": ["pair_id", "left_code", "right_code", "view_ids"],
-      "type": "object"
-    },
     "pair01": {
-      "additionalProperties": false,
-      "properties": {
-        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
-        "pair_id": { "const": "pair-01" },
-        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
-        "view_ids": { "$ref": "#/$defs/views" }
-      },
-      "required": ["pair_id", "left_code", "right_code", "view_ids"],
-      "type": "object"
+      "oneOf": [
+        { "$ref": "#/$defs/pair01ab" },
+        { "$ref": "#/$defs/pair01ba" }
+      ]
     },
     "pair02": {
-      "additionalProperties": false,
-      "properties": {
-        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
-        "pair_id": { "const": "pair-02" },
-        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
-        "view_ids": { "$ref": "#/$defs/views" }
-      },
-      "required": ["pair_id", "left_code", "right_code", "view_ids"],
-      "type": "object"
+      "oneOf": [
+        { "$ref": "#/$defs/pair02ac" },
+        { "$ref": "#/$defs/pair02ca" }
+      ]
     },
     "pair03": {
-      "additionalProperties": false,
-      "properties": {
-        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
-        "pair_id": { "const": "pair-03" },
-        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
-        "view_ids": { "$ref": "#/$defs/views" }
-      },
-      "required": ["pair_id", "left_code", "right_code", "view_ids"],
-      "type": "object"
+      "oneOf": [
+        { "$ref": "#/$defs/pair03ad" },
+        { "$ref": "#/$defs/pair03da" }
+      ]
     },
     "pair04": {
-      "additionalProperties": false,
-      "properties": {
-        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
-        "pair_id": { "const": "pair-04" },
-        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
-        "view_ids": { "$ref": "#/$defs/views" }
-      },
-      "required": ["pair_id", "left_code", "right_code", "view_ids"],
-      "type": "object"
+      "oneOf": [
+        { "$ref": "#/$defs/pair04bc" },
+        { "$ref": "#/$defs/pair04cb" }
+      ]
     },
     "pair05": {
+      "oneOf": [
+        { "$ref": "#/$defs/pair05bd" },
+        { "$ref": "#/$defs/pair05db" }
+      ]
+    },
+    "pair06": {
+      "oneOf": [
+        { "$ref": "#/$defs/pair06cd" },
+        { "$ref": "#/$defs/pair06dc" }
+      ]
+    },
+    "pair01ab": {
       "additionalProperties": false,
       "properties": {
-        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
-        "pair_id": { "const": "pair-05" },
-        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "left_code": { "const": "solution-A" },
+        "pair_id": { "const": "pair-01" },
+        "right_code": { "const": "solution-B" },
         "view_ids": { "$ref": "#/$defs/views" }
       },
       "required": ["pair_id", "left_code", "right_code", "view_ids"],
       "type": "object"
     },
-    "pair06": {
+    "pair01ba": {
       "additionalProperties": false,
       "properties": {
-        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "left_code": { "const": "solution-B" },
+        "pair_id": { "const": "pair-01" },
+        "right_code": { "const": "solution-A" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair02ac": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "const": "solution-A" },
+        "pair_id": { "const": "pair-02" },
+        "right_code": { "const": "solution-C" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair02ca": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "const": "solution-C" },
+        "pair_id": { "const": "pair-02" },
+        "right_code": { "const": "solution-A" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair03ad": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "const": "solution-A" },
+        "pair_id": { "const": "pair-03" },
+        "right_code": { "const": "solution-D" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair03da": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "const": "solution-D" },
+        "pair_id": { "const": "pair-03" },
+        "right_code": { "const": "solution-A" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair04bc": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "const": "solution-B" },
+        "pair_id": { "const": "pair-04" },
+        "right_code": { "const": "solution-C" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair04cb": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "const": "solution-C" },
+        "pair_id": { "const": "pair-04" },
+        "right_code": { "const": "solution-B" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair05bd": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "const": "solution-B" },
+        "pair_id": { "const": "pair-05" },
+        "right_code": { "const": "solution-D" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair05db": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "const": "solution-D" },
+        "pair_id": { "const": "pair-05" },
+        "right_code": { "const": "solution-B" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair06cd": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "const": "solution-C" },
         "pair_id": { "const": "pair-06" },
-        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "right_code": { "const": "solution-D" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair06dc": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "const": "solution-D" },
+        "pair_id": { "const": "pair-06" },
+        "right_code": { "const": "solution-C" },
         "view_ids": { "$ref": "#/$defs/views" }
       },
       "required": ["pair_id", "left_code", "right_code", "view_ids"],

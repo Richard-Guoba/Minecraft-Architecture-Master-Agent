@@ -2,6 +2,7 @@ import { deepFreeze, sha256, stableJson } from '../shadow/canonical.js';
 import {
   P6_CAMERA_PROTOCOL,
   P6_CAMERA_VIEW_PURPOSES,
+  P6_COMPARISON_ALIASES,
   P6_ERROR_CODES,
   P6_FIXED_REQUEST,
   P6_MINECRAFT_VERSION,
@@ -395,7 +396,7 @@ export function validateObservation(value) {
   if (!OBSERVATION_ID.test(data.observation_id)) fail('P6_OBSERVATION_INVALID');
   assertHash(data.solution_authority_hash, 'P6_OBSERVATION_INVALID');
   assertHash(data.capture_manifest_hash, 'P6_OBSERVATION_INVALID');
-  assertOrderedSubset(data.view_ids, P6_VIEW_IDS, 'P6_OBSERVATION_INVALID');
+  assertAllowedUniqueSubset(data.view_ids, P6_VIEW_IDS, 'P6_OBSERVATION_INVALID');
   if (!OBSERVATION_LAYERS.includes(data.design_layer)) fail('P6_OBSERVATION_INVALID');
   if (!P6_OBSERVATION_CRITERIA.includes(data.criterion)) fail('P6_OBSERVATION_INVALID');
   if (!P6_OBSERVATION_RATINGS.includes(data.rating)) fail('P6_OBSERVATION_INVALID');
@@ -416,15 +417,13 @@ export function validateComparisonManifest(value) {
   assertHash(data.capture_manifest_hash, 'P6_COMPARISON_INVALID');
   assertHash(data.identity_map_sha256, 'P6_COMPARISON_INVALID');
   assertHash(data.randomization_sha256, 'P6_COMPARISON_INVALID');
-  assertUniquePatternArray(data.solution_codes, OPAQUE_SOLUTION_ID, 'P6_COMPARISON_INVALID');
-  if (data.solution_codes.length !== 4) fail('P6_COMPARISON_INVALID');
+  assertExactArray(data.solution_codes, P6_COMPARISON_ALIASES, 'P6_COMPARISON_INVALID');
   if (!Array.isArray(data.pairs) || data.pairs.length !== EXPECTED_COMPARISON_PAIRS.length) fail('P6_COMPARISON_INVALID');
   for (const [index, pair] of data.pairs.entries()) {
     const [pairId, leftIndex, rightIndex] = EXPECTED_COMPARISON_PAIRS[index];
     assertExactObject(pair, COMPARISON_PAIR_FIELDS, 'P6_COMPARISON_INVALID');
     assertLiteral(pair.pair_id, pairId, 'P6_COMPARISON_INVALID');
-    assertLiteral(pair.left_code, data.solution_codes[leftIndex], 'P6_COMPARISON_INVALID');
-    assertLiteral(pair.right_code, data.solution_codes[rightIndex], 'P6_COMPARISON_INVALID');
+    assertAllowedPair(pair.left_code, pair.right_code, data.solution_codes[leftIndex], data.solution_codes[rightIndex], 'P6_COMPARISON_INVALID');
     assertExactArray(pair.view_ids, P6_VIEW_IDS, 'P6_COMPARISON_INVALID');
   }
   assertIsoUtc(data.generated_at, 'P6_COMPARISON_INVALID');
@@ -438,7 +437,7 @@ export function validatePreferenceRecord(value) {
   if (!PAIR_ID.test(data.pair_id)) fail('P6_COMPARISON_INVALID');
   if (!P6_PREFERENCE_VALUES.includes(data.choice)) fail('P6_COMPARISON_INVALID');
   if (!P6_PREFERENCE_CONFIDENCE.includes(data.confidence)) fail('P6_COMPARISON_INVALID');
-  assertOrderedSubset(data.reason_tags, P6_REASON_TAGS, 'P6_COMPARISON_INVALID');
+  assertAllowedUniqueSubset(data.reason_tags, P6_REASON_TAGS, 'P6_COMPARISON_INVALID');
   if (data.rationale !== null) assertText(data.rationale, 400, 'P6_COMPARISON_INVALID');
   assertLiteral(data.reviewer_kind, 'human', 'P6_COMPARISON_INVALID');
   assertIsoUtc(data.sealed_at, 'P6_COMPARISON_INVALID');
@@ -574,17 +573,20 @@ function assertPoint(value, code) {
   for (const field of POINT_FIELDS) assertDecimal(value[field], code);
 }
 
-function assertOrderedSubset(value, allowed, code) {
+function assertAllowedUniqueSubset(value, allowed, code) {
   if (!Array.isArray(value)) fail(code);
   const seen = new Set();
-  let previous = -1;
   for (const item of value) {
     if (typeof item !== 'string') fail(code);
-    const index = allowed.indexOf(item);
-    if (index < 0 || seen.has(item) || index <= previous) fail(code);
+    if (!allowed.includes(item) || seen.has(item)) fail(code);
     seen.add(item);
-    previous = index;
   }
+}
+
+function assertAllowedPair(left, right, expectedLeft, expectedRight, code) {
+  const forward = left === expectedLeft && right === expectedRight;
+  const reverse = left === expectedRight && right === expectedLeft;
+  if (!forward && !reverse) fail(code);
 }
 
 function assertOrderedUniqueStringArray(value, code, maximumItems, maximumLength) {
