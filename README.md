@@ -21,7 +21,7 @@ The LLM does not need to emit exact block coordinates. The Node.js runtime turns
 ## Current status
 
 - Normal mock generation is deterministic and does not need an API key or Python.
-- The generator targets Minecraft Java 1.21 / 1.21.1 and datapack `pack_format: 48`.
+- The generator targets Minecraft Java 1.21 / 1.21.1 with datapack `pack_format: 48`. Minecraft Java 1.21.9 uses the required `min_format: 88` / `max_format: 88` metadata and its renamed `minecraft:iron_chain` block ID.
 - The repository contains 64 local schematic templates. Every one may be used for local training without per-file approval.
 - Automatic preparation accepts all 64 sources and produces 11,600 non-empty patches. The source split is 45 train, 10 validation, and 9 test buildings.
 - The original `heldout-7101` reference passed Gate 2 with validation non-air macro-F1 `0.3609670073`.
@@ -62,7 +62,7 @@ npm run playbook:execute -- --mode llm --llm-provider codex "Build a compact med
 
 The first command is a setup check: complete local sign-in if Codex requests it, then exit the interactive session. The workflow enforces `codex exec --sandbox read-only --ephemeral --color never`, sends each agent prompt through standard input, and uses the model selected by your local Codex configuration. Codex cannot modify the repository through this channel, and ephemeral execution does not persist session rollout files, but prompt context is sent through your logged-in Codex service account.
 
-`CODEX_ARGS` may add safe optional `codex exec` flags such as `--model`, but it cannot replace the enforced read-only/ephemeral flags, grant writable directories, bypass the sandbox, or replace the schema/final-output protocol. The adapter accepts at most 1 MiB from the final JSON output file.
+`CODEX_ARGS` may add safe optional `codex exec` flags such as `--model`, but it cannot replace the enforced read-only/ephemeral flags, grant writable directories, bypass the sandbox, or replace the final-output protocol. The adapter accepts at most 1 MiB from the final JSON output file and validates that it contains a top-level JSON object.
 
 The Codex adapter distinguishes these failures:
 

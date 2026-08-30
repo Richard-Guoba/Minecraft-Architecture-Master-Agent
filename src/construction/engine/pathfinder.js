@@ -40,7 +40,7 @@ export class AStarPathfinder {
   }
 
   carveMainDoor(grid, mainBox, rooms = [], openingPlan = {}) {
-    const side = String(openingPlan.main_entry?.side || this.spec.door_side || 'south');
+    const side = normalizeCardinalSide(openingPlan.main_entry?.side, this.spec.door_side);
     const width = clampInt(openingPlan.main_entry?.width || this.spec.door_width || 2, 1, 4);
     const height = clampInt(openingPlan.main_entry?.height || this.spec.door_height || 3, 2, 6);
     const thickness = clampInt(this.spec.shell_thickness || 1, 1, 3);
@@ -576,6 +576,13 @@ function clearMainDoorClearance(grid, { side, spanStart, spanEnd, boundary, heig
 
 function exteriorApproachLength(spec = {}) {
   return clampInt(spec.garden_depth || spec.lot?.front_setback || 4, 3, 18, 4);
+}
+
+function normalizeCardinalSide(value, fallback = 'south') {
+  const side = String(value || '').trim().toLowerCase();
+  if (['north', 'south', 'east', 'west'].includes(side)) return side;
+  const fallbackSide = String(fallback || '').trim().toLowerCase();
+  return ['north', 'south', 'east', 'west'].includes(fallbackSide) ? fallbackSide : 'south';
 }
 
 function clampInt(value, min, max, fallback = min) {

@@ -10,7 +10,7 @@ const valueAfter = (flag) => {
 };
 const outputPath = valueAfter('-o');
 const schemaPath = valueAfter('--output-schema');
-if (!outputPath || !schemaPath) process.exit(0);
+if (!outputPath) process.exit(0);
 const scenario = path.basename(process.argv[1]).replace(/^fake-codex-/u, '') || 'success';
 const tracePath = path.join(path.dirname(process.argv[1]), 'trace.json');
 let input = '';
@@ -31,7 +31,9 @@ if (scenario === 'grandchild-hang' || scenario === 'silent-grandchild-hang') {
 }
 
 if (tracePath) {
-  const schema = JSON.parse(await fs.readFile(schemaPath, 'utf8'));
+  const schema = schemaPath
+    ? JSON.parse(await fs.readFile(schemaPath, 'utf8'))
+    : null;
   await fs.writeFile(tracePath, JSON.stringify({
     args,
     input,

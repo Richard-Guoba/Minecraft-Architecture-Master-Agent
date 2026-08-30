@@ -56,18 +56,11 @@ export class CodexClient {
 
     const tempDir = await fs.mkdtemp(path.join(this.tempRoot, 'mc-architect-codex-'));
     try {
-      const schemaPath = path.join(tempDir, 'response.schema.json');
       const outputPath = path.join(tempDir, 'response.json');
-      await fs.writeFile(schemaPath, JSON.stringify(responseSchema(), null, 2), {
-        encoding: 'utf8',
-        mode: 0o600
-      });
 
       const prompt = buildPrompt(system, user);
       const args = [
         ...this.args,
-        '--output-schema',
-        schemaPath,
         '-o',
         outputPath,
         '-'
@@ -85,14 +78,6 @@ export class CodexClient {
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   }
-}
-
-function responseSchema() {
-  return {
-    type: 'object',
-    description: 'A strict JSON object for the Minecraft architect workflow.',
-    additionalProperties: true
-  };
 }
 
 function buildPrompt(system, user) {

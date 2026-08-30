@@ -19,7 +19,7 @@ Prompt
 - A* connects the entrance, rooms, stairs, and attached volumes.
 - Interior and decoration agents place functional room details.
 - QA, repair, optimization, evaluation, and critics validate the result.
-- Export writes Minecraft Java 1.21 / 1.21.1 functions using datapack `pack_format: 48`.
+- Export writes Minecraft Java 1.21 / 1.21.1 functions using datapack `pack_format: 48`; the 1.21.9 profile uses the required `min_format: 88` / `max_format: 88` metadata and translates the renamed iron-chain block ID at serialization.
 
 The LLM never needs to emit exact XYZ block coordinates. Invalid or incomplete semantic output can be normalized or rejected before geometry is exported.
 

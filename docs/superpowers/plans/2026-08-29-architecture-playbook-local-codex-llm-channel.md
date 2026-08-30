@@ -213,7 +213,9 @@ process.stdin.setEncoding('utf8');
 for await (const chunk of process.stdin) input += chunk;
 
 if (tracePath) {
-  const schema = JSON.parse(await fs.readFile(schemaPath, 'utf8'));
+  const schema = schemaPath
+    ? JSON.parse(await fs.readFile(schemaPath, 'utf8'))
+    : null;
   await fs.writeFile(tracePath, JSON.stringify({ args, input, schema }), 'utf8');
 }
 if (scenario === 'hang') {
@@ -271,17 +273,17 @@ async function fixture(t, scenario, extraArgs = []) {
   };
 }
 
-test('uses stdin, output schema, final output file, and returns an object', async (t) => {
+test('uses stdin and final output without an invalid generic schema', async (t) => {
   const { client, tracePath } = await fixture(t, 'success');
   assert.deepEqual(await client.chatJson({ system: 'SYSTEM_MARKER', user: { brief: 'USER_MARKER' } }), { ok: true });
   const trace = JSON.parse(await fs.readFile(tracePath, 'utf8'));
   assert.match(trace.input, /SYSTEM_MARKER/u);
   assert.match(trace.input, /USER_MARKER/u);
-  assert.equal(trace.args.includes('--output-schema'), true);
+  assert.equal(trace.args.includes('--output-schema'), false);
   assert.equal(trace.args.includes('-o'), true);
   assert.deepEqual(trace.args.slice(0, 3), ['exec', '--sandbox', 'read-only']);
   assert.equal(trace.args.at(-1), '-');
-  assert.equal(trace.schema.type, 'object');
+  assert.equal(trace.schema, null);
 });
 
 for (const scenario of ['missing', 'empty', 'malformed', 'array']) {
@@ -383,7 +385,7 @@ export class CodexClientError extends Error {
 }
 ```
 
-Add `tempRoot = os.tmpdir()` to the constructor, create the request directory under it, write the schema with mode `0o600`, read only `response.json`, call `JSON.parse`, and require `value !== null && typeof value === 'object' && !Array.isArray(value)`. Map every missing/empty/parse/type failure to:
+Add `tempRoot = os.tmpdir()` to the constructor, create the request directory under it, write only the final-output path, read only `response.json`, call `JSON.parse`, and require `value !== null && typeof value === 'object' && !Array.isArray(value)`. Do not pass a generic `--output-schema`; current Codex CLI validation rejects a schema that only declares an object, while the existing stage validators enforce the actual response shapes. Map every missing/empty/parse/type failure to:
 
 ```js
 throw new CodexClientError(

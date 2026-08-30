@@ -31,6 +31,76 @@ test('execute CLI forwards the exact local Codex provider command', async () => 
   assert.deepEqual(errors, ['P5_AUTHORITY_INVALID']);
 });
 
+test('build-lab quick target resolves to the mounted Windows datapacks directory under WSL', {
+  skip: process.platform !== 'linux'
+}, async () => {
+  let received;
+  const status = await runCli({
+    argv: ['--playbook', 'execute', '--mode', 'mock', '--datapacks-target', 'build-lab', PROMPT],
+    runPipelineImpl: async (options) => {
+      received = options;
+      throw Object.assign(new Error('P5_AUTHORITY_INVALID'), { code: 'P5_AUTHORITY_INVALID' });
+    },
+    writeError: () => {}
+  });
+
+  assert.equal(status, 1);
+  assert.equal(received.datapacksDir,
+    '/mnt/d/Program Files/minecraft/自然之旅/自然之旅3-1.20.1 [v1.6X]/.minecraft/saves/建造实验v1/datapacks');
+});
+
+test('direct Windows datapacks dir resolves to the mounted Linux datapacks directory under WSL', {
+  skip: process.platform !== 'linux'
+}, async () => {
+  let received;
+  const status = await runCli({
+    argv: [
+      '--playbook', 'execute', '--mode', 'mock',
+      '--datapacks-dir', 'D:\\Program Files\\minecraft\\自然之旅\\自然之旅3-1.20.1 [v1.6X]\\.minecraft\\saves\\建造实验v1\\datapacks',
+      PROMPT
+    ],
+    runPipelineImpl: async (options) => {
+      received = options;
+      throw Object.assign(new Error('P5_AUTHORITY_INVALID'), { code: 'P5_AUTHORITY_INVALID' });
+    },
+    writeError: () => {}
+  });
+
+  assert.equal(status, 1);
+  assert.equal(received.datapacksDir,
+    '/mnt/d/Program Files/minecraft/自然之旅/自然之旅3-1.20.1 [v1.6X]/.minecraft/saves/建造实验v1/datapacks');
+});
+
+test('ARCHITECT_DATAPACKS_DIR Windows env resolves to the mounted Linux datapacks directory under WSL', {
+  skip: process.platform !== 'linux'
+}, async (t) => {
+  const previousDatapacksDir = process.env.ARCHITECT_DATAPACKS_DIR;
+  const previousDatapacksTarget = process.env.ARCHITECT_DATAPACKS_TARGET;
+  process.env.ARCHITECT_DATAPACKS_DIR =
+    'D:\\Program Files\\minecraft\\自然之旅\\自然之旅3-1.20.1 [v1.6X]\\.minecraft\\saves\\建造实验v1\\datapacks';
+  delete process.env.ARCHITECT_DATAPACKS_TARGET;
+  t.after(() => {
+    if (previousDatapacksDir === undefined) delete process.env.ARCHITECT_DATAPACKS_DIR;
+    else process.env.ARCHITECT_DATAPACKS_DIR = previousDatapacksDir;
+    if (previousDatapacksTarget === undefined) delete process.env.ARCHITECT_DATAPACKS_TARGET;
+    else process.env.ARCHITECT_DATAPACKS_TARGET = previousDatapacksTarget;
+  });
+
+  let received;
+  const status = await runCli({
+    argv: ['--playbook', 'execute', '--mode', 'mock', PROMPT],
+    runPipelineImpl: async (options) => {
+      received = options;
+      throw Object.assign(new Error('P5_AUTHORITY_INVALID'), { code: 'P5_AUTHORITY_INVALID' });
+    },
+    writeError: () => {}
+  });
+
+  assert.equal(status, 1);
+  assert.equal(received.datapacksDir,
+    '/mnt/d/Program Files/minecraft/自然之旅/自然之旅3-1.20.1 [v1.6X]/.minecraft/saves/建造实验v1/datapacks');
+});
+
 test('CLI help documents the local Codex provider selector', () => {
   const result = spawnSync(process.execPath, [CLI, '--help'], {
     cwd: ROOT,

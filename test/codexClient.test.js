@@ -48,7 +48,7 @@ async function fixture(t, scenario, { timeoutMs = 2000 } = {}) {
   };
 }
 
-test('uses stdin, read-only arguments, output schema, and final output file', async (t) => {
+test('uses stdin, read-only arguments, and final output without an invalid generic schema', async (t) => {
   const { client, root, tracePath } = await fixture(t, 'success');
 
   assert.deepEqual(await client.chatJson({
@@ -62,11 +62,11 @@ test('uses stdin, read-only arguments, output schema, and final output file', as
   assert.deepEqual(trace.args.slice(0, 3), ['exec', '--sandbox', 'read-only']);
   assert.equal(trace.args.includes('--ephemeral'), true);
   assert.deepEqual(trace.args.slice(trace.args.indexOf('--color'), trace.args.indexOf('--color') + 2), ['--color', 'never']);
-  assert.equal(trace.args.includes('--output-schema'), true);
+  assert.equal(trace.args.includes('--output-schema'), false);
   assert.equal(trace.args.includes('-o'), true);
   assert.equal(trace.args.at(-1), '-');
-  assert.equal(trace.schema.type, 'object');
-  assert.equal(path.dirname(trace.schemaPath).startsWith(root), true);
+  assert.equal(trace.schema, null);
+  assert.equal(trace.schemaPath, undefined);
   assert.deepEqual((await fs.readdir(root)).sort(), ['fake-codex-success', 'trace.json']);
 });
 

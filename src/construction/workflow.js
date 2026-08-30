@@ -538,7 +538,7 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shad
   const functionDir = path.join(datapackDir, 'data', 'architect', 'function');
   await ensureDir(functionDir);
 
-  const buildCommands = blueprint.operations.map(operationToCommand);
+  const buildCommands = blueprint.operations.map((operation) => operationToCommand(operation, mcVersion));
   const buildPath = path.join(functionDir, 'build.mcfunction');
   const clearPath = path.join(functionDir, 'clear.mcfunction');
   const runPath = path.join(functionDir, 'run.mcfunction');
@@ -583,7 +583,7 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shad
   });
   await writeJson(path.join(datapackDir, 'pack.mcmeta'), {
     pack: {
-      pack_format: packFormatFor(mcVersion),
+      ...packMetadataFor(mcVersion),
       description: 'AI Minecraft Architect construction_method_v1 nodejs'
     }
   });
@@ -625,11 +625,19 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shad
   };
 }
 
-function operationToCommand(operation) {
+function operationToCommand(operation, mcVersion) {
+  const block = blockForVersion(operation.block, mcVersion);
   if (operation.kind === 'fill') {
-    return `fill ${rel(operation.from.x)} ${rel(operation.from.y)} ${rel(operation.from.z)} ${rel(operation.to.x)} ${rel(operation.to.y)} ${rel(operation.to.z)} ${operation.block}`;
+    return `fill ${rel(operation.from.x)} ${rel(operation.from.y)} ${rel(operation.from.z)} ${rel(operation.to.x)} ${rel(operation.to.y)} ${rel(operation.to.z)} ${block}`;
   }
-  return `setblock ${rel(operation.at.x)} ${rel(operation.at.y)} ${rel(operation.at.z)} ${operation.block}`;
+  return `setblock ${rel(operation.at.x)} ${rel(operation.at.y)} ${rel(operation.at.z)} ${block}`;
+}
+
+function blockForVersion(block, version) {
+  if (String(version) === '1.21.9') {
+    return String(block).replace(/^minecraft:chain(?=$|\[)/u, 'minecraft:iron_chain');
+  }
+  return block;
 }
 
 function clearCommandForBounds(bounds, padding = 2) {
@@ -1117,7 +1125,16 @@ function compactArchitectureScorecard(evaluation = {}) {
 }
 
 function packFormatFor(version) {
+  if (String(version) === '1.21.9') return 88;
   return String(version).startsWith('1.21') ? 48 : 26;
+}
+
+function packMetadataFor(version) {
+  const packFormat = packFormatFor(version);
+  if (String(version) === '1.21.9') {
+    return { min_format: packFormat, max_format: packFormat };
+  }
+  return { pack_format: packFormat };
 }
 
 function escapeHtml(value) {

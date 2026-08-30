@@ -54,6 +54,32 @@ test('AStarPathfinder keeps one-floor courtyard houses stair-free while still ro
   assert.ok(paths.openedEdges.some((edge) => edge.from === 'tatami' && edge.to === 'tea-room' && edge.status === 'routed'));
 });
 
+test('AStarPathfinder normalizes semantic LLM entry sides before carving Minecraft doors', () => {
+  const prompt = 'Build a furnished medieval gatehouse with a road-facing entrance';
+  const architecture = buildFallbackArchitecture(prompt);
+  const spec = deriveBuildSpec(prompt, architecture);
+  const topology = buildFallbackTopology(prompt, architecture, spec);
+  const shell = new CSGBuilder(spec, architecture.materials).generateShell(architecture);
+  const layout = new BSPPartitioner(spec, architecture.materials).fitRooms(shell, topology);
+  const paths = new AStarPathfinder(spec, architecture.materials).connect(shell, layout, topology, {
+    main_entry: {
+      side: 'road-facing',
+      width: 2,
+      height: 3,
+      target_room: 'entry'
+    }
+  });
+  const doorBlocks = [...shell.grid.values()]
+    .filter((item) => item.module === 'door')
+    .map((item) => item.block);
+
+  assert.equal(spec.door_side, 'south');
+  assert.equal(paths.mainDoor.side, 'south');
+  assert.equal(paths.mainDoor.targetRoom, 'entry');
+  assert.ok(doorBlocks.length >= 2);
+  assert.ok(doorBlocks.every((block) => /\[facing=south,/u.test(block)));
+});
+
 function buildCirculation(prompt) {
   const architecture = buildFallbackArchitecture(prompt);
   const spec = deriveBuildSpec(prompt, architecture);

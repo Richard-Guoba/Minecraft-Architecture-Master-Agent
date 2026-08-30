@@ -37,7 +37,7 @@ function parseArgs(argv) {
     coarseVoxelPlan: undefined,
     minecraftDir: process.env.MINECRAFT_DIR,
     world: undefined,
-    datapacksDir: process.env.ARCHITECT_DATAPACKS_DIR || resolveDatapacksTarget(process.env.ARCHITECT_DATAPACKS_TARGET),
+    datapacksDir: resolveHostPath(process.env.ARCHITECT_DATAPACKS_DIR) || resolveDatapacksTarget(process.env.ARCHITECT_DATAPACKS_TARGET),
     autoBuild: false,
     launch: false,
     launchCommand: process.env.MINECRAFT_LAUNCH_COMMAND,
@@ -140,7 +140,7 @@ function parseArgs(argv) {
     } else if (arg === '--world') {
       options.world = argv[++i];
     } else if (arg === '--datapacks-dir') {
-      options.datapacksDir = path.resolve(argv[++i] || '');
+      options.datapacksDir = path.resolve(resolveHostPath(argv[++i] || ''));
     } else if (arg === '--datapacks-target') {
       options.datapacksDir = resolveDatapacksTarget(argv[++i]);
     } else if (arg === '--auto-build') {
@@ -250,7 +250,15 @@ function resolveDatapacksTarget(name) {
     const names = Object.keys(DATAPACK_TARGETS).join(', ') || '无';
     throw new Error(`未知 datapacks 快捷目标: ${name}。可用目标: ${names}`);
   }
-  return target;
+  return resolveHostPath(target);
+}
+
+function resolveHostPath(target) {
+  if (process.platform !== 'linux') return target;
+  const windowsAbsolute = /^([A-Za-z]):[\\\\/](.*)$/u.exec(target);
+  if (!windowsAbsolute) return target;
+  const [, drive, remainder] = windowsAbsolute;
+  return path.posix.join('/mnt', drive.toLowerCase(), remainder.replaceAll('\\', '/'));
 }
 
 function printHelp() {
@@ -267,7 +275,7 @@ Usage:
 Options:
   --mode mock|llm|auto       Use local mock mode, force your configured LLM provider, or auto-detect provider config. Defaults to mock.
   --llm-provider <provider>  Select auto, codex, openai, openai-compatible, or zhipu. With codex, use the local authenticated Codex CLI; requires --mode llm.
-  --mc-version 1.21          Target Minecraft Java version. v1 exports 1.21 datapacks.
+  --mc-version 1.21          Target Minecraft Java version. Supported: 1.21, 1.21.1, 1.21.9.
   --out <dir>                Output root directory. Defaults to ./out.
   --seed <number>            Deterministic design seed. Omit it to generate a random seed.
   --concepts <n>             Enable Stage 3 Concept Studio with 2-5 concepts before construction.

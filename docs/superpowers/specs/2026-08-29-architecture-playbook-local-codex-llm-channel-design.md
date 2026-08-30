@@ -12,7 +12,7 @@ The execution CLI will accept this workflow:
 npm run playbook:execute -- --mode llm --llm-provider codex "Build ..."
 ```
 
-Selecting `codex` will run the locally installed and authenticated Codex CLI as the workflow's LLM provider. The adapter will use non-interactive `codex exec`, pass prompts through standard input, request schema-constrained JSON, and run Codex with a read-only sandbox. Explicit Codex selection is fail-closed: it will never silently switch to Zhipu, OpenAI-compatible, mock, or another provider.
+Selecting `codex` will run the locally installed and authenticated Codex CLI as the workflow's LLM provider. The adapter will use non-interactive `codex exec`, pass prompts through standard input, request JSON-only output in the prompt, validate the final output locally, and run Codex with a read-only sandbox. Explicit Codex selection is fail-closed: it will never silently switch to Zhipu, OpenAI-compatible, mock, or another provider.
 
 The repository already contains an initial `CodexClient` and Codex-related environment settings. This change will harden and complete that path rather than create a second integration.
 
@@ -90,17 +90,16 @@ The existing `CodexClient` remains the single adapter for this channel. It imple
 For each request it will:
 
 1. Create a private temporary directory.
-2. Write a JSON output schema that requires a top-level object.
-3. Construct a prompt from the `system` and `user` inputs.
-4. Spawn the configured executable directly, without a shell.
-5. Invoke non-interactive `codex exec` with an enforced read-only sandbox, ephemeral session storage, no color, an output-schema path, a final-output path, and `-` for standard-input prompting.
-6. Send the prompt on standard input and close the stream.
-7. Wait for successful completion within the configured timeout.
-8. Read and strictly parse the final-output file as JSON.
-9. Return the object to the existing downstream contract validators.
-10. Remove the temporary directory on every success or failure path.
+2. Construct a prompt from the `system` and `user` inputs that requires one JSON object and no surrounding prose.
+3. Spawn the configured executable directly, without a shell.
+4. Invoke non-interactive `codex exec` with an enforced read-only sandbox, ephemeral session storage, no color, a final-output path, and `-` for standard-input prompting.
+5. Send the prompt on standard input and close the stream.
+6. Wait for successful completion within the configured timeout.
+7. Read and strictly parse the final-output file as JSON, requiring a top-level object locally.
+8. Return the object to the existing downstream contract validators.
+9. Remove the temporary directory on every success or failure path.
 
-The schema at this boundary guarantees a JSON object. Existing stage-specific validators remain authoritative for architect, planner, creative, and P5 response shapes. This avoids expanding every LLM client interface as part of this integration.
+The adapter deliberately does not pass a generic `--output-schema`: a schema containing only `type: object` is rejected by current Codex CLI validation and adds no stage-specific authority. Local parsing guarantees a top-level JSON object. Existing stage-specific validators remain authoritative for architect, planner, creative, and P5 response shapes. This avoids expanding every LLM client interface as part of this integration.
 
 ## Process Protocol and Lifecycle
 
@@ -112,7 +111,7 @@ CODEX_ARGS=exec --sandbox read-only --ephemeral --color never
 CODEX_TIMEOUT_MS=600000
 ```
 
-The longer default timeout reflects that one playbook run can make several sequential design calls and that a local Codex request may reasonably exceed two minutes. The timeout applies to each Codex request rather than to the whole pipeline. `CODEX_ARGS` may contribute safe optional exec flags, but the adapter owns and de-duplicates the sandbox, ephemeral, color, schema, final-output, and stdin-prompt arguments. Conflicting or bypass arguments fail with `CODEX_CONFIGURATION_INVALID` before a child is spawned.
+The longer default timeout reflects that one playbook run can make several sequential design calls and that a local Codex request may reasonably exceed two minutes. The timeout applies to each Codex request rather than to the whole pipeline. `CODEX_ARGS` may contribute safe optional exec flags, but the adapter owns and de-duplicates the sandbox, ephemeral, color, final-output, and stdin-prompt arguments. It also rejects caller-supplied `--output-schema` because this channel uses local object validation. Conflicting or bypass arguments fail with `CODEX_CONFIGURATION_INVALID` before a child is spawned.
 
 Implementation requirements:
 
@@ -152,7 +151,7 @@ The spawned Codex process is an external local executable selected by configurat
 - Use ephemeral execution so Codex does not persist session rollout files.
 - Pass the prompt only through standard input.
 - Avoid logging prompts, environment contents, or raw model output in provider errors.
-- Create temporary schema and output files with user-private access through the platform's secure temporary-directory mechanism.
+- Create the temporary output file inside a user-private directory from the platform's secure temporary-directory mechanism.
 - Bound the final JSON output file to 1 MiB and always remove temporary files after use.
 
 The process runs from the project root and uses the user's existing Codex configuration and authentication. Therefore, project context supplied in prompts may be sent to the Codex service under the user's logged-in account; documentation will make this boundary explicit.
@@ -177,7 +176,7 @@ The fake executable will inspect the arguments and standard input, then emulate 
 
 - Successful JSON-object response.
 - Prompt delivery through standard input.
-- Required output-schema and output-file arguments.
+- Required final-output argument and rejection of caller-supplied output-schema arguments.
 - Read-only execution arguments.
 - Executable-not-found behavior.
 - Non-zero exit behavior.

@@ -99,7 +99,10 @@ test('runs the construction-method workflow as the single active pipeline', asyn
     assert.ok(result.artifacts.architectureScorecard.endsWith('architecture_scorecard.json'));
 
     const pack = JSON.parse(await fs.readFile(path.join(result.artifacts.datapackDir, 'pack.mcmeta'), 'utf8'));
-    assert.equal(pack.pack.pack_format, 48);
+    assert.deepEqual(pack.pack, {
+      pack_format: 48,
+      description: 'AI Minecraft Architect construction_method_v1 nodejs'
+    });
 
     const buildPath = path.join(result.artifacts.datapackDir, 'data', 'architect', 'function', 'build.mcfunction');
     const runPath = path.join(result.artifacts.datapackDir, 'data', 'architect', 'function', 'run.mcfunction');
@@ -154,6 +157,39 @@ test('runs the construction-method workflow as the single active pipeline', asyn
     assert.match(preview, /QA 检查/);
     assert.match(preview, /导出压缩/);
     assert.match(preview, /class="room/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('exports a Minecraft 1.21.9-compatible datapack', async () => {
+  const root = path.resolve('.tmp', `architect-1-21-9-test-${Date.now()}`);
+  try {
+    const result = await runPipeline({
+      prompt: 'Build a compact two-story stone and oak house with windows and a stair roof.',
+      mode: 'mock',
+      mcVersion: '1.21.9',
+      outRoot: path.join(root, 'out'),
+      cwd: process.cwd(),
+      seed: 7101
+    });
+
+    const pack = JSON.parse(await fs.readFile(
+      path.join(result.artifacts.datapackDir, 'pack.mcmeta'),
+      'utf8'
+    ));
+    const build = await fs.readFile(
+      path.join(result.artifacts.datapackDir, 'data', 'architect', 'function', 'build.mcfunction'),
+      'utf8'
+    );
+
+    assert.deepEqual(pack.pack, {
+      min_format: 88,
+      max_format: 88,
+      description: 'AI Minecraft Architect construction_method_v1 nodejs'
+    });
+    assert.match(build, /minecraft:iron_chain/u);
+    assert.doesNotMatch(build, /minecraft:chain(?:\[|\s|$)/u);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
