@@ -8,7 +8,7 @@ import { compileDesignLayers, prepareConstructionDesign } from '../../constructi
 import { compilePreparedConstruction } from '../../construction/workflow.js';
 import { createLlmClient } from '../../llm/createLlmClient.js';
 import { createTimestamp } from '../../lib/fs.js';
-import { hashReplayArtifacts } from './artifactAuthority.js';
+import { hashReplayArtifacts, snapshotReplayArtifacts } from './artifactAuthority.js';
 import { chainManifestBytes, chainManifestHash, checkpointBytes, createChainManifest, createCheckpointEnvelope } from './checkpoints.js';
 import { DESIGN_LAYER_ORDER, INVALIDATES_BY_LAYER } from './constants.js';
 import { executeError, sanitizeExecuteError, validateExecuteOptions, validateSelectionRecord } from './contracts.js';
@@ -158,7 +158,8 @@ async function executeCandidate({ index, normalized, seedPlan, runDir, projectRo
       return failedRecord(candidateId, seed, evaluateExecuteEligibility({ review, hardQa: { ok: false }, repairBudgetUsed: 0, candidateAuthority }));
     }
     let eligibility = evaluateExecuteEligibility({ review, hardQa: { ok: true }, repairBudgetUsed: 0, candidateAuthority });
-    const artifactHashes = await hashReplayArtifacts({ compiledResult: result });
+    const executableArtifacts = await snapshotReplayArtifacts({ compiledResult: result });
+    const artifactHashes = executableArtifacts.hashes;
     const envelopes = initialCheckpoints({ candidateId, frozenDesign, compiled, hardQa, hardQaSha256, reviewSha256, artifactHashes });
     const chain = createChainManifest({ candidate_id: candidateId, chain_revision: 1, parent_chain_sha256: null,
       checkpoint_envelopes: envelopes, frozen_design_sha256: frozenDesignSha256, frozen_generator_context_sha256: contextSha256,
@@ -168,6 +169,7 @@ async function executeCandidate({ index, normalized, seedPlan, runDir, projectRo
     const files = Object.fromEntries(envelopes.map((envelope) => [`checkpoints/${envelope.checkpoint.layer}/r0001.json`, checkpointBytes(envelope)]));
     files[FROZEN_DESIGN_PATH] = Buffer.from(stableJson(frozenDesign));
     files[FROZEN_CONTEXT_PATH] = Buffer.from(stableJson(prepared.frozen_generator_context));
+    Object.assign(files, executableArtifacts.files);
     files['blueprints/chain-0001.json'] = Buffer.from(blueprintBytes);
     files['reviews/chain-0001-hard-qa.json'] = Buffer.from(stableJson(hardQa)); files['reviews/chain-0001-review.json'] = Buffer.from(stableJson(review));
     await installCandidateSnapshot({ authority, candidateId, files, currentChain: chainManifestBytes(chain), expectedPreviousChainSha256: null });

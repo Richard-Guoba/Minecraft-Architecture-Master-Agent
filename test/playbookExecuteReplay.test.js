@@ -51,6 +51,8 @@ test('massing replay preserves brief and replaces the exact target suffix once',
   const installed = await readCurrentCandidateSnapshot({ authority: input.authority, candidateId: 'candidate-01' });
   assert.equal(installed.current_chain_sha256, result.current_chain_sha256);
   for (const name of ['repairs/attempt-01-request.json', 'repairs/attempt-01-patch.json', 'repairs/attempt-01-result.json']) assert.ok(installed.files[name]);
+  assert.deepEqual(installed.files['artifacts/operation-list.json'], Buffer.from(stable(result.compiled_result.blueprint.operations)));
+  assert.deepEqual(installed.files['artifacts/build.mcfunction'], await fs.readFile(result.compiled_result.artifacts.buildFunction));
 });
 
 test('replay is provider-free and deterministic across roots', async (t) => {
@@ -392,14 +394,17 @@ async function fixture(t, { structureOnly = false, activeContext = false } = {})
   let blueprintBytes = await fs.readFile(path.join(ROOT, `test/fixtures/playbook-shadow/${structureOnly ? 'medieval-positive' : 'medieval-defect'}.json`));
   const blueprint = JSON.parse(blueprintBytes);
   blueprint.seed = 7;
+  blueprint.operations ||= [];
   if (structureOnly) {
     blueprint.structure.load_paths = [];
   }
   blueprintBytes = Buffer.from(`${JSON.stringify(blueprint, null, 2)}\n`);
   const hardQa = new BlueprintQAAgent().run(blueprint); const p4Review = await buildDeterministicShadowReview({ projectRoot: ROOT, blueprintBytes, blueprintRelativePath: 'blueprint.json' });
   const eligibility = evaluateExecuteEligibility({ review: p4Review, hardQa: { ok: hardQa.ok }, repairBudgetUsed: 0 }); const hardQaHash = digest(hardQa); const reviewHash = digest(p4Review);
+  const initialOperationListBytes = Buffer.from(stable(blueprint.operations));
+  const initialBuildFunctionBytes = Buffer.from('initial executable authority\n');
   const envelopes = [];
-  for (const layer of LAYERS) envelopes.push(createCheckpointEnvelope({ build_id: 'build-01', candidate_id: 'candidate-01', layer, revision: 1, status: 'accepted', preceding_envelopes: envelopes, selected_rule_ids: [], rejected_rule_ids: [], design_intent: { layer }, recipe_fragment: { layer, payload: compiled[layer] }, field_patches: [], compiled_artifact_hashes: { layer_payload_sha256: digest(compiled[layer]) }, hard_qa: { hard_qa_ok: hardQa.ok, hard_qa_sha256: hardQaHash }, design_review: { p4_review_sha256: reviewHash }, invalidates_downstream: INVALIDATES[layer], replay_origin: null }));
+  for (const layer of LAYERS) envelopes.push(createCheckpointEnvelope({ build_id: 'build-01', candidate_id: 'candidate-01', layer, revision: 1, status: 'accepted', preceding_envelopes: envelopes, selected_rule_ids: [], rejected_rule_ids: [], design_intent: { layer }, recipe_fragment: { layer, payload: compiled[layer] }, field_patches: [], compiled_artifact_hashes: { layer_payload_sha256: digest(compiled[layer]), ...(layer === 'facade' ? { operation_list_sha256: digestBytes(initialOperationListBytes), build_function_sha256: digestBytes(initialBuildFunctionBytes), datapack_tree_sha256: '6'.repeat(64) } : {}) }, hard_qa: { hard_qa_ok: hardQa.ok, hard_qa_sha256: hardQaHash }, design_review: { p4_review_sha256: reviewHash }, invalidates_downstream: INVALIDATES[layer], replay_origin: null }));
   const chain = createChainManifest({ candidate_id: 'candidate-01', chain_revision: 1, parent_chain_sha256: null, checkpoint_envelopes: envelopes, frozen_design_sha256: frozenDesignHash, frozen_generator_context_sha256: digest(prepared.frozen_generator_context), blueprint_sha256: digestBytes(blueprintBytes), hard_qa_sha256: hardQaHash, p4_review_sha256: reviewHash, repair_transaction_sha256: null, eligibility, created_from: 'initial' });
   const chainHash = chainManifestHash(chain); const transaction = buildRepairTransaction({ candidateId: 'candidate-01', review: p4Review, frozenDesign, baseChainSha256: chainHash, acceptedChain: chain, checkpointEnvelopes: envelopes });
   const authority = await admitExecuteRun({ runDir }); t.after(() => authority.close());
@@ -407,6 +412,8 @@ async function fixture(t, { structureOnly = false, activeContext = false } = {})
     ...Object.fromEntries(envelopes.map((envelope) => [`checkpoints/${envelope.checkpoint.layer}/r0001.json`, checkpointBytes(envelope)])),
     'frozen/frozen-design.json': Buffer.from(stable(frozenDesign)),
     'frozen/frozen-generator-context.json': Buffer.from(stable(prepared.frozen_generator_context)),
+    'artifacts/operation-list.json': initialOperationListBytes,
+    'artifacts/build.mcfunction': initialBuildFunctionBytes,
     'blueprints/chain-0001.json': Buffer.from(blueprintBytes),
     'reviews/chain-0001-hard-qa.json': Buffer.from(stable(hardQa)),
     'reviews/chain-0001-review.json': Buffer.from(stable(p4Review))

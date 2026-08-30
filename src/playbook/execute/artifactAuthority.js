@@ -11,20 +11,33 @@ const DATAPACK_BASENAME = 'architect_datapack';
 const BUILD_RELATIVE_PATH = 'data/architect/function/build.mcfunction';
 
 export async function hashReplayArtifacts({ compiledResult } = {}) {
+  return (await snapshotReplayArtifacts({ compiledResult })).hashes;
+}
+
+export async function snapshotReplayArtifacts({ compiledResult } = {}) {
   try {
     const operations = canonicalClone(compiledResult?.blueprint?.operations);
     if (!Array.isArray(operations)) invalid();
+    const operationListBytes = Buffer.from(stableJson(operations));
     const datapackDir = exactAbsolutePath(compiledResult?.artifacts?.datapackDir);
     const buildFunction = exactAbsolutePath(compiledResult?.artifacts?.buildFunction);
     if (path.basename(datapackDir) !== DATAPACK_BASENAME
       || buildFunction !== path.join(datapackDir, ...BUILD_RELATIVE_PATH.split('/'))) invalid();
     const tree = await readDatapackTree(datapackDir);
     const buildRow = tree.rows.find((row) => row.path === `${DATAPACK_BASENAME}/${BUILD_RELATIVE_PATH}`);
-    if (!buildRow) invalid();
-    return deepFreeze({
-      operation_list_sha256: sha256(stableJson(operations)),
+    const buildFunctionBytes = tree.retainedFiles.get(BUILD_RELATIVE_PATH);
+    if (!buildRow || !buildFunctionBytes) invalid();
+    const hashes = deepFreeze({
+      operation_list_sha256: sha256(operationListBytes),
       build_function_sha256: buildRow.sha256,
       datapack_tree_sha256: sha256(stableJson(tree.rows))
+    });
+    return Object.freeze({
+      hashes,
+      files: Object.freeze({
+        'artifacts/operation-list.json': Buffer.from(operationListBytes),
+        'artifacts/build.mcfunction': Buffer.from(buildFunctionBytes)
+      })
     });
   } catch (error) {
     if (error?.code === 'P5_REPLAY_FAILED') throw error;
@@ -37,6 +50,7 @@ async function readDatapackTree(root) {
   if (before.isSymbolicLink() || !before.isDirectory()) invalid();
   const rootHandle = await fs.open(root, DIRECTORY_FLAGS);
   const rows = [];
+  const retainedFiles = new Map();
   try {
     const opened = await rootHandle.stat();
     if (!opened.isDirectory() || !sameIdentity(before, opened)) invalid();
@@ -47,7 +61,7 @@ async function readDatapackTree(root) {
     await rootHandle.close();
   }
   rows.sort((left, right) => left.path.localeCompare(right.path));
-  return { rows };
+  return { rows, retainedFiles };
 
   async function walk(handle, prefix) {
     const names = (await fs.readdir(descriptorPath(handle))).sort();
@@ -74,7 +88,9 @@ async function readDatapackTree(root) {
           const body = await file.readFile();
           const after = await fs.lstat(target);
           if (after.isSymbolicLink() || !after.isFile() || !sameIdentity(opened, after)
-            || Number(opened.size) !== body.length) invalid();
+            || Number(opened.size) !== body.length || Number(opened.nlink) !== 1
+            || Number(after.nlink) !== 1) invalid();
+          if (relative === BUILD_RELATIVE_PATH) retainedFiles.set(relative, Buffer.from(body));
           rows.push({ path: `${DATAPACK_BASENAME}/${relative}`, sha256: sha256(body) });
         } finally { await file.close(); }
       } else invalid();

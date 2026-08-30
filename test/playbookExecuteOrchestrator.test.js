@@ -22,7 +22,8 @@ import {
   inspectCandidateEvidence,
   installExecuteSelection,
   installInitialCandidateFailure,
-  pruneCandidateWorkspaces
+  pruneCandidateWorkspaces,
+  readCurrentCandidateSnapshot
 } from '../src/playbook/execute/storage.js';
 
 test('execute orchestration forwards the request-scoped LLM provider', async (t) => {
@@ -387,6 +388,8 @@ test('real production-authority mock input creates natural outcomes and installs
     await fileTreeBytes(result.artifacts.installedDatapackDir),
     await fileTreeBytes(result.artifacts.datapackDir)
   );
+  const authority = await admitExecuteRun({ runDir: result.outputDir });
+  t.after(() => authority.close());
   for (const id of ['candidate-01', 'candidate-02', 'candidate-03']) {
     const root = path.join(result.outputDir, 'playbook-execute/candidates', id);
     const evidence = await fs.readdir(root);
@@ -395,6 +398,12 @@ test('real production-authority mock input creates natural outcomes and installs
       const pointer = JSON.parse(await fs.readFile(path.join(root, 'current-chain.json')));
       const chain = JSON.parse(await fs.readFile(path.join(root, `chains/chain-${String(pointer.chain_revision).padStart(4, '0')}.json`)));
       assert.equal(chain.checkpoint_hashes.length, 5);
+      const snapshot = await readCurrentCandidateSnapshot({ authority, candidateId: id });
+      const facadeName = Object.keys(snapshot.files).find(name => name.startsWith('checkpoints/facade/')
+        && sha256ForTest(snapshot.files[name]) === chain.checkpoint_hashes.at(-1).checkpoint_sha256);
+      const facade = JSON.parse(snapshot.files[facadeName]);
+      assert.equal(sha256ForTest(snapshot.files['artifacts/operation-list.json']), facade.compiled_artifact_hashes.operation_list_sha256);
+      assert.equal(sha256ForTest(snapshot.files['artifacts/build.mcfunction']), facade.compiled_artifact_hashes.build_function_sha256);
     }
   }
   for (const id of ['candidate-01', 'candidate-02']) {

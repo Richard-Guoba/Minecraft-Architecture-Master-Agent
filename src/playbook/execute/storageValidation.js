@@ -26,6 +26,8 @@ export const CURRENT_CHAIN_BASENAME = 'current-chain.json';
 export const SELECTION_PATHS = Object.freeze(['manifest.json', 'selection.json', 'selection-report.md']);
 export const FROZEN_DESIGN_PATH = 'frozen/frozen-design.json';
 export const FROZEN_CONTEXT_PATH = 'frozen/frozen-generator-context.json';
+export const OPERATION_LIST_PATH = 'artifacts/operation-list.json';
+export const BUILD_FUNCTION_PATH = 'artifacts/build.mcfunction';
 
 const SELECTION_BODY_PATHS = Object.freeze(['selection.json', 'selection-report.md']);
 const UNSAFE_PATH_CHARACTER = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u;
@@ -216,6 +218,11 @@ export function validateCandidateFiles(candidateId, files, code) {
         parseCanonicalValidatedJson(bytes, validateFrozenDesignEnvelope);
       } else if (name === FROZEN_CONTEXT_PATH) {
         parseCanonicalValidatedJson(bytes, validateFrozenGeneratorContext);
+      } else if (name === OPERATION_LIST_PATH) {
+        const operations = parseCanonicalValue(bytes, code);
+        if (!Array.isArray(operations)) throw executeError(code);
+      } else if (name === BUILD_FUNCTION_PATH) {
+        if (bytes.length === 0) throw executeError(code);
       } else if (BLUEPRINT_PATH.test(name)) {
         if (![1, 2].includes(parseRevision(BLUEPRINT_PATH.exec(name)[1]))) throw executeError(code);
         parseJsonBytes(bytes, code);
@@ -306,7 +313,7 @@ export function validateCandidateFiles(candidateId, files, code) {
     if (currentStored.hash !== pointer.chain_sha256) throw executeError(code);
     validatePersistedCandidateAuthority(files, new Map(
       [...chainsByRevision].filter(([revision]) => revision <= current.chain_revision)
-    ), code);
+    ), checkpointByHash, current, code);
     validateReplayEvidence(files, current, checkpointByHash, code, currentStored.hash, chainsByRevision);
     return Object.freeze({
       currentChainSha256: currentStored.hash,
@@ -353,7 +360,7 @@ export function normalizeSelectionFiles(files) {
 
 export function assertImmutableHistory(existingFiles, incomingFiles) {
   for (const [name, bytes] of Object.entries(existingFiles)) {
-    if (name === CURRENT_CHAIN_BASENAME) continue;
+    if ([CURRENT_CHAIN_BASENAME, OPERATION_LIST_PATH, BUILD_FUNCTION_PATH].includes(name)) continue;
     if (!incomingFiles[name] || !incomingFiles[name].equals(bytes)) {
       throw executeError('P5_OUTPUT_OWNERSHIP');
     }
@@ -433,6 +440,17 @@ function parseCanonicalJson(bytes, code) {
   }
 }
 
+function parseCanonicalValue(bytes, code) {
+  try {
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    const value = JSON.parse(decoded);
+    if (!Buffer.from(stableJson(value), 'utf8').equals(bytes)) throw executeError(code);
+    return value;
+  } catch {
+    throw executeError(code);
+  }
+}
+
 function parseJsonBytes(bytes, code) {
   try {
     const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
@@ -456,7 +474,7 @@ function parseCurrentPointer(bytes, code) {
   return pointer;
 }
 
-function validatePersistedCandidateAuthority(files, chainsByRevision, code) {
+function validatePersistedCandidateAuthority(files, chainsByRevision, checkpointByHash, current, code) {
   const hasFrozenDesign = Buffer.isBuffer(files[FROZEN_DESIGN_PATH]);
   const hasFrozenContext = Buffer.isBuffer(files[FROZEN_CONTEXT_PATH]);
   if (!hasFrozenDesign || !hasFrozenContext) throw executeError(code);
@@ -489,6 +507,24 @@ function validatePersistedCandidateAuthority(files, chainsByRevision, code) {
       seed: context.seed
     });
   }
+  const operationListBytes = files[OPERATION_LIST_PATH];
+  const buildFunctionBytes = files[BUILD_FUNCTION_PATH];
+  if (!Buffer.isBuffer(operationListBytes) || !Buffer.isBuffer(buildFunctionBytes)
+    || buildFunctionBytes.length === 0) throw executeError(code);
+  const operations = parseCanonicalValue(operationListBytes, code);
+  if (!Array.isArray(operations)) throw executeError(code);
+  const currentBlueprint = parseJsonBytes(
+    files[`blueprints/chain-${padRevision(current.chain_revision)}.json`], code
+  );
+  if (!Array.isArray(currentBlueprint.operations)
+    || stableJson(currentBlueprint.operations) !== stableJson(operations)) throw executeError(code);
+  const facadeRow = current.checkpoint_hashes.find((row) => row.layer === 'facade');
+  const facade = checkpointByHash.get(facadeRow?.checkpoint_sha256)?.checkpoint;
+  if (!facade
+    || facade.compiled_artifact_hashes.operation_list_sha256 !== sha256(operationListBytes)
+    || facade.compiled_artifact_hashes.build_function_sha256 !== sha256(buildFunctionBytes)) {
+    throw executeError(code);
+  }
 }
 
 function isAllowedImmutablePath(value) {
@@ -497,6 +533,7 @@ function isAllowedImmutablePath(value) {
     && (CHECKPOINT_PATH.test(value) || CHAIN_PATH.test(value) || HARD_QA_PATH.test(value)
       || REVIEW_PATH.test(value) || BLUEPRINT_PATH.test(value)
       || value === FROZEN_DESIGN_PATH || value === FROZEN_CONTEXT_PATH
+      || value === OPERATION_LIST_PATH || value === BUILD_FUNCTION_PATH
       || [REPAIR_REQUEST_PATH, REPAIR_PATCH_PATH, REPAIR_RESULT_PATH, FAILURE_PATH, REPAIR_PLANNING_FAILURE_PATH].includes(value));
 }
 

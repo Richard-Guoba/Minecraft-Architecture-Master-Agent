@@ -4,7 +4,7 @@ import { BlueprintQAAgent } from '../../construction/agents/blueprintQaAgent.js'
 import { compileDesignLayersForReplay, preparedFromFrozenGeneratorContext } from '../../construction/designStages.js';
 import { compilePreparedConstruction } from '../../construction/workflow.js';
 import { DESIGN_LAYER_ORDER, EXECUTE_SCHEMA_VERSION } from './constants.js';
-import { hashReplayArtifacts } from './artifactAuthority.js';
+import { snapshotReplayArtifacts } from './artifactAuthority.js';
 import {
   executeError, sanitizeExecuteError, validateChainManifest, validateCheckpointEnvelope,
   validateFrozenDesignEnvelope, validateFrozenGeneratorContext, validateRepairEvidenceRequest,
@@ -112,7 +112,8 @@ export async function replayCandidate({
     await hit(faultInjector, 'hashing');
     const recheckedBlueprintBytes = await exactBlueprintBytes(compiledResult);
     if (!recheckedBlueprintBytes.equals(blueprintBytes)) replayFailed();
-    const artifactHashes = await hashReplayArtifacts({ compiledResult });
+    const executableArtifacts = await snapshotReplayArtifacts({ compiledResult });
+    const artifactHashes = executableArtifacts.hashes;
     const hardQaBytes = bytes(hardQa);
     const p4ReviewBytes = bytes(p4Review);
     const hardQaSha256 = sha256(hardQaBytes);
@@ -194,6 +195,7 @@ export async function replayCandidate({
     files['blueprints/chain-0002.json'] = Buffer.from(blueprintBytes);
     files['reviews/chain-0002-hard-qa.json'] = hardQaBytes;
     files['reviews/chain-0002-review.json'] = p4ReviewBytes;
+    Object.assign(files, executableArtifacts.files);
     files['repairs/attempt-01-request.json'] = requestBytes;
     files['repairs/attempt-01-patch.json'] = bytes(validated.transaction);
     files['repairs/attempt-01-result.json'] = resultBytes;

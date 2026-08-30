@@ -1115,6 +1115,42 @@ test('installs and reads a complete first candidate snapshot with immutable bodi
   assert.deepEqual(reread.files['current-chain.json'], expectedFiles['current-chain.json']);
 });
 
+test('requires and retains exact executable artifact bytes bound by the accepted facade', async (t) => {
+  const fixture = await storageFixture(t);
+  const authority = await admitExecuteRun({ runDir: fixture.runDir });
+  t.after(() => authority.close());
+  const snapshot = initialSnapshot();
+
+  await installCandidateSnapshot({ authority, candidateId: 'candidate-01', ...snapshot });
+  const installed = await readCurrentCandidateSnapshot({ authority, candidateId: 'candidate-01' });
+  assert.deepEqual(installed.files['artifacts/operation-list.json'], snapshot.files['artifacts/operation-list.json']);
+  assert.deepEqual(installed.files['artifacts/build.mcfunction'], snapshot.files['artifacts/build.mcfunction']);
+
+  for (const name of ['artifacts/operation-list.json', 'artifacts/build.mcfunction']) {
+    const missing = initialSnapshot();
+    delete missing.files[name];
+    const clean = await storageFixture(t);
+    const cleanAuthority = await admitExecuteRun({ runDir: clean.runDir });
+    t.after(() => cleanAuthority.close());
+    await assert.rejects(
+      installCandidateSnapshot({ authority: cleanAuthority, candidateId: 'candidate-01', ...missing }),
+      { code: /P5_(?:AUTHORITY_INVALID|CHECKPOINT_INVALID)/u },
+      name
+    );
+
+    const substituted = initialSnapshot();
+    substituted.files[name] = Buffer.from('substituted executable authority\n');
+    const other = await storageFixture(t);
+    const otherAuthority = await admitExecuteRun({ runDir: other.runDir });
+    t.after(() => otherAuthority.close());
+    await assert.rejects(
+      installCandidateSnapshot({ authority: otherAuthority, candidateId: 'candidate-01', ...substituted }),
+      { code: /P5_(?:AUTHORITY_INVALID|CHECKPOINT_INVALID)/u },
+      name
+    );
+  }
+});
+
 test('closes every descriptor opened by admission and candidate installation', async (t) => {
   const fixture = await storageFixture(t);
   const openHandles = new Map();
@@ -2945,6 +2981,8 @@ async function buildStorageAuthorities() {
     });
     const hardQaBytes = Buffer.from(stableJson(hardQa));
     const reviewBytes = Buffer.from(stableJson(review));
+    const operationListBytes = Buffer.from(stableJson(compiled.blueprint.operations));
+    const buildFunctionBytes = Buffer.from(await fs.readFile(compiled.artifacts.buildFunction));
     return new Map(['candidate-01', 'candidate-02', 'candidate-03'].map((candidateId) => {
       const frozenDesign = { ...structuredClone(baseDesign), candidate_id: candidateId };
       const frozenDesignBytes = Buffer.from(stableJson(frozenDesign));
@@ -2961,6 +2999,10 @@ async function buildStorageAuthorities() {
         contextHash: sha256(contextBytes),
         blueprintBytes: Buffer.from(blueprintBytes),
         blueprintHash: sha256(blueprintBytes),
+        operationListBytes: Buffer.from(operationListBytes),
+        operationListHash: sha256(operationListBytes),
+        buildFunctionBytes: Buffer.from(buildFunctionBytes),
+        buildFunctionHash: sha256(buildFunctionBytes),
         hardQaBytes: Buffer.from(hardQaBytes),
         hardQaHash: sha256(hardQaBytes),
         reviewBytes: Buffer.from(reviewBytes),
@@ -3019,6 +3061,8 @@ function initialSnapshot(candidateId = 'candidate-01') {
       'frozen/frozen-design.json': Buffer.from(authority.designBytes),
       'frozen/frozen-generator-context.json': Buffer.from(authority.contextBytes),
       'blueprints/chain-0001.json': Buffer.from(authority.blueprintBytes),
+      'artifacts/operation-list.json': Buffer.from(authority.operationListBytes),
+      'artifacts/build.mcfunction': Buffer.from(authority.buildFunctionBytes),
       'reviews/chain-0001-hard-qa.json': Buffer.from(authority.hardQaBytes),
       'reviews/chain-0001-review.json': Buffer.from(authority.reviewBytes)
     },
@@ -3181,10 +3225,15 @@ function buildEnvelopes(candidateId, revision, baseChainSha256, transactionSha25
       field_patches: [],
       compiled_artifact_hashes: layer === 'facade' && revision === 2 ? {
         layer_payload_sha256: ARTIFACT_HASH,
-        operation_list_sha256: '4'.repeat(64),
-        build_function_sha256: '5'.repeat(64),
+        operation_list_sha256: authority.operationListHash,
+        build_function_sha256: authority.buildFunctionHash,
         datapack_tree_sha256: '6'.repeat(64),
         repair_result_sha256: repairResultSha256
+      } : layer === 'facade' ? {
+        layer_payload_sha256: ARTIFACT_HASH,
+        operation_list_sha256: authority.operationListHash,
+        build_function_sha256: authority.buildFunctionHash,
+        datapack_tree_sha256: '6'.repeat(64)
       } : { layer_payload_sha256: ARTIFACT_HASH },
       hard_qa: { hard_qa_ok: true, hard_qa_sha256: authority.hardQaHash },
       design_review: { p4_review_sha256: authority.reviewHash },
@@ -3218,8 +3267,8 @@ function buildReplayEnvelopes(initial, transactionSha256, repairResultSha256) {
       field_patches: [],
       compiled_artifact_hashes: layer === 'facade' ? {
         layer_payload_sha256: ARTIFACT_HASH,
-        operation_list_sha256: '4'.repeat(64),
-        build_function_sha256: '5'.repeat(64),
+        operation_list_sha256: authority.operationListHash,
+        build_function_sha256: authority.buildFunctionHash,
         datapack_tree_sha256: '6'.repeat(64),
         repair_result_sha256: repairResultSha256
       } : { layer_payload_sha256: ARTIFACT_HASH },
