@@ -4,6 +4,8 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { compileP6Cohort, resolveSouthEntry } from '../src/playbook/p6/cohort.js';
+import { auditExecuteDependencyBoundary } from '../src/playbook/execute/executeDependencyBoundary.js';
+import { auditShadowDependencyBoundary } from '../src/playbook/shadow/shadowDependencyBoundary.js';
 import { createP6CohortFixture } from './fixtures/playbookP6.js';
 
 test('compileP6Cohort binds the exact four solutions', async t => {
@@ -26,14 +28,16 @@ test('preflight rejects each blocking snapshot defect without reading an ambient
   for (const defect of [
     'missing-slot', 'missing-checkpoint', 'hard-qa-failed', 'entry-not-south',
     'hash-mismatch', 'symlink', 'baseline-provenance', 'request-drift',
-    'commit-drift', 'minecraft-drift', 'options-drift'
+    'commit-drift', 'minecraft-drift', 'options-drift', 'substituted-build',
+    'cross-run-chain', 'corpus-drift', 'rule-drift', 'bounds-missing',
+    'bounds-unstable', 'entry-conflict', 'malformed-slots', 'directory'
   ]) await t.test(defect, async t => {
     const fixture = await createP6CohortFixture(t, { defect });
     assert.throws(() => compileP6Cohort({
       fixedRequest: fixture.fixedRequest,
       playbook: fixture.playbookAuthority,
       baseline: fixture.baselineAuthority
-    }), { code: ['symlink', 'hash-mismatch'].includes(defect) ? 'P6_AUTHORITY_INVALID' : 'P6_COHORT_INCOMPLETE' });
+    }), { code: ['symlink', 'hash-mismatch', 'directory'].includes(defect) ? 'P6_AUTHORITY_INVALID' : 'P6_COHORT_INCOMPLETE' });
   });
 });
 
@@ -51,8 +55,28 @@ test('selection rank remains informational and resolved entry is explicitly sout
   assert.throws(() => resolveSouthEntry({ blueprint: {}, operations: [] }), { code: 'P6_COHORT_INCOMPLETE' });
 });
 
+test('cohort bytes are stable and post-compile authority mutation cannot alter the frozen result', async t => {
+  const fixture = await createP6CohortFixture(t);
+  const first = compileP6Cohort({ fixedRequest: fixture.fixedRequest, playbook: fixture.playbookAuthority, baseline: fixture.baselineAuthority });
+  const second = compileP6Cohort({ fixedRequest: fixture.fixedRequest, playbook: fixture.playbookAuthority, baseline: fixture.baselineAuthority });
+  assert.equal(first.input_sha256, second.input_sha256);
+  fixture.playbookAuthority.slots[0].build_function.bytes[0] ^= 1;
+  assert.equal(first.solutions[0].build_function_sha256, second.solutions[0].build_function_sha256);
+  for (const order of [[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]]) {
+    const ranked = await createP6CohortFixture(t, { selectionRank: order });
+    assert.equal(compileP6Cohort({ fixedRequest: ranked.fixedRequest, playbook: ranked.playbookAuthority, baseline: ranked.baselineAuthority }).solutions.length, 4);
+  }
+});
+
 test('P5, P4, and pipeline imports never reach P6 and off remains the baseline route', async () => {
   const root = path.resolve(import.meta.dirname, '..');
+  const [execute, shadow] = await Promise.all([
+    auditExecuteDependencyBoundary({ projectRoot: root }), auditShadowDependencyBoundary({ projectRoot: root })
+  ]);
+  assert.equal(execute.import_boundary_violation_count, 0);
+  assert.equal(execute.import_boundary_unresolved_count, 0);
+  assert.equal(shadow.import_boundary_violation_count, 0);
+  assert.equal(shadow.import_boundary_unresolved_count, 0);
   const start = [
     'src/playbook/execute', 'src/playbook/review', 'src/pipeline.js'
   ];
