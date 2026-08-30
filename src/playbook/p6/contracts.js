@@ -345,6 +345,11 @@ export function validateCohortManifest(value) {
   return data;
 }
 
+export function validateP6CohortSolution(value) {
+  const data = canonicalObject(value, COHORT_SOLUTION_FIELDS, 'P6_COHORT_INCOMPLETE');
+  return data;
+}
+
 export function validateCaptureManifest(value) {
   const data = canonicalObject(value, CAPTURE_MANIFEST_FIELDS, 'P6_CAPTURE_INVALID');
   assertSchemaHeader(data, 'P6_CAPTURE_INVALID');
