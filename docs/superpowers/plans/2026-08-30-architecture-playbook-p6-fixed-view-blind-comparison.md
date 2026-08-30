@@ -286,7 +286,7 @@ Expected: FAIL because `offlineRenderer.js` does not exist.
 
 - [ ] **Step 6: Implement a dependency-free deterministic renderer**
 
-`png.js` must implement PNG signature, IHDR, unfiltered RGBA scanlines, zlib compression with fixed options, IDAT, IEND, and CRC32. The renderer rasterizes exposed faces of canonical block/cuboid operations using an orthographic projection derived from the fixed camera direction, a z-buffer, integer pixel coverage, and a frozen role palette. It must not use browser canvas, GPU APIs, fonts, Minecraft assets, timestamps, random values, or host-dependent metadata.
+`png.js` must implement PNG signature, IHDR, unfiltered RGBA scanlines, zlib compression with fixed options, IDAT, IEND, and CRC32. The renderer rasterizes exposed faces of canonical block/cuboid operations using a deterministic perspective projection derived from the fixed camera and the frozen 70-degree horizontal FOV, a z-buffer, integer pixel coverage, and a frozen role palette. It must not use browser canvas, GPU APIs, fonts, Minecraft assets, timestamps, random values, or host-dependent metadata.
 
 ```js
 export function encodeRgbaPng({ width, height, rgba }) {}
