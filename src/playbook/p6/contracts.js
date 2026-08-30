@@ -396,7 +396,7 @@ export function validateObservation(value) {
   if (!OBSERVATION_ID.test(data.observation_id)) fail('P6_OBSERVATION_INVALID');
   assertHash(data.solution_authority_hash, 'P6_OBSERVATION_INVALID');
   assertHash(data.capture_manifest_hash, 'P6_OBSERVATION_INVALID');
-  assertAllowedUniqueSubset(data.view_ids, P6_VIEW_IDS, 'P6_OBSERVATION_INVALID');
+  assertAllowedUniqueSubset(data.view_ids, P6_VIEW_IDS, 'P6_OBSERVATION_INVALID', 1);
   if (!OBSERVATION_LAYERS.includes(data.design_layer)) fail('P6_OBSERVATION_INVALID');
   if (!P6_OBSERVATION_CRITERIA.includes(data.criterion)) fail('P6_OBSERVATION_INVALID');
   if (!P6_OBSERVATION_RATINGS.includes(data.rating)) fail('P6_OBSERVATION_INVALID');
@@ -573,8 +573,8 @@ function assertPoint(value, code) {
   for (const field of POINT_FIELDS) assertDecimal(value[field], code);
 }
 
-function assertAllowedUniqueSubset(value, allowed, code) {
-  if (!Array.isArray(value)) fail(code);
+function assertAllowedUniqueSubset(value, allowed, code, minimumItems = 0) {
+  if (!Array.isArray(value) || value.length < minimumItems) fail(code);
   const seen = new Set();
   for (const item of value) {
     if (typeof item !== 'string') fail(code);

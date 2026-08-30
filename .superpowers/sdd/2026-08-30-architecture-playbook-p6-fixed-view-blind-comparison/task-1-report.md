@@ -171,6 +171,12 @@ Output:
 [no output]
 ```
 
+### Commit
+
+```text
+5d4508347e8fa624cd943d74a9782f77ecf74a84
+```
+
 Commit:
 
 ```bash
@@ -206,7 +212,7 @@ Output:
 
 ### Changed Behavior
 
-- Relaxed runtime validation for `observation.view_ids` and `preference.reason_tags` from ordered subsets to non-empty unique allowed subsets, matching the approved contract and schema behavior while preserving supplied byte order for canonical persistence.
+- Relaxed runtime validation for `observation.view_ids` and `preference.reason_tags` from ordered subsets to unique allowed subsets, with `observation.view_ids` remaining non-empty as required by the approved contract while `preference.reason_tags` remains optionally empty.
 - Replaced comparison manifest public solution identifiers with the fixed opaque alias vocabulary `solution-A` through `solution-D`, and bound the six pair slots to the exact unordered alias pairs with either left/right orientation accepted per slot.
 - Tightened `gate-result.schema.json` to enforce the same `outcome` / `next_action` / `failures` coupling already enforced at runtime.
 - Tightened the local schema-format helper so root-level constraints still apply when a schema also uses `oneOf`, and so `date-time` rejects non-RFC3339 strings such as `2026-08-30 10:20:00Z`.
@@ -314,4 +320,94 @@ Output:
 ℹ todo 0
 ℹ duration_ms 41.603048
 4d5a2d34c45b3b75f3e99bcae105b41e0e504e1c
+```
+
+## Fix Round 3
+
+### Changed Behavior
+
+- Tightened runtime observation validation so `view_ids` must be a non-empty unique subset of the allowed screenshot view vocabulary.
+- Kept runtime preference validation aligned with the approved spec by continuing to allow `reason_tags: []`, while still rejecting duplicates and unknown tags.
+- Corrected the Fix Round 2 report wording so it no longer describes preference reason tags as non-empty.
+
+### Covering Test Files
+
+- `test/playbookP6Contracts.test.js`
+
+### RED Evidence
+
+Command:
+
+```bash
+node --test --test-isolation=none test/playbookP6Contracts.test.js
+```
+
+Output:
+
+```text
+✔ exports frozen literals and public errors without private detail leakage (1.07171ms)
+✔ fixed request is exact, immutable, and canonical (0.636907ms)
+✔ visual settings and camera manifests enforce fixed authority hashes and six-view ordering (0.989422ms)
+✔ cohort and capture manifests preserve frozen authorities and require complete capture metadata (2.690472ms)
+✖ observations, comparisons, preferences, and gate results stay exact and categorical (0.993833ms)
+✔ checked-in protocol JSON is canonical, hash-bound, and every persisted public contract has a schema (2.220376ms)
+✔ public schemas accept representative valid instances and reject representative invalid ones (5.280488ms)
+✔ P6 sources, public protocol JSON, and public schemas forbid scalar score fields (3.929742ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 7
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 33.149384
+
+✖ failing tests:
+
+test at test/playbookP6Contracts.test.js:195:1
+✖ observations, comparisons, preferences, and gate results stay exact and categorical (0.993833ms)
+  AssertionError [ERR_ASSERTION]: Missing expected exception.
+```
+
+This RED run showed runtime still accepted `observation.view_ids: []` before the validator repair.
+
+### GREEN Evidence
+
+Command:
+
+```bash
+node --test --test-isolation=none test/playbookP6Contracts.test.js
+```
+
+Output:
+
+```text
+✔ exports frozen literals and public errors without private detail leakage (1.233184ms)
+✔ fixed request is exact, immutable, and canonical (0.760051ms)
+✔ visual settings and camera manifests enforce fixed authority hashes and six-view ordering (1.173825ms)
+✔ cohort and capture manifests preserve frozen authorities and require complete capture metadata (3.883135ms)
+✔ observations, comparisons, preferences, and gate results stay exact and categorical (2.13294ms)
+✔ checked-in protocol JSON is canonical, hash-bound, and every persisted public contract has a schema (1.890406ms)
+✔ public schemas accept representative valid instances and reject representative invalid ones (5.617811ms)
+✔ P6 sources, public protocol JSON, and public schemas forbid scalar score fields (4.262033ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 45.508938
+```
+
+Command:
+
+```bash
+git diff --check
+```
+
+Output:
+
+```text
+[no output]
 ```

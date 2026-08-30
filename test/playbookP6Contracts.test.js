@@ -202,6 +202,9 @@ test('observations, comparisons, preferences, and gate results stay exact and ca
   const duplicateViews = validObservation();
   duplicateViews.view_ids = ['front-south', 'front-south'];
   assert.throws(() => validateObservation(duplicateViews), { code: 'P6_OBSERVATION_INVALID' });
+  const emptyViews = validObservation();
+  emptyViews.view_ids = [];
+  assert.throws(() => validateObservation(emptyViews), { code: 'P6_OBSERVATION_INVALID' });
   const unknownView = validObservation();
   unknownView.view_ids = ['front-south', 'rear-north'];
   assert.throws(() => validateObservation(unknownView), { code: 'P6_OBSERVATION_INVALID' });
@@ -209,6 +212,9 @@ test('observations, comparisons, preferences, and gate results stay exact and ca
   const reorderedTags = validPreferenceRecord();
   reorderedTags.reason_tags = ['facade', 'massing'];
   assert.deepEqual(validatePreferenceRecord(reorderedTags).reason_tags, ['facade', 'massing']);
+  const emptyTags = validPreferenceRecord();
+  emptyTags.reason_tags = [];
+  assert.deepEqual(validatePreferenceRecord(emptyTags).reason_tags, []);
   const duplicateTags = validPreferenceRecord();
   duplicateTags.reason_tags = ['massing', 'massing'];
   assert.throws(() => validatePreferenceRecord(duplicateTags), { code: 'P6_COMPARISON_INVALID' });
