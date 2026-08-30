@@ -1,7 +1,7 @@
 # Architecture Playbook P6 Fixed-View and Blind-Comparison Design
 
 **Date:** 2026-08-30  
-**Status:** Approved in chat; awaiting written-spec review  
+**Status:** Approved
 **Scope:** Complete the six-episode Playbook v0.1 visual-evaluation prerequisite before P7 course expansion
 
 ## 1. Decision Summary
