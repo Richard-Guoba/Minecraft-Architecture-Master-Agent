@@ -71,16 +71,33 @@ test('fixture authority snapshots preserve actual lstat node kinds without publi
   const symlink = await createP6CohortFixture(t, { defect: 'symlink' });
   const directory = await createP6CohortFixture(t, { defect: 'directory' });
 
-  const symlinkNode = symlink.node_evidence.find(row => row.kind === 'symlink');
-  const directoryNode = directory.node_evidence.find(row => row.kind === 'directory');
-  assert.deepEqual(symlinkNode, {
-    kind: 'symlink', stat_source: 'lstat', is_regular_file: false,
-    is_symlink: true, size: symlinkNode.size
-  });
-  assert.deepEqual(directoryNode, {
-    kind: 'directory', stat_source: 'lstat', is_regular_file: false,
-    is_symlink: false, size: directoryNode.size
-  });
+  for (const [fixture, expectedStat] of [
+    [symlink, { is_regular_file: false, is_symlink: true }],
+    [directory, { is_regular_file: false, is_symlink: false }]
+  ]) {
+    const authoritySnapshot = fixture.playbookAuthority.slots[0].build_function;
+    const bindings = fixture.node_evidence.filter(row => row.authority_snapshot === authoritySnapshot);
+    assert.equal(bindings.length, 1, 'the exact compiler input snapshot has one lstat evidence binding');
+    const evidence = bindings[0].lstat;
+    assert.deepEqual(authoritySnapshot.stat, {
+      is_regular_file: evidence.is_regular_file,
+      is_symlink: evidence.is_symlink,
+      size: evidence.size
+    });
+    assert.deepEqual(evidence, {
+      stat_source: 'lstat',
+      ...expectedStat,
+      size: evidence.size
+    });
+
+    const unrelated = fixture.node_evidence.find(row => row.authority_snapshot !== authoritySnapshot);
+    assert.ok(unrelated, 'fixture has an unrelated node that cannot satisfy the exact binding');
+    assert.notDeepEqual(authoritySnapshot.stat, {
+      is_regular_file: unrelated.lstat.is_regular_file,
+      is_symlink: unrelated.lstat.is_symlink,
+      size: unrelated.lstat.size
+    });
+  }
   for (const fixture of [symlink, directory]) {
     assert.throws(() => compileP6Cohort({
       fixedRequest: fixture.fixedRequest,

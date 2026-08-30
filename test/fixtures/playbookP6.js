@@ -113,22 +113,23 @@ async function snapshotAuthority(value, root, authorityName) {
     }
     const stat = await fs.lstat(nodePath);
     const snapshotBytes = await fs.readFile(kind === 'directory' ? `${nodePath}.payload` : nodePath);
-    evidence.push(Object.freeze({
-      kind,
+    const lstat = Object.freeze({
       stat_source: 'lstat',
       is_regular_file: stat.isFile(),
       is_symlink: stat.isSymbolicLink(),
       size: stat.size
-    }));
-    return {
+    });
+    const authority_snapshot = {
       bytes: snapshotBytes,
       sha256: item.sha256,
       stat: {
-        is_regular_file: stat.isFile(),
-        is_symlink: stat.isSymbolicLink(),
-        size: stat.size
+        is_regular_file: lstat.is_regular_file,
+        is_symlink: lstat.is_symlink,
+        size: lstat.size
       }
     };
+    evidence.push(Object.freeze({ authority_snapshot, lstat }));
+    return authority_snapshot;
   }
 }
 
