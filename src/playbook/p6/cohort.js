@@ -161,10 +161,9 @@ export function hashCohortInputs({ fixedRequest, solutions } = {}) {
 function validateAuthorityEnvelope(value, kind, code) {
   if (!plain(value) || value.schema_version !== 1 || value.kind !== kind || typeof value.run_id !== 'string'
     || !COMMIT.test(value.generator_commit) || value.minecraft_version !== P6_MINECRAFT_VERSION
-    || !plain(value.options) || !plain(value.provenance) || !plain(value.authority_stat)) {
+    || !plain(value.options) || !plain(value.provenance)) {
     code === 'P6_AUTHORITY_INVALID' ? authority() : incomplete();
   }
-  if (value.authority_stat.is_regular_file !== true || value.authority_stat.is_symlink !== false) authority();
   assertFile(value.request, 'P6_AUTHORITY_INVALID');
   if (value.request.sha256 !== P6_PROTOCOL_FILE_HASHES['fixed-request.json']) incomplete();
   if (value.options.mode !== 'mock' || value.options.candidate_count !== 3

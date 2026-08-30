@@ -19,9 +19,24 @@ let sourcePromise;
 
 export async function createP6CohortFixture(t, overrides = {}) {
   const source = await (sourcePromise ||= buildSource());
-  const playbookAuthority = authority(makePlaybook(source, overrides));
-  const baselineAuthority = authority(makeBaseline(source, overrides));
-  return Object.freeze({ fixedRequest: structuredClone(P6_FIXED_REQUEST), playbookAuthority, baselineAuthority, close: async () => undefined });
+  const snapshot_root = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-cohort-snapshots-'));
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    await fs.rm(snapshot_root, { recursive: true, force: true });
+  };
+  t.after(close);
+  const playbook = await snapshotAuthority(makePlaybook(source, overrides), snapshot_root, 'playbook');
+  const baseline = await snapshotAuthority(makeBaseline(source, overrides), snapshot_root, 'baseline');
+  return Object.freeze({
+    fixedRequest: structuredClone(P6_FIXED_REQUEST),
+    playbookAuthority: playbook.value,
+    baselineAuthority: baseline.value,
+    node_evidence: Object.freeze([...playbook.evidence, ...baseline.evidence]),
+    snapshot_root,
+    close
+  });
 }
 
 async function buildSource() {
@@ -62,5 +77,62 @@ function direct(source) { return { candidate_id: 'baseline-current', slot_index:
 function provenance() { return { corpus_sha256: P6_FIXED_REQUEST.playbook_corpus_sha256, rule_version: '0.1.0', generator_commit: COMMIT, minecraft_version: '1.21.9', options: { ...OPTIONS } }; }
 function file(bytes) { return { bytes: Buffer.from(bytes), sha256: sha256(bytes), stat: { is_regular_file: true, is_symlink: false, size: bytes.length } }; }
 function rebind(node, bytes) { node.bytes = Buffer.from(bytes); node.sha256 = sha256(bytes); node.stat.size = bytes.length; }
-function corrupt(value, defect) { const slot = value.slots?.[0]; if (defect === 'missing-slot' && value.slots) value.slots.pop(); if (defect === 'malformed-slots') value.slots = null; if (!slot) return; if (['entry-not-south', 'bounds-missing', 'bounds-unstable', 'entry-conflict'].includes(defect)) { const blueprint = JSON.parse(slot.blueprint.bytes); if (defect === 'entry-not-south') blueprint.opening.main_entry.side = 'north'; if (defect === 'bounds-missing') delete blueprint.bounds; if (defect === 'bounds-unstable') blueprint.bounds.min_z = 0.5; if (defect === 'entry-conflict') blueprint.operations.push({ main_entry: { side: 'south', center_x: 2, center_y: 4, center_z: 20 } }); rebind(slot.blueprint, Buffer.from(stableJson(blueprint))); rebind(slot.operations, Buffer.from(stableJson(blueprint.operations))); } if (defect === 'missing-checkpoint') delete slot.checkpoints.facade; if (defect === 'hard-qa-failed') rebind(slot.hard_qa, Buffer.from(stableJson({ ok: false }))); if (defect === 'hash-mismatch') slot.blueprint.sha256 = '0'.repeat(64); if (defect === 'symlink') slot.build_function.stat.is_symlink = true; if (defect === 'directory') slot.build_function.stat.is_regular_file = false; if (defect === 'substituted-build') rebind(slot.build_function, Buffer.from('say substituted\n')); if (defect === 'cross-run-chain') slot.current_chain = value.slots[1].current_chain; if (defect === 'baseline-provenance') value.options.playbook = 'execute'; if (defect === 'request-drift') rebind(value.request, Buffer.from(stableJson({ ...P6_FIXED_REQUEST, root_seed: 1 }))); if (defect === 'commit-drift') value.generator_commit = 'b'.repeat(40); if (defect === 'minecraft-drift') value.minecraft_version = '1.21.8'; if (defect === 'options-drift') value.options.concepts = 1; if (defect === 'corpus-drift') value.provenance.corpus_sha256 = 'd'.repeat(64); if (defect === 'rule-drift') value.provenance.rule_version = '0.2.0'; }
-function authority(value) { const bytes = Buffer.from(stableJson({ schema_version: value.schema_version, kind: value.kind, run_id: value.run_id, request_sha256: value.request.sha256 })); value.authority_stat = { is_regular_file: true, is_symlink: false, size: bytes.length }; return value; }
+function corrupt(value, defect) { const slot = value.slots?.[0]; if (defect === 'missing-slot' && value.slots) value.slots.pop(); if (defect === 'malformed-slots') value.slots = null; if (!slot) return; if (['entry-not-south', 'bounds-missing', 'bounds-unstable', 'entry-conflict'].includes(defect)) { const blueprint = JSON.parse(slot.blueprint.bytes); if (defect === 'entry-not-south') blueprint.opening.main_entry.side = 'north'; if (defect === 'bounds-missing') delete blueprint.bounds; if (defect === 'bounds-unstable') blueprint.bounds.min_z = 0.5; if (defect === 'entry-conflict') blueprint.operations.push({ main_entry: { side: 'south', center_x: 2, center_y: 4, center_z: 20 } }); rebind(slot.blueprint, Buffer.from(stableJson(blueprint))); rebind(slot.operations, Buffer.from(stableJson(blueprint.operations))); } if (defect === 'missing-checkpoint') delete slot.checkpoints.facade; if (defect === 'hard-qa-failed') rebind(slot.hard_qa, Buffer.from(stableJson({ ok: false }))); if (defect === 'hash-mismatch') slot.blueprint.sha256 = '0'.repeat(64); if (defect === 'symlink') slot.build_function.node_kind = 'symlink'; if (defect === 'directory') slot.build_function.node_kind = 'directory'; if (defect === 'substituted-build') rebind(slot.build_function, Buffer.from('say substituted\n')); if (defect === 'cross-run-chain') slot.current_chain = value.slots[1].current_chain; if (defect === 'baseline-provenance') value.options.playbook = 'execute'; if (defect === 'request-drift') rebind(value.request, Buffer.from(stableJson({ ...P6_FIXED_REQUEST, root_seed: 1 }))); if (defect === 'commit-drift') value.generator_commit = 'b'.repeat(40); if (defect === 'minecraft-drift') value.minecraft_version = '1.21.8'; if (defect === 'options-drift') value.options.concepts = 1; if (defect === 'corpus-drift') value.provenance.corpus_sha256 = 'd'.repeat(64); if (defect === 'rule-drift') value.provenance.rule_version = '0.2.0'; }
+
+async function snapshotAuthority(value, root, authorityName) {
+  const evidence = [];
+  let nodeIndex = 0;
+  const snapshot = await copy(value);
+  return Object.freeze({ value: snapshot, evidence: Object.freeze(evidence) });
+
+  async function copy(item) {
+    if (Buffer.isBuffer(item)) return Buffer.from(item);
+    if (Array.isArray(item)) return Promise.all(item.map(copy));
+    if (isFileSnapshot(item)) return snapshotFile(item);
+    if (item && typeof item === 'object') {
+      return Object.fromEntries(await Promise.all(Object.entries(item).map(async ([key, child]) => [key, await copy(child)])));
+    }
+    return item;
+  }
+
+  async function snapshotFile(item) {
+    const bytes = Buffer.from(item.bytes);
+    const directory = path.join(root, authorityName, 'nodes');
+    await fs.mkdir(directory, { recursive: true });
+    const nodePath = path.join(directory, `${String(++nodeIndex).padStart(4, '0')}.bin`);
+    const kind = item.node_kind || 'regular';
+    if (kind === 'symlink') {
+      const targetPath = `${nodePath}.target`;
+      await fs.writeFile(targetPath, bytes);
+      await fs.symlink(path.basename(targetPath), nodePath);
+    } else if (kind === 'directory') {
+      await fs.mkdir(nodePath);
+      await fs.writeFile(`${nodePath}.payload`, bytes);
+    } else {
+      await fs.writeFile(nodePath, bytes);
+    }
+    const stat = await fs.lstat(nodePath);
+    const snapshotBytes = await fs.readFile(kind === 'directory' ? `${nodePath}.payload` : nodePath);
+    evidence.push(Object.freeze({
+      kind,
+      stat_source: 'lstat',
+      is_regular_file: stat.isFile(),
+      is_symlink: stat.isSymbolicLink(),
+      size: stat.size
+    }));
+    return {
+      bytes: snapshotBytes,
+      sha256: item.sha256,
+      stat: {
+        is_regular_file: stat.isFile(),
+        is_symlink: stat.isSymbolicLink(),
+        size: stat.size
+      }
+    };
+  }
+}
+
+function isFileSnapshot(value) {
+  return value && typeof value === 'object' && Buffer.isBuffer(value.bytes)
+    && typeof value.sha256 === 'string' && value.stat && typeof value.stat === 'object';
+}

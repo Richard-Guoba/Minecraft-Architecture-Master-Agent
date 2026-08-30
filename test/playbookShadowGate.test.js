@@ -16,6 +16,7 @@ const FORBIDDEN_TARGETS = Object.freeze([
   'src/construction/target.js',
   'src/pipeline.js',
   'src/index.js',
+  'src/playbook/p6/cohort.js',
   'src/lib/minecraftCommands.js',
   'src/lib/minecraftWorlds.js'
 ]);

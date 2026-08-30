@@ -8,6 +8,7 @@ export async function auditShadowDependencyBoundary({ projectRoot }) {
       'src/runArchitecturePlaybookShadow.js'
     ],
     forbiddenPaths: [
+      'src/playbook/p6',
       'src/construction',
       'src/pipeline.js',
       'src/index.js',

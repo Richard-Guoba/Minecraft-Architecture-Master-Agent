@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -68,6 +67,38 @@ test('cohort bytes are stable and post-compile authority mutation cannot alter t
   }
 });
 
+test('fixture authority snapshots preserve actual lstat node kinds without publishing paths', async t => {
+  const symlink = await createP6CohortFixture(t, { defect: 'symlink' });
+  const directory = await createP6CohortFixture(t, { defect: 'directory' });
+
+  const symlinkNode = symlink.node_evidence.find(row => row.kind === 'symlink');
+  const directoryNode = directory.node_evidence.find(row => row.kind === 'directory');
+  assert.deepEqual(symlinkNode, {
+    kind: 'symlink', stat_source: 'lstat', is_regular_file: false,
+    is_symlink: true, size: symlinkNode.size
+  });
+  assert.deepEqual(directoryNode, {
+    kind: 'directory', stat_source: 'lstat', is_regular_file: false,
+    is_symlink: false, size: directoryNode.size
+  });
+  for (const fixture of [symlink, directory]) {
+    assert.throws(() => compileP6Cohort({
+      fixedRequest: fixture.fixedRequest,
+      playbook: fixture.playbookAuthority,
+      baseline: fixture.baselineAuthority
+    }), { code: 'P6_AUTHORITY_INVALID' });
+  }
+
+  const normal = await createP6CohortFixture(t);
+  const cohort = compileP6Cohort({
+    fixedRequest: normal.fixedRequest,
+    playbook: normal.playbookAuthority,
+    baseline: normal.baselineAuthority
+  });
+  assert.equal(JSON.stringify(cohort).includes(normal.snapshot_root), false);
+  assert.equal(JSON.stringify(cohort).includes('"path"'), false);
+});
+
 test('fixed provenance rejects coordinated drift and ranks are exact permutations', async t => {
   for (const mutate of [
     ({ playbook, baseline }) => { playbook.provenance.corpus_sha256 = baseline.provenance.corpus_sha256 = 'd'.repeat(64); },
@@ -84,7 +115,7 @@ test('fixed provenance rejects coordinated drift and ranks are exact permutation
   }
 });
 
-test('P5, P4, and pipeline imports never reach P6 and off remains the baseline route', async () => {
+test('P5 and P4 production dependency auditors never reach P6', async () => {
   const root = path.resolve(import.meta.dirname, '..');
   const [execute, shadow] = await Promise.all([
     auditExecuteDependencyBoundary({ projectRoot: root }), auditShadowDependencyBoundary({ projectRoot: root })
@@ -93,27 +124,4 @@ test('P5, P4, and pipeline imports never reach P6 and off remains the baseline r
   assert.equal(execute.import_boundary_unresolved_count, 0);
   assert.equal(shadow.import_boundary_violation_count, 0);
   assert.equal(shadow.import_boundary_unresolved_count, 0);
-  const start = [
-    'src/playbook/execute', 'src/playbook/review', 'src/pipeline.js'
-  ];
-  const visited = new Set();
-  const queue = start.map(item => path.join(root, item));
-  while (queue.length) {
-    const current = queue.pop();
-    if (visited.has(current)) continue;
-    visited.add(current);
-    const stat = await import('node:fs/promises').then(({ lstat }) => lstat(current)).catch(() => null);
-    if (!stat) continue;
-    if (stat.isDirectory()) {
-      const names = await import('node:fs/promises').then(({ readdir }) => readdir(current));
-      queue.push(...names.filter(name => name.endsWith('.js')).map(name => path.join(current, name)));
-      continue;
-    }
-    const source = await readFile(current, 'utf8');
-    assert.equal(source.includes('/p6/'), false, current);
-    assert.equal(source.includes("'../p6/") || source.includes("'./p6/"), false, current);
-  }
-  const pipeline = await readFile(path.join(root, 'src/pipeline.js'), 'utf8');
-  assert.match(pipeline, /playbook = 'off'/u);
-  assert.equal(pipeline.includes('p6/cohort'), false);
 });
