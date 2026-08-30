@@ -10,9 +10,18 @@ export const P6_FIXED_REQUEST = deepFreeze({
   candidate_count: 3,
   candidate_force_rounds: false,
   candidate_rounds: 1,
+  concepts: 0,
+  concept_strategy: 'select',
+  coarse_voxel_mode: 'off',
+  coarse_voxel_plan: null,
+  coarse_voxel_provider: 'baseline',
+  critics: false,
+  generator_commit: '70ef9b17febad4e795fd85268745affeb568854b',
   minecraft_version: P6_MINECRAFT_VERSION,
   mode: 'mock',
+  neural_retrieval: false,
   playbook_version: '0.1.0',
+  playbook_corpus_sha256: 'b91051095fa5336f29dc6412a0fbbc289eb60219798e488f91e1317133ddfb74',
   prompt: P6_FIXED_PROMPT,
   root_seed: 424242
 });

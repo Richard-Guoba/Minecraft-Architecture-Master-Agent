@@ -104,7 +104,7 @@
     },
     "protocol_version": { "const": "0.1.0" },
     "request_sha256": {
-      "const": "a33917169403b2ea9402486040c87f291bc378a47e85443e71ed4b82cb4491d1"
+      "const": "c0d091dd4277b6f8c020ac788baf43487fee03bdf3dc9973f219ed92e02c2c5b"
     },
     "schema_version": { "const": 1 },
     "visual_settings_sha256": {

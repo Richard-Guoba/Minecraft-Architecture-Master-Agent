@@ -36,9 +36,13 @@ const FIXED_REQUEST_FIELDS = Object.freeze([
   'candidate_count',
   'candidate_force_rounds',
   'candidate_rounds',
+  'concepts', 'concept_strategy', 'coarse_voxel_mode', 'coarse_voxel_plan',
+  'coarse_voxel_provider', 'critics', 'generator_commit',
   'minecraft_version',
   'mode',
+  'neural_retrieval',
   'playbook_version',
+  'playbook_corpus_sha256',
   'prompt',
   'root_seed'
 ]);
@@ -251,14 +255,7 @@ export function sanitizeP6Error(error, fallbackCode = 'P6_GATE_FAILED') {
 export function validateFixedRequest(value) {
   const data = canonicalObject(value, FIXED_REQUEST_FIELDS, 'P6_OPTIONS_INVALID');
   assertSchemaHeader(data, 'P6_OPTIONS_INVALID');
-  assertLiteral(data.prompt, P6_FIXED_REQUEST.prompt, 'P6_OPTIONS_INVALID');
-  assertLiteral(data.root_seed, P6_FIXED_REQUEST.root_seed, 'P6_OPTIONS_INVALID');
-  assertLiteral(data.playbook_version, P6_FIXED_REQUEST.playbook_version, 'P6_OPTIONS_INVALID');
-  assertLiteral(data.minecraft_version, P6_FIXED_REQUEST.minecraft_version, 'P6_OPTIONS_INVALID');
-  assertLiteral(data.mode, P6_FIXED_REQUEST.mode, 'P6_OPTIONS_INVALID');
-  assertLiteral(data.candidate_count, P6_FIXED_REQUEST.candidate_count, 'P6_OPTIONS_INVALID');
-  assertLiteral(data.candidate_rounds, P6_FIXED_REQUEST.candidate_rounds, 'P6_OPTIONS_INVALID');
-  assertLiteral(data.candidate_force_rounds, P6_FIXED_REQUEST.candidate_force_rounds, 'P6_OPTIONS_INVALID');
+  for (const field of FIXED_REQUEST_FIELDS) assertLiteral(data[field], P6_FIXED_REQUEST[field], 'P6_OPTIONS_INVALID');
   return data;
 }
 

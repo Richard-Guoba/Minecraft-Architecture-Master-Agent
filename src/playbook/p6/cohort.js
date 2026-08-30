@@ -42,12 +42,12 @@ export function compileP6Cohort({ fixedRequest, playbook, baseline } = {}) {
     if (!slot) incomplete();
     return validateP6SolutionAuthority(slot, {
       candidate_id: candidateId, solution_id: solutionId, slot_index: slotIndex,
-      playbook_mode: 'execute', request, require_p5_chain: true
+      playbook_mode: 'execute', request, authority_options: p5.options, require_p5_chain: true
     });
   });
   const controlSolution = validateP6SolutionAuthority(control.solution, {
     candidate_id: 'baseline-current', solution_id: 'baseline-current', slot_index: 0,
-    playbook_mode: 'off', request, require_p5_chain: false
+    playbook_mode: 'off', request, authority_options: control.options, require_p5_chain: false
   });
   if (control.options.playbook !== 'off') incomplete();
   const allSolutions = [...solutions, controlSolution];
@@ -115,6 +115,7 @@ export function validateP6SolutionAuthority(value, expected) {
       review_sha256: value.review?.sha256 ?? null,
       frozen_design_sha256: value.frozen_design?.sha256 ?? null,
       frozen_context_sha256: value.frozen_context?.sha256 ?? null,
+      fixed_provenance_sha256: sha256(stableJson({ generator_commit: P6_FIXED_REQUEST.generator_commit, playbook_corpus_sha256: P6_FIXED_REQUEST.playbook_corpus_sha256, playbook_version: P6_FIXED_REQUEST.playbook_version, options: omitPlaybook(expected.authority_options) })),
       p5_file_hashes: expected.require_p5_chain ? Object.freeze(Object.fromEntries(Object.entries(value.p5_files).map(([name, snapshot]) => [name, snapshot.sha256]))) : null
     })
   });
@@ -168,9 +169,10 @@ function validateAuthorityEnvelope(value, kind, code) {
   if (value.request.sha256 !== P6_PROTOCOL_FILE_HASHES['fixed-request.json']) incomplete();
   if (value.options.mode !== 'mock' || value.options.candidate_count !== 3
     || value.options.candidate_rounds !== 1 || value.options.candidate_force_rounds !== false) incomplete();
+  if (!sameJson(kind === 'baseline-snapshot' ? omitPlaybook(value.options) : value.options, fixedGeneratorOptions())) incomplete();
   const provenance = value.provenance;
-  if (!HASH.test(provenance.corpus_sha256) || provenance.rule_version !== '0.1.0'
-    || provenance.generator_commit !== value.generator_commit || provenance.minecraft_version !== value.minecraft_version
+  if (provenance.corpus_sha256 !== P6_FIXED_REQUEST.playbook_corpus_sha256 || provenance.rule_version !== P6_FIXED_REQUEST.playbook_version
+    || provenance.generator_commit !== P6_FIXED_REQUEST.generator_commit || value.generator_commit !== P6_FIXED_REQUEST.generator_commit || provenance.minecraft_version !== value.minecraft_version
     || !sameJson(provenance.options, kind === 'baseline-snapshot' ? omitPlaybook(value.options) : value.options)) incomplete();
   return value;
 }
@@ -212,10 +214,12 @@ function validateP5Chain(value) {
 function validateSelectionRank(value) {
   if (!Array.isArray(value) || value.length !== 3) incomplete();
   const seen = new Set();
-  return deepFreeze(value.map(row => {
-    if (!plain(row) || !/^candidate-0[1-3]$/u.test(row.candidate_id) || !Number.isInteger(row.rank) || seen.has(row.candidate_id)) incomplete();
+  const rows = value.map(row => {
+    if (!plain(row) || !/^candidate-0[1-3]$/u.test(row.candidate_id) || !Number.isInteger(row.rank) || ![1, 2, 3].includes(row.rank) || seen.has(row.candidate_id)) incomplete();
     seen.add(row.candidate_id); return { candidate_id: row.candidate_id, rank: row.rank };
-  }));
+  });
+  if (new Set(rows.map(row => row.rank)).size !== 3) incomplete();
+  return deepFreeze(rows);
 }
 
 function validateAdvisory(value) {
@@ -248,5 +252,13 @@ function numeric(value) { return Number.isFinite(value) ? value : null; }
 function plain(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype; }
 function sameJson(left, right) { return stableJson(left) === stableJson(right); }
 function omitPlaybook(options) { const { playbook, ...rest } = options; return rest; }
+function fixedGeneratorOptions() { return {
+  mode: P6_FIXED_REQUEST.mode, candidate_count: P6_FIXED_REQUEST.candidate_count,
+  candidate_rounds: P6_FIXED_REQUEST.candidate_rounds, candidate_force_rounds: P6_FIXED_REQUEST.candidate_force_rounds,
+  concepts: P6_FIXED_REQUEST.concepts, concept_strategy: P6_FIXED_REQUEST.concept_strategy,
+  critics: P6_FIXED_REQUEST.critics, neural_retrieval: P6_FIXED_REQUEST.neural_retrieval,
+  coarse_voxel_mode: P6_FIXED_REQUEST.coarse_voxel_mode, coarse_voxel_provider: P6_FIXED_REQUEST.coarse_voxel_provider,
+  coarse_voxel_plan: P6_FIXED_REQUEST.coarse_voxel_plan
+}; }
 function authority() { throw p6Error('P6_AUTHORITY_INVALID'); }
 function incomplete() { throw p6Error('P6_COHORT_INCOMPLETE'); }

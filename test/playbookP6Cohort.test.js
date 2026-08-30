@@ -68,6 +68,22 @@ test('cohort bytes are stable and post-compile authority mutation cannot alter t
   }
 });
 
+test('fixed provenance rejects coordinated drift and ranks are exact permutations', async t => {
+  for (const mutate of [
+    ({ playbook, baseline }) => { playbook.provenance.corpus_sha256 = baseline.provenance.corpus_sha256 = 'd'.repeat(64); },
+    ({ playbook, baseline }) => { playbook.provenance.rule_version = baseline.provenance.rule_version = '0.2.0'; },
+    ({ playbook, baseline }) => { playbook.generator_commit = baseline.generator_commit = 'b'.repeat(40); playbook.provenance.generator_commit = baseline.provenance.generator_commit = 'b'.repeat(40); },
+    ({ playbook, baseline }) => { playbook.options.concepts = baseline.options.concepts = 1; playbook.provenance.options.concepts = baseline.provenance.options.concepts = 1; }
+  ]) {
+    const fixture = await createP6CohortFixture(t); mutate({ playbook: fixture.playbookAuthority, baseline: fixture.baselineAuthority });
+    assert.throws(() => compileP6Cohort({ fixedRequest: fixture.fixedRequest, playbook: fixture.playbookAuthority, baseline: fixture.baselineAuthority }), { code: 'P6_COHORT_INCOMPLETE' });
+  }
+  for (const ranks of [[1, 1, 2], [0, 2, 3], [1, 2]]) {
+    const fixture = await createP6CohortFixture(t); fixture.playbookAuthority.selection_rank = ranks.map((rank, index) => ({ candidate_id: `candidate-0${index + 1}`, rank }));
+    assert.throws(() => compileP6Cohort({ fixedRequest: fixture.fixedRequest, playbook: fixture.playbookAuthority, baseline: fixture.baselineAuthority }), { code: 'P6_COHORT_INCOMPLETE' });
+  }
+});
+
 test('P5, P4, and pipeline imports never reach P6 and off remains the baseline route', async () => {
   const root = path.resolve(import.meta.dirname, '..');
   const [execute, shadow] = await Promise.all([
