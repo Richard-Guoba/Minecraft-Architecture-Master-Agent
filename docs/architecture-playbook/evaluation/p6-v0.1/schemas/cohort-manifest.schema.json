@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "cohort_id": {
+      "const": "p6-v0.1"
+    },
+    "protocol_version": {
+      "const": "0.1.0"
+    },
+    "request_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "solutions": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "blueprint_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "build_function_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "hard_qa_ok": {
+            "const": true
+          },
+          "minecraft_version": {
+            "const": "1.21.9"
+          },
+          "operation_list_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "playbook_mode": {
+            "enum": [
+              "execute",
+              "off"
+            ],
+            "type": "string"
+          },
+          "prompt_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "root_seed": {
+            "const": 424242
+          },
+          "slot_index": {
+            "enum": [
+              0,
+              1,
+              2,
+              3
+            ]
+          },
+          "solution_id": {
+            "enum": [
+              "playbook-candidate-01",
+              "playbook-candidate-02",
+              "playbook-candidate-03",
+              "baseline-current"
+            ]
+          }
+        },
+        "required": [
+          "solution_id",
+          "playbook_mode",
+          "slot_index",
+          "root_seed",
+          "prompt_sha256",
+          "blueprint_sha256",
+          "operation_list_sha256",
+          "build_function_sha256",
+          "hard_qa_ok",
+          "minecraft_version"
+        ],
+        "type": "object"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array"
+    },
+    "visual_settings_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "protocol_version",
+    "cohort_id",
+    "request_sha256",
+    "visual_settings_sha256",
+    "solutions"
+  ],
+  "title": "P6 Cohort Manifest",
+  "type": "object"
+}

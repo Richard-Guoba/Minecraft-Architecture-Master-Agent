@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "capture_manifest_hash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "cohort_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "comparison_manifest_hash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "next_action": {
+      "enum": [
+        "open-p7",
+        "review-rule-to-checker-mapping",
+        "review-executable-design-layer-expression",
+        "review-frozen-cohort-generation",
+        "review-camera-capture-validity",
+        "review-visual-observation-wording"
+      ],
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "playbook-supported",
+        "inconclusive",
+        "baseline-supported",
+        "capture-invalid"
+      ],
+      "type": "string"
+    },
+    "protocol_version": {
+      "const": "0.1.0"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "sealed_preference_hashes": {
+      "items": {
+        "pattern": "^[a-f0-9]{64}$",
+        "type": "string"
+      },
+      "maxItems": 6,
+      "minItems": 6,
+      "type": "array"
+    },
+    "summary_counts": {
+      "additionalProperties": false,
+      "properties": {
+        "formal_capture_count": {
+          "const": 24
+        },
+        "preference_record_count": {
+          "const": 6
+        },
+        "required_view_count": {
+          "const": 6
+        },
+        "solution_count": {
+          "const": 4
+        }
+      },
+      "required": [
+        "solution_count",
+        "required_view_count",
+        "formal_capture_count",
+        "preference_record_count"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "protocol_version",
+    "cohort_sha256",
+    "capture_manifest_hash",
+    "comparison_manifest_hash",
+    "sealed_preference_hashes",
+    "outcome",
+    "next_action",
+    "summary_counts",
+    "generated_at"
+  ],
+  "title": "P6 Gate Result",
+  "type": "object"
+}

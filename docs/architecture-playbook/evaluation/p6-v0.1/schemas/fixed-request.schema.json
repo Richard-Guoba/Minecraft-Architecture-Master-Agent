@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "candidate_count": {
+      "const": 3
+    },
+    "candidate_force_rounds": {
+      "const": false
+    },
+    "candidate_rounds": {
+      "const": 1
+    },
+    "minecraft_version": {
+      "const": "1.21.9"
+    },
+    "mode": {
+      "const": "mock"
+    },
+    "playbook_version": {
+      "const": "0.1.0"
+    },
+    "prompt": {
+      "const": "Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base"
+    },
+    "protocol_version": {
+      "const": "0.1.0"
+    },
+    "root_seed": {
+      "const": 424242
+    },
+    "schema_version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "schema_version",
+    "protocol_version",
+    "candidate_count",
+    "candidate_force_rounds",
+    "candidate_rounds",
+    "minecraft_version",
+    "mode",
+    "playbook_version",
+    "prompt",
+    "root_seed"
+  ],
+  "title": "P6 Fixed Request",
+  "type": "object"
+}

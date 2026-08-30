@@ -1,0 +1,45 @@
+{
+  "decimal_precision": 6,
+  "distance_override_policy": "uniform-per-view-across-solutions-only",
+  "entry_eye_offset_blocks": 8,
+  "formulas": [
+    {
+      "position_formula": "(centerX, eyeY, maxZ + far)",
+      "purpose": "principal-facade-hierarchy",
+      "target_formula": "(centerX, eyeY, centerZ)",
+      "view_id": "front-south"
+    },
+    {
+      "position_formula": "(maxX + far, eyeY, centerZ)",
+      "purpose": "side-facade-depth",
+      "target_formula": "(centerX, eyeY, centerZ)",
+      "view_id": "side-east"
+    },
+    {
+      "position_formula": "(maxX + 0.95R, eyeY + 0.10H, maxZ + 0.95R)",
+      "purpose": "volume-attachment-roof-silhouette",
+      "target_formula": "C",
+      "view_id": "quarter-southeast"
+    },
+    {
+      "position_formula": "(minX - 0.95R, eyeY + 0.10H, maxZ + 0.95R)",
+      "purpose": "opposite-volume-relationship",
+      "target_formula": "C",
+      "view_id": "quarter-southwest"
+    },
+    {
+      "position_formula": "(centerX, maxY + max(16, 1.50R), centerZ)",
+      "purpose": "roof-composition-footprint",
+      "target_formula": "C",
+      "view_id": "roof-birdseye"
+    },
+    {
+      "position_formula": "eight blocks south of the main-entry center at player eye height",
+      "purpose": "approach-scale-entrance-legibility",
+      "target_formula": "main-entry center",
+      "view_id": "entry-eye"
+    }
+  ],
+  "protocol_version": "0.1.0",
+  "schema_version": 1
+}

@@ -1,0 +1,12 @@
+{
+  "candidate_count": 3,
+  "candidate_force_rounds": false,
+  "candidate_rounds": 1,
+  "minecraft_version": "1.21.9",
+  "mode": "mock",
+  "playbook_version": "0.1.0",
+  "prompt": "Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base",
+  "protocol_version": "0.1.0",
+  "root_seed": 424242,
+  "schema_version": 1
+}

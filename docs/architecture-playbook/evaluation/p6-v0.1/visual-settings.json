@@ -1,0 +1,24 @@
+{
+  "aspect_ratio": "16:9",
+  "clouds": "off",
+  "default_resource_pack": true,
+  "entities_present": false,
+  "fancy_graphics": true,
+  "height_px": 1080,
+  "hidden_overlays": [
+    "gui",
+    "hand",
+    "crosshair",
+    "chat",
+    "subtitles",
+    "debug"
+  ],
+  "horizontal_fov_degrees": 70,
+  "particles_present": false,
+  "protocol_version": "0.1.0",
+  "schema_version": 1,
+  "shader_pack": "none",
+  "time_of_day": 6000,
+  "weather": "clear",
+  "width_px": 1920
+}

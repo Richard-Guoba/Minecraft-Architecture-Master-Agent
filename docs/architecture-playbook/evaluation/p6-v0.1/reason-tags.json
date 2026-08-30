@@ -1,0 +1,16 @@
+{
+  "protocol_version": "0.1.0",
+  "reason_tags": [
+    "massing",
+    "hierarchy",
+    "silhouette",
+    "roof",
+    "facade",
+    "materials",
+    "detail",
+    "scene",
+    "style-consistency",
+    "capture-uncertainty"
+  ],
+  "schema_version": 1
+}

@@ -1,0 +1,22 @@
+{
+  "allowed_ratings": [
+    "strong",
+    "usable",
+    "weak",
+    "fail",
+    "unknown"
+  ],
+  "criteria": [
+    "massing-hierarchy",
+    "structural-legibility",
+    "silhouette",
+    "roof-composition",
+    "facade-rhythm-depth",
+    "material-role-legibility",
+    "detail-density",
+    "scene-integration",
+    "style-consistency"
+  ],
+  "protocol_version": "0.1.0",
+  "schema_version": 1
+}

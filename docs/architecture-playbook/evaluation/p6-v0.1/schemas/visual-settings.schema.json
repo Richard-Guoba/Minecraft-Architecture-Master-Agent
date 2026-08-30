@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "aspect_ratio": {
+      "const": "16:9"
+    },
+    "clouds": {
+      "const": "off"
+    },
+    "default_resource_pack": {
+      "const": true
+    },
+    "entities_present": {
+      "const": false
+    },
+    "fancy_graphics": {
+      "const": true
+    },
+    "height_px": {
+      "const": 1080
+    },
+    "hidden_overlays": {
+      "items": {
+        "enum": [
+          "gui",
+          "hand",
+          "crosshair",
+          "chat",
+          "subtitles",
+          "debug"
+        ],
+        "type": "string"
+      },
+      "maxItems": 6,
+      "minItems": 6,
+      "type": "array"
+    },
+    "horizontal_fov_degrees": {
+      "const": 70
+    },
+    "particles_present": {
+      "const": false
+    },
+    "protocol_version": {
+      "const": "0.1.0"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "shader_pack": {
+      "const": "none"
+    },
+    "time_of_day": {
+      "const": 6000
+    },
+    "weather": {
+      "const": "clear"
+    },
+    "width_px": {
+      "const": 1920
+    }
+  },
+  "required": [
+    "schema_version",
+    "protocol_version",
+    "aspect_ratio",
+    "clouds",
+    "default_resource_pack",
+    "entities_present",
+    "fancy_graphics",
+    "height_px",
+    "hidden_overlays",
+    "horizontal_fov_degrees",
+    "particles_present",
+    "shader_pack",
+    "time_of_day",
+    "weather",
+    "width_px"
+  ],
+  "title": "P6 Visual Settings",
+  "type": "object"
+}

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "camera_manifest_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "cohort_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "environment": {
+      "additionalProperties": false,
+      "properties": {
+        "capture_kind": {
+          "enum": [
+            "reference-render",
+            "minecraft-capture"
+          ],
+          "type": "string"
+        },
+        "client_options_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "environment_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "minecraft_version": {
+          "const": "1.21.9"
+        },
+        "world_identifier_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "minecraft_version",
+        "capture_kind",
+        "environment_sha256",
+        "client_options_sha256",
+        "world_identifier_sha256"
+      ],
+      "type": "object"
+    },
+    "images": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "environment_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "height_px": {
+            "const": 1080
+          },
+          "image_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "screenshot_id": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "solution_id": {
+            "pattern": "^opaque-solution-[a-z0-9]+$",
+            "type": "string"
+          },
+          "view_id": {
+            "enum": [
+              "front-south",
+              "side-east",
+              "quarter-southeast",
+              "quarter-southwest",
+              "roof-birdseye",
+              "entry-eye"
+            ],
+            "type": "string"
+          },
+          "width_px": {
+            "const": 1920
+          }
+        },
+        "required": [
+          "screenshot_id",
+          "solution_id",
+          "view_id",
+          "width_px",
+          "height_px",
+          "environment_sha256",
+          "image_sha256"
+        ],
+        "type": "object"
+      },
+      "maxItems": 24,
+      "minItems": 24,
+      "type": "array"
+    },
+    "protocol_version": {
+      "const": "0.1.0"
+    },
+    "request_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "visual_settings_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "protocol_version",
+    "cohort_sha256",
+    "camera_manifest_sha256",
+    "request_sha256",
+    "visual_settings_sha256",
+    "environment",
+    "images"
+  ],
+  "title": "P6 Capture Manifest",
+  "type": "object"
+}

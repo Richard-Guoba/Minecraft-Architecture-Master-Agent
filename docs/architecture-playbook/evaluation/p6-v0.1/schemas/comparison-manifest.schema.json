@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "capture_manifest_hash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "cohort_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "identity_map_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "pairs": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "left_code": {
+            "pattern": "^opaque-solution-[a-z0-9]+$",
+            "type": "string"
+          },
+          "pair_id": {
+            "pattern": "^pair-\\d{2}$",
+            "type": "string"
+          },
+          "right_code": {
+            "pattern": "^opaque-solution-[a-z0-9]+$",
+            "type": "string"
+          },
+          "view_ids": {
+            "items": {
+              "enum": [
+                "front-south",
+                "side-east",
+                "quarter-southeast",
+                "quarter-southwest",
+                "roof-birdseye",
+                "entry-eye"
+              ],
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 6,
+            "type": "array"
+          }
+        },
+        "required": [
+          "pair_id",
+          "left_code",
+          "right_code",
+          "view_ids"
+        ],
+        "type": "object"
+      },
+      "maxItems": 6,
+      "minItems": 6,
+      "type": "array"
+    },
+    "protocol_version": {
+      "const": "0.1.0"
+    },
+    "randomization_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "solution_codes": {
+      "items": {
+        "pattern": "^opaque-solution-[a-z0-9]+$",
+        "type": "string"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "protocol_version",
+    "cohort_sha256",
+    "capture_manifest_hash",
+    "identity_map_sha256",
+    "randomization_sha256",
+    "solution_codes",
+    "pairs",
+    "generated_at"
+  ],
+  "title": "P6 Comparison Manifest",
+  "type": "object"
+}
