@@ -2,10 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "capture_manifest_hash": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
+    "capture_manifest_hash": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
     "criterion": {
       "enum": [
         "massing-hierarchy",
@@ -37,115 +34,77 @@
         "properties": {
           "region": {
             "oneOf": [
-              {
-                "type": "null"
-              },
+              { "type": "null" },
               {
                 "additionalProperties": false,
                 "properties": {
-                  "height": {
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "width": {
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "x": {
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "y": {
-                    "minimum": 0,
-                    "type": "integer"
-                  }
+                  "height": { "minimum": 1, "type": "integer" },
+                  "width": { "minimum": 1, "type": "integer" },
+                  "x": { "minimum": 0, "type": "integer" },
+                  "y": { "minimum": 0, "type": "integer" }
                 },
-                "required": [
-                  "x",
-                  "y",
-                  "width",
-                  "height"
-                ],
+                "required": ["x", "y", "width", "height"],
                 "type": "object"
               }
             ]
           },
-          "region_kind": {
-            "enum": [
-              "whole-frame",
-              "rect"
-            ],
-            "type": "string"
-          },
+          "region_kind": { "enum": ["whole-frame", "rect"], "type": "string" },
           "screenshot_id": {
-            "minLength": 1,
+            "pattern": "^capture-[a-z0-9-]+-opaque$",
             "type": "string"
           }
         },
-        "required": [
-          "screenshot_id",
-          "region_kind",
-          "region"
-        ],
+        "if": {
+          "properties": {
+            "region_kind": { "const": "whole-frame" }
+          },
+          "required": ["region_kind"]
+        },
+        "required": ["screenshot_id", "region_kind", "region"],
+        "else": {
+          "properties": {
+            "region": {
+              "additionalProperties": false,
+              "properties": {
+                "height": { "minimum": 1, "type": "integer" },
+                "width": { "minimum": 1, "type": "integer" },
+                "x": { "minimum": 0, "type": "integer" },
+                "y": { "minimum": 0, "type": "integer" }
+              },
+              "required": ["x", "y", "width", "height"],
+              "type": "object"
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "region": { "type": "null" }
+          }
+        },
         "type": "object"
       },
       "minItems": 1,
       "type": "array"
     },
     "limitations": {
-      "items": {
-        "minLength": 1,
-        "type": "string"
-      },
+      "items": { "minLength": 1, "type": "string" },
       "maxItems": 8,
+      "uniqueItems": true,
       "type": "array"
     },
-    "observable_paraphrase": {
-      "minLength": 1,
-      "type": "string"
-    },
-    "observation_id": {
-      "pattern": "^observation-\\d{2,}$",
-      "type": "string"
-    },
-    "protocol_version": {
-      "const": "0.1.0"
-    },
-    "rating": {
-      "enum": [
-        "strong",
-        "usable",
-        "weak",
-        "fail",
-        "unknown"
-      ],
-      "type": "string"
-    },
-    "reviewed_at": {
-      "format": "date-time",
-      "type": "string"
-    },
-    "reviewer_kind": {
-      "enum": [
-        "human",
-        "model-assisted"
-      ],
-      "type": "string"
-    },
+    "observable_paraphrase": { "maxLength": 400, "minLength": 1, "type": "string" },
+    "observation_id": { "pattern": "^observation-\\d{2,}$", "type": "string" },
+    "protocol_version": { "const": "0.1.0" },
+    "rating": { "enum": ["strong", "usable", "weak", "fail", "unknown"], "type": "string" },
+    "reviewed_at": { "format": "date-time", "type": "string" },
+    "reviewer_kind": { "enum": ["human", "model-assisted"], "type": "string" },
     "rule_ids": {
-      "items": {
-        "pattern": "^rule:[a-z0-9][a-z0-9.-]*$",
-        "type": "string"
-      },
+      "items": { "pattern": "^rule:[a-z0-9][a-z0-9.-]*$", "type": "string" },
+      "uniqueItems": true,
       "type": "array"
     },
-    "schema_version": {
-      "const": 1
-    },
-    "solution_authority_hash": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
+    "schema_version": { "const": 1 },
+    "solution_authority_hash": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
     "view_ids": {
       "items": {
         "enum": [
@@ -159,6 +118,7 @@
         "type": "string"
       },
       "minItems": 1,
+      "uniqueItems": true,
       "type": "array"
     }
   },

@@ -2,39 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "choice": {
-      "enum": [
-        "left",
-        "right",
-        "tie"
-      ],
-      "type": "string"
-    },
-    "comparison_manifest_hash": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
-    "confidence": {
-      "enum": [
-        "low",
-        "medium",
-        "high"
-      ],
-      "type": "string"
-    },
-    "pair_id": {
-      "pattern": "^pair-\\d{2}$",
-      "type": "string"
-    },
-    "protocol_version": {
-      "const": "0.1.0"
-    },
-    "rationale": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
+    "choice": { "enum": ["left", "right", "tie"], "type": "string" },
+    "comparison_manifest_hash": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+    "confidence": { "enum": ["low", "medium", "high"], "type": "string" },
+    "pair_id": { "pattern": "^pair-\\d{2}$", "type": "string" },
+    "protocol_version": { "const": "0.1.0" },
+    "rationale": { "type": ["string", "null"] },
     "reason_tags": {
       "items": {
         "enum": [
@@ -51,18 +24,12 @@
         ],
         "type": "string"
       },
+      "uniqueItems": true,
       "type": "array"
     },
-    "reviewer_kind": {
-      "const": "human"
-    },
-    "schema_version": {
-      "const": 1
-    },
-    "sealed_at": {
-      "format": "date-time",
-      "type": "string"
-    }
+    "reviewer_kind": { "const": "human" },
+    "schema_version": { "const": 1 },
+    "sealed_at": { "format": "date-time", "type": "string" }
   },
   "required": [
     "schema_version",

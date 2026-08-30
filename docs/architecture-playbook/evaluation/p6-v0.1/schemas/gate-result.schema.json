@@ -2,22 +2,42 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "capture_manifest_hash": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
+    "capture_manifest_hash": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+    "cohort_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+    "comparison_manifest_hash": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+    "failures": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "P6_OPTIONS_INVALID",
+              "P6_COHORT_INCOMPLETE",
+              "P6_AUTHORITY_INVALID",
+              "P6_CAMERA_PROTOCOL_INVALID",
+              "P6_RENDER_FAILED",
+              "P6_CAPTURE_AUTHORIZATION_REQUIRED",
+              "P6_CAPTURE_INVALID",
+              "P6_OBSERVATION_INVALID",
+              "P6_COMPARISON_INVALID",
+              "P6_HUMAN_PREFERENCE_REQUIRED",
+              "P6_GATE_FAILED",
+              "P6_INSTALL_FAILED"
+            ],
+            "type": "string"
+          },
+          "stage": {
+            "enum": ["cohort", "camera", "capture", "observation", "comparison", "gate"],
+            "type": "string"
+          },
+          "subject_id": { "maxLength": 120, "minLength": 1, "type": "string" }
+        },
+        "required": ["code", "stage", "subject_id"],
+        "type": "object"
+      },
+      "type": "array"
     },
-    "cohort_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
-    "comparison_manifest_hash": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
-    "generated_at": {
-      "format": "date-time",
-      "type": "string"
-    },
+    "generated_at": { "format": "date-time", "type": "string" },
     "next_action": {
       "enum": [
         "open-p7",
@@ -30,44 +50,25 @@
       "type": "string"
     },
     "outcome": {
-      "enum": [
-        "playbook-supported",
-        "inconclusive",
-        "baseline-supported",
-        "capture-invalid"
-      ],
+      "enum": ["playbook-supported", "inconclusive", "baseline-supported", "capture-invalid"],
       "type": "string"
     },
-    "protocol_version": {
-      "const": "0.1.0"
-    },
-    "schema_version": {
-      "const": 1
-    },
+    "protocol_version": { "const": "0.1.0" },
+    "schema_version": { "const": 1 },
     "sealed_preference_hashes": {
-      "items": {
-        "pattern": "^[a-f0-9]{64}$",
-        "type": "string"
-      },
+      "items": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
       "maxItems": 6,
       "minItems": 6,
+      "uniqueItems": true,
       "type": "array"
     },
     "summary_counts": {
       "additionalProperties": false,
       "properties": {
-        "formal_capture_count": {
-          "const": 24
-        },
-        "preference_record_count": {
-          "const": 6
-        },
-        "required_view_count": {
-          "const": 6
-        },
-        "solution_count": {
-          "const": 4
-        }
+        "formal_capture_count": { "const": 24 },
+        "preference_record_count": { "const": 6 },
+        "required_view_count": { "const": 6 },
+        "solution_count": { "const": 4 }
       },
       "required": [
         "solution_count",
@@ -86,6 +87,7 @@
     "comparison_manifest_hash",
     "sealed_preference_hashes",
     "outcome",
+    "failures",
     "next_action",
     "summary_counts",
     "generated_at"

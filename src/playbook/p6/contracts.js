@@ -9,6 +9,7 @@ import {
   P6_OBSERVATION_RATINGS,
   P6_PREFERENCE_CONFIDENCE,
   P6_PREFERENCE_VALUES,
+  P6_PROTOCOL_FILE_HASHES,
   P6_PROTOCOL_VERSION,
   P6_REASON_TAGS,
   P6_SCHEMA_VERSION,
@@ -22,8 +23,11 @@ const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const RULE_ID = /^rule:[a-z0-9][a-z0-9.-]*$/u;
 const SOLUTION_ID = /^(playbook-candidate-0[1-3]|baseline-current)$/u;
 const OPAQUE_SOLUTION_ID = /^opaque-solution-[a-z0-9]+$/u;
+const OPAQUE_SCREENSHOT_ID = /^capture-[a-z0-9-]+-opaque$/u;
 const PAIR_ID = /^pair-\d{2}$/u;
 const OBSERVATION_ID = /^observation-\d{2,}$/u;
+const FIXED_REQUEST_SHA256 = P6_PROTOCOL_FILE_HASHES['fixed-request.json'];
+const VISUAL_SETTINGS_SHA256 = P6_PROTOCOL_FILE_HASHES['visual-settings.json'];
 
 const FIXED_REQUEST_FIELDS = Object.freeze([
   'schema_version',
@@ -103,20 +107,24 @@ const CAPTURE_MANIFEST_FIELDS = Object.freeze([
 ]);
 const CAPTURE_ENVIRONMENT_FIELDS = Object.freeze([
   'minecraft_version',
-  'capture_kind',
-  'environment_sha256',
   'client_options_sha256',
+  'resource_pack_ids',
+  'viewport',
+  'horizontal_fov_degrees',
+  'time_of_day',
+  'weather',
   'world_identifier_sha256'
 ]);
+const CAPTURE_VIEWPORT_FIELDS = Object.freeze(['width_px', 'height_px', 'aspect_ratio']);
 const CAPTURE_IMAGE_FIELDS = Object.freeze([
   'screenshot_id',
   'solution_id',
-  'view_id',
-  'width_px',
-  'height_px',
-  'environment_sha256',
+  'camera',
+  'build_function_sha256',
   'image_sha256'
 ]);
+const CAPTURE_CAMERA_FIELDS = Object.freeze(['view_id', 'position', 'orientation']);
+const CAPTURE_ORIENTATION_FIELDS = Object.freeze(['pitch_degrees', 'yaw_degrees']);
 const OBSERVATION_FIELDS = Object.freeze([
   'schema_version',
   'protocol_version',
@@ -168,10 +176,12 @@ const GATE_RESULT_FIELDS = Object.freeze([
   'comparison_manifest_hash',
   'sealed_preference_hashes',
   'outcome',
+  'failures',
   'next_action',
   'summary_counts',
   'generated_at'
 ]);
+const GATE_FAILURE_FIELDS = Object.freeze(['code', 'stage', 'subject_id']);
 const SUMMARY_COUNTS_FIELDS = Object.freeze([
   'solution_count',
   'required_view_count',
@@ -200,24 +210,38 @@ const GATE_OUTCOMES = Object.freeze([
   'baseline-supported',
   'capture-invalid'
 ]);
+const FAILURE_STAGES = Object.freeze([
+  'cohort',
+  'camera',
+  'capture',
+  'observation',
+  'comparison',
+  'gate'
+]);
+const EXPECTED_COMPARISON_PAIRS = Object.freeze([
+  ['pair-01', 0, 1],
+  ['pair-02', 0, 2],
+  ['pair-03', 0, 3],
+  ['pair-04', 1, 2],
+  ['pair-05', 1, 3],
+  ['pair-06', 2, 3]
+]);
 
 export class P6ContractError extends Error {
-  constructor(code, detail = null) {
+  constructor(code) {
     const safeCode = safeErrorCode(code, 'P6_OPTIONS_INVALID');
     super(safeCode);
     this.name = 'P6ContractError';
     this.code = safeCode;
-    this.rawCode = code;
-    if (detail !== null) this.detail = String(detail);
   }
 }
 
-export function p6Error(code, detail = null) {
-  return new P6ContractError(code, detail);
+export function p6Error(code) {
+  return new P6ContractError(code);
 }
 
-export function sanitizeP6Error(error, fallbackCode = 'P6_INSTALL_FAILED') {
-  if (error instanceof P6ContractError && P6_ERROR_CODES.includes(error.rawCode)) {
+export function sanitizeP6Error(error, fallbackCode = 'P6_GATE_FAILED') {
+  if (error instanceof P6ContractError && P6_ERROR_CODES.includes(error.code)) {
     return p6Error(error.code);
   }
   return p6Error(fallbackCode);
@@ -259,23 +283,21 @@ export function validateVisualSettings(value) {
 export function validateCameraManifest(value) {
   const data = canonicalObject(value, CAMERA_MANIFEST_FIELDS, 'P6_CAMERA_PROTOCOL_INVALID');
   assertSchemaHeader(data, 'P6_CAMERA_PROTOCOL_INVALID');
+  assertProtocolAuthorities(data.request_sha256, data.settings_sha256);
   assertSolutionId(data.solution_id, 'P6_CAMERA_PROTOCOL_INVALID');
   assertHash(data.blueprint_sha256, 'P6_CAMERA_PROTOCOL_INVALID');
   assertHash(data.build_function_sha256, 'P6_CAMERA_PROTOCOL_INVALID');
-  assertHash(data.request_sha256, 'P6_CAMERA_PROTOCOL_INVALID');
-  assertHash(data.settings_sha256, 'P6_CAMERA_PROTOCOL_INVALID');
   assertExactObject(data.bounds, BOUNDS_FIELDS, 'P6_CAMERA_PROTOCOL_INVALID');
   for (const field of BOUNDS_FIELDS) assertInteger(data.bounds[field], 'P6_CAMERA_PROTOCOL_INVALID');
   if (data.bounds.min_x > data.bounds.max_x
     || data.bounds.min_y > data.bounds.max_y
-    || data.bounds.min_z > data.bounds.max_z) fail('P6_CAMERA_PROTOCOL_INVALID', 'bounds-order');
+    || data.bounds.min_z > data.bounds.max_z) fail('P6_CAMERA_PROTOCOL_INVALID');
   assertExactObject(data.main_entry, MAIN_ENTRY_FIELDS, 'P6_CAMERA_PROTOCOL_INVALID');
   assertDecimal(data.main_entry.center_x, 'P6_CAMERA_PROTOCOL_INVALID');
   assertDecimal(data.main_entry.center_y, 'P6_CAMERA_PROTOCOL_INVALID');
   assertDecimal(data.main_entry.center_z, 'P6_CAMERA_PROTOCOL_INVALID');
   assertLiteral(data.main_entry.facing, 'south', 'P6_CAMERA_PROTOCOL_INVALID');
-  if (!Array.isArray(data.views) || data.views.length !== P6_VIEW_IDS.length) fail('P6_CAMERA_PROTOCOL_INVALID', 'views');
-  const seen = new Set();
+  if (!Array.isArray(data.views) || data.views.length !== P6_VIEW_IDS.length) fail('P6_CAMERA_PROTOCOL_INVALID');
   for (const [index, view] of data.views.entries()) {
     const expectedViewId = P6_VIEW_IDS[index];
     const expectedPurpose = P6_CAMERA_VIEW_PURPOSES[expectedViewId];
@@ -286,9 +308,9 @@ export function validateCameraManifest(value) {
     assertLiteral(view.horizontal_fov_degrees, P6_VISUAL_SETTINGS.horizontal_fov_degrees, 'P6_CAMERA_PROTOCOL_INVALID');
     assertPoint(view.position, 'P6_CAMERA_PROTOCOL_INVALID');
     assertPoint(view.target, 'P6_CAMERA_PROTOCOL_INVALID');
-    if (seen.has(view.view_id)) fail('P6_CAMERA_PROTOCOL_INVALID', 'duplicate-view-id');
-    seen.add(view.view_id);
-    if (isEntry) assertLiteral(view.entry_offset_blocks, P6_CAMERA_PROTOCOL.entry_eye_offset_blocks, 'P6_CAMERA_PROTOCOL_INVALID');
+    if (isEntry) {
+      assertLiteral(view.entry_offset_blocks, P6_CAMERA_PROTOCOL.entry_eye_offset_blocks, 'P6_CAMERA_PROTOCOL_INVALID');
+    }
   }
   return data;
 }
@@ -296,10 +318,9 @@ export function validateCameraManifest(value) {
 export function validateCohortManifest(value) {
   const data = canonicalObject(value, COHORT_MANIFEST_FIELDS, 'P6_COHORT_INCOMPLETE');
   assertSchemaHeader(data, 'P6_COHORT_INCOMPLETE');
+  assertProtocolAuthorities(data.request_sha256, data.visual_settings_sha256);
   assertLiteral(data.cohort_id, 'p6-v0.1', 'P6_COHORT_INCOMPLETE');
-  assertHash(data.request_sha256, 'P6_COHORT_INCOMPLETE');
-  assertHash(data.visual_settings_sha256, 'P6_COHORT_INCOMPLETE');
-  if (!Array.isArray(data.solutions) || data.solutions.length !== 4) fail('P6_COHORT_INCOMPLETE', 'solution-count');
+  if (!Array.isArray(data.solutions) || data.solutions.length !== 4) fail('P6_COHORT_INCOMPLETE');
   const expected = [
     ['playbook-candidate-01', 'execute', 1],
     ['playbook-candidate-02', 'execute', 2],
@@ -326,43 +347,43 @@ export function validateCohortManifest(value) {
 export function validateCaptureManifest(value) {
   const data = canonicalObject(value, CAPTURE_MANIFEST_FIELDS, 'P6_CAPTURE_INVALID');
   assertSchemaHeader(data, 'P6_CAPTURE_INVALID');
+  assertProtocolAuthorities(data.request_sha256, data.visual_settings_sha256);
   assertHash(data.cohort_sha256, 'P6_CAPTURE_INVALID');
   assertHash(data.camera_manifest_sha256, 'P6_CAPTURE_INVALID');
-  assertHash(data.request_sha256, 'P6_CAPTURE_INVALID');
-  assertHash(data.visual_settings_sha256, 'P6_CAPTURE_INVALID');
   assertExactObject(data.environment, CAPTURE_ENVIRONMENT_FIELDS, 'P6_CAPTURE_INVALID');
   assertLiteral(data.environment.minecraft_version, P6_MINECRAFT_VERSION, 'P6_CAPTURE_INVALID');
-  if (!['reference-render', 'minecraft-capture'].includes(data.environment.capture_kind)) {
-    fail('P6_CAPTURE_INVALID', 'capture-kind');
-  }
-  assertHash(data.environment.environment_sha256, 'P6_CAPTURE_INVALID');
   assertHash(data.environment.client_options_sha256, 'P6_CAPTURE_INVALID');
+  assertExactArray(data.environment.resource_pack_ids, ['vanilla'], 'P6_CAPTURE_INVALID');
+  assertExactObject(data.environment.viewport, CAPTURE_VIEWPORT_FIELDS, 'P6_CAPTURE_INVALID');
+  assertLiteral(data.environment.viewport.width_px, P6_VISUAL_SETTINGS.width_px, 'P6_CAPTURE_INVALID');
+  assertLiteral(data.environment.viewport.height_px, P6_VISUAL_SETTINGS.height_px, 'P6_CAPTURE_INVALID');
+  assertLiteral(data.environment.viewport.aspect_ratio, P6_VISUAL_SETTINGS.aspect_ratio, 'P6_CAPTURE_INVALID');
+  assertLiteral(data.environment.horizontal_fov_degrees, P6_VISUAL_SETTINGS.horizontal_fov_degrees, 'P6_CAPTURE_INVALID');
+  assertLiteral(data.environment.time_of_day, P6_VISUAL_SETTINGS.time_of_day, 'P6_CAPTURE_INVALID');
+  assertLiteral(data.environment.weather, P6_VISUAL_SETTINGS.weather, 'P6_CAPTURE_INVALID');
   assertHash(data.environment.world_identifier_sha256, 'P6_CAPTURE_INVALID');
-  if (!Array.isArray(data.images) || data.images.length !== 24) fail('P6_CAPTURE_INVALID', 'image-count');
-  const ids = new Set();
+  if (!Array.isArray(data.images) || data.images.length !== 24) fail('P6_CAPTURE_INVALID');
+  const screenshotIds = new Set();
   const combos = new Set();
   const solutionIds = new Set();
   for (const image of data.images) {
     assertExactObject(image, CAPTURE_IMAGE_FIELDS, 'P6_CAPTURE_INVALID');
-    assertNonEmptyString(image.screenshot_id, 'P6_CAPTURE_INVALID');
-    if (!OPAQUE_SOLUTION_ID.test(image.solution_id)) fail('P6_CAPTURE_INVALID', 'solution-id');
-    if (!P6_VIEW_IDS.includes(image.view_id)) fail('P6_CAPTURE_INVALID', 'view-id');
-    assertLiteral(image.width_px, P6_VISUAL_SETTINGS.width_px, 'P6_CAPTURE_INVALID');
-    assertLiteral(image.height_px, P6_VISUAL_SETTINGS.height_px, 'P6_CAPTURE_INVALID');
-    assertHash(image.environment_sha256, 'P6_CAPTURE_INVALID');
+    if (typeof image.screenshot_id !== 'string' || !OPAQUE_SCREENSHOT_ID.test(image.screenshot_id)) fail('P6_CAPTURE_INVALID');
+    if (!OPAQUE_SOLUTION_ID.test(image.solution_id)) fail('P6_CAPTURE_INVALID');
+    validateCaptureCamera(image.camera);
+    assertHash(image.build_function_sha256, 'P6_CAPTURE_INVALID');
     assertHash(image.image_sha256, 'P6_CAPTURE_INVALID');
-    if (image.environment_sha256 !== data.environment.environment_sha256) fail('P6_CAPTURE_INVALID', 'environment-drift');
-    if (ids.has(image.screenshot_id)) fail('P6_CAPTURE_INVALID', 'duplicate-screenshot-id');
-    ids.add(image.screenshot_id);
-    const combo = `${image.solution_id}:${image.view_id}`;
-    if (combos.has(combo)) fail('P6_CAPTURE_INVALID', 'duplicate-capture');
+    if (screenshotIds.has(image.screenshot_id)) fail('P6_CAPTURE_INVALID');
+    screenshotIds.add(image.screenshot_id);
+    const combo = `${image.solution_id}:${image.camera.view_id}`;
+    if (combos.has(combo)) fail('P6_CAPTURE_INVALID');
     combos.add(combo);
     solutionIds.add(image.solution_id);
   }
-  if (solutionIds.size !== 4) fail('P6_CAPTURE_INVALID', 'solution-count');
+  if (solutionIds.size !== 4) fail('P6_CAPTURE_INVALID');
   for (const solutionId of solutionIds) {
     for (const viewId of P6_VIEW_IDS) {
-      if (!combos.has(`${solutionId}:${viewId}`)) fail('P6_CAPTURE_INVALID', 'missing-capture');
+      if (!combos.has(`${solutionId}:${viewId}`)) fail('P6_CAPTURE_INVALID');
     }
   }
   return data;
@@ -371,19 +392,19 @@ export function validateCaptureManifest(value) {
 export function validateObservation(value) {
   const data = canonicalObject(value, OBSERVATION_FIELDS, 'P6_OBSERVATION_INVALID');
   assertSchemaHeader(data, 'P6_OBSERVATION_INVALID');
-  if (!OBSERVATION_ID.test(data.observation_id)) fail('P6_OBSERVATION_INVALID', 'observation-id');
+  if (!OBSERVATION_ID.test(data.observation_id)) fail('P6_OBSERVATION_INVALID');
   assertHash(data.solution_authority_hash, 'P6_OBSERVATION_INVALID');
   assertHash(data.capture_manifest_hash, 'P6_OBSERVATION_INVALID');
   assertOrderedSubset(data.view_ids, P6_VIEW_IDS, 'P6_OBSERVATION_INVALID');
-  if (!OBSERVATION_LAYERS.includes(data.design_layer)) fail('P6_OBSERVATION_INVALID', 'design-layer');
-  if (!P6_OBSERVATION_CRITERIA.includes(data.criterion)) fail('P6_OBSERVATION_INVALID', 'criterion');
-  if (!P6_OBSERVATION_RATINGS.includes(data.rating)) fail('P6_OBSERVATION_INVALID', 'rating');
+  if (!OBSERVATION_LAYERS.includes(data.design_layer)) fail('P6_OBSERVATION_INVALID');
+  if (!P6_OBSERVATION_CRITERIA.includes(data.criterion)) fail('P6_OBSERVATION_INVALID');
+  if (!P6_OBSERVATION_RATINGS.includes(data.rating)) fail('P6_OBSERVATION_INVALID');
   assertText(data.observable_paraphrase, 400, 'P6_OBSERVATION_INVALID');
-  if (!Array.isArray(data.evidence_regions) || data.evidence_regions.length === 0) fail('P6_OBSERVATION_INVALID', 'evidence-regions');
+  if (!Array.isArray(data.evidence_regions) || data.evidence_regions.length === 0) fail('P6_OBSERVATION_INVALID');
   for (const region of data.evidence_regions) validateEvidenceRegion(region);
   assertUniquePatternArray(data.rule_ids, RULE_ID, 'P6_OBSERVATION_INVALID');
-  assertStringArray(data.limitations, 8, 200, 'P6_OBSERVATION_INVALID');
-  if (!['human', 'model-assisted'].includes(data.reviewer_kind)) fail('P6_OBSERVATION_INVALID', 'reviewer-kind');
+  assertOrderedUniqueStringArray(data.limitations, 'P6_OBSERVATION_INVALID', 8, 200);
+  if (!['human', 'model-assisted'].includes(data.reviewer_kind)) fail('P6_OBSERVATION_INVALID');
   assertIsoUtc(data.reviewed_at, 'P6_OBSERVATION_INVALID');
   return data;
 }
@@ -396,25 +417,16 @@ export function validateComparisonManifest(value) {
   assertHash(data.identity_map_sha256, 'P6_COMPARISON_INVALID');
   assertHash(data.randomization_sha256, 'P6_COMPARISON_INVALID');
   assertUniquePatternArray(data.solution_codes, OPAQUE_SOLUTION_ID, 'P6_COMPARISON_INVALID');
-  if (data.solution_codes.length !== 4) fail('P6_COMPARISON_INVALID', 'solution-codes');
-  if (!Array.isArray(data.pairs) || data.pairs.length !== 6) fail('P6_COMPARISON_INVALID', 'pair-count');
-  const pairIds = new Set();
-  const seenPairs = new Set();
-  for (const pair of data.pairs) {
+  if (data.solution_codes.length !== 4) fail('P6_COMPARISON_INVALID');
+  if (!Array.isArray(data.pairs) || data.pairs.length !== EXPECTED_COMPARISON_PAIRS.length) fail('P6_COMPARISON_INVALID');
+  for (const [index, pair] of data.pairs.entries()) {
+    const [pairId, leftIndex, rightIndex] = EXPECTED_COMPARISON_PAIRS[index];
     assertExactObject(pair, COMPARISON_PAIR_FIELDS, 'P6_COMPARISON_INVALID');
-    if (!PAIR_ID.test(pair.pair_id)) fail('P6_COMPARISON_INVALID', 'pair-id');
-    if (!data.solution_codes.includes(pair.left_code) || !data.solution_codes.includes(pair.right_code)) {
-      fail('P6_COMPARISON_INVALID', 'pair-solution');
-    }
-    if (pair.left_code === pair.right_code) fail('P6_COMPARISON_INVALID', 'pair-self');
+    assertLiteral(pair.pair_id, pairId, 'P6_COMPARISON_INVALID');
+    assertLiteral(pair.left_code, data.solution_codes[leftIndex], 'P6_COMPARISON_INVALID');
+    assertLiteral(pair.right_code, data.solution_codes[rightIndex], 'P6_COMPARISON_INVALID');
     assertExactArray(pair.view_ids, P6_VIEW_IDS, 'P6_COMPARISON_INVALID');
-    if (pairIds.has(pair.pair_id)) fail('P6_COMPARISON_INVALID', 'duplicate-pair-id');
-    pairIds.add(pair.pair_id);
-    const canonicalPair = [pair.left_code, pair.right_code].sort().join(':');
-    if (seenPairs.has(canonicalPair)) fail('P6_COMPARISON_INVALID', 'duplicate-pair');
-    seenPairs.add(canonicalPair);
   }
-  if (seenPairs.size !== 6) fail('P6_COMPARISON_INVALID', 'pair-coverage');
   assertIsoUtc(data.generated_at, 'P6_COMPARISON_INVALID');
   return data;
 }
@@ -423,9 +435,9 @@ export function validatePreferenceRecord(value) {
   const data = canonicalObject(value, PREFERENCE_RECORD_FIELDS, 'P6_COMPARISON_INVALID');
   assertSchemaHeader(data, 'P6_COMPARISON_INVALID');
   assertHash(data.comparison_manifest_hash, 'P6_COMPARISON_INVALID');
-  if (!PAIR_ID.test(data.pair_id)) fail('P6_COMPARISON_INVALID', 'pair-id');
-  if (!P6_PREFERENCE_VALUES.includes(data.choice)) fail('P6_COMPARISON_INVALID', 'choice');
-  if (!P6_PREFERENCE_CONFIDENCE.includes(data.confidence)) fail('P6_COMPARISON_INVALID', 'confidence');
+  if (!PAIR_ID.test(data.pair_id)) fail('P6_COMPARISON_INVALID');
+  if (!P6_PREFERENCE_VALUES.includes(data.choice)) fail('P6_COMPARISON_INVALID');
+  if (!P6_PREFERENCE_CONFIDENCE.includes(data.confidence)) fail('P6_COMPARISON_INVALID');
   assertOrderedSubset(data.reason_tags, P6_REASON_TAGS, 'P6_COMPARISON_INVALID');
   if (data.rationale !== null) assertText(data.rationale, 400, 'P6_COMPARISON_INVALID');
   assertLiteral(data.reviewer_kind, 'human', 'P6_COMPARISON_INVALID');
@@ -439,19 +451,17 @@ export function validateGateResult(value) {
   assertHash(data.cohort_sha256, 'P6_GATE_FAILED');
   assertHash(data.capture_manifest_hash, 'P6_GATE_FAILED');
   assertHash(data.comparison_manifest_hash, 'P6_GATE_FAILED');
-  if (!Array.isArray(data.sealed_preference_hashes) || data.sealed_preference_hashes.length !== 6) fail('P6_GATE_FAILED', 'preference-hashes');
-  const hashes = new Set();
-  for (const hash of data.sealed_preference_hashes) {
-    assertHash(hash, 'P6_GATE_FAILED');
-    if (hashes.has(hash)) fail('P6_GATE_FAILED', 'duplicate-preference-hash');
-    hashes.add(hash);
-  }
-  if (!GATE_OUTCOMES.includes(data.outcome)) fail('P6_GATE_FAILED', 'outcome');
-  if (!NEXT_ACTIONS.includes(data.next_action)) fail('P6_GATE_FAILED', 'next-action');
+  if (!Array.isArray(data.sealed_preference_hashes) || data.sealed_preference_hashes.length !== 6) fail('P6_GATE_FAILED');
+  assertUniquePatternArray(data.sealed_preference_hashes, HASH, 'P6_GATE_FAILED');
+  if (!GATE_OUTCOMES.includes(data.outcome)) fail('P6_GATE_FAILED');
+  if (!Array.isArray(data.failures)) fail('P6_GATE_FAILED');
+  for (const failure of data.failures) validateGateFailure(failure);
   if (data.outcome === 'playbook-supported') {
     assertLiteral(data.next_action, 'open-p7', 'P6_GATE_FAILED');
-  } else if (data.next_action === 'open-p7') {
-    fail('P6_GATE_FAILED', 'next-action');
+    assertLiteral(data.failures.length, 0, 'P6_GATE_FAILED');
+  } else {
+    if (!NEXT_ACTIONS.includes(data.next_action) || data.next_action === 'open-p7') fail('P6_GATE_FAILED');
+    if (data.failures.length === 0) fail('P6_GATE_FAILED');
   }
   assertExactObject(data.summary_counts, SUMMARY_COUNTS_FIELDS, 'P6_GATE_FAILED');
   assertLiteral(data.summary_counts.solution_count, 4, 'P6_GATE_FAILED');
@@ -468,20 +478,36 @@ export function canonicalP6(value, validator) {
   return deepFreeze({ value: validated, bytes, sha256: sha256(bytes) });
 }
 
+function validateCaptureCamera(value) {
+  assertExactObject(value, CAPTURE_CAMERA_FIELDS, 'P6_CAPTURE_INVALID');
+  if (!P6_VIEW_IDS.includes(value.view_id)) fail('P6_CAPTURE_INVALID');
+  assertPoint(value.position, 'P6_CAPTURE_INVALID');
+  assertExactObject(value.orientation, CAPTURE_ORIENTATION_FIELDS, 'P6_CAPTURE_INVALID');
+  assertDecimal(value.orientation.pitch_degrees, 'P6_CAPTURE_INVALID');
+  assertDecimal(value.orientation.yaw_degrees, 'P6_CAPTURE_INVALID');
+}
+
 function validateEvidenceRegion(value) {
   assertExactObject(value, EVIDENCE_REGION_FIELDS, 'P6_OBSERVATION_INVALID');
-  assertNonEmptyString(value.screenshot_id, 'P6_OBSERVATION_INVALID');
+  if (typeof value.screenshot_id !== 'string' || !OPAQUE_SCREENSHOT_ID.test(value.screenshot_id)) fail('P6_OBSERVATION_INVALID');
   if (value.region_kind === 'whole-frame') {
-    if (value.region !== null) fail('P6_OBSERVATION_INVALID', 'region');
+    if (value.region !== null) fail('P6_OBSERVATION_INVALID');
     return;
   }
-  if (value.region_kind !== 'rect') fail('P6_OBSERVATION_INVALID', 'region-kind');
+  if (value.region_kind !== 'rect') fail('P6_OBSERVATION_INVALID');
   assertExactObject(value.region, RECT_REGION_FIELDS, 'P6_OBSERVATION_INVALID');
   for (const field of RECT_REGION_FIELDS) {
     assertInteger(value.region[field], 'P6_OBSERVATION_INVALID');
-    if (value.region[field] < 0) fail('P6_OBSERVATION_INVALID', 'region-negative');
+    if (value.region[field] < 0) fail('P6_OBSERVATION_INVALID');
   }
-  if (value.region.width < 1 || value.region.height < 1) fail('P6_OBSERVATION_INVALID', 'region-size');
+  if (value.region.width < 1 || value.region.height < 1) fail('P6_OBSERVATION_INVALID');
+}
+
+function validateGateFailure(value) {
+  assertExactObject(value, GATE_FAILURE_FIELDS, 'P6_GATE_FAILED');
+  if (!P6_ERROR_CODES.includes(value.code)) fail('P6_GATE_FAILED');
+  if (!FAILURE_STAGES.includes(value.stage)) fail('P6_GATE_FAILED');
+  assertText(value.subject_id, 120, 'P6_GATE_FAILED');
 }
 
 function canonicalObject(value, fields, code) {
@@ -533,8 +559,14 @@ function assertSchemaHeader(value, code) {
   assertLiteral(value.protocol_version, P6_PROTOCOL_VERSION, code);
 }
 
+function assertProtocolAuthorities(requestSha256, settingsSha256) {
+  if (requestSha256 !== FIXED_REQUEST_SHA256 || settingsSha256 !== VISUAL_SETTINGS_SHA256) {
+    fail('P6_AUTHORITY_INVALID');
+  }
+}
+
 function assertSolutionId(value, code) {
-  if (typeof value !== 'string' || !SOLUTION_ID.test(value)) fail(code, 'solution-id');
+  if (typeof value !== 'string' || !SOLUTION_ID.test(value)) fail(code);
 }
 
 function assertPoint(value, code) {
@@ -555,22 +587,26 @@ function assertOrderedSubset(value, allowed, code) {
   }
 }
 
-function assertUniquePatternArray(value, pattern, code) {
-  if (!Array.isArray(value)) fail(code);
+function assertOrderedUniqueStringArray(value, code, maximumItems, maximumLength) {
+  if (!Array.isArray(value) || value.length > maximumItems) fail(code);
   const seen = new Set();
   for (const item of value) {
-    if (typeof item !== 'string' || !pattern.test(item) || seen.has(item)) fail(code);
+    assertText(item, maximumLength, code);
+    if (seen.has(item)) fail(code);
     seen.add(item);
   }
 }
 
-function assertStringArray(value, maximumItems, maximumLength, code) {
-  if (!Array.isArray(value) || value.length > maximumItems) fail(code);
-  for (const item of value) assertText(item, maximumLength, code);
-}
-
-function assertNonEmptyString(value, code) {
-  if (typeof value !== 'string' || value.length === 0) fail(code);
+function assertUniquePatternArray(value, pattern, code) {
+  if (!Array.isArray(value)) fail(code);
+  const expression = pattern instanceof RegExp ? pattern : null;
+  const seen = new Set();
+  for (const item of value) {
+    if (typeof item !== 'string') fail(code);
+    if (expression ? !expression.test(item) : item !== pattern) fail(code);
+    if (seen.has(item)) fail(code);
+    seen.add(item);
+  }
 }
 
 function assertText(value, maximumLength, code) {
@@ -611,14 +647,13 @@ function isPlainObject(value) {
 }
 
 function sameKeySet(actual, expected) {
-  return actual.length === expected.length
-    && expected.every((field) => actual.includes(field));
+  return actual.length === expected.length && expected.every((field) => actual.includes(field));
 }
 
 function safeErrorCode(code, fallback) {
   return P6_ERROR_CODES.includes(code) ? code : fallback;
 }
 
-function fail(code, detail = null) {
-  throw p6Error(code, detail);
+function fail(code) {
+  throw p6Error(code);
 }

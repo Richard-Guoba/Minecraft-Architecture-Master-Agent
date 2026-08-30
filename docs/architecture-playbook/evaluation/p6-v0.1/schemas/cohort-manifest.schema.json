@@ -2,93 +2,26 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "cohort_id": {
-      "const": "p6-v0.1"
-    },
-    "protocol_version": {
-      "const": "0.1.0"
-    },
+    "cohort_id": { "const": "p6-v0.1" },
+    "protocol_version": { "const": "0.1.0" },
     "request_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
+      "const": "a33917169403b2ea9402486040c87f291bc378a47e85443e71ed4b82cb4491d1"
     },
-    "schema_version": {
-      "const": 1
-    },
+    "schema_version": { "const": 1 },
     "solutions": {
-      "items": {
-        "additionalProperties": false,
-        "properties": {
-          "blueprint_sha256": {
-            "pattern": "^[a-f0-9]{64}$",
-            "type": "string"
-          },
-          "build_function_sha256": {
-            "pattern": "^[a-f0-9]{64}$",
-            "type": "string"
-          },
-          "hard_qa_ok": {
-            "const": true
-          },
-          "minecraft_version": {
-            "const": "1.21.9"
-          },
-          "operation_list_sha256": {
-            "pattern": "^[a-f0-9]{64}$",
-            "type": "string"
-          },
-          "playbook_mode": {
-            "enum": [
-              "execute",
-              "off"
-            ],
-            "type": "string"
-          },
-          "prompt_sha256": {
-            "pattern": "^[a-f0-9]{64}$",
-            "type": "string"
-          },
-          "root_seed": {
-            "const": 424242
-          },
-          "slot_index": {
-            "enum": [
-              0,
-              1,
-              2,
-              3
-            ]
-          },
-          "solution_id": {
-            "enum": [
-              "playbook-candidate-01",
-              "playbook-candidate-02",
-              "playbook-candidate-03",
-              "baseline-current"
-            ]
-          }
-        },
-        "required": [
-          "solution_id",
-          "playbook_mode",
-          "slot_index",
-          "root_seed",
-          "prompt_sha256",
-          "blueprint_sha256",
-          "operation_list_sha256",
-          "build_function_sha256",
-          "hard_qa_ok",
-          "minecraft_version"
-        ],
-        "type": "object"
-      },
+      "items": false,
       "maxItems": 4,
       "minItems": 4,
+      "prefixItems": [
+        { "$ref": "#/$defs/playbookCandidate01" },
+        { "$ref": "#/$defs/playbookCandidate02" },
+        { "$ref": "#/$defs/playbookCandidate03" },
+        { "$ref": "#/$defs/baselineCurrent" }
+      ],
       "type": "array"
     },
     "visual_settings_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
+      "const": "3f06660be200990192a73615c5cfabe635d8254965158dd78eee81aa46bb0296"
     }
   },
   "required": [
@@ -100,5 +33,147 @@
     "solutions"
   ],
   "title": "P6 Cohort Manifest",
-  "type": "object"
+  "type": "object",
+  "$defs": {
+    "solutionBase": {
+      "additionalProperties": false,
+      "properties": {
+        "blueprint_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "build_function_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "hard_qa_ok": { "const": true },
+        "minecraft_version": { "const": "1.21.9" },
+        "operation_list_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "playbook_mode": { "type": "string" },
+        "prompt_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "root_seed": { "const": 424242 },
+        "slot_index": {},
+        "solution_id": { "type": "string" }
+      },
+      "required": [
+        "solution_id",
+        "playbook_mode",
+        "slot_index",
+        "root_seed",
+        "prompt_sha256",
+        "blueprint_sha256",
+        "operation_list_sha256",
+        "build_function_sha256",
+        "hard_qa_ok",
+        "minecraft_version"
+      ],
+      "type": "object"
+    },
+    "playbookCandidate01": {
+      "additionalProperties": false,
+      "properties": {
+        "blueprint_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "build_function_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "hard_qa_ok": { "const": true },
+        "minecraft_version": { "const": "1.21.9" },
+        "operation_list_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "playbook_mode": { "const": "execute" },
+        "prompt_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "root_seed": { "const": 424242 },
+        "slot_index": { "const": 1 },
+        "solution_id": { "const": "playbook-candidate-01" }
+      },
+      "required": [
+        "solution_id",
+        "playbook_mode",
+        "slot_index",
+        "root_seed",
+        "prompt_sha256",
+        "blueprint_sha256",
+        "operation_list_sha256",
+        "build_function_sha256",
+        "hard_qa_ok",
+        "minecraft_version"
+      ],
+      "type": "object"
+    },
+    "playbookCandidate02": {
+      "additionalProperties": false,
+      "properties": {
+        "blueprint_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "build_function_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "hard_qa_ok": { "const": true },
+        "minecraft_version": { "const": "1.21.9" },
+        "operation_list_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "playbook_mode": { "const": "execute" },
+        "prompt_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "root_seed": { "const": 424242 },
+        "slot_index": { "const": 2 },
+        "solution_id": { "const": "playbook-candidate-02" }
+      },
+      "required": [
+        "solution_id",
+        "playbook_mode",
+        "slot_index",
+        "root_seed",
+        "prompt_sha256",
+        "blueprint_sha256",
+        "operation_list_sha256",
+        "build_function_sha256",
+        "hard_qa_ok",
+        "minecraft_version"
+      ],
+      "type": "object"
+    },
+    "playbookCandidate03": {
+      "additionalProperties": false,
+      "properties": {
+        "blueprint_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "build_function_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "hard_qa_ok": { "const": true },
+        "minecraft_version": { "const": "1.21.9" },
+        "operation_list_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "playbook_mode": { "const": "execute" },
+        "prompt_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "root_seed": { "const": 424242 },
+        "slot_index": { "const": 3 },
+        "solution_id": { "const": "playbook-candidate-03" }
+      },
+      "required": [
+        "solution_id",
+        "playbook_mode",
+        "slot_index",
+        "root_seed",
+        "prompt_sha256",
+        "blueprint_sha256",
+        "operation_list_sha256",
+        "build_function_sha256",
+        "hard_qa_ok",
+        "minecraft_version"
+      ],
+      "type": "object"
+    },
+    "baselineCurrent": {
+      "additionalProperties": false,
+      "properties": {
+        "blueprint_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "build_function_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "hard_qa_ok": { "const": true },
+        "minecraft_version": { "const": "1.21.9" },
+        "operation_list_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "playbook_mode": { "const": "off" },
+        "prompt_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "root_seed": { "const": 424242 },
+        "slot_index": { "const": 0 },
+        "solution_id": { "const": "baseline-current" }
+      },
+      "required": [
+        "solution_id",
+        "playbook_mode",
+        "slot_index",
+        "root_seed",
+        "prompt_sha256",
+        "blueprint_sha256",
+        "operation_list_sha256",
+        "build_function_sha256",
+        "hard_qa_ok",
+        "minecraft_version"
+      ],
+      "type": "object"
+    }
+  }
 }

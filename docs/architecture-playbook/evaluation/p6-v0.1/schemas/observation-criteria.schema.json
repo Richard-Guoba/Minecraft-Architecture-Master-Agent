@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "allowed_ratings": {
+      "items": false,
+      "maxItems": 5,
+      "minItems": 5,
+      "prefixItems": [
+        { "const": "strong" },
+        { "const": "usable" },
+        { "const": "weak" },
+        { "const": "fail" },
+        { "const": "unknown" }
+      ],
+      "type": "array"
+    },
+    "criteria": {
+      "items": false,
+      "maxItems": 9,
+      "minItems": 9,
+      "prefixItems": [
+        { "const": "massing-hierarchy" },
+        { "const": "structural-legibility" },
+        { "const": "silhouette" },
+        { "const": "roof-composition" },
+        { "const": "facade-rhythm-depth" },
+        { "const": "material-role-legibility" },
+        { "const": "detail-density" },
+        { "const": "scene-integration" },
+        { "const": "style-consistency" }
+      ],
+      "type": "array"
+    },
+    "protocol_version": { "const": "0.1.0" },
+    "schema_version": { "const": 1 }
+  },
+  "required": ["schema_version", "protocol_version", "allowed_ratings", "criteria"],
+  "title": "P6 Observation Criteria",
+  "type": "object"
+}

@@ -2,45 +2,43 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "camera_manifest_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
-    "cohort_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
+    "camera_manifest_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+    "cohort_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
     "environment": {
       "additionalProperties": false,
       "properties": {
-        "capture_kind": {
-          "enum": [
-            "reference-render",
-            "minecraft-capture"
-          ],
-          "type": "string"
+        "client_options_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "horizontal_fov_degrees": { "const": 70 },
+        "minecraft_version": { "const": "1.21.9" },
+        "resource_pack_ids": {
+          "items": false,
+          "maxItems": 1,
+          "minItems": 1,
+          "prefixItems": [{ "const": "vanilla" }],
+          "type": "array"
         },
-        "client_options_sha256": {
-          "pattern": "^[a-f0-9]{64}$",
-          "type": "string"
+        "time_of_day": { "const": 6000 },
+        "viewport": {
+          "additionalProperties": false,
+          "properties": {
+            "aspect_ratio": { "const": "16:9" },
+            "height_px": { "const": 1080 },
+            "width_px": { "const": 1920 }
+          },
+          "required": ["width_px", "height_px", "aspect_ratio"],
+          "type": "object"
         },
-        "environment_sha256": {
-          "pattern": "^[a-f0-9]{64}$",
-          "type": "string"
-        },
-        "minecraft_version": {
-          "const": "1.21.9"
-        },
-        "world_identifier_sha256": {
-          "pattern": "^[a-f0-9]{64}$",
-          "type": "string"
-        }
+        "weather": { "const": "clear" },
+        "world_identifier_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" }
       },
       "required": [
         "minecraft_version",
-        "capture_kind",
-        "environment_sha256",
         "client_options_sha256",
+        "resource_pack_ids",
+        "viewport",
+        "horizontal_fov_degrees",
+        "time_of_day",
+        "weather",
         "world_identifier_sha256"
       ],
       "type": "object"
@@ -49,68 +47,68 @@
       "items": {
         "additionalProperties": false,
         "properties": {
-          "environment_sha256": {
-            "pattern": "^[a-f0-9]{64}$",
-            "type": "string"
+          "build_function_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+          "camera": {
+            "additionalProperties": false,
+            "properties": {
+              "orientation": {
+                "additionalProperties": false,
+                "properties": {
+                  "pitch_degrees": { "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$", "type": "string" },
+                  "yaw_degrees": { "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$", "type": "string" }
+                },
+                "required": ["pitch_degrees", "yaw_degrees"],
+                "type": "object"
+              },
+              "position": {
+                "additionalProperties": false,
+                "properties": {
+                  "x": { "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$", "type": "string" },
+                  "y": { "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$", "type": "string" },
+                  "z": { "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$", "type": "string" }
+                },
+                "required": ["x", "y", "z"],
+                "type": "object"
+              },
+              "view_id": {
+                "enum": [
+                  "front-south",
+                  "side-east",
+                  "quarter-southeast",
+                  "quarter-southwest",
+                  "roof-birdseye",
+                  "entry-eye"
+                ],
+                "type": "string"
+              }
+            },
+            "required": ["view_id", "position", "orientation"],
+            "type": "object"
           },
-          "height_px": {
-            "const": 1080
-          },
-          "image_sha256": {
-            "pattern": "^[a-f0-9]{64}$",
-            "type": "string"
-          },
+          "image_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
           "screenshot_id": {
-            "minLength": 1,
+            "pattern": "^capture-[a-z0-9-]+-opaque$",
             "type": "string"
           },
           "solution_id": {
             "pattern": "^opaque-solution-[a-z0-9]+$",
             "type": "string"
-          },
-          "view_id": {
-            "enum": [
-              "front-south",
-              "side-east",
-              "quarter-southeast",
-              "quarter-southwest",
-              "roof-birdseye",
-              "entry-eye"
-            ],
-            "type": "string"
-          },
-          "width_px": {
-            "const": 1920
           }
         },
-        "required": [
-          "screenshot_id",
-          "solution_id",
-          "view_id",
-          "width_px",
-          "height_px",
-          "environment_sha256",
-          "image_sha256"
-        ],
+        "required": ["screenshot_id", "solution_id", "camera", "build_function_sha256", "image_sha256"],
         "type": "object"
       },
       "maxItems": 24,
       "minItems": 24,
       "type": "array"
     },
-    "protocol_version": {
-      "const": "0.1.0"
-    },
+    "protocol_version": { "const": "0.1.0" },
     "request_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
+      "const": "a33917169403b2ea9402486040c87f291bc378a47e85443e71ed4b82cb4491d1"
     },
-    "schema_version": {
-      "const": 1
-    },
+    "schema_version": { "const": 1 },
     "visual_settings_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
+      "const": "3f06660be200990192a73615c5cfabe635d8254965158dd78eee81aa46bb0296"
     }
   },
   "required": [

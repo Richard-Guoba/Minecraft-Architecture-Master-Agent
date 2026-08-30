@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "decimal_precision": { "const": 6 },
+    "distance_override_policy": { "const": "uniform-per-view-across-solutions-only" },
+    "entry_eye_offset_blocks": { "const": 8 },
+    "formulas": {
+      "items": false,
+      "maxItems": 6,
+      "minItems": 6,
+      "prefixItems": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "position_formula": { "const": "(centerX, eyeY, maxZ + far)" },
+            "purpose": { "const": "principal-facade-hierarchy" },
+            "target_formula": { "const": "(centerX, eyeY, centerZ)" },
+            "view_id": { "const": "front-south" }
+          },
+          "required": ["view_id", "position_formula", "target_formula", "purpose"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "position_formula": { "const": "(maxX + far, eyeY, centerZ)" },
+            "purpose": { "const": "side-facade-depth" },
+            "target_formula": { "const": "(centerX, eyeY, centerZ)" },
+            "view_id": { "const": "side-east" }
+          },
+          "required": ["view_id", "position_formula", "target_formula", "purpose"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "position_formula": { "const": "(maxX + 0.95R, eyeY + 0.10H, maxZ + 0.95R)" },
+            "purpose": { "const": "volume-attachment-roof-silhouette" },
+            "target_formula": { "const": "C" },
+            "view_id": { "const": "quarter-southeast" }
+          },
+          "required": ["view_id", "position_formula", "target_formula", "purpose"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "position_formula": { "const": "(minX - 0.95R, eyeY + 0.10H, maxZ + 0.95R)" },
+            "purpose": { "const": "opposite-volume-relationship" },
+            "target_formula": { "const": "C" },
+            "view_id": { "const": "quarter-southwest" }
+          },
+          "required": ["view_id", "position_formula", "target_formula", "purpose"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "position_formula": { "const": "(centerX, maxY + max(16, 1.50R), centerZ)" },
+            "purpose": { "const": "roof-composition-footprint" },
+            "target_formula": { "const": "C" },
+            "view_id": { "const": "roof-birdseye" }
+          },
+          "required": ["view_id", "position_formula", "target_formula", "purpose"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "position_formula": { "const": "eight blocks south of the main-entry center at player eye height" },
+            "purpose": { "const": "approach-scale-entrance-legibility" },
+            "target_formula": { "const": "main-entry center" },
+            "view_id": { "const": "entry-eye" }
+          },
+          "required": ["view_id", "position_formula", "target_formula", "purpose"],
+          "type": "object"
+        }
+      ],
+      "type": "array"
+    },
+    "protocol_version": { "const": "0.1.0" },
+    "schema_version": { "const": 1 }
+  },
+  "required": [
+    "schema_version",
+    "protocol_version",
+    "decimal_precision",
+    "distance_override_policy",
+    "entry_eye_offset_blocks",
+    "formulas"
+  ],
+  "title": "P6 Camera Protocol",
+  "type": "object"
+}

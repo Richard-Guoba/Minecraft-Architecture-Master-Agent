@@ -2,86 +2,39 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "blueprint_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
+    "blueprint_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
     "bounds": {
       "additionalProperties": false,
       "properties": {
-        "max_x": {
-          "type": "integer"
-        },
-        "max_y": {
-          "type": "integer"
-        },
-        "max_z": {
-          "type": "integer"
-        },
-        "min_x": {
-          "type": "integer"
-        },
-        "min_y": {
-          "type": "integer"
-        },
-        "min_z": {
-          "type": "integer"
-        }
+        "max_x": { "type": "integer" },
+        "max_y": { "type": "integer" },
+        "max_z": { "type": "integer" },
+        "min_x": { "type": "integer" },
+        "min_y": { "type": "integer" },
+        "min_z": { "type": "integer" }
       },
-      "required": [
-        "min_x",
-        "min_y",
-        "min_z",
-        "max_x",
-        "max_y",
-        "max_z"
-      ],
+      "required": ["min_x", "min_y", "min_z", "max_x", "max_y", "max_z"],
       "type": "object"
     },
-    "build_function_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
+    "build_function_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
     "main_entry": {
       "additionalProperties": false,
       "properties": {
-        "center_x": {
-          "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$",
-          "type": "string"
-        },
-        "center_y": {
-          "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$",
-          "type": "string"
-        },
-        "center_z": {
-          "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$",
-          "type": "string"
-        },
-        "facing": {
-          "const": "south"
-        }
+        "center_x": { "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$", "type": "string" },
+        "center_y": { "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$", "type": "string" },
+        "center_z": { "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$", "type": "string" },
+        "facing": { "const": "south" }
       },
-      "required": [
-        "center_x",
-        "center_y",
-        "center_z",
-        "facing"
-      ],
+      "required": ["center_x", "center_y", "center_z", "facing"],
       "type": "object"
     },
-    "protocol_version": {
-      "const": "0.1.0"
-    },
+    "protocol_version": { "const": "0.1.0" },
     "request_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
+      "const": "a33917169403b2ea9402486040c87f291bc378a47e85443e71ed4b82cb4491d1"
     },
-    "schema_version": {
-      "const": 1
-    },
+    "schema_version": { "const": 1 },
     "settings_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
+      "const": "3f06660be200990192a73615c5cfabe635d8254965158dd78eee81aa46bb0296"
     },
     "solution_id": {
       "enum": [
@@ -93,95 +46,84 @@
       "type": "string"
     },
     "views": {
-      "items": {
-        "additionalProperties": false,
-        "properties": {
-          "entry_offset_blocks": {
-            "const": 8
-          },
-          "horizontal_fov_degrees": {
-            "const": 70
-          },
-          "position": {
-            "additionalProperties": false,
-            "properties": {
-              "x": {
-                "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$",
-                "type": "string"
-              },
-              "y": {
-                "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$",
-                "type": "string"
-              },
-              "z": {
-                "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$",
-                "type": "string"
-              }
-            },
-            "required": [
-              "x",
-              "y",
-              "z"
-            ],
-            "type": "object"
-          },
-          "purpose": {
-            "enum": [
-              "principal-facade-hierarchy",
-              "side-facade-depth",
-              "volume-attachment-roof-silhouette",
-              "opposite-volume-relationship",
-              "roof-composition-footprint",
-              "approach-scale-entrance-legibility"
-            ],
-            "type": "string"
-          },
-          "target": {
-            "additionalProperties": false,
-            "properties": {
-              "x": {
-                "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$",
-                "type": "string"
-              },
-              "y": {
-                "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$",
-                "type": "string"
-              },
-              "z": {
-                "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$",
-                "type": "string"
-              }
-            },
-            "required": [
-              "x",
-              "y",
-              "z"
-            ],
-            "type": "object"
-          },
-          "view_id": {
-            "enum": [
-              "front-south",
-              "side-east",
-              "quarter-southeast",
-              "quarter-southwest",
-              "roof-birdseye",
-              "entry-eye"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "view_id",
-          "purpose",
-          "horizontal_fov_degrees",
-          "position",
-          "target"
-        ],
-        "type": "object"
-      },
+      "items": false,
       "maxItems": 6,
       "minItems": 6,
+      "prefixItems": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "horizontal_fov_degrees": { "const": 70 },
+            "position": { "$ref": "#/$defs/point" },
+            "purpose": { "const": "principal-facade-hierarchy" },
+            "target": { "$ref": "#/$defs/point" },
+            "view_id": { "const": "front-south" }
+          },
+          "required": ["view_id", "purpose", "horizontal_fov_degrees", "position", "target"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "horizontal_fov_degrees": { "const": 70 },
+            "position": { "$ref": "#/$defs/point" },
+            "purpose": { "const": "side-facade-depth" },
+            "target": { "$ref": "#/$defs/point" },
+            "view_id": { "const": "side-east" }
+          },
+          "required": ["view_id", "purpose", "horizontal_fov_degrees", "position", "target"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "horizontal_fov_degrees": { "const": 70 },
+            "position": { "$ref": "#/$defs/point" },
+            "purpose": { "const": "volume-attachment-roof-silhouette" },
+            "target": { "$ref": "#/$defs/point" },
+            "view_id": { "const": "quarter-southeast" }
+          },
+          "required": ["view_id", "purpose", "horizontal_fov_degrees", "position", "target"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "horizontal_fov_degrees": { "const": 70 },
+            "position": { "$ref": "#/$defs/point" },
+            "purpose": { "const": "opposite-volume-relationship" },
+            "target": { "$ref": "#/$defs/point" },
+            "view_id": { "const": "quarter-southwest" }
+          },
+          "required": ["view_id", "purpose", "horizontal_fov_degrees", "position", "target"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "horizontal_fov_degrees": { "const": 70 },
+            "position": { "$ref": "#/$defs/point" },
+            "purpose": { "const": "roof-composition-footprint" },
+            "target": { "$ref": "#/$defs/point" },
+            "view_id": { "const": "roof-birdseye" }
+          },
+          "required": ["view_id", "purpose", "horizontal_fov_degrees", "position", "target"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "entry_offset_blocks": { "const": 8 },
+            "horizontal_fov_degrees": { "const": 70 },
+            "position": { "$ref": "#/$defs/point" },
+            "purpose": { "const": "approach-scale-entrance-legibility" },
+            "target": { "$ref": "#/$defs/point" },
+            "view_id": { "const": "entry-eye" }
+          },
+          "required": ["view_id", "purpose", "horizontal_fov_degrees", "position", "target", "entry_offset_blocks"],
+          "type": "object"
+        }
+      ],
       "type": "array"
     }
   },
@@ -198,5 +140,17 @@
     "views"
   ],
   "title": "P6 Camera Manifest",
-  "type": "object"
+  "type": "object",
+  "$defs": {
+    "point": {
+      "additionalProperties": false,
+      "properties": {
+        "x": { "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$", "type": "string" },
+        "y": { "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$", "type": "string" },
+        "z": { "pattern": "^-?(0|[1-9]\\d*)\\.\\d{6}$", "type": "string" }
+      },
+      "required": ["x", "y", "z"],
+      "type": "object"
+    }
+  }
 }

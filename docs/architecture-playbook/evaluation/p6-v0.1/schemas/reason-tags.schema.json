@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "const": "0.1.0" },
+    "reason_tags": {
+      "items": false,
+      "maxItems": 10,
+      "minItems": 10,
+      "prefixItems": [
+        { "const": "massing" },
+        { "const": "hierarchy" },
+        { "const": "silhouette" },
+        { "const": "roof" },
+        { "const": "facade" },
+        { "const": "materials" },
+        { "const": "detail" },
+        { "const": "scene" },
+        { "const": "style-consistency" },
+        { "const": "capture-uncertainty" }
+      ],
+      "type": "array"
+    },
+    "schema_version": { "const": 1 }
+  },
+  "required": ["schema_version", "protocol_version", "reason_tags"],
+  "title": "P6 Reason Tags",
+  "type": "object"
+}

@@ -2,84 +2,32 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "capture_manifest_hash": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
-    "cohort_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
-    "generated_at": {
-      "format": "date-time",
-      "type": "string"
-    },
-    "identity_map_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
+    "capture_manifest_hash": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+    "cohort_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+    "generated_at": { "format": "date-time", "type": "string" },
+    "identity_map_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
     "pairs": {
-      "items": {
-        "additionalProperties": false,
-        "properties": {
-          "left_code": {
-            "pattern": "^opaque-solution-[a-z0-9]+$",
-            "type": "string"
-          },
-          "pair_id": {
-            "pattern": "^pair-\\d{2}$",
-            "type": "string"
-          },
-          "right_code": {
-            "pattern": "^opaque-solution-[a-z0-9]+$",
-            "type": "string"
-          },
-          "view_ids": {
-            "items": {
-              "enum": [
-                "front-south",
-                "side-east",
-                "quarter-southeast",
-                "quarter-southwest",
-                "roof-birdseye",
-                "entry-eye"
-              ],
-              "type": "string"
-            },
-            "maxItems": 6,
-            "minItems": 6,
-            "type": "array"
-          }
-        },
-        "required": [
-          "pair_id",
-          "left_code",
-          "right_code",
-          "view_ids"
-        ],
-        "type": "object"
-      },
+      "items": false,
       "maxItems": 6,
       "minItems": 6,
+      "prefixItems": [
+        { "$ref": "#/$defs/pair01" },
+        { "$ref": "#/$defs/pair02" },
+        { "$ref": "#/$defs/pair03" },
+        { "$ref": "#/$defs/pair04" },
+        { "$ref": "#/$defs/pair05" },
+        { "$ref": "#/$defs/pair06" }
+      ],
       "type": "array"
     },
-    "protocol_version": {
-      "const": "0.1.0"
-    },
-    "randomization_sha256": {
-      "pattern": "^[a-f0-9]{64}$",
-      "type": "string"
-    },
-    "schema_version": {
-      "const": 1
-    },
+    "protocol_version": { "const": "0.1.0" },
+    "randomization_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+    "schema_version": { "const": 1 },
     "solution_codes": {
-      "items": {
-        "pattern": "^opaque-solution-[a-z0-9]+$",
-        "type": "string"
-      },
+      "items": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
       "maxItems": 4,
       "minItems": 4,
+      "uniqueItems": true,
       "type": "array"
     }
   },
@@ -95,5 +43,98 @@
     "generated_at"
   ],
   "title": "P6 Comparison Manifest",
-  "type": "object"
+  "type": "object",
+  "$defs": {
+    "views": {
+      "items": false,
+      "maxItems": 6,
+      "minItems": 6,
+      "prefixItems": [
+        { "const": "front-south" },
+        { "const": "side-east" },
+        { "const": "quarter-southeast" },
+        { "const": "quarter-southwest" },
+        { "const": "roof-birdseye" },
+        { "const": "entry-eye" }
+      ],
+      "type": "array"
+    },
+    "pairBase": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "pair_id": { "pattern": "^pair-\\d{2}$", "type": "string" },
+        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair01": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "pair_id": { "const": "pair-01" },
+        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair02": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "pair_id": { "const": "pair-02" },
+        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair03": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "pair_id": { "const": "pair-03" },
+        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair04": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "pair_id": { "const": "pair-04" },
+        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair05": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "pair_id": { "const": "pair-05" },
+        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    },
+    "pair06": {
+      "additionalProperties": false,
+      "properties": {
+        "left_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "pair_id": { "const": "pair-06" },
+        "right_code": { "pattern": "^opaque-solution-[a-z0-9]+$", "type": "string" },
+        "view_ids": { "$ref": "#/$defs/views" }
+      },
+      "required": ["pair_id", "left_code", "right_code", "view_ids"],
+      "type": "object"
+    }
+  }
 }
