@@ -1,5 +1,9 @@
-import { deepFreeze, sha256, stableJson } from '../shadow/canonical.js';
+import path from 'node:path';
+
+import { admitExecuteRun, readCurrentCandidateSnapshot } from '../execute/storage.js';
+import { validateSelectionRecord } from '../execute/contracts.js';
 import { validateCandidateFiles } from '../execute/storageValidation.js';
+import { deepFreeze, sha256, stableJson } from '../shadow/canonical.js';
 import {
   canonicalP6,
   p6Error,
@@ -14,6 +18,10 @@ import {
   P6_PROTOCOL_VERSION,
   P6_SCHEMA_VERSION
 } from './constants.js';
+import {
+  assertP6RunAuthority,
+  readExternalP6InputAuthority
+} from './storage.js';
 
 const HASH = /^[a-f0-9]{64}$/u;
 const COMMIT = /^[a-f0-9]{40,64}$/u;
@@ -23,6 +31,89 @@ const PLAYBOOK_SLOTS = Object.freeze([
   ['candidate-02', 'playbook-candidate-02', 2],
   ['candidate-03', 'playbook-candidate-03', 3]
 ]);
+const BASELINE_AUTHORITY_BASENAME = 'p6-baseline-authority.json';
+const BASELINE_AUTHORITY_FIELDS = Object.freeze([
+  'files', 'generator_commit', 'kind', 'minecraft_version',
+  'options', 'provenance', 'run_id', 'schema_version'
+]);
+const BASELINE_FILE_FIELDS = Object.freeze([
+  'blueprint', 'build_function', 'hard_qa', 'operations', 'review'
+]);
+
+/**
+ * Admit exact live P5 and off-baseline authorities, snapshot every consumed
+ * regular file while its inode is retained, close the P5 capability, and only
+ * then invoke the path-free pure cohort compiler.
+ */
+export async function admitP6CohortInputs({
+  p6Authority,
+  playbookRunDir,
+  baselineRunDir,
+  fixedRequestPath
+} = {}) {
+  let executeAuthority;
+  try {
+    await assertP6RunAuthority(p6Authority);
+    if (![playbookRunDir, baselineRunDir, fixedRequestPath].every(value => (
+      typeof value === 'string' && path.isAbsolute(value) && path.resolve(value) === value
+    ))) authority();
+    const fixedRequest = await readExternalP6InputAuthority({
+      authority: p6Authority,
+      rootDir: path.dirname(fixedRequestPath),
+      relativePath: path.basename(fixedRequestPath)
+    });
+    const fixedRequestValue = parseCanonicalJson(fixedRequest.bytes);
+
+    executeAuthority = await admitExecuteRun({ runDir: playbookRunDir });
+    const slots = [];
+    for (const [candidateId, , slotIndex] of PLAYBOOK_SLOTS) {
+      const admitted = await readCurrentCandidateSnapshot({
+        authority: executeAuthority,
+        candidateId
+      });
+      slots.push(await snapshotPlaybookSlot({
+        p6Authority,
+        playbookRunDir,
+        admitted,
+        candidateId,
+        slotIndex,
+        fixedRequest
+      }));
+    }
+    const selection = await snapshotCurrentSelection({
+      p6Authority, playbookRunDir, slots
+    });
+    const options = fixedGeneratorOptions();
+    const playbook = {
+      schema_version: 1,
+      kind: 'p5-run-snapshot',
+      run_id: `p5-${selection.manifest.sha256.slice(0, 24)}`,
+      request: fixedRequest,
+      generator_commit: P6_FIXED_REQUEST.generator_commit,
+      minecraft_version: P6_MINECRAFT_VERSION,
+      options,
+      provenance: frozenProvenance(options),
+      slots,
+      selection_rank: selection.rank
+    };
+    const baseline = await snapshotBaseline({
+      p6Authority,
+      baselineRunDir,
+      fixedRequest
+    });
+    await assertP6RunAuthority(p6Authority);
+    return compileP6Cohort({
+      fixedRequest: fixedRequestValue,
+      playbook,
+      baseline
+    });
+  } catch (error) {
+    if (error?.code === 'P6_COHORT_INCOMPLETE') throw error;
+    authority();
+  } finally {
+    await executeAuthority?.close();
+  }
+}
 
 /**
  * Compile only already-admitted bytes/stat snapshots. This deliberately has no
@@ -156,6 +247,211 @@ export function hashCohortInputs({ fixedRequest, solutions } = {}) {
       build_function_sha256: solution.build_function_sha256
     }))
   }));
+}
+
+async function snapshotPlaybookSlot({
+  p6Authority,
+  playbookRunDir,
+  admitted,
+  candidateId,
+  slotIndex,
+  fixedRequest
+}) {
+  if (admitted.candidate_id !== candidateId || !plain(admitted.files)) authority();
+  const prefix = `playbook-execute/candidates/${candidateId}`;
+  const p5_files = {};
+  for (const name of Object.keys(admitted.files).sort()) {
+    const snapshot = await readExternalP6InputAuthority({
+      authority: p6Authority,
+      rootDir: playbookRunDir,
+      relativePath: `${prefix}/${name}`
+    });
+    if (!snapshot.bytes.equals(admitted.files[name])) authority();
+    p5_files[name] = snapshot;
+  }
+  const currentPointer = p5_files['current-chain.json'];
+  if (!currentPointer) authority();
+  const pointer = parseCanonicalJson(currentPointer.bytes);
+  if (!plain(pointer) || pointer.candidate_id !== candidateId
+    || pointer.chain_sha256 !== admitted.current_chain_sha256
+    || !Number.isInteger(pointer.chain_revision)) authority();
+  const revision = String(pointer.chain_revision).padStart(4, '0');
+  const chainFile = p5_files[`chains/chain-${revision}.json`];
+  if (!chainFile || chainFile.sha256 !== admitted.current_chain_sha256
+    || !chainFile.bytes.equals(admitted.current_chain)) authority();
+  const chain = parseCanonicalJson(chainFile.bytes);
+  const named = name => {
+    const snapshot = p5_files[name];
+    if (!snapshot) authority();
+    return snapshot;
+  };
+  const checkpointByLayer = Object.fromEntries(chain.checkpoint_hashes.map(row => {
+    const matches = Object.values(p5_files).filter(file => file.sha256 === row.checkpoint_sha256);
+    if (matches.length !== 1) authority();
+    return [row.layer, matches[0]];
+  }));
+  return {
+    candidate_id: candidateId,
+    slot_index: slotIndex,
+    playbook_mode: 'execute',
+    root_seed: P6_FIXED_REQUEST.root_seed,
+    prompt_sha256: sha256(P6_FIXED_REQUEST.prompt),
+    request: fixedRequest,
+    blueprint: named(`blueprints/chain-${revision}.json`),
+    operations: named(`artifacts/chain-${revision}-operation-list.json`),
+    build_function: named(`artifacts/chain-${revision}-build.mcfunction`),
+    hard_qa: named(`reviews/chain-${revision}-hard-qa.json`),
+    review: named(`reviews/chain-${revision}-review.json`),
+    advisory_rule_eligibility: advisoryFromChain(chain),
+    p5_files,
+    current_chain: currentPointer,
+    checkpoints: checkpointByLayer,
+    frozen_design: named('frozen/frozen-design.json'),
+    frozen_context: named('frozen/frozen-generator-context.json')
+  };
+}
+
+async function snapshotCurrentSelection({ p6Authority, playbookRunDir, slots }) {
+  const pointer = await readExternalP6InputAuthority({
+    authority: p6Authority,
+    rootDir: playbookRunDir,
+    relativePath: 'playbook-execute/manifest.json'
+  });
+  const pointerValue = parseCanonicalJson(pointer.bytes);
+  if (!plain(pointerValue)
+    || !/^selection-generations\/selection-[a-f0-9]{64}$/u.test(pointerValue.generation)
+    || pointerValue.generation !== `selection-generations/selection-${pointerValue.manifest_sha256}`) authority();
+  const prefix = `playbook-execute/${pointerValue.generation}`;
+  const manifest = await readExternalP6InputAuthority({
+    authority: p6Authority,
+    rootDir: playbookRunDir,
+    relativePath: `${prefix}/manifest.json`
+  });
+  const selectionFile = await readExternalP6InputAuthority({
+    authority: p6Authority,
+    rootDir: playbookRunDir,
+    relativePath: `${prefix}/selection.json`
+  });
+  if (manifest.sha256 !== pointerValue.manifest_sha256) authority();
+  let selection;
+  try { selection = validateSelectionRecord(parseCanonicalJson(selectionFile.bytes)); }
+  catch { authority(); }
+  for (const slot of slots) {
+    const row = selection.candidates.find(item => item.candidate_id === slot.candidate_id);
+    const currentChainName = Object.keys(slot.p5_files).find(name => (
+      name.startsWith('chains/chain-') && slot.p5_files[name].sha256 === row?.current_chain_sha256
+    ));
+    if (!row || !currentChainName) authority();
+  }
+  const ranking = selection.ranker_result?.ranking;
+  if (!Array.isArray(ranking) || ranking.length !== 3) authority();
+  const rank = ranking.map(row => ({
+    candidate_id: row?.candidate_id,
+    rank: row?.rank
+  }));
+  if (new Set(rank.map(row => row.candidate_id)).size !== 3
+    || new Set(rank.map(row => row.rank)).size !== 3) authority();
+  return { manifest, rank };
+}
+
+async function snapshotBaseline({ p6Authority, baselineRunDir, fixedRequest }) {
+  const manifestSnapshot = await readExternalP6InputAuthority({
+    authority: p6Authority,
+    rootDir: baselineRunDir,
+    relativePath: BASELINE_AUTHORITY_BASENAME
+  });
+  const manifest = parseCanonicalJson(manifestSnapshot.bytes);
+  if (!plain(manifest) || !sameKeySet(Object.keys(manifest), BASELINE_AUTHORITY_FIELDS)
+    || manifest.schema_version !== 1 || manifest.kind !== 'p6-baseline-authority'
+    || typeof manifest.run_id !== 'string' || manifest.run_id.length === 0
+    || !COMMIT.test(manifest.generator_commit)
+    || manifest.minecraft_version !== P6_MINECRAFT_VERSION
+    || !plain(manifest.options) || !plain(manifest.provenance)
+    || !plain(manifest.files) || !sameKeySet(Object.keys(manifest.files), BASELINE_FILE_FIELDS)) authority();
+  const snapshots = {};
+  const claimedPaths = new Set();
+  for (const field of BASELINE_FILE_FIELDS) {
+    const binding = manifest.files[field];
+    if (!plain(binding) || !sameKeySet(Object.keys(binding), ['relative_path', 'sha256'])
+      || !safeRelativePath(binding.relative_path) || !HASH.test(binding.sha256)
+      || claimedPaths.has(binding.relative_path)) authority();
+    claimedPaths.add(binding.relative_path);
+    const snapshot = await readExternalP6InputAuthority({
+      authority: p6Authority,
+      rootDir: baselineRunDir,
+      relativePath: binding.relative_path
+    });
+    if (snapshot.sha256 !== binding.sha256) authority();
+    snapshots[field] = snapshot;
+  }
+  return {
+    schema_version: 1,
+    kind: 'baseline-snapshot',
+    run_id: manifest.run_id,
+    request: fixedRequest,
+    generator_commit: manifest.generator_commit,
+    minecraft_version: manifest.minecraft_version,
+    options: manifest.options,
+    provenance: manifest.provenance,
+    solution: {
+      candidate_id: 'baseline-current',
+      slot_index: 0,
+      playbook_mode: 'off',
+      root_seed: P6_FIXED_REQUEST.root_seed,
+      prompt_sha256: sha256(P6_FIXED_REQUEST.prompt),
+      request: fixedRequest,
+      blueprint: snapshots.blueprint,
+      operations: snapshots.operations,
+      build_function: snapshots.build_function,
+      hard_qa: snapshots.hard_qa,
+      review: snapshots.review,
+      advisory_rule_eligibility: {
+        unresolved_violated_core_rule_ids: [],
+        neutral_unknown_rule_ids: [],
+        neutral_not_applicable_rule_ids: []
+      }
+    }
+  };
+}
+
+function parseCanonicalJson(bytes) {
+  try {
+    const value = JSON.parse(bytes.toString('utf8'));
+    if (stableJson(value) !== bytes.toString('utf8')) authority();
+    return value;
+  } catch { authority(); }
+}
+
+function advisoryFromChain(chain) {
+  const eligibility = chain?.eligibility;
+  if (!plain(eligibility)) authority();
+  return {
+    unresolved_violated_core_rule_ids: eligibility.unresolved_violated_core_rule_ids,
+    neutral_unknown_rule_ids: eligibility.neutral_unknown_rule_ids,
+    neutral_not_applicable_rule_ids: eligibility.neutral_not_applicable_rule_ids
+  };
+}
+
+function frozenProvenance(options) {
+  return {
+    corpus_sha256: P6_FIXED_REQUEST.playbook_corpus_sha256,
+    rule_version: P6_FIXED_REQUEST.playbook_version,
+    generator_commit: P6_FIXED_REQUEST.generator_commit,
+    minecraft_version: P6_MINECRAFT_VERSION,
+    options
+  };
+}
+
+function safeRelativePath(value) {
+  return typeof value === 'string' && value.length > 0 && !path.isAbsolute(value)
+    && !value.includes('\\') && value.split('/').every(part => (
+      part.length > 0 && part !== '.' && part !== '..'
+      && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(part)
+    ));
+}
+
+function sameKeySet(actual, expected) {
+  return actual.length === expected.length && expected.every(key => actual.includes(key));
 }
 
 function validateAuthorityEnvelope(value, kind, code) {
