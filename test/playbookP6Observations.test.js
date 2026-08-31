@@ -155,12 +155,21 @@ test('rejects preference language and claims of intent, authenticity, engineerin
   assert.doesNotThrow(() => createObservation(observationFor(context, {
     observable_paraphrase: 'This design loses definition toward the roof edge.'
   }), context));
+  assert.doesNotThrow(() => createObservation(observationFor(context, {
+    limitations: ['The review is intentionally limited to the cited exterior frame.']
+  }), context));
+  assert.doesNotThrow(() => createObservation(observationFor(context, {
+    observable_paraphrase: 'This observation is intended to cover visible roof-edge contrast.'
+  }), context));
 
   assert.throws(() => createObservation(observationFor(context, {
     rating: 'unknown',
     limitations: [
       'Evidence remains unclear for unseen interior conditions, but the architect intended a dominant center.'
     ]
+  }), context), { code: 'P6_OBSERVATION_INVALID' });
+  assert.throws(() => createObservation(observationFor(context, {
+    observable_paraphrase: 'The architect meant for the central volume to dominate.'
   }), context), { code: 'P6_OBSERVATION_INVALID' });
 });
 
@@ -195,6 +204,8 @@ test('compiles deterministic complete and explicitly partial sets without scores
   assert.equal(complete.observation_count, 36);
   assert.equal(complete.required_observation_count, 36);
   assert.equal(complete.gate_ready, true);
+  assert.equal(JSON.stringify(complete).includes('playbook-candidate'), false);
+  assert.equal(JSON.stringify(complete).includes('baseline-current'), false);
   assert.equal(stableJson(compileObservationSet({ ...context, observations: [...completeRows].reverse() })), stableJson(complete));
 
   const partial = compileObservationSet({ ...context, observations: completeRows.slice(0, 1) });
@@ -217,6 +228,8 @@ test('renders a deterministic evidence report with partial completeness semantic
   assert.match(report, /1 of 36/u);
   assert.match(report, /capture-01-opaque/u);
   assert.equal(renderObservationReport(set), report);
+  const persisted = JSON.parse(stableJson(set));
+  assert.equal(renderObservationReport(persisted), report);
 });
 
 test('report rendering rejects forged semantic sets instead of trusting complete and gate-ready flags', () => {
@@ -247,6 +260,41 @@ test('report rendering rejects forged semantic sets instead of trusting complete
     assert.throws(() => renderObservationReport(value), { code: 'P6_OBSERVATION_INVALID' });
   }
 });
+
+const AUTHORITY_REPORT_FORGERIES = Object.freeze([
+  ['a nonexistent screenshot', value => {
+    value.observations[0].evidence_regions[0].screenshot_id = 'capture-99-opaque';
+  }],
+  ['a screenshot bound to another solution authority', value => {
+    value.observations[0].evidence_regions[0].screenshot_id = 'capture-13-opaque';
+  }],
+  ['view IDs inconsistent with the cited screenshot', value => {
+    value.observations[0].view_ids = ['side-east'];
+  }],
+  ['swapped canonical solution blocks', value => {
+    value.observations = [
+      ...value.observations.slice(9, 18),
+      ...value.observations.slice(0, 9),
+      ...value.observations.slice(18)
+    ];
+  }],
+  ['top-level cohort hash drift', value => {
+    value.cohort_sha256 = p6CaptureHash('round-3-drifted-cohort');
+  }],
+  ['top-level capture hash drift', value => {
+    value.capture_manifest_hash = p6CaptureHash('round-3-drifted-capture');
+  }]
+]);
+
+for (const [description, forge] of AUTHORITY_REPORT_FORGERIES) {
+  test(`report value validation rejects ${description}`, () => {
+    const context = fixture();
+    const complete = compileObservationSet({ ...context, observations: completeObservations(context) });
+    const persisted = JSON.parse(stableJson(complete));
+    forge(persisted);
+    assert.throws(() => renderObservationReport(persisted), { code: 'P6_OBSERVATION_INVALID' });
+  });
+}
 
 test('CLI publishes a complete or explicitly partial exact JSON set against current authorities', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-observations-'));
