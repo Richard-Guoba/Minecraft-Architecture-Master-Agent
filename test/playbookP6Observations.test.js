@@ -222,14 +222,51 @@ test('compiles deterministic complete and explicitly partial sets without scores
 test('renders a deterministic evidence report with partial completeness semantics', () => {
   const context = fixture();
   const set = compileObservationSet({ ...context, observations: [observationFor(context)] });
-  const report = renderObservationReport(set);
+  const report = renderObservationReport(set, context);
   assert.match(report, /Status: partial/u);
   assert.match(report, /Gate ready: no/u);
   assert.match(report, /1 of 36/u);
   assert.match(report, /capture-01-opaque/u);
-  assert.equal(renderObservationReport(set), report);
+  assert.equal(renderObservationReport(set, context), report);
   const persisted = JSON.parse(stableJson(set));
-  assert.equal(renderObservationReport(persisted), report);
+  assert.equal(renderObservationReport(persisted, context), report);
+  assert.throws(() => renderObservationReport(persisted), { code: 'P6_OBSERVATION_INVALID' });
+  assert.throws(() => renderObservationReport(persisted, null), { code: 'P6_OBSERVATION_INVALID' });
+});
+
+test('report rejects self-consistent solution-authority forgery against the admitted cohort', () => {
+  const context = fixture();
+  const persisted = JSON.parse(stableJson(compileObservationSet({
+    ...context, observations: [observationFor(context)]
+  })));
+  const forgedAuthority = p6CaptureHash('attacker-solution-authority');
+  persisted.observations[0].solution_authority_hash = forgedAuthority;
+  persisted.authority.solutions[0].solution_authority_hash = forgedAuthority;
+  persisted.authority_sha256 = sha256(stableJson(persisted.authority));
+
+  assert.throws(
+    () => renderObservationReport(persisted, context),
+    { code: 'P6_OBSERVATION_INVALID' }
+  );
+});
+
+test('report rejects self-consistent capture-authority forgery against the admitted capture manifest', () => {
+  const context = fixture();
+  const persisted = JSON.parse(stableJson(compileObservationSet({
+    ...context, observations: [observationFor(context)]
+  })));
+  persisted.authority.capture_manifest.images[0].screenshot_id = 'capture-attacker-opaque';
+  persisted.observations[0].evidence_regions[0].screenshot_id = 'capture-attacker-opaque';
+  const forgedCaptureHash = sha256(stableJson(persisted.authority.capture_manifest));
+  persisted.capture_manifest_hash = forgedCaptureHash;
+  persisted.observations[0].capture_manifest_hash = forgedCaptureHash;
+  persisted.authority.capture_manifest_hash = forgedCaptureHash;
+  persisted.authority_sha256 = sha256(stableJson(persisted.authority));
+
+  assert.throws(
+    () => renderObservationReport(persisted, context),
+    { code: 'P6_OBSERVATION_INVALID' }
+  );
 });
 
 test('report rendering rejects forged semantic sets instead of trusting complete and gate-ready flags', () => {
@@ -257,7 +294,7 @@ test('report rendering rejects forged semantic sets instead of trusting complete
   for (const forge of forgeries) {
     const value = structuredClone(complete);
     forge(value);
-    assert.throws(() => renderObservationReport(value), { code: 'P6_OBSERVATION_INVALID' });
+    assert.throws(() => renderObservationReport(value, context), { code: 'P6_OBSERVATION_INVALID' });
   }
 });
 
@@ -292,7 +329,7 @@ for (const [description, forge] of AUTHORITY_REPORT_FORGERIES) {
     const complete = compileObservationSet({ ...context, observations: completeObservations(context) });
     const persisted = JSON.parse(stableJson(complete));
     forge(persisted);
-    assert.throws(() => renderObservationReport(persisted), { code: 'P6_OBSERVATION_INVALID' });
+    assert.throws(() => renderObservationReport(persisted, context), { code: 'P6_OBSERVATION_INVALID' });
   });
 }
 

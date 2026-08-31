@@ -29,9 +29,6 @@ const SET_AUTHORITY_FIELDS = Object.freeze([
   'schema_version', 'cohort_sha256', 'capture_manifest_hash',
   'capture_manifest', 'solutions'
 ]);
-const SET_SOLUTION_AUTHORITY_FIELDS = Object.freeze([
-  'opaque_solution_id', 'solution_authority_hash', 'build_function_sha256'
-]);
 const CRITERION_LAYERS = deepFreeze({
   'massing-hierarchy': 'massing',
   'structural-legibility': 'structure',
@@ -119,17 +116,7 @@ export function compileObservationSet({ cohort, captureManifest, observations } 
     });
     const required = authorities.solutionAuthorityOrder.length * P6_OBSERVATION_CRITERIA.length;
     const complete = rows.length === required;
-    const authority = deepFreeze({
-      schema_version: P6_SCHEMA_VERSION,
-      cohort_sha256: authorities.cohortHash,
-      capture_manifest_hash: authorities.captureManifestHash,
-      capture_manifest: authorities.captureManifest,
-      solutions: authorities.solutionAuthorityOrder.map((solutionAuthorityHash, index) => ({
-        opaque_solution_id: OPAQUE_SOLUTION_ORDER[index],
-        solution_authority_hash: solutionAuthorityHash,
-        build_function_sha256: authorities.cohort.solutions[index].build_function_sha256
-      }))
-    });
+    const authority = createSetAuthority(authorities);
     const observationSet = deepFreeze({
       schema_version: P6_SCHEMA_VERSION,
       protocol_version: P6_PROTOCOL_VERSION,
@@ -149,9 +136,13 @@ export function compileObservationSet({ cohort, captureManifest, observations } 
   }
 }
 
-export function renderObservationReport(observationSet) {
+export function renderObservationReport(observationSet, context = {}) {
   try {
-    assertObservationSet(observationSet);
+    if (!plain(context)) invalid();
+    const { cohort, captureManifest } = context;
+    if (!plain(cohort) || !plain(captureManifest)) invalid();
+    const authorities = validateAuthorities(captureManifest, cohort);
+    assertObservationSet(observationSet, authorities);
     const lines = [
       '# P6 image-grounded observation report',
       '',
@@ -230,7 +221,7 @@ function assertNormalizedRegion(evidence) {
     || x + width > 1 || y + height > 1) invalid();
 }
 
-function assertObservationSet(value) {
+function assertObservationSet(value, authorities) {
   if (!plain(value) || !sameKeys(value, SET_FIELDS)
     || value.schema_version !== P6_SCHEMA_VERSION
     || value.protocol_version !== P6_PROTOCOL_VERSION
@@ -242,9 +233,11 @@ function assertObservationSet(value) {
     || typeof value.gate_ready !== 'boolean'
     || !Array.isArray(value.observations)
     || value.observations.length !== value.observation_count
+    || value.cohort_sha256 !== authorities.cohortHash
+    || value.capture_manifest_hash !== authorities.captureManifestHash
     || value.gate_ready !== (value.status === 'complete')
     || (value.status === 'complete') !== (value.observation_count === value.required_observation_count)) invalid();
-  const authority = validateSetAuthority(value);
+  const authority = validateSetAuthority(value, authorities);
   const observationIds = new Set();
   const subjects = new Set();
   let previousCanonicalIndex = -1;
@@ -269,34 +262,34 @@ function assertObservationSet(value) {
   if (value.status === 'complete' && subjects.size !== value.required_observation_count) invalid();
 }
 
-function validateSetAuthority(value) {
+function validateSetAuthority(value, authorities) {
   const authority = value.authority;
+  const expectedAuthority = createSetAuthority(authorities);
   if (!plain(authority) || !sameKeys(authority, SET_AUTHORITY_FIELDS)
     || authority.schema_version !== P6_SCHEMA_VERSION
     || authority.cohort_sha256 !== value.cohort_sha256
     || authority.capture_manifest_hash !== value.capture_manifest_hash
-    || value.authority_sha256 !== sha256(stableJson(authority))) invalid();
-  const captureManifest = validateCaptureManifest(authority.capture_manifest);
-  if (sha256(stableJson(captureManifest)) !== authority.capture_manifest_hash
-    || captureManifest.cohort_sha256 !== authority.cohort_sha256
-    || !Array.isArray(authority.solutions)
-    || authority.solutions.length !== OPAQUE_SOLUTION_ORDER.length) invalid();
-  const imagesByScreenshot = new Map(captureManifest.images.map(image => [image.screenshot_id, image]));
-  const authorityByOpaqueSolution = new Map();
-  const solutionOrder = [];
-  for (const [index, solution] of authority.solutions.entries()) {
-    if (!plain(solution) || !sameKeys(solution, SET_SOLUTION_AUTHORITY_FIELDS)
-      || solution.opaque_solution_id !== OPAQUE_SOLUTION_ORDER[index]
-      || !HASH.test(solution.solution_authority_hash)
-      || !HASH.test(solution.build_function_sha256)
-      || solutionOrder.includes(solution.solution_authority_hash)) invalid();
-    const images = captureManifest.images.filter(image => image.solution_id === solution.opaque_solution_id);
-    if (images.length !== P6_VIEW_IDS.length
-      || images.some(image => image.build_function_sha256 !== solution.build_function_sha256)) invalid();
-    solutionOrder.push(solution.solution_authority_hash);
-    authorityByOpaqueSolution.set(solution.opaque_solution_id, solution.solution_authority_hash);
-  }
-  return { imagesByScreenshot, authorityByOpaqueSolution, solutionOrder };
+    || value.authority_sha256 !== sha256(stableJson(authority))
+    || stableJson(authority) !== stableJson(expectedAuthority)) invalid();
+  return {
+    imagesByScreenshot: authorities.imagesByScreenshot,
+    authorityByOpaqueSolution: authorities.authorityByOpaqueSolution,
+    solutionOrder: authorities.solutionAuthorityOrder
+  };
+}
+
+function createSetAuthority(authorities) {
+  return deepFreeze({
+    schema_version: P6_SCHEMA_VERSION,
+    cohort_sha256: authorities.cohortHash,
+    capture_manifest_hash: authorities.captureManifestHash,
+    capture_manifest: authorities.captureManifest,
+    solutions: authorities.solutionAuthorityOrder.map((solutionAuthorityHash, index) => ({
+      opaque_solution_id: OPAQUE_SOLUTION_ORDER[index],
+      solution_authority_hash: solutionAuthorityHash,
+      build_function_sha256: authorities.cohort.solutions[index].build_function_sha256
+    }))
+  });
 }
 
 function assertObservationEvidence(observation, authority) {

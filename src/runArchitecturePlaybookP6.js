@@ -197,7 +197,9 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         kind: 'observations',
         files: {
           'observations.json': observationBytes,
-          'observation-report.md': bytes(renderObservationReport(observationSet))
+          'observation-report.md': bytes(renderObservationReport(observationSet, {
+            cohort, captureManifest
+          }))
         },
         expectedCurrent: {
           kind: 'minecraft-captures',
