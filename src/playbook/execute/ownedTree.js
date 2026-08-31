@@ -327,6 +327,7 @@ export async function retireBoundEntry({
   expectedIdentity,
   expectedKind,
   assertAuthority = async () => {},
+  bindRetirement = async () => {},
   destroy,
   fallbackCode = 'P5_INSTALL_FAILED'
 }) {
@@ -340,6 +341,10 @@ export async function retireBoundEntry({
     const retirement = await createRetirementDirectory(ops, parentHandle, fallbackCode);
     let moved = false;
     try {
+      await bindRetirement({
+        basename: retirement.basename,
+        identity: retirement.identity
+      });
       await moveIdentityNoReplace({
         ops,
         sourceHandle: parentHandle,

@@ -24,7 +24,13 @@ const PRIVATE_BASENAME = 'private';
 const STAGE_PREFIX = '.p6-stage-';
 const CURRENT_STAGE_PREFIX = '.p6-current-';
 const POINTER_BACKUP_PREFIX = '.p6-pointer-backup-';
+const JOURNAL_AUTHORITY_PREFIX = '.p6-journal-authority-';
+const RETIREMENT_AUTHORITY_PREFIX = '.p6-retirement-authority-';
 const RETIREMENT = /^\.p5-retirement-[a-f0-9]{32}$/u;
+const CURRENT_STAGE = /^\.p6-current-\d+-\d+-[a-f0-9]{16}$/u;
+const POINTER_BACKUP = /^\.p6-pointer-backup-\d+-\d+-[a-f0-9]{16}$/u;
+const JOURNAL_AUTHORITY = /^\.p6-journal-authority-(?:current|pointer-backup)-\d+-\d+-[a-f0-9]{16}$/u;
+const RETIREMENT_AUTHORITY = /^\.p6-retirement-authority-[a-f0-9]{32}$/u;
 const MOVE_BINARY = '/usr/bin/mv';
 const DIRECTORY_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
@@ -166,6 +172,7 @@ export async function publishP6Generation({ authority, kind, files, fsImpl } = {
     let stage;
     let installed = false;
     let generationName;
+    let pointerStage;
     try {
       await assertP6Internal(internal, ops);
       await validateExistingP6Tree(internal, ops);
@@ -173,6 +180,15 @@ export async function publishP6Generation({ authority, kind, files, fsImpl } = {
       await assertKindTree(internal, ops, tree, { allowedGenerationStages: [] });
       generationName = nextGenerationName(await ops.readdir(descriptor(tree.generationsHandle)));
       stage = await createGenerationStage(internal, ops, tree, kind, generationName, normalized);
+      const pointerBytes = Buffer.from(stableJson({
+        schema_version: 1,
+        kind,
+        generation: generationName,
+        manifest_sha256: stage.manifestSha256
+      }));
+      pointerStage = await prepareCurrentPointer({
+        internal, ops, tree, kind, bytes: pointerBytes
+      });
       try {
         await moveIdentityNoReplace({
           ops,
@@ -201,13 +217,10 @@ export async function publishP6Generation({ authority, kind, files, fsImpl } = {
         );
         throw error;
       }
-      const pointerBytes = Buffer.from(stableJson({
-        schema_version: 1,
-        kind,
-        generation: generationName,
-        manifest_sha256: stage.manifestSha256
-      }));
-      await replaceCurrentPointer({ internal, ops, tree, kind, bytes: pointerBytes });
+      await replaceCurrentPointer({
+        internal, ops, tree, kind, bytes: pointerBytes, prepared: pointerStage
+      });
+      pointerStage = undefined;
       await verifyGeneration(internal, ops, tree, kind, generationName, {
         expectedManifestSha256: stage.manifestSha256
       });
@@ -222,6 +235,16 @@ export async function publishP6Generation({ authority, kind, files, fsImpl } = {
         const basename = installed ? generationName : stage.basename;
         try {
           await cleanupOwnedGenerationStage({ ops, tree, stage, basename });
+        } catch {}
+      }
+      if (pointerStage?.read && pointerStage?.authority) {
+        try {
+          await deleteBoundFile({
+            internal, ops, tree,
+            basename: pointerStage.basename,
+            expectedRead: pointerStage.read,
+            provenance: pointerStage.authority
+          });
         } catch {}
       }
       throw publicError(error);
@@ -456,19 +479,36 @@ async function createGenerationStage(internal, ops, tree, kind, generationName, 
   }
 }
 
-async function replaceCurrentPointer({ internal, ops, tree, kind, bytes }) {
+async function prepareCurrentPointer({ internal, ops, tree, kind, bytes }) {
   const stageName = `${CURRENT_STAGE_PREFIX}${process.pid}-${++sequence}-${randomBytes(8).toString('hex')}`;
   const stageFile = await createRegularFile({
     ops, parentHandle: tree.kindHandle, basename: stageName,
     bytes, mode: 0o400
   });
+  await close(stageFile.handle);
+  const read = await readRegularFile(ops, tree.kindHandle, stageName);
+  if (!sameIdentity(read.identity, stageFile.identity) || read.sha256 !== sha256(bytes)) fail();
+  const authority = await createJournalAuthority({
+    internal, ops, tree, kind, journalBasename: stageName, journal: read
+  });
+  return { basename: stageName, read, authority };
+}
+
+async function replaceCurrentPointer({ internal, ops, tree, kind, bytes, prepared }) {
+  const ownedStage = prepared ?? await prepareCurrentPointer({ internal, ops, tree, kind, bytes });
+  const stageName = ownedStage.basename;
+  const stageRead = ownedStage.read;
   let current;
   let backupName;
+  let backupAuthority;
   let installed = false;
   try {
     current = await readRegularFile(ops, tree.kindHandle, CURRENT_BASENAME, { allowMissing: true });
     if (current) {
       backupName = `${POINTER_BACKUP_PREFIX}${process.pid}-${++sequence}-${randomBytes(8).toString('hex')}`;
+      backupAuthority = await createJournalAuthority({
+        internal, ops, tree, kind, journalBasename: backupName, journal: current
+      });
       await moveIdentityNoReplace({
         ops,
         sourceHandle: tree.kindHandle,
@@ -489,7 +529,7 @@ async function replaceCurrentPointer({ internal, ops, tree, kind, bytes }) {
         sourceName: stageName,
         destinationHandle: tree.kindHandle,
         destinationName: CURRENT_BASENAME,
-        expectedIdentity: stageFile.identity,
+        expectedIdentity: stageRead.identity,
         expectedKind: 'file',
         moveForward: () => ops.renameNoReplace(tree.kindHandle, stageName, CURRENT_BASENAME),
         moveReverse: () => ops.renameNoReplace(tree.kindHandle, CURRENT_BASENAME, stageName),
@@ -499,21 +539,35 @@ async function replaceCurrentPointer({ internal, ops, tree, kind, bytes }) {
       installed = true;
     } catch (error) {
       installed = await namedEntryHasIdentity(
-        ops, tree.kindHandle, CURRENT_BASENAME, 'file', stageFile.identity
+        ops, tree.kindHandle, CURRENT_BASENAME, 'file', stageRead.identity
       );
       throw error;
     }
     const installedRead = await readRegularFile(ops, tree.kindHandle, CURRENT_BASENAME);
     if (installedRead.sha256 !== sha256(bytes)) fail();
-    if (backupName) await deleteBoundFile(ops, tree.kindHandle, backupName, current.identity);
+    if (backupName) await deleteBoundFile({
+      internal, ops, tree, basename: backupName,
+      expectedRead: current, provenance: backupAuthority
+    });
     await tree.kindHandle.sync();
     await assertP6Internal(internal, ops);
   } catch (error) {
     if (installed) {
-      try { await deleteBoundFile(ops, tree.kindHandle, CURRENT_BASENAME, stageFile.identity); }
+      try {
+        await deleteBoundFile({
+          internal, ops, tree, basename: CURRENT_BASENAME,
+          journalBasename: stageName,
+          expectedRead: stageRead, provenance: ownedStage.authority
+        });
+      }
       catch {}
     } else {
-      try { await deleteBoundFile(ops, tree.kindHandle, stageName, stageFile.identity); }
+      try {
+        await deleteBoundFile({
+          internal, ops, tree, basename: stageName,
+          expectedRead: stageRead, provenance: ownedStage.authority
+        });
+      }
       catch {}
     }
     if (backupName) {
@@ -532,37 +586,170 @@ async function replaceCurrentPointer({ internal, ops, tree, kind, bytes }) {
       } catch {}
     }
     throw error;
-  } finally {
-    await close(stageFile.handle);
   }
 }
 
-async function deleteBoundFile(ops, parentHandle, basename, expectedIdentity) {
+async function deleteBoundFile({
+  internal, ops, tree, basename, journalBasename = basename,
+  expectedRead, provenance
+}) {
+  assertJournalProvenance(provenance, journalBasename, expectedRead);
   await retireBoundEntry({
     ops,
-    parentHandle,
+    parentHandle: tree.kindHandle,
     basename,
-    expectedIdentity,
+    expectedIdentity: expectedRead.identity,
     expectedKind: 'file',
     fallbackCode: 'P6_AUTHORITY_INVALID',
     assertAuthority: async () => {
-      const retained = await readRegularFile(ops, parentHandle, basename);
-      if (!sameIdentity(retained.identity, expectedIdentity)) fail();
+      await assertP6Internal(internal, ops);
+      const retained = await readRegularFile(ops, tree.kindHandle, basename);
+      assertJournalProvenance(provenance, journalBasename, retained);
     },
+    bindRetirement: ({ basename: retirementBasename, identity: retirementIdentity }) => (
+      createRetirementAuthority({
+        internal, ops, tree, retirementBasename, retirementIdentity, provenance
+      })
+    ),
     destroy: async (retirementHandle, retiredBasename) => {
       const retired = await readRegularFile(ops, retirementHandle, retiredBasename);
-      if (!sameIdentity(retired.identity, expectedIdentity)) fail();
+      assertJournalProvenance(provenance, journalBasename, retired);
       await removeBoundEntry({
         ops,
         parentHandle: retirementHandle,
         basename: retiredBasename,
-        expectedIdentity,
+        expectedIdentity: expectedRead.identity,
         expectedKind: 'file',
         fallbackCode: 'P6_AUTHORITY_INVALID'
       });
     }
   });
-  await parentHandle.sync();
+  await tree.kindHandle.sync();
+}
+
+async function createJournalAuthority({
+  internal, ops, tree, kind, journalBasename, journal
+}) {
+  const value = {
+    schema_version: 1,
+    kind: 'p6-pointer-journal-authority',
+    output_kind: kind,
+    journal_basename: journalBasename,
+    journal_identity: persistedIdentity(journal.identity),
+    journal_sha256: journal.sha256
+  };
+  const basename = journalAuthorityBasename(journalBasename);
+  const created = await createRegularFile({
+    ops,
+    parentHandle: tree.kindHandle,
+    basename,
+    bytes: Buffer.from(stableJson(value)),
+    mode: 0o400
+  });
+  await close(created.handle);
+  await tree.kindHandle.sync();
+  await assertP6Internal(internal, ops);
+  return Object.freeze(value);
+}
+
+async function createRetirementAuthority({
+  internal, ops, tree, retirementBasename, retirementIdentity, provenance
+}) {
+  const value = {
+    schema_version: 1,
+    kind: 'p6-pointer-retirement-authority',
+    output_kind: tree.kind,
+    retirement_basename: retirementBasename,
+    retirement_identity: persistedIdentity(retirementIdentity),
+    journal_basename: provenance.journal_basename,
+    journal_identity: provenance.journal_identity,
+    journal_sha256: provenance.journal_sha256
+  };
+  const created = await createRegularFile({
+    ops,
+    parentHandle: tree.kindHandle,
+    basename: retirementAuthorityBasename(retirementBasename),
+    bytes: Buffer.from(stableJson(value)),
+    mode: 0o400
+  });
+  await close(created.handle);
+  await tree.kindHandle.sync();
+  await assertP6Internal(internal, ops);
+}
+
+async function readJournalAuthorities(ops, tree) {
+  const journals = new Map();
+  const retirements = new Map();
+  for (const basename of (await ops.readdir(descriptor(tree.kindHandle))).sort()) {
+    if (JOURNAL_AUTHORITY.test(basename)) {
+      const read = await readRegularFile(ops, tree.kindHandle, basename);
+      const value = parseJournalAuthority(read.bytes, tree.kind);
+      if (journalAuthorityBasename(value.journal_basename) !== basename
+        || journals.has(value.journal_basename)) fail();
+      journals.set(value.journal_basename, value);
+    } else if (RETIREMENT_AUTHORITY.test(basename)) {
+      const read = await readRegularFile(ops, tree.kindHandle, basename);
+      const value = parseRetirementAuthority(read.bytes, tree.kind);
+      if (retirementAuthorityBasename(value.retirement_basename) !== basename
+        || retirements.has(value.retirement_basename)) fail();
+      retirements.set(value.retirement_basename, value);
+    }
+  }
+  return { journals, retirements };
+}
+
+function parseJournalAuthority(bytes, kind) {
+  const value = canonicalJson(bytes);
+  if (!plain(value)
+    || Object.keys(value).join(',') !== 'journal_basename,journal_identity,journal_sha256,kind,output_kind,schema_version'
+    || value.schema_version !== 1 || value.kind !== 'p6-pointer-journal-authority'
+    || value.output_kind !== kind || !isJournalBasename(value.journal_basename)
+    || !validPersistedIdentity(value.journal_identity)
+    || !HASH.test(value.journal_sha256)) fail();
+  return value;
+}
+
+function parseRetirementAuthority(bytes, kind) {
+  const value = canonicalJson(bytes);
+  if (!plain(value)
+    || Object.keys(value).join(',') !== 'journal_basename,journal_identity,journal_sha256,kind,output_kind,retirement_basename,retirement_identity,schema_version'
+    || value.schema_version !== 1 || value.kind !== 'p6-pointer-retirement-authority'
+    || value.output_kind !== kind || !RETIREMENT.test(value.retirement_basename)
+    || !isJournalBasename(value.journal_basename)
+    || !validPersistedIdentity(value.journal_identity)
+    || !validPersistedIdentity(value.retirement_identity)
+    || !HASH.test(value.journal_sha256)) fail();
+  return value;
+}
+
+function assertJournalProvenance(provenance, basename, read) {
+  if (!provenance || provenance.journal_basename !== basename
+    || provenance.journal_sha256 !== read.sha256
+    || !samePersistedIdentity(provenance.journal_identity, read.identity)) fail();
+}
+
+function persistedIdentity(value) {
+  return { dev: String(value.dev), ino: String(value.ino) };
+}
+
+function validPersistedIdentity(value) {
+  return plain(value) && Object.keys(value).join(',') === 'dev,ino'
+    && /^\d+$/u.test(value.dev) && /^\d+$/u.test(value.ino);
+}
+
+function samePersistedIdentity(persisted, actual) {
+  return validPersistedIdentity(persisted)
+    && persisted.dev === String(actual.dev) && persisted.ino === String(actual.ino);
+}
+
+function journalAuthorityBasename(journalBasename) {
+  if (!isJournalBasename(journalBasename)) fail();
+  return `${JOURNAL_AUTHORITY_PREFIX}${journalBasename.slice('.p6-'.length)}`;
+}
+
+function retirementAuthorityBasename(retirementBasename) {
+  if (!RETIREMENT.test(retirementBasename)) fail();
+  return `${RETIREMENT_AUTHORITY_PREFIX}${retirementBasename.slice('.p5-retirement-'.length)}`;
 }
 
 async function verifyGeneration(internal, ops, tree, kind, generationName, { expectedManifestSha256 }) {
@@ -655,10 +842,15 @@ async function validateExistingP6Tree(internal, ops) {
 
 async function recoverKindPointer(internal, ops, tree) {
   const names = (await ops.readdir(descriptor(tree.kindHandle))).sort();
-  const stages = names.filter(name => name.startsWith(CURRENT_STAGE_PREFIX));
-  const backups = names.filter(name => name.startsWith(POINTER_BACKUP_PREFIX));
+  const stageCandidates = names.filter(name => name.startsWith(CURRENT_STAGE_PREFIX));
+  const backupCandidates = names.filter(name => name.startsWith(POINTER_BACKUP_PREFIX));
+  if (stageCandidates.some(name => !CURRENT_STAGE.test(name))
+    || backupCandidates.some(name => !POINTER_BACKUP.test(name))) fail();
+  const stages = stageCandidates;
+  const backups = backupCandidates;
   const retirements = names.filter(name => RETIREMENT.test(name));
   if (stages.length > 1 || backups.length > 1 || retirements.length > 1) fail();
+  const authorities = await readJournalAuthorities(ops, tree);
   const current = await readRegularFile(
     ops, tree.kindHandle, CURRENT_BASENAME, { allowMissing: true }
   );
@@ -666,31 +858,26 @@ async function recoverKindPointer(internal, ops, tree) {
     ? await readRegularFile(ops, tree.kindHandle, stages[0]) : null;
   const backup = backups.length === 1
     ? await readRegularFile(ops, tree.kindHandle, backups[0]) : null;
+  const stageAuthority = stage ? authorities.journals.get(stages[0]) : null;
+  const backupAuthority = backup ? authorities.journals.get(backups[0]) : null;
+  if (stage) assertJournalProvenance(stageAuthority, stages[0], stage);
+  if (backup) assertJournalProvenance(backupAuthority, backups[0], backup);
   const retirement = retirements.length === 1
-    ? await inspectPointerRetirement(internal, ops, tree, retirements[0]) : null;
-  const parsed = new Map();
-  for (const [label, pointer] of [
-    ['current', current], ['stage', stage], ['backup', backup],
-    ['retired', retirement?.pointer]
-  ]) {
-    if (!pointer) continue;
-    try {
-      const value = parsePointer(pointer.bytes, tree.kind);
-      await verifyGeneration(internal, ops, tree, tree.kind, value.generation, {
-        expectedManifestSha256: value.manifest_sha256
-      });
-      parsed.set(label, value);
-    } catch (error) {
-      if (!['stage', 'retired'].includes(label)) throw error;
-    }
+    ? await inspectPointerRetirement(
+        internal, ops, tree, retirements[0], authorities
+      ) : null;
+  for (const pointer of [current, stage, backup, retirement?.pointer].filter(Boolean)) {
+    const value = parsePointer(pointer.bytes, tree.kind);
+    await verifyGeneration(internal, ops, tree, tree.kind, value.generation, {
+      expectedManifestSha256: value.manifest_sha256
+    });
   }
   if (retirement && !current) fail();
   if (retirement) await removePointerRetirement(ops, tree, retirement);
 
   if (!current) {
-    const validStage = parsed.has('stage') ? stage : null;
-    const source = validStage ?? backup;
-    const sourceName = validStage ? stages[0] : backups[0];
+    const source = stage ?? backup;
+    const sourceName = stage ? stages[0] : backups[0];
     if (source) {
       await moveIdentityNoReplace({
         ops,
@@ -708,49 +895,33 @@ async function recoverKindPointer(internal, ops, tree) {
         ),
         beforeMove: () => assertP6Internal(internal, ops)
       });
-      if (validStage) stages.length = 0;
+      if (stage) stages.length = 0;
       else backups.length = 0;
     } else {
-      if (stage) {
-        await deleteBoundFile(ops, tree.kindHandle, stages[0], stage.identity);
-        stages.length = 0;
-      }
       const generationNames = (await ops.readdir(descriptor(tree.generationsHandle)))
         .filter(name => name !== OWNERSHIP_BASENAME);
-      if (generationNames.length === 0 && !stage) return;
-      if (generationNames.length !== 1 || !GENERATION.test(generationNames[0])) fail();
-      const generation = await verifyGeneration(
-        internal, ops, tree, tree.kind, generationNames[0], {}
-      );
-      const manifestSha256 = sha256(Buffer.from(stableJson(generation.manifest)));
-      await replaceCurrentPointer({
-        internal,
-        ops,
-        tree,
-        kind: tree.kind,
-        bytes: Buffer.from(stableJson({
-          schema_version: 1,
-          kind: tree.kind,
-          generation: generationNames[0],
-          manifest_sha256: manifestSha256
-        }))
-      });
+      if (generationNames.length === 0) return;
+      fail();
     }
   }
   for (const [name, pointer] of [
     [stages[0], stage], [backups[0], backup]
   ]) {
-    if (name && pointer) await deleteBoundFile(
-      ops, tree.kindHandle, name, pointer.identity
-    );
+    if (name && pointer) await deleteBoundFile({
+      internal, ops, tree, basename: name, expectedRead: pointer,
+      provenance: name === stages[0] ? stageAuthority : backupAuthority
+    });
   }
   await tree.kindHandle.sync();
   await assertP6Internal(internal, ops);
 }
 
-async function inspectPointerRetirement(internal, ops, tree, basename) {
+async function inspectPointerRetirement(internal, ops, tree, basename, authorities) {
+  const retirementAuthority = authorities.retirements.get(basename);
+  if (!retirementAuthority) fail();
   const stat = await ops.lstat(entry(tree.kindHandle, basename));
-  if (stat.isSymbolicLink() || !stat.isDirectory()) fail();
+  if (stat.isSymbolicLink() || !stat.isDirectory()
+    || !samePersistedIdentity(retirementAuthority.retirement_identity, identity(stat))) fail();
   const retirementIdentity = identity(stat);
   const handle = await openBoundDirectory(
     ops, tree.kindHandle, basename, retirementIdentity, 'P6_AUTHORITY_INVALID'
@@ -760,8 +931,24 @@ async function inspectPointerRetirement(internal, ops, tree, basename) {
     if (names.length > 1 || names.some(name => name !== 'owned-entry')) fail();
     const pointer = names.length === 1
       ? await readRegularFile(ops, handle, 'owned-entry') : null;
+    const journalAuthority = authorities.journals.get(
+      retirementAuthority.journal_basename
+    );
+    if (!journalAuthority
+      || journalAuthority.journal_sha256 !== retirementAuthority.journal_sha256
+      || journalAuthority.journal_identity.dev !== retirementAuthority.journal_identity.dev
+      || journalAuthority.journal_identity.ino !== retirementAuthority.journal_identity.ino) fail();
+    if (pointer) assertJournalProvenance(
+      journalAuthority, retirementAuthority.journal_basename, pointer
+    );
     await assertP6Internal(internal, ops);
-    return { basename, identity: retirementIdentity, pointer };
+    return {
+      basename,
+      identity: retirementIdentity,
+      pointer,
+      authority: retirementAuthority,
+      journalAuthority
+    };
   } finally {
     await close(handle);
   }
@@ -773,6 +960,9 @@ async function removePointerRetirement(ops, tree, retirement) {
     retirement.identity, 'P6_AUTHORITY_INVALID'
   );
   try {
+    const retained = await handle.stat();
+    if (!retained.isDirectory()
+      || !samePersistedIdentity(retirement.authority.retirement_identity, identity(retained))) fail();
     const names = (await ops.readdir(descriptor(handle))).sort();
     if (retirement.pointer) {
       if (!sameStrings(names, ['owned-entry'])) fail();
@@ -805,13 +995,28 @@ async function validateKindHistory(internal, ops, tree, { allowPointerJournals }
   });
   const names = (await ops.readdir(descriptor(tree.generationsHandle))).sort();
   const generations = names.filter(name => name !== OWNERSHIP_BASENAME);
-  const retirementNames = (await ops.readdir(descriptor(tree.kindHandle)))
-    .filter(name => RETIREMENT.test(name));
+  const kindNames = (await ops.readdir(descriptor(tree.kindHandle))).sort();
+  const stageCandidates = kindNames.filter(name => name.startsWith(CURRENT_STAGE_PREFIX));
+  const backupCandidates = kindNames.filter(name => name.startsWith(POINTER_BACKUP_PREFIX));
+  if (stageCandidates.some(name => !CURRENT_STAGE.test(name))
+    || backupCandidates.some(name => !POINTER_BACKUP.test(name))) fail();
+  const authorities = await readJournalAuthorities(ops, tree);
+  for (const journalBasename of [...stageCandidates, ...backupCandidates]) {
+    if (!allowPointerJournals) fail();
+    const journal = await readRegularFile(ops, tree.kindHandle, journalBasename);
+    const provenance = authorities.journals.get(journalBasename);
+    assertJournalProvenance(provenance, journalBasename, journal);
+    const parsed = parsePointer(journal.bytes, tree.kind);
+    await verifyGeneration(internal, ops, tree, tree.kind, parsed.generation, {
+      expectedManifestSha256: parsed.manifest_sha256
+    });
+  }
+  const retirementNames = kindNames.filter(name => RETIREMENT.test(name));
   if (retirementNames.length > 1) fail();
   if (retirementNames.length === 1) {
     if (!allowPointerJournals) fail();
     const retirement = await inspectPointerRetirement(
-      internal, ops, tree, retirementNames[0]
+      internal, ops, tree, retirementNames[0], authorities
     );
     if (retirement.pointer) {
       const retired = parsePointer(retirement.pointer.bytes, tree.kind);
@@ -919,6 +1124,11 @@ async function assertKindTree(internal, ops, tree, {
   const kindEntries = (await ops.readdir(descriptor(tree.kindHandle))).sort();
   for (const name of kindEntries) {
     if ([OWNERSHIP_BASENAME, GENERATIONS_BASENAME, CURRENT_BASENAME].includes(name)) continue;
+    if (JOURNAL_AUTHORITY.test(name) || RETIREMENT_AUTHORITY.test(name)) {
+      const stat = await ops.lstat(entry(tree.kindHandle, name));
+      if (stat.isSymbolicLink() || !stat.isFile()) fail();
+      continue;
+    }
     if (!allowPointerJournals || !isPointerJournalBasename(name)) fail();
     const stat = await ops.lstat(entry(tree.kindHandle, name));
     const expectedDirectory = RETIREMENT.test(name);
@@ -1251,9 +1461,10 @@ function isSafeAbsolutePath(value) {
 }
 function isPlainBasename(value) { return typeof value === 'string' && value.length > 0 && value !== '.' && value !== '..' && !value.includes('/') && !value.includes('\\') && !UNSAFE_PATH_CHARACTER.test(value); }
 function isManagedBasename(value) { return isPlainBasename(value) && ![OWNERSHIP_BASENAME, MANIFEST_BASENAME, CURRENT_BASENAME].includes(value) && !value.startsWith('.p6-'); }
+function isJournalBasename(value) { return CURRENT_STAGE.test(value) || POINTER_BACKUP.test(value); }
 function isPointerJournalBasename(value) {
-  return /^\.p6-(?:current|pointer-backup)-\d+-\d+-[a-f0-9]{16}$/u.test(value)
-    || RETIREMENT.test(value);
+  return isJournalBasename(value) || RETIREMENT.test(value)
+    || JOURNAL_AUTHORITY.test(value) || RETIREMENT_AUTHORITY.test(value);
 }
 function plain(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype; }
 function descriptor(handle) { return `/proc/self/fd/${handle.fd}`; }

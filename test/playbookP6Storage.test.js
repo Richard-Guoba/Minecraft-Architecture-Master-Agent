@@ -172,12 +172,9 @@ test('crash journals reopen to one complete old-or-new current generation', asyn
   });
 });
 
-test('first publication crashes reopen from every installed-generation pointer boundary', async t => {
+test('first publication crashes reopen from every provenance-bound installed-generation pointer boundary', async t => {
   for (const phase of [
     'after-first-generation-move',
-    'before-pointer-stage-open', 'after-pointer-stage-open',
-    'after-pointer-stage-write', 'after-pointer-stage-file-sync',
-    'after-pointer-stage-chmod', 'after-pointer-stage-mode-sync',
     'before-current-move', 'after-current-move'
   ]) await t.test(phase, async t => {
     const fixture = await createStorageFixture(t);
@@ -207,11 +204,18 @@ test('first publication recovery rejects ambiguous complete orphan generations',
   await fixture.authority.close();
   const result = await runCrashWorker({
     p6Dir: fixture.p6Dir,
-    phase: 'before-pointer-stage-open',
+    phase: 'after-first-generation-move',
     kind: 'gate',
     files: { 'gate.json': Buffer.from('first').toString('base64') }
   });
   assert.equal(result.signal, 'SIGKILL', result.stderr);
+  const kindDir = path.join(fixture.p6Dir, 'gate');
+  const currentStage = (await fs.readdir(kindDir))
+    .find(name => name.startsWith('.p6-current-'));
+  assert.ok(currentStage);
+  const journalAuthority = `.p6-journal-authority-${currentStage.slice('.p6-'.length)}`;
+  await fs.rename(path.join(kindDir, currentStage), path.join(fixture.root, 'parked-current-stage'));
+  await fs.rename(path.join(kindDir, journalAuthority), path.join(fixture.root, 'parked-journal-authority'));
   const generations = path.join(fixture.p6Dir, 'gate', 'generations');
   const first = path.join(generations, 'generation-000001');
   const foreign = path.join(generations, 'generation-000002');
@@ -228,6 +232,211 @@ test('first publication recovery rejects ambiguous complete orphan generations',
   );
   assert.equal(await fs.readFile(path.join(first, 'gate.json'), 'utf8'), 'first');
   assert.equal(await fs.readFile(path.join(foreign, 'gate.json'), 'utf8'), 'first');
+});
+
+test('recovery preserves foreign prefix-matching current stages across every public operation', async t => {
+  for (const contents of ['same-byte', 'malformed']) {
+    for (const operation of ['admit', 'read', 'publish']) await t.test(`${contents}:${operation}`, async t => {
+      const fixture = await createStorageFixture(t);
+      await publishP6Generation({
+        authority: fixture.authority,
+        kind: 'gate',
+        files: { 'gate.json': Buffer.from('owned') }
+      });
+      const kindDir = path.join(fixture.p6Dir, 'gate');
+      const basename = '.p6-current-999999-999999-aaaaaaaaaaaaaaaa';
+      const foreignPath = path.join(kindDir, basename);
+      const bytes = contents === 'same-byte'
+        ? await fs.readFile(path.join(kindDir, 'current'))
+        : Buffer.from('foreign malformed stage');
+      await fs.writeFile(foreignPath, bytes, { mode: 0o400 });
+      const before = identity(await fs.lstat(foreignPath));
+      const invoke = operation === 'admit'
+        ? () => admitP6Run({ p6Dir: fixture.p6Dir })
+        : operation === 'read'
+          ? () => readCurrentP6Generation({ authority: fixture.authority, kind: 'gate' })
+          : () => publishP6Generation({
+              authority: fixture.authority,
+              kind: 'gate',
+              files: { 'gate.json': Buffer.from('new') }
+            });
+      await assert.rejects(invoke(), publicCode('P6_AUTHORITY_INVALID'));
+      assert.ok((await fs.readFile(foreignPath)).equals(bytes));
+      assert.equal(identityEqual(identity(await fs.lstat(foreignPath)), before), true);
+    });
+  }
+});
+
+test('recovery preserves foreign owned-entry retirement contents across every public operation', async t => {
+  for (const contents of ['same-byte', 'malformed']) {
+    for (const operation of ['admit', 'read', 'publish']) await t.test(`${contents}:${operation}`, async t => {
+      const fixture = await createStorageFixture(t);
+      await publishP6Generation({
+        authority: fixture.authority,
+        kind: 'gate',
+        files: { 'gate.json': Buffer.from('owned') }
+      });
+      const kindDir = path.join(fixture.p6Dir, 'gate');
+      const retirement = path.join(kindDir, '.p5-retirement-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+      await fs.mkdir(retirement, { mode: 0o700 });
+      const foreignPath = path.join(retirement, 'owned-entry');
+      const bytes = contents === 'same-byte'
+        ? await fs.readFile(path.join(kindDir, 'current'))
+        : Buffer.from('foreign malformed retirement');
+      await fs.writeFile(foreignPath, bytes, { mode: 0o400 });
+      const directoryBefore = identity(await fs.lstat(retirement));
+      const fileBefore = identity(await fs.lstat(foreignPath));
+      const invoke = operation === 'admit'
+        ? () => admitP6Run({ p6Dir: fixture.p6Dir })
+        : operation === 'read'
+          ? () => readCurrentP6Generation({ authority: fixture.authority, kind: 'gate' })
+          : () => publishP6Generation({
+              authority: fixture.authority,
+              kind: 'gate',
+              files: { 'gate.json': Buffer.from('new') }
+            });
+      await assert.rejects(invoke(), publicCode('P6_AUTHORITY_INVALID'));
+      assert.ok((await fs.readFile(foreignPath)).equals(bytes));
+      assert.equal(identityEqual(identity(await fs.lstat(retirement)), directoryBefore), true);
+      assert.equal(identityEqual(identity(await fs.lstat(foreignPath)), fileBefore), true);
+    });
+  }
+});
+
+test('recovery cleanup preserves same-byte foreign inode replacements at final boundaries', async t => {
+  await t.test('current stage recovery', async t => {
+    const fixture = await createStorageFixture(t);
+    await fixture.authority.close();
+    const crashed = await runCrashWorker({
+      p6Dir: fixture.p6Dir,
+      phase: 'before-current-move',
+      kind: 'gate',
+      files: { 'gate.json': Buffer.from('first').toString('base64') }
+    });
+    assert.equal(crashed.signal, 'SIGKILL');
+    const kindDir = path.join(fixture.p6Dir, 'gate');
+    const stageName = (await fs.readdir(kindDir))
+      .find(name => name.startsWith('.p6-current-'));
+    assert.ok(stageName);
+    const stagePath = path.join(kindDir, stageName);
+    const bytes = await fs.readFile(stagePath);
+    await fs.rename(stagePath, path.join(fixture.root, 'parked-owned-stage'));
+    await fs.writeFile(stagePath, bytes, { mode: 0o400 });
+    const replacementIdentity = identity(await fs.lstat(stagePath));
+    await assert.rejects(
+      admitP6Run({ p6Dir: fixture.p6Dir }),
+      publicCode('P6_AUTHORITY_INVALID')
+    );
+    assert.ok((await fs.readFile(stagePath)).equals(bytes));
+    assert.equal(identityEqual(identity(await fs.lstat(stagePath)), replacementIdentity), true);
+  });
+
+  await t.test('pointer backup retirement', async t => {
+    const fixture = await createStorageFixture(t);
+    await publishP6Generation({
+      authority: fixture.authority,
+      kind: 'gate',
+      files: { 'gate.json': Buffer.from('old') }
+    });
+    await fixture.authority.close();
+    const crashed = await runCrashWorker({
+      p6Dir: fixture.p6Dir,
+      phase: 'before-current-move',
+      kind: 'gate',
+      files: { 'gate.json': Buffer.from('new').toString('base64') }
+    });
+    assert.equal(crashed.signal, 'SIGKILL');
+    let replacementPath;
+    let replacementIdentity;
+    const hostile = fsWith({
+      async retireEntry(parentHandle, basename, expectedIdentity, next) {
+        if (!basename.startsWith('.p6-pointer-backup-')) return next();
+        const target = `/proc/self/fd/${parentHandle.fd}/${basename}`;
+        const bytes = await fs.readFile(target);
+        await fs.rename(target, path.join(fixture.root, 'parked-owned-backup'));
+        await fs.writeFile(target, bytes, { mode: 0o400 });
+        replacementPath = path.join(fixture.p6Dir, 'gate', basename);
+        replacementIdentity = identity(await fs.lstat(target));
+        return next();
+      }
+    });
+    await assert.rejects(
+      admitP6Run({ p6Dir: fixture.p6Dir, fsImpl: hostile }),
+      publicCode('P6_AUTHORITY_INVALID')
+    );
+    assert.equal(identityEqual(identity(await fs.lstat(replacementPath)), replacementIdentity), true);
+  });
+
+  await t.test('retired owned-entry removal', async t => {
+    const fixture = await createStorageFixture(t);
+    await publishP6Generation({
+      authority: fixture.authority,
+      kind: 'gate',
+      files: { 'gate.json': Buffer.from('old') }
+    });
+    await fixture.authority.close();
+    const crashed = await runCrashWorker({
+      p6Dir: fixture.p6Dir,
+      phase: 'before-retired-file-remove',
+      kind: 'gate',
+      files: { 'gate.json': Buffer.from('new').toString('base64') }
+    });
+    assert.equal(crashed.signal, 'SIGKILL');
+    const kindDir = path.join(fixture.p6Dir, 'gate');
+    const retirementName = (await fs.readdir(kindDir))
+      .find(name => name.startsWith('.p5-retirement-'));
+    assert.ok(retirementName);
+    const replacementPath = path.join(kindDir, retirementName, 'owned-entry');
+    let replacementIdentity;
+    const hostile = fsWith({
+      async removeBound(parentHandle, basename, expectedIdentity, expectedKind, next) {
+        if (basename !== 'owned-entry') return next();
+        const target = `/proc/self/fd/${parentHandle.fd}/${basename}`;
+        const bytes = await fs.readFile(target);
+        await fs.rename(target, path.join(fixture.root, 'parked-owned-entry'));
+        await fs.writeFile(target, bytes, { mode: 0o400 });
+        replacementIdentity = identity(await fs.lstat(target));
+        return next();
+      }
+    });
+    await assert.rejects(
+      admitP6Run({ p6Dir: fixture.p6Dir, fsImpl: hostile }),
+      publicCode('P6_AUTHORITY_INVALID')
+    );
+    assert.equal(identityEqual(identity(await fs.lstat(replacementPath)), replacementIdentity), true);
+  });
+
+  await t.test('malformed retired owned-entry replacement', async t => {
+    const fixture = await createStorageFixture(t);
+    await publishP6Generation({
+      authority: fixture.authority,
+      kind: 'gate',
+      files: { 'gate.json': Buffer.from('old') }
+    });
+    await fixture.authority.close();
+    const crashed = await runCrashWorker({
+      p6Dir: fixture.p6Dir,
+      phase: 'before-retired-file-remove',
+      kind: 'gate',
+      files: { 'gate.json': Buffer.from('new').toString('base64') }
+    });
+    assert.equal(crashed.signal, 'SIGKILL');
+    const kindDir = path.join(fixture.p6Dir, 'gate');
+    const retirementName = (await fs.readdir(kindDir))
+      .find(name => name.startsWith('.p5-retirement-'));
+    assert.ok(retirementName);
+    const replacementPath = path.join(kindDir, retirementName, 'owned-entry');
+    await fs.rename(replacementPath, path.join(fixture.root, 'parked-owned-entry'));
+    const replacementBytes = Buffer.from('foreign malformed retirement entry');
+    await fs.writeFile(replacementPath, replacementBytes, { mode: 0o400 });
+    const replacementIdentity = identity(await fs.lstat(replacementPath));
+    await assert.rejects(
+      admitP6Run({ p6Dir: fixture.p6Dir }),
+      publicCode('P6_AUTHORITY_INVALID')
+    );
+    assert.ok((await fs.readFile(replacementPath)).equals(replacementBytes));
+    assert.equal(identityEqual(identity(await fs.lstat(replacementPath)), replacementIdentity), true);
+  });
 });
 
 test('absolute path admission rejects symlinked intermediates and detects replaced ancestry', async t => {
