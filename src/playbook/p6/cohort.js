@@ -107,10 +107,14 @@ export async function admitP6CohortInputs({
       fixedRequest
     });
     await assertP6RunAuthority(p6Authority);
-    return compileP6Cohort({
+    const cohort = compileP6Cohort({
       fixedRequest: fixedRequestValue,
       playbook,
       baseline
+    });
+    return deepFreeze({
+      ...cohort,
+      render_solutions: renderSnapshotsForCohort({ cohort, slots, baseline })
     });
   } catch (error) {
     if (error?.code === 'P6_COHORT_INCOMPLETE') throw error;
@@ -167,6 +171,50 @@ export function compileP6Cohort({ fixedRequest, playbook, baseline } = {}) {
     selection_rank: selectionRank,
     advisory_rule_eligibility: allSolutions.map(({ solution_id, advisory_rule_eligibility }) => ({ solution_id, ...advisory_rule_eligibility })),
     input_sha256
+  });
+}
+
+// Rendering receives only these path-free, parsed values from the same live
+// admission that compiled the cohort. Consumers never need to reopen P5 or
+// baseline authorities after this function returns.
+function renderSnapshotsForCohort({ cohort, slots, baseline }) {
+  if (!plain(cohort) || !Array.isArray(cohort.solutions)
+    || !Array.isArray(slots) || !plain(baseline?.solution)) authority();
+  const snapshots = [
+    ...PLAYBOOK_SLOTS.map(([candidateId, solutionId]) => {
+      const slot = slots.find(item => item.candidate_id === candidateId);
+      const solution = cohort.solutions.find(item => item.solution_id === solutionId);
+      return renderSnapshotForSolution({ solution, snapshot: slot });
+    }),
+    renderSnapshotForSolution({
+      solution: cohort.solutions.find(item => item.solution_id === 'baseline-current'),
+      snapshot: baseline.solution
+    })
+  ];
+  return deepFreeze(snapshots);
+}
+
+function renderSnapshotForSolution({ solution, snapshot }) {
+  if (!plain(solution) || !plain(snapshot)) authority();
+  const blueprintFile = assertFile(snapshot.blueprint, 'P6_AUTHORITY_INVALID');
+  const operationsFile = assertFile(snapshot.operations, 'P6_AUTHORITY_INVALID');
+  const buildFile = assertFile(snapshot.build_function, 'P6_AUTHORITY_INVALID');
+  if (blueprintFile.sha256 !== solution.blueprint_sha256
+    || operationsFile.sha256 !== solution.operation_list_sha256
+    || buildFile.sha256 !== solution.build_function_sha256) authority();
+  const blueprint = json(blueprintFile.bytes);
+  const operations = json(operationsFile.bytes);
+  if (!plain(blueprint) || !Array.isArray(operations)
+    || stableJson(blueprint.operations) !== stableJson(operations)) authority();
+  return deepFreeze({
+    solution_id: solution.solution_id,
+    blueprint_sha256: solution.blueprint_sha256,
+    operation_list_sha256: solution.operation_list_sha256,
+    build_function_sha256: solution.build_function_sha256,
+    bounds: { ...solution.bounds },
+    main_entry: { ...solution.main_entry },
+    blueprint,
+    operations
   });
 }
 

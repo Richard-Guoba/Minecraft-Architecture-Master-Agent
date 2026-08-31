@@ -31,10 +31,11 @@ test('help returns before any filesystem-capable dependency can run', async () =
   assert.deepEqual(await runP6Cli(['--help'], noDependencies), { status: 'help' });
 });
 
-test('prepare publishes only relative managed names and never invokes a Minecraft dependency', async () => {
+test('prepare renders only the cohort-owned snapshots and publishes an exact solution/view reference map', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-cli-disposable-'));
   const calls = [];
   const deps = fakeDependencies({ root, calls });
+  deps.loadRenderSolutions = () => { throw new Error('second source admission is forbidden'); };
   const result = await runP6Cli([
     'prepare', '--playbook-run', `${root}/p5`, '--baseline-run', `${root}/baseline`, '--run-dir', `${root}/run`
   ], deps);
@@ -51,6 +52,15 @@ test('prepare publishes only relative managed names and never invokes a Minecraf
   assert.deepEqual(calls.map(call => call.kind), ['cohort', 'reference-renders', 'capture-session']);
   assert.equal(calls.some(call => call.name === 'launchMinecraft'), false);
   assert.equal(calls.find(call => call.kind === 'reference-renders').files.size, 25);
+  const referenceManifest = JSON.parse(
+    calls.find(call => call.kind === 'reference-renders').files.get('reference-renders.json')
+  );
+  const expectedPairs = ['playbook-candidate-01', 'playbook-candidate-02', 'playbook-candidate-03', 'baseline-current']
+    .flatMap(solution_id => ['front-south', 'side-east', 'quarter-southeast', 'quarter-southwest', 'roof-birdseye', 'entry-eye']
+      .map(view_id => `${solution_id}/${view_id}`));
+  assert.deepEqual(referenceManifest.images.map(image => `${image.solution_id}/${image.view_id}`), expectedPairs);
+  assert.equal(new Set(referenceManifest.images.map(image => image.filename)).size, 24);
+  assert.equal(new Set(referenceManifest.images.map(image => image.image_sha256)).size, 1);
   await fs.rm(root, { recursive: true, force: true });
 });
 
@@ -101,25 +111,29 @@ function fakeDependencies({ root, calls }) {
     solutions: ['playbook-candidate-01', 'playbook-candidate-02', 'playbook-candidate-03', 'baseline-current'].map(solution_id => ({
       solution_id,
       blueprint_sha256: HASH,
+      operation_list_sha256: HASH,
       build_function_sha256: HASH,
       bounds: { min_x: 0, min_y: 0, min_z: 0, max_x: 1, max_y: 1, max_z: 1 },
       main_entry: { center_x: 1, center_y: 0, center_z: 1, facing: 'south' }
     }))
   });
+  const render_solutions = cohort.solutions.map(solution => Object.freeze({
+    ...solution,
+    blueprint: Object.freeze({ bounds: solution.bounds, operations: [] }),
+    operations: Object.freeze([])
+  }));
+  const admitted = Object.freeze({ ...cohort, render_solutions: Object.freeze(render_solutions) });
   return {
     createP6Run: async () => ({ p6Dir: 'playbook-p6', authority: { close: async () => {} } }),
-    admitP6CohortInputs: async () => cohort,
-    loadRenderSolutions: async () => cohort.solutions.map(solution => ({
-      ...solution,
-      blueprint: { bounds: solution.bounds, operations: [] },
-      operations: []
-    })),
+    admitP6CohortInputs: async () => admitted,
     deriveSharedFraming: () => ({ view_multipliers: {} }),
     deriveFixedViewManifest: ({ solutionId }) => ({ solution_id: solutionId, views: [] }),
-    renderReferenceViews: ({ solution }) => Array.from({ length: 6 }, (_, index) => ({
-      view_id: `view-${index + 1}`,
-      filename: `${solution.solution_id}-${index + 1}.png`,
-      bytes: Buffer.from(`png-${solution.solution_id}-${index + 1}`),
+    renderReferenceViews: ({ solution }) => [
+      'front-south', 'side-east', 'quarter-southeast', 'quarter-southwest', 'roof-birdseye', 'entry-eye'
+    ].map(view_id => ({
+      view_id,
+      filename: `${solution.solution_id}-${view_id}.png`,
+      bytes: Buffer.from(`png-${solution.solution_id}-${view_id}`),
       sha256: HASH,
       width: 1920,
       height: 1080

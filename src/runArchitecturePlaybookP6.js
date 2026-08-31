@@ -1,17 +1,15 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { admitExecuteRun, readCurrentCandidateSnapshot } from './playbook/execute/storage.js';
 import { deriveFixedViewManifest, deriveSharedFraming } from './playbook/p6/cameras.js';
 import { admitP6CohortInputs } from './playbook/p6/cohort.js';
 import { p6Error, sanitizeP6Error } from './playbook/p6/contracts.js';
 import { renderReferenceViews } from './playbook/p6/offlineRenderer.js';
 import {
   createP6Run,
-  publishP6Generation,
-  readExternalP6InputAuthority
+  publishP6Generation
 } from './playbook/p6/storage.js';
-import { P6_VISUAL_SETTINGS } from './playbook/p6/constants.js';
+import { P6_VIEW_IDS, P6_VISUAL_SETTINGS } from './playbook/p6/constants.js';
 import { sha256, stableJson } from './playbook/shadow/canonical.js';
 
 const ACTIONS = new Set(['prepare', 'capture']);
@@ -19,12 +17,6 @@ const PREPARE_FLAGS = new Set(['--playbook-run', '--baseline-run', '--run-dir'])
 const CAPTURE_VALUE_FLAGS = new Set(['--world', '--expected-world-identity']);
 const CAPTURE_BOOLEAN_FLAGS = new Set(['--authorize-disposable-world']);
 const HASH = /^[a-f0-9]{64}$/u;
-const CANDIDATES = Object.freeze([
-  ['candidate-01', 'playbook-candidate-01'],
-  ['candidate-02', 'playbook-candidate-02'],
-  ['candidate-03', 'playbook-candidate-03']
-]);
-const BASELINE_AUTHORITY = 'p6-baseline-authority.json';
 
 export function parseP6Args(argv) {
   if (!Array.isArray(argv) || argv.some(value => typeof value !== 'string')) invalid();
@@ -86,12 +78,7 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         import.meta.dirname, '..', 'docs/architecture-playbook/evaluation/p6-v0.1/fixed-request.json'
       )
     });
-    const renderSolutions = await deps.loadRenderSolutions({
-      authority: created.authority,
-      cohort,
-      playbookRunDir: options.playbookRunDir,
-      baselineRunDir: options.baselineRunDir
-    });
+    const renderSolutions = renderSnapshotsFromCohort(cohort);
     const sharedFraming = deps.deriveSharedFraming({ solutions: cohort.solutions });
     const cameraManifests = renderSolutions.map(solution => deps.deriveFixedViewManifest({
       solutionId: solution.solution_id,
@@ -123,7 +110,15 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         solution, cameraManifest: manifest, settings: P6_VISUAL_SETTINGS
       });
       if (!Array.isArray(rendered) || rendered.length !== 6) throw p6Error('P6_RENDER_FAILED');
-      images.push(...rendered);
+      const viewIds = rendered.map(image => image?.view_id);
+      if (new Set(viewIds).size !== P6_VIEW_IDS.length
+        || P6_VIEW_IDS.some(viewId => !viewIds.includes(viewId))) {
+        throw p6Error('P6_RENDER_FAILED');
+      }
+      images.push(...rendered.map(image => Object.freeze({
+        ...image,
+        solution_id: solution.solution_id
+      })));
     }
     if (images.length !== 24 || new Set(images.map(image => image.filename)).size !== 24) {
       throw p6Error('P6_RENDER_FAILED');
@@ -184,7 +179,6 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
 const defaultDependencies = Object.freeze({
   createP6Run,
   admitP6CohortInputs,
-  loadRenderSolutions,
   deriveSharedFraming,
   deriveFixedViewManifest,
   renderReferenceViews,
@@ -193,68 +187,16 @@ const defaultDependencies = Object.freeze({
   stableJson
 });
 
-async function loadRenderSolutions({ authority, cohort, playbookRunDir, baselineRunDir }) {
-  if (!cohort || !Array.isArray(cohort.solutions) || cohort.solutions.length !== 4) invalid();
-  let execute;
-  try {
-    execute = await admitExecuteRun({ runDir: playbookRunDir });
-    const candidates = [];
-    for (const [candidateId, solutionId] of CANDIDATES) {
-      const solution = cohort.solutions.find(item => item.solution_id === solutionId);
-      const admitted = await readCurrentCandidateSnapshot({ authority: execute, candidateId });
-      const pointer = canonicalJson(admitted.files['current-chain.json']);
-      const revision = String(pointer?.chain_revision ?? '').padStart(4, '0');
-      candidates.push(materializeRenderSolution({
-        solution,
-        blueprintBytes: admitted.files[`blueprints/chain-${revision}.json`],
-        operationsBytes: admitted.files[`artifacts/chain-${revision}-operation-list.json`],
-        buildBytes: admitted.files[`artifacts/chain-${revision}-build.mcfunction`]
-      }));
-    }
-    const baseline = await readBaselineRenderSolution({ authority, cohort, baselineRunDir });
-    return Object.freeze([...candidates, baseline]);
-  } catch (error) {
-    throw sanitizeP6Error(error, 'P6_AUTHORITY_INVALID');
-  } finally {
-    await execute?.close();
-  }
-}
-
-async function readBaselineRenderSolution({ authority, cohort, baselineRunDir }) {
-  const bound = await readExternalP6InputAuthority({
-    authority, rootDir: baselineRunDir, relativePath: BASELINE_AUTHORITY
-  });
-  const manifest = canonicalJson(bound.bytes);
-  const fields = manifest?.files;
-  if (!plain(fields)) invalid();
-  const snapshots = {};
-  for (const field of ['blueprint', 'operations', 'build_function']) {
-    const binding = fields[field];
-    if (!plain(binding) || !safeRelativePath(binding.relative_path) || !HASH.test(binding.sha256)) invalid();
-    const snapshot = await readExternalP6InputAuthority({
-      authority, rootDir: baselineRunDir, relativePath: binding.relative_path
-    });
-    if (snapshot.sha256 !== binding.sha256) invalid();
-    snapshots[field] = snapshot.bytes;
-  }
-  return materializeRenderSolution({
-    solution: cohort.solutions.find(item => item.solution_id === 'baseline-current'),
-    blueprintBytes: snapshots.blueprint,
-    operationsBytes: snapshots.operations,
-    buildBytes: snapshots.build_function
-  });
-}
-
-function materializeRenderSolution({ solution, blueprintBytes, operationsBytes, buildBytes }) {
-  if (!plain(solution) || !Buffer.isBuffer(blueprintBytes) || !Buffer.isBuffer(operationsBytes)
-    || !Buffer.isBuffer(buildBytes) || sha256(blueprintBytes) !== solution.blueprint_sha256
-    || sha256(operationsBytes) !== solution.operation_list_sha256
-    || sha256(buildBytes) !== solution.build_function_sha256) invalid();
-  const blueprint = canonicalJson(blueprintBytes);
-  const operations = canonicalJson(operationsBytes);
-  if (!plain(blueprint) || !Array.isArray(operations)
-    || stableJson(blueprint.operations) !== stableJson(operations)) invalid();
-  return Object.freeze({ ...solution, blueprint, operations });
+function renderSnapshotsFromCohort(cohort) {
+  if (!plain(cohort) || !Array.isArray(cohort.solutions) || cohort.solutions.length !== 4
+    || !Array.isArray(cohort.render_solutions) || cohort.render_solutions.length !== 4) invalid();
+  if (cohort.render_solutions.some((snapshot, index) => (
+    !plain(snapshot) || snapshot.solution_id !== cohort.solutions[index]?.solution_id
+    || snapshot.blueprint_sha256 !== cohort.solutions[index]?.blueprint_sha256
+    || snapshot.operation_list_sha256 !== cohort.solutions[index]?.operation_list_sha256
+    || snapshot.build_function_sha256 !== cohort.solutions[index]?.build_function_sha256
+  ))) invalid();
+  return cohort.render_solutions;
 }
 
 function renderCaptureChecklist(session) {
@@ -271,29 +213,9 @@ function renderCaptureChecklist(session) {
   ].join('\n') + '\n';
 }
 
-function canonicalJson(value) {
-  if (!Buffer.isBuffer(value)) invalid();
-  try {
-    const parsed = JSON.parse(value.toString('utf8'));
-    if (stableJson(parsed) !== value.toString('utf8')) invalid();
-    return parsed;
-  } catch (error) {
-    if (error?.code === 'P6_OPTIONS_INVALID') throw error;
-    invalid();
-  }
-}
-
 function safeAbsolutePath(value) {
   return typeof value === 'string' && value.length > 1 && path.isAbsolute(value)
     && path.resolve(value) === value && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(value);
-}
-
-function safeRelativePath(value) {
-  return typeof value === 'string' && value.length > 0 && !path.isAbsolute(value)
-    && !value.includes('\\') && value.split('/').every(part => (
-      part.length > 0 && part !== '.' && part !== '..'
-      && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(part)
-    ));
 }
 
 function bytes(value) { return Buffer.isBuffer(value) ? Buffer.from(value) : Buffer.from(value); }

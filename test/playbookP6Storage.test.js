@@ -678,6 +678,15 @@ test('admitP6CohortInputs consumes only current P5 snapshots and exact baseline 
     'playbook-candidate-01', 'playbook-candidate-02',
     'playbook-candidate-03', 'baseline-current'
   ]);
+  assert.deepEqual(cohort.render_solutions.map(row => row.solution_id), [
+    'playbook-candidate-01', 'playbook-candidate-02',
+    'playbook-candidate-03', 'baseline-current'
+  ]);
+  assert.equal(Object.isFrozen(cohort.render_solutions), true);
+  assert.equal(Object.isFrozen(cohort.render_solutions[0].blueprint), true);
+  assert.equal(cohort.render_solutions[0].blueprint_sha256, cohort.solutions[0].blueprint_sha256);
+  assert.equal(cohort.render_solutions[0].operation_list_sha256, cohort.solutions[0].operation_list_sha256);
+  assert.deepEqual(cohort.render_solutions[0].operations, cohort.render_solutions[0].blueprint.operations);
   assert.equal(JSON.stringify(cohort).includes(inputs.root), false);
 
   const manifestPath = path.join(inputs.baselineRunDir, 'p6-baseline-authority.json');
