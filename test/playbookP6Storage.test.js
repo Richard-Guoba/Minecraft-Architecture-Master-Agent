@@ -178,7 +178,7 @@ test('a concurrent reader observes the old generation during the current-pointer
   assert.equal(after.generation, 'generation-000002');
 });
 
-test('cross-kind expected-current precondition rejects a capture publication after session replacement', async t => {
+test('cross-kind transaction rejects a capture publication when session replacement wins after preliminary validation', async t => {
   const fixture = await createStorageFixture(t);
   await publishP6Generation({
     authority: fixture.authority,
@@ -189,11 +189,21 @@ test('cross-kind expected-current precondition rejects a capture publication aft
     authority: fixture.authority,
     kind: 'capture-session'
   });
+  await publishP6Generation({
+    authority: fixture.authority,
+    kind: 'minecraft-captures',
+    files: { 'capture-manifest.json': Buffer.from('old-capture') },
+    expectedCurrent: {
+      kind: 'capture-session',
+      generation: expected.generation,
+      manifest_sha256: expected.manifest_sha256
+    }
+  });
   const secondAuthority = await admitP6Run({ p6Dir: fixture.p6Dir });
   t.after(() => secondAuthority.close());
   let replaced = false;
   const interleaving = fsWith({
-    async lstat(target, ...args) {
+    async afterExpectedCurrentValidation() {
       if (!replaced) {
         replaced = true;
         await publishP6Generation({
@@ -202,7 +212,6 @@ test('cross-kind expected-current precondition rejects a capture publication aft
           files: { 'capture-session.json': Buffer.from('new-session') }
         });
       }
-      return fs.lstat(target, ...args);
     }
   });
 
@@ -210,7 +219,7 @@ test('cross-kind expected-current precondition rejects a capture publication aft
     publishP6Generation({
       authority: fixture.authority,
       kind: 'minecraft-captures',
-      files: { 'capture-manifest.json': Buffer.from('{}') },
+      files: { 'capture-manifest.json': Buffer.from('new-capture') },
       expectedCurrent: {
         kind: 'capture-session',
         generation: expected.generation,
@@ -225,14 +234,103 @@ test('cross-kind expected-current precondition rejects a capture publication aft
     kind: 'capture-session'
   });
   assert.ok(session.files['capture-session.json'].equals(Buffer.from('new-session')));
-  await assert.rejects(
-    readCurrentP6Generation({ authority: fixture.authority, kind: 'minecraft-captures' }),
-    publicCode('P6_AUTHORITY_INVALID')
-  );
+  const captures = await readCurrentP6Generation({
+    authority: fixture.authority,
+    kind: 'minecraft-captures'
+  });
+  assert.equal(captures.generation, 'generation-000001');
+  assert.ok(captures.files['capture-manifest.json'].equals(Buffer.from('old-capture')));
   assert.deepEqual(
     (await fs.readdir(path.join(fixture.p6Dir, 'minecraft-captures', 'generations'))).sort(),
-    ['.p6-owned.json']
+    ['.p6-owned.json', 'generation-000001']
   );
+});
+
+test('shared publication critical section serializes session replacement across admitted authorities', async t => {
+  const fixture = await createStorageFixture(t);
+  await publishP6Generation({
+    authority: fixture.authority,
+    kind: 'capture-session',
+    files: { 'capture-session.json': Buffer.from('old-session') }
+  });
+  const expected = await readCurrentP6Generation({
+    authority: fixture.authority,
+    kind: 'capture-session'
+  });
+  const secondAuthority = await admitP6Run({ p6Dir: fixture.p6Dir });
+  t.after(() => secondAuthority.close());
+  let enterCommit;
+  const enteredCommit = new Promise(resolve => { enterCommit = resolve; });
+  let releaseCommit;
+  const release = new Promise(resolve => { releaseCommit = resolve; });
+  const pausing = fsWith({
+    async renameNoReplaceBetween(sourceHandle, sourceName, destinationHandle, destinationName, next) {
+      if (sourceName.startsWith('.p6-stage-') && destinationName === 'generation-000001') {
+        enterCommit();
+        await release;
+      }
+      return next(sourceHandle, sourceName, destinationHandle, destinationName);
+    }
+  });
+  const capturePublication = publishP6Generation({
+    authority: fixture.authority,
+    kind: 'minecraft-captures',
+    files: { 'capture-manifest.json': Buffer.from('capture') },
+    expectedCurrent: {
+      kind: 'capture-session',
+      generation: expected.generation,
+      manifest_sha256: expected.manifest_sha256
+    },
+    fsImpl: pausing
+  });
+  await enteredCommit;
+  const sessionReplacement = publishP6Generation({
+    authority: secondAuthority,
+    kind: 'capture-session',
+    files: { 'capture-session.json': Buffer.from('new-session') }
+  });
+  const beforeRelease = await Promise.race([
+    sessionReplacement.then(() => 'fulfilled', () => 'rejected'),
+    new Promise(resolve => setTimeout(() => resolve('pending'), 100))
+  ]);
+  assert.equal(beforeRelease, 'pending');
+  releaseCommit();
+
+  const [capture, session] = await Promise.all([capturePublication, sessionReplacement]);
+  assert.equal(capture.generation, 'generation-000001');
+  assert.equal(session.generation, 'generation-000002');
+  const currentCapture = await readCurrentP6Generation({
+    authority: fixture.authority, kind: 'minecraft-captures'
+  });
+  assert.ok(currentCapture.files['capture-manifest.json'].equals(Buffer.from('capture')));
+  const currentSession = await readCurrentP6Generation({
+    authority: fixture.authority, kind: 'capture-session'
+  });
+  assert.ok(currentSession.files['capture-session.json'].equals(Buffer.from('new-session')));
+});
+
+test('process death releases the shared publication lock for crash recovery', { timeout: 10000 }, async t => {
+  const fixture = await createStorageFixture(t);
+  await fixture.authority.close();
+  const crashed = await runCrashWorker({
+    p6Dir: fixture.p6Dir,
+    phase: 'before-current-move',
+    kind: 'capture-session',
+    files: { 'capture-session.json': Buffer.from('crashed-session').toString('base64') }
+  });
+  assert.equal(crashed.signal, 'SIGKILL');
+  const reopened = await admitP6Run({ p6Dir: fixture.p6Dir });
+  t.after(() => reopened.close());
+  const recovered = await readCurrentP6Generation({
+    authority: reopened, kind: 'capture-session'
+  });
+  assert.ok(recovered.files['capture-session.json'].equals(Buffer.from('crashed-session')));
+  const replaced = await publishP6Generation({
+    authority: reopened,
+    kind: 'capture-session',
+    files: { 'capture-session.json': Buffer.from('post-crash-session') }
+  });
+  assert.equal(replaced.generation, 'generation-000002');
 });
 
 test('crash journals reopen to one complete old-or-new current generation', async t => {

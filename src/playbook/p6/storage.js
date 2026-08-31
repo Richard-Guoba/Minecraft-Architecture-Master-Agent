@@ -26,6 +26,7 @@ const CURRENT_STAGE_PREFIX = '.p6-current-';
 const POINTER_BACKUP_PREFIX = '.p6-pointer-backup-';
 const JOURNAL_AUTHORITY_PREFIX = '.p6-journal-authority-';
 const RETIREMENT_AUTHORITY_PREFIX = '.p6-retirement-authority-';
+const FLOCK_BINARY = '/usr/bin/flock';
 const RETIREMENT = /^\.p5-retirement-[a-f0-9]{32}$/u;
 const CURRENT_STAGE = /^\.p6-current-\d+-\d+-[a-f0-9]{16}$/u;
 const POINTER_BACKUP = /^\.p6-pointer-backup-\d+-\d+-[a-f0-9]{16}$/u;
@@ -174,8 +175,20 @@ export async function publishP6Generation({ authority, kind, files, expectedCurr
     let installed = false;
     let generationName;
     let pointerStage;
+    let publicationLock;
     try {
       await assertP6Internal(internal, ops);
+      if (currentPrecondition) {
+        await assertExpectedCurrent(internal, ops, currentPrecondition);
+        await ops.afterExpectedCurrentValidation?.();
+      }
+      if (requiresSharedPublicationLock(kind)) {
+        publicationLock = await acquireSharedPublicationLock(internal, ops);
+        await assertP6Internal(internal, ops);
+        if (currentPrecondition) {
+          await assertExpectedCurrent(internal, ops, currentPrecondition);
+        }
+      }
       await validateExistingP6Tree(internal, ops);
       tree = await openOrCreateKindTree(internal, ops, kind);
       await assertKindTree(internal, ops, tree, { allowedGenerationStages: [] });
@@ -218,9 +231,6 @@ export async function publishP6Generation({ authority, kind, files, expectedCurr
         );
         throw error;
       }
-      if (currentPrecondition) {
-        await assertExpectedCurrent(internal, ops, currentPrecondition);
-      }
       await replaceCurrentPointer({
         internal, ops, tree, kind, bytes: pointerBytes, prepared: pointerStage
       });
@@ -255,8 +265,44 @@ export async function publishP6Generation({ authority, kind, files, expectedCurr
     } finally {
       await closeGenerationStage(stage);
       await closeKindTree(tree);
+      await close(publicationLock);
     }
   })();
+}
+
+function requiresSharedPublicationLock(kind) {
+  return kind === 'capture-session' || kind === 'minecraft-captures';
+}
+
+async function acquireSharedPublicationLock(internal, ops) {
+  let handle;
+  try {
+    handle = await ops.open(entry(internal.p6Handle, OWNERSHIP_BASENAME), READ_FLAGS);
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1
+      || !sameIdentity(identity(stat), internal.markerIdentity)) fail();
+    await flockExclusive(handle);
+    const retained = await handle.stat();
+    if (!retained.isFile() || retained.nlink !== 1
+      || !sameIdentity(identity(retained), internal.markerIdentity)) fail();
+    await assertP6Internal(internal, ops);
+    return handle;
+  } catch (error) {
+    await close(handle);
+    throw error;
+  }
+}
+
+async function flockExclusive(handle) {
+  await new Promise((resolve, reject) => {
+    const child = spawn(FLOCK_BINARY, ['--exclusive', '3'], {
+      stdio: ['ignore', 'ignore', 'ignore', handle.fd]
+    });
+    child.once('error', () => reject(p6Error('P6_AUTHORITY_INVALID')));
+    child.once('close', code => code === 0
+      ? resolve()
+      : reject(p6Error('P6_AUTHORITY_INVALID')));
+  });
 }
 
 async function assertExpectedCurrent(internal, ops, expected) {
@@ -1416,6 +1462,8 @@ function fsOperations(source) {
     mkdirBound: provided && typeof provided.mkdirBound === 'function' ? provided.mkdirBound.bind(provided) : undefined,
     retireEntry: provided && typeof provided.retireEntry === 'function' ? provided.retireEntry.bind(provided) : undefined,
     removeBound: provided && typeof provided.removeBound === 'function' ? provided.removeBound.bind(provided) : undefined,
+    afterExpectedCurrentValidation: provided && typeof provided.afterExpectedCurrentValidation === 'function'
+      ? provided.afterExpectedCurrentValidation.bind(provided) : undefined,
     renameNoReplace: customRename
       ? (directoryHandle, sourceName, destinationName) => customRename(
         directoryHandle, sourceName, directoryHandle, destinationName,
