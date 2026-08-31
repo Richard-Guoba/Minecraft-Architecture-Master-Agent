@@ -150,7 +150,9 @@ test('a concurrent reader observes the old generation during the current-pointer
 test('crash journals reopen to one complete old-or-new current generation', async t => {
   for (const phase of [
     'before-current-move', 'after-current-move',
-    'before-journal-remove', 'after-journal-remove'
+    'before-retire-move', 'after-retire-move',
+    'before-retired-file-remove', 'after-retired-file-remove',
+    'before-retirement-dir-remove', 'after-retirement-dir-remove'
   ]) await t.test(phase, async t => {
     const fixture = await createStorageFixture(t);
     await publishP6Generation({ authority: fixture.authority, kind: 'gate', files: { 'gate.json': Buffer.from('old') } });
@@ -168,6 +170,64 @@ test('crash journals reopen to one complete old-or-new current generation', asyn
     assert.ok(['old', 'new'].includes(current.files['gate.json'].toString('utf8')));
     await publishP6Generation({ authority: reopened, kind: 'gate', files: { 'gate.json': Buffer.from('later') } });
   });
+});
+
+test('first publication crashes reopen from every installed-generation pointer boundary', async t => {
+  for (const phase of [
+    'after-first-generation-move',
+    'before-pointer-stage-open', 'after-pointer-stage-open',
+    'after-pointer-stage-write', 'after-pointer-stage-file-sync',
+    'after-pointer-stage-chmod', 'after-pointer-stage-mode-sync',
+    'before-current-move', 'after-current-move'
+  ]) await t.test(phase, async t => {
+    const fixture = await createStorageFixture(t);
+    await fixture.authority.close();
+    const result = await runCrashWorker({
+      p6Dir: fixture.p6Dir,
+      phase,
+      kind: 'gate',
+      files: { 'gate.json': Buffer.from('first').toString('base64') }
+    });
+    assert.equal(result.signal, 'SIGKILL', result.stderr);
+    const reopened = await admitP6Run({ p6Dir: fixture.p6Dir });
+    t.after(() => reopened.close());
+    const current = await readCurrentP6Generation({ authority: reopened, kind: 'gate' });
+    assert.equal(current.generation, 'generation-000001');
+    assert.equal(current.files['gate.json'].toString('utf8'), 'first');
+    await publishP6Generation({
+      authority: reopened,
+      kind: 'gate',
+      files: { 'gate.json': Buffer.from('later') }
+    });
+  });
+});
+
+test('first publication recovery rejects ambiguous complete orphan generations', async t => {
+  const fixture = await createStorageFixture(t);
+  await fixture.authority.close();
+  const result = await runCrashWorker({
+    p6Dir: fixture.p6Dir,
+    phase: 'before-pointer-stage-open',
+    kind: 'gate',
+    files: { 'gate.json': Buffer.from('first').toString('base64') }
+  });
+  assert.equal(result.signal, 'SIGKILL', result.stderr);
+  const generations = path.join(fixture.p6Dir, 'gate', 'generations');
+  const first = path.join(generations, 'generation-000001');
+  const foreign = path.join(generations, 'generation-000002');
+  await fs.cp(first, foreign, { recursive: true });
+  const manifestPath = path.join(foreign, 'manifest.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  manifest.generation = 'generation-000002';
+  await fs.chmod(manifestPath, 0o600);
+  await fs.writeFile(manifestPath, stableJson(manifest));
+  await fs.chmod(manifestPath, 0o400);
+  await assert.rejects(
+    admitP6Run({ p6Dir: fixture.p6Dir }),
+    publicCode('P6_AUTHORITY_INVALID')
+  );
+  assert.equal(await fs.readFile(path.join(first, 'gate.json'), 'utf8'), 'first');
+  assert.equal(await fs.readFile(path.join(foreign, 'gate.json'), 'utf8'), 'first');
 });
 
 test('absolute path admission rejects symlinked intermediates and detects replaced ancestry', async t => {
