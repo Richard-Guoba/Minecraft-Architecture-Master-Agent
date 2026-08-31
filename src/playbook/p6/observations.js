@@ -36,27 +36,33 @@ const CRITERION_LAYERS = deepFreeze({
   'scene-integration': 'scene',
   'style-consistency': 'facade'
 });
-const PROHIBITED_CLAIMS = Object.freeze([
+const PROHIBITED_PREFERENCE = Object.freeze([
   /\b(?:prefer(?:red|s|ence)?|better|worse|winner|superior|inferior|outperform(?:s|ed)?|rank(?:ed|ing)?)\b/iu,
-  /\b(?:intend(?:ed|s|ing|tion)|designed\s+to|purpose\s+(?:is|was))\b/iu,
+  /\b(?:solution|candidate|option|design|it|this)\s+(?:wins?|loses?)\b/iu,
+  /\b(?:best|worst)\s+(?:solution|candidate|option|design)\b/iu,
+  /\b(?:solution|candidate|option|design)\s+(?:is|looks?|appears?)\s+(?:the\s+)?(?:best|worst)\b/iu
+]);
+const PROHIBITED_HIDDEN_CLAIMS = Object.freeze([
+  /\b(?:intend(?:ed|s|ing)?|intent(?:ion|ions|ional|ionally)?|designed\s+to|purpose\s+(?:is|was))\b/iu,
   /\b(?:historically\s+(?:authentic|accurate)|authentic(?:ally)?\s+medieval|true\s+medieval)\b/iu,
   /\b(?:structurally\s+(?:sound|safe|stable)|engineering(?:ly)?\s+(?:sound|true|valid))\b/iu,
-  /\b(?:unseen\s+interior|interior\s+(?:is|are|has|have|shows?|provides?|contains?|supports?))\b/iu
+  /\b(?:unseen\s+interior\s+(?:is|are|has|have|shows?|provides?|contains?|supports?)|interior\s+(?:is|are|has|have|shows?|provides?|contains?|supports?))\b/iu
 ]);
 const INSUFFICIENT_EVIDENCE = Object.freeze([
   /\b(?:does\s+not|cannot|can't)\s+(?:establish|determine|show|confirm|verify)\b/iu,
-  /\b(?:not\s+visible|insufficient\s+(?:visual\s+)?evidence|outside\s+the\s+(?:frame|view))\b/iu
+  /\b(?:not\s+visible|insufficient\s+(?:visual\s+)?evidence|outside\s+the\s+(?:frame|view))\b/iu,
+  /\b(?:evidence\s+(?:is|remains|appears)\s+unclear|unclear\s+(?:visual\s+)?evidence)\b/iu
+]);
+const EXPLICIT_CAVEAT = Object.freeze([
+  /\b(?:does\s+not|cannot|can't)\s+(?:establish|determine|show|confirm|verify)\b/iu,
+  /\b(?:not\s+visible|insufficient\s+(?:visual\s+)?evidence|evidence\s+(?:is|remains|appears)\s+unclear)\b/iu
 ]);
 
 export function createObservation(value, { captureManifest, cohort } = {}) {
   try {
     const authorities = validateAuthorities(captureManifest, cohort);
     const observation = validateObservation(value);
-    if (observation.design_layer !== CRITERION_LAYERS[observation.criterion]) invalid();
-    if (observation.limitations.length === 0) invalid();
-    if (PROHIBITED_CLAIMS.some(pattern => pattern.test(observation.observable_paraphrase))) invalid();
-    if (INSUFFICIENT_EVIDENCE.some(pattern => pattern.test(observation.observable_paraphrase))
-      && observation.rating !== 'unknown') invalid();
+    assertObservationSemantics(observation);
 
     const citedImages = observation.evidence_regions.map(region => {
       assertNormalizedRegion(region);
@@ -216,7 +222,56 @@ function assertObservationSet(value) {
     || value.observations.length !== value.observation_count
     || value.gate_ready !== (value.status === 'complete')
     || (value.status === 'complete') !== (value.observation_count === value.required_observation_count)) invalid();
-  for (const observation of value.observations) validateObservation(observation);
+  const observationIds = new Set();
+  const subjects = new Set();
+  const seenSolutions = new Set();
+  const solutionCriteria = new Map();
+  let currentSolution = null;
+  let previousCriterionIndex = -1;
+  for (const rawObservation of value.observations) {
+    const observation = validateObservation(rawObservation);
+    assertObservationSemantics(observation);
+    if (observation.capture_manifest_hash !== value.capture_manifest_hash
+      || observationIds.has(observation.observation_id)) invalid();
+    const subject = `${observation.solution_authority_hash}:${observation.criterion}`;
+    if (subjects.has(subject)) invalid();
+    observationIds.add(observation.observation_id);
+    subjects.add(subject);
+
+    const criterionIndex = P6_OBSERVATION_CRITERIA.indexOf(observation.criterion);
+    if (observation.solution_authority_hash !== currentSolution) {
+      if (seenSolutions.has(observation.solution_authority_hash)) invalid();
+      currentSolution = observation.solution_authority_hash;
+      seenSolutions.add(currentSolution);
+      solutionCriteria.set(currentSolution, []);
+      previousCriterionIndex = -1;
+    }
+    if (criterionIndex <= previousCriterionIndex) invalid();
+    previousCriterionIndex = criterionIndex;
+    solutionCriteria.get(currentSolution).push(observation.criterion);
+  }
+  if (value.status === 'complete') {
+    if (solutionCriteria.size !== 4) invalid();
+    for (const criteria of solutionCriteria.values()) {
+      if (stableJson(criteria) !== stableJson(P6_OBSERVATION_CRITERIA)) invalid();
+    }
+  }
+}
+
+function assertObservationSemantics(observation) {
+  if (observation.design_layer !== CRITERION_LAYERS[observation.criterion]
+    || observation.limitations.length === 0) invalid();
+  const prose = [observation.observable_paraphrase, ...observation.limitations];
+  for (const text of prose) {
+    for (const segment of text.split(/[.!?;\n]+/u).filter(Boolean)) {
+      if (PROHIBITED_PREFERENCE.some(pattern => pattern.test(segment))) invalid();
+      if (PROHIBITED_HIDDEN_CLAIMS.some(pattern => pattern.test(segment))
+        && !EXPLICIT_CAVEAT.some(pattern => pattern.test(segment))) invalid();
+    }
+  }
+  if (prose.some(text => INSUFFICIENT_EVIDENCE.some(pattern => pattern.test(text)))
+    && observation.rating !== 'unknown') invalid();
+  for (const region of observation.evidence_regions) assertNormalizedRegion(region);
 }
 
 function sameKeys(value, fields) {

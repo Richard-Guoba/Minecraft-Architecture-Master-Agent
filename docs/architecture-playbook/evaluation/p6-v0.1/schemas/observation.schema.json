@@ -1,6 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "oneOf": [
+    { "properties": { "criterion": { "const": "massing-hierarchy" }, "design_layer": { "const": "massing" } }, "required": ["criterion", "design_layer"] },
+    { "properties": { "criterion": { "const": "structural-legibility" }, "design_layer": { "const": "structure" } }, "required": ["criterion", "design_layer"] },
+    { "properties": { "criterion": { "const": "silhouette" }, "design_layer": { "const": "massing" } }, "required": ["criterion", "design_layer"] },
+    { "properties": { "criterion": { "const": "roof-composition" }, "design_layer": { "const": "roof" } }, "required": ["criterion", "design_layer"] },
+    { "properties": { "criterion": { "const": "facade-rhythm-depth" }, "design_layer": { "const": "facade" } }, "required": ["criterion", "design_layer"] },
+    { "properties": { "criterion": { "const": "material-role-legibility" }, "design_layer": { "const": "materials" } }, "required": ["criterion", "design_layer"] },
+    { "properties": { "criterion": { "const": "detail-density" }, "design_layer": { "const": "facade" } }, "required": ["criterion", "design_layer"] },
+    { "properties": { "criterion": { "const": "scene-integration" }, "design_layer": { "const": "scene" } }, "required": ["criterion", "design_layer"] },
+    { "properties": { "criterion": { "const": "style-consistency" }, "design_layer": { "const": "facade" } }, "required": ["criterion", "design_layer"] }
+  ],
   "properties": {
     "capture_manifest_hash": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
     "criterion": {
@@ -87,8 +98,9 @@
       "type": "array"
     },
     "limitations": {
-      "items": { "minLength": 1, "type": "string" },
+      "items": { "maxLength": 200, "minLength": 1, "type": "string" },
       "maxItems": 8,
+      "minItems": 1,
       "uniqueItems": true,
       "type": "array"
     },

@@ -120,7 +120,12 @@ test('rejects preference language and claims of intent, authenticity, engineerin
   const context = fixture();
   for (const observable_paraphrase of [
     'This is better than the other solution.',
+    'This candidate is best.',
+    'This option is the worst.',
+    'This solution wins.',
+    'This candidate loses.',
     'The architect intended the taller volume to dominate.',
+    'The architect had the intention of making the taller volume dominant.',
     'The façade is historically authentic medieval work.',
     'The roof is structurally sound.',
     'The unseen interior has a generous circulation plan.'
@@ -130,6 +135,23 @@ test('rejects preference language and claims of intent, authenticity, engineerin
       { code: 'P6_OBSERVATION_INVALID' }
     );
   }
+
+  for (const limitation of [
+    'This candidate wins despite the limited view.',
+    'This is the best solution.',
+    'The architect intended a dominant central volume.',
+    'The roof is structurally safe.'
+  ]) {
+    assert.throws(
+      () => createObservation(observationFor(context, { limitations: [limitation] }), context),
+      { code: 'P6_OBSERVATION_INVALID' }
+    );
+  }
+
+  assert.doesNotThrow(() => createObservation(observationFor(context, {
+    rating: 'unknown',
+    limitations: ['The exterior image cannot establish historical authenticity or unseen interior conditions.']
+  }), context));
 });
 
 test('requires unknown plus a limitation when exterior evidence is explicitly insufficient', () => {
@@ -140,6 +162,13 @@ test('requires unknown plus a limitation when exterior evidence is explicitly in
   });
   assert.throws(() => createObservation(insufficient, context), { code: 'P6_OBSERVATION_INVALID' });
   assert.equal(createObservation({ ...insufficient, rating: 'unknown' }, context).rating, 'unknown');
+
+  const unclearLimitation = observationFor(context, {
+    rating: 'usable',
+    limitations: ['Evidence remains unclear in the cited exterior frame.']
+  });
+  assert.throws(() => createObservation(unclearLimitation, context), { code: 'P6_OBSERVATION_INVALID' });
+  assert.equal(createObservation({ ...unclearLimitation, rating: 'unknown' }, context).rating, 'unknown');
 });
 
 test('compiles deterministic complete and explicitly partial sets without scores or preference results', () => {
@@ -178,6 +207,23 @@ test('renders a deterministic evidence report with partial completeness semantic
   assert.match(report, /1 of 36/u);
   assert.match(report, /capture-01-opaque/u);
   assert.equal(renderObservationReport(set), report);
+});
+
+test('report rendering rejects forged semantic sets instead of trusting complete and gate-ready flags', () => {
+  const context = fixture();
+  const complete = compileObservationSet({ ...context, observations: completeObservations(context) });
+  const forgeries = [
+    value => { value.observations[35] = structuredClone(value.observations[0]); },
+    value => { value.observations[0].design_layer = 'roof'; },
+    value => { value.observations[0].capture_manifest_hash = p6CaptureHash('other-capture'); },
+    value => { value.observations.reverse(); },
+    value => { value.observations[0].limitations = ['This candidate wins.']; }
+  ];
+  for (const forge of forgeries) {
+    const value = structuredClone(complete);
+    forge(value);
+    assert.throws(() => renderObservationReport(value), { code: 'P6_OBSERVATION_INVALID' });
+  }
 });
 
 test('CLI publishes a complete or explicitly partial exact JSON set against current authorities', async t => {
@@ -372,4 +418,14 @@ function observationFor(context, overrides = {}) {
     reviewed_at: '2026-08-30T10:00:00.000Z',
     ...recordOverrides
   };
+}
+
+function completeObservations(context) {
+  return OPAQUE_IDS.flatMap((_, solutionIndex) => (
+    P6_OBSERVATION_CRITERIA.map((criterion, criterionIndex) => observationFor(context, {
+      solutionIndex,
+      criterion,
+      index: solutionIndex * 9 + criterionIndex
+    }))
+  ));
 }

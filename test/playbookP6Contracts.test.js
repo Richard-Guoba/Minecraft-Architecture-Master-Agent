@@ -333,6 +333,32 @@ test('public schemas accept representative valid instances and reject representa
   }
 });
 
+test('observation schema mirrors runtime criterion layers and limitation bounds', async () => {
+  const schema = (await loadSchemas()).get('observation.schema.json');
+  const criterionLayers = {
+    'massing-hierarchy': 'massing',
+    'structural-legibility': 'structure',
+    silhouette: 'massing',
+    'roof-composition': 'roof',
+    'facade-rhythm-depth': 'facade',
+    'material-role-legibility': 'materials',
+    'detail-density': 'facade',
+    'scene-integration': 'scene',
+    'style-consistency': 'facade'
+  };
+  for (const [criterion, designLayer] of Object.entries(criterionLayers)) {
+    const valid = { ...validObservation(), criterion, design_layer: designLayer };
+    assert.deepEqual(validateSchemaValue(schema, valid), [], criterion);
+    const invalid = { ...valid, design_layer: designLayer === 'scene' ? 'massing' : 'scene' };
+    assert.notDeepEqual(validateSchemaValue(schema, invalid), [], `${criterion}:wrong-layer`);
+  }
+
+  const noLimitations = { ...validObservation(), limitations: [] };
+  assert.notDeepEqual(validateSchemaValue(schema, noLimitations), [], 'limitations:minItems');
+  const longLimitation = { ...validObservation(), limitations: ['x'.repeat(201)] };
+  assert.notDeepEqual(validateSchemaValue(schema, longLimitation), [], 'limitations:maxLength');
+});
+
 test('P6 sources, public protocol JSON, and public schemas forbid scalar score fields', async () => {
   const sourceFiles = (await readdir(SOURCE_ROOT)).filter((name) => name.endsWith('.js'));
   const docFiles = (await readdir(DOCS_ROOT)).filter((name) => name.endsWith('.json'));
