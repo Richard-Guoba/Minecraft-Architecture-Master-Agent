@@ -92,6 +92,64 @@ test('capture always refuses without touching a world, including authorization-l
   );
 });
 
+test('import-captures requires only an exact P6 run and caller capture root', () => {
+  assert.deepEqual(parseP6Args([
+    'import-captures', '--run-dir', `${POSIX_ROOT}/run`, '--capture-root', `${POSIX_ROOT}/submitted`
+  ]), {
+    action: 'import-captures',
+    runDir: `${POSIX_ROOT}/run`,
+    captureRoot: `${POSIX_ROOT}/submitted`
+  });
+  assert.throws(
+    () => parseP6Args(['import-captures', '--run-dir', `${POSIX_ROOT}/run`]),
+    { code: 'P6_OPTIONS_INVALID' }
+  );
+  assert.throws(
+    () => parseP6Args([
+      'import-captures', '--run-dir', `${POSIX_ROOT}/run`, '--capture-root', `${POSIX_ROOT}/submitted`,
+      '--authorize-disposable-world'
+    ]),
+    { code: 'P6_OPTIONS_INVALID' }
+  );
+});
+
+test('import-captures consumes the exact current session and never reaches world-capable dependencies', async () => {
+  const calls = [];
+  const session = { schema_version: 1, kind: 'p6-capture-session' };
+  const result = await runP6Cli([
+    'import-captures', '--run-dir', `${POSIX_ROOT}/run`, '--capture-root', `${POSIX_ROOT}/submitted`
+  ], {
+    admitP6Run: async ({ p6Dir }) => {
+      calls.push(['admit', p6Dir]);
+      return { close: async () => { calls.push(['close']); } };
+    },
+    readCurrentP6Generation: async ({ kind }) => {
+      calls.push(['read', kind]);
+      return { files: { 'capture-session.json': Buffer.from(JSON.stringify(session)) } };
+    },
+    validateImportedCaptures: async ({ session: received, captureRoot }) => {
+      calls.push(['validate', received, captureRoot]);
+      return {
+        status: 'imported', capture_count: 24, capture_manifest_sha256: HASH,
+        environment_sha256: HASH, output: 'minecraft-captures/generation-000001'
+      };
+    },
+    createP6Run: async () => { throw new Error('import must not create a run'); },
+    launchMinecraft: async () => { throw new Error('import must not launch Minecraft'); }
+  });
+
+  assert.deepEqual(result, {
+    status: 'imported', capture_count: 24, capture_manifest_sha256: HASH,
+    environment_sha256: HASH, output: 'minecraft-captures/generation-000001'
+  });
+  assert.deepEqual(calls, [
+    ['admit', `${POSIX_ROOT}/run/playbook-p6`],
+    ['read', 'capture-session'],
+    ['validate', session, `${POSIX_ROOT}/submitted`],
+    ['close']
+  ]);
+});
+
 test('CLI capture refusal is non-zero and does not expose its disposable POSIX path', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-cli-disposable-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
