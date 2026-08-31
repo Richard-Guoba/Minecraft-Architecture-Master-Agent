@@ -23,6 +23,7 @@
     "playbook:manual": "node src/runArchitecturePlaybookManual.js",
     "playbook:shadow": "node src/runArchitecturePlaybookShadow.js",
     "playbook:execute": "node src/index.js --playbook execute --candidates 3 --candidate-rounds 1",
+    "playbook:p6": "node src/runArchitecturePlaybookP6.js",
     "residential:workspace": "node src/runResidentialWorkspace.js",
     "training:prepare": "node src/runTrainingPrepare.js",
     "training:train": "conda run -n mcagent-stage7 --cwd training/stage7 python -m mcagent_stage7.train",

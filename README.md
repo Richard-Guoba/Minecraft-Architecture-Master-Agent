@@ -31,6 +31,7 @@ The LLM does not need to emit exact block coordinates. The Node.js runtime turns
 - The checkpoint remains experimental and is not part of primary generation. The LLM still describes the house; deterministic Node.js code still turns that intent into exact geometry and datapack commands.
 - Training artifacts remain local by default. A separate license and distribution review happens only before a concrete artifact is shared externally.
 - Architecture Playbook P5 is available as an opt-in, default-off deterministic design loop. It creates three candidates, validates five design layers, permits at most one reviewed repair per candidate, and filters eligibility before the existing ranker. Replay is rebuilt from persisted hash-bound authority. Candidate and selection publication use immutable bodies plus one recoverable current pointer. Directory creation records the exact new inode synchronously before the first asynchronous boundary, then requires the retained no-follow handle, boundary-returned handle, and named entry to match before no-replace promotion. Candidate and selection pointer stages retain their exclusive-open handles through first named read and publication. Cleanup moves exact owned entries into capability-private retirement journals; after the last injectable removal boundary it revalidates authority and inode immediately beside a non-yielding unlink/rmdir. The final datapack installer creates each stage file through a trusted synchronous exclusive open, immediately binds the returned descriptor and inode before any injected or asynchronous callback, and reconciles post-effect open, partial/full write, sync, and close failures before cleaning exact created topology, so foreign replacements are neither installed nor deleted. These guarantees cover every documented JavaScript asynchronous and fault-injection interval. They trust Node's native bindings and assume no hostile same-UID writer races adjacent synchronous syscalls; standard Node/POSIX offers neither a `mkdir` that returns a retained directory descriptor nor inode-conditional `unlink`/`rmdir`. A failed pre-install run retains no candidate workspace; cleanup after an externally committed disposable install cannot relabel that install as failed. P5 creates no playbook score and does not prove quality or aesthetic improvement. P6 visual evaluation and blind comparison remain closed.
+- P6 preparation is an opt-in, offline-only prerequisite. It admits the frozen P5 and baseline authorities, publishes hash-bound cohort/camera data, and generates 24 deterministic `reference-render` PNGs. These are not formal Minecraft evidence and do not prove that Minecraft displayed the builds correctly.
 
 ## Residential learned renderer
 
@@ -74,6 +75,21 @@ The Codex adapter distinguishes these failures:
 - `CODEX_CONFIGURATION_INVALID`: remove unsafe or protocol-conflicting values from `CODEX_ARGS`.
 
 The P5 command preserves P5's public error boundary, so a design-stage provider failure is reported as `P5_DESIGN_INVALID`. If that occurs, perform the `codex` setup check above before retrying.
+
+## P6 reference preparation (offline only)
+
+After producing the exact frozen P5 run and its matching baseline authority, prepare the P6 reference package under a disposable ignored run directory:
+
+```bash
+npm run playbook:p6 -- prepare \
+  --playbook-run /absolute/path/to/p5-run \
+  --baseline-run /absolute/path/to/baseline-run \
+  --run-dir /absolute/path/to/p6-run
+```
+
+The command never launches, installs, opens, or changes Minecraft or any world. It writes only the owned `playbook-p6/` output beneath `--run-dir` (normally `out/<run>/playbook-p6/`); `out/`, `.local/architecture-playbook/`, worlds, datapacks, screenshots, reference images, and private comparison material are ignored and must remain untracked. Its `reference-render` images are deterministic offline checks, not the required formal Minecraft captures.
+
+Formal screenshots are a later, separate checkpoint: they require explicit authorization for one exact disposable world, its expected identity hash, and a human-run capture/import step. The blind-comparison step then waits for human A/B/tie choices; no command invents a preference or opens P7 without those records. In this release, `capture` always stops with `P6_CAPTURE_AUTHORIZATION_REQUIRED`, even if authorization-looking flags are supplied.
 
 ## Generate a datapack
 
