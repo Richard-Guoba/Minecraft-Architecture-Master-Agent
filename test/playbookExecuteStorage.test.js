@@ -50,6 +50,28 @@ const TRANSACTION_HASH = 'b'.repeat(64);
 const CRASH_WORKER = path.join(import.meta.dirname, 'fixtures', 'playbookExecuteCrashWorker.js');
 const STORAGE_AUTHORITIES = await buildStorageAuthorities();
 
+test('concurrent-reader hook bounds staged pointer inspection', async () => {
+  const randomStagePath = '/tmp/candidates/.playbook-execute.stage-regression-8f6a3c';
+  const inStage = await pathContainsGeneratedName(randomStagePath, STAGE_PREFIX);
+  const expectedPointer = Buffer.from(
+    '{"candidate_id":"candidate-01","chain_revision":2,"chain_sha256":"abc","schema_version":1}\n'
+  );
+  let detected;
+  assert.doesNotThrow(() => {
+    detected = isStagedCandidatePointerWrite(inStage, expectedPointer, expectedPointer);
+  });
+  assert.equal(detected, true);
+
+  const wrongPointer = Buffer.from(expectedPointer);
+  wrongPointer[0] ^= 1;
+  assert.equal(wrongPointer.byteLength, expectedPointer.byteLength);
+  assert.equal(isStagedCandidatePointerWrite(inStage, wrongPointer, expectedPointer), false);
+  assert.equal(
+    isStagedCandidatePointerWrite(inStage, Buffer.alloc(expectedPointer.byteLength + 1), expectedPointer),
+    false
+  );
+});
+
 test('failure evidence append rolls back every precommit write sync move and inspection fault', async (t) => {
   const cases = [
     ['exclusiveWrite', 1], ['chmod', 1], ['fileSync', 1], ['fileSync', 2],
@@ -1115,7 +1137,7 @@ test('installs and reads a complete first candidate snapshot with immutable bodi
   assert.deepEqual(reread.files['current-chain.json'], expectedFiles['current-chain.json']);
 });
 
-test('requires and retains exact executable artifact bytes bound by the accepted facade', async (t) => {
+test('requires and retains immutable revisioned executable artifacts bound by the accepted facade', async (t) => {
   const fixture = await storageFixture(t);
   const authority = await admitExecuteRun({ runDir: fixture.runDir });
   t.after(() => authority.close());
@@ -1123,10 +1145,13 @@ test('requires and retains exact executable artifact bytes bound by the accepted
 
   await installCandidateSnapshot({ authority, candidateId: 'candidate-01', ...snapshot });
   const installed = await readCurrentCandidateSnapshot({ authority, candidateId: 'candidate-01' });
-  assert.deepEqual(installed.files['artifacts/operation-list.json'], snapshot.files['artifacts/operation-list.json']);
-  assert.deepEqual(installed.files['artifacts/build.mcfunction'], snapshot.files['artifacts/build.mcfunction']);
+  assert.deepEqual(installed.files['artifacts/chain-0001-operation-list.json'], snapshot.files['artifacts/chain-0001-operation-list.json']);
+  assert.deepEqual(installed.files['artifacts/chain-0001-build.mcfunction'], snapshot.files['artifacts/chain-0001-build.mcfunction']);
 
-  for (const name of ['artifacts/operation-list.json', 'artifacts/build.mcfunction']) {
+  for (const name of [
+    'artifacts/chain-0001-operation-list.json',
+    'artifacts/chain-0001-build.mcfunction'
+  ]) {
     const missing = initialSnapshot();
     delete missing.files[name];
     const clean = await storageFixture(t);
@@ -1149,6 +1174,168 @@ test('requires and retains exact executable artifact bytes bound by the accepted
       name
     );
   }
+
+  for (const legacyName of ['artifacts/operation-list.json', 'artifacts/build.mcfunction']) {
+    const legacy = initialSnapshot();
+    legacy.files[legacyName] = legacy.files[
+      legacyName.endsWith('.json')
+        ? 'artifacts/chain-0001-operation-list.json'
+        : 'artifacts/chain-0001-build.mcfunction'
+    ];
+    delete legacy.files[
+      legacyName.endsWith('.json')
+        ? 'artifacts/chain-0001-operation-list.json'
+        : 'artifacts/chain-0001-build.mcfunction'
+    ];
+    const clean = await storageFixture(t);
+    const cleanAuthority = await admitExecuteRun({ runDir: clean.runDir });
+    t.after(() => cleanAuthority.close());
+    await assert.rejects(
+      installCandidateSnapshot({ authority: cleanAuthority, candidateId: 'candidate-01', ...legacy }),
+      { code: /P5_(?:AUTHORITY_INVALID|CHECKPOINT_INVALID)/u },
+      legacyName
+    );
+  }
+});
+
+test('revision-2 admission rejects missing or substituted historical executable artifacts', async (t) => {
+  const cases = [
+    ['missing operation list', (files) => {
+      delete files['artifacts/chain-0001-operation-list.json'];
+    }],
+    ['missing build function', (files) => {
+      delete files['artifacts/chain-0001-build.mcfunction'];
+    }],
+    ['substituted operation list', (files) => {
+      files['artifacts/chain-0001-operation-list.json'] = Buffer.from(
+        files['artifacts/chain-0002-operation-list.json']
+      );
+    }],
+    ['substituted build function', (files) => {
+      files['artifacts/chain-0001-build.mcfunction'] = Buffer.from(
+        files['artifacts/chain-0002-build.mcfunction']
+      );
+    }]
+  ];
+
+  for (const [name, mutate] of cases) {
+    await t.test(name, async (t) => {
+      const fixture = await storageFixture(t);
+      const authority = await admitExecuteRun({ runDir: fixture.runDir });
+      t.after(() => authority.close());
+      const snapshot = replaySnapshot(initialSnapshot());
+      mutate(snapshot.files);
+      await assert.rejects(
+        installCandidateSnapshot({ authority, candidateId: 'candidate-01', ...snapshot }),
+        { code: /P5_(?:AUTHORITY_INVALID|CHECKPOINT_INVALID)/u }
+      );
+    });
+  }
+});
+
+test('current candidate admission rejects missing and hardlinked revisioned artifacts on disk', async (t) => {
+  for (const name of [
+    'artifacts/chain-0001-operation-list.json',
+    'artifacts/chain-0001-build.mcfunction'
+  ]) {
+    await t.test(`missing:${name}`, async (t) => {
+      const fixture = await installedFixture(t);
+      await fs.unlink(path.join(candidateDirectory(fixture.runDir, 'candidate-01'), name));
+      await assert.rejects(readCurrentCandidateSnapshot({
+        authority: fixture.authority,
+        candidateId: 'candidate-01'
+      }), { code: 'P5_OUTPUT_OWNERSHIP' });
+    });
+    await t.test(`hardlink:${name}`, async (t) => {
+      const fixture = await installedFixture(t);
+      const target = path.join(candidateDirectory(fixture.runDir, 'candidate-01'), name);
+      await fs.link(target, path.join(fixture.root, `foreign-${path.basename(name)}`));
+      await assert.rejects(readCurrentCandidateSnapshot({
+        authority: fixture.authority,
+        candidateId: 'candidate-01'
+      }), { code: 'P5_OUTPUT_OWNERSHIP' });
+    });
+  }
+});
+
+test('concurrent readers observe the old authority until the revision-2 pointer commits', async (t) => {
+  const fixture = await installedFixture(t);
+  let before = await readCurrentCandidateSnapshot({
+    authority: fixture.authority,
+    candidateId: 'candidate-01'
+  });
+  const beforeChainHash = before.current_chain_sha256;
+  const beforeCurrentChainHash = testHash(before.current_chain);
+  const beforeFileHashes = fileHashMap(before.files);
+  before = null;
+  const initialChainHash = fixture.initial.chainHash;
+  const replacement = replaySnapshot(fixture.initial);
+  fixture.initial = null;
+  const replacementChainHash = replacement.chainHash;
+  const expectedPointerBytes = candidatePointerBytes(replacement);
+  const expectedAfterFileHashes = fileHashMap({
+    ...replacement.files,
+    ['chains/chain-' + padRevision(replacement.chain.chain_revision) + '.json']:
+      replacement.currentChain,
+    'current-chain.json': expectedPointerBytes
+  });
+  let releasePointer;
+  let reachedPointer;
+  const pointerReached = new Promise((resolve) => { reachedPointer = resolve; });
+  const pointerReleased = new Promise((resolve) => { releasePointer = resolve; });
+  let paused = false;
+  const fsImpl = fsWith({
+    async open(target, flags, ...args) {
+      const handle = await fs.open(target, flags, ...args);
+      const inStage = await pathContainsGeneratedName(String(target), STAGE_PREFIX);
+      return wrapFileHandle(handle, {
+        async writeFile(value, ...writeArgs) {
+          if (!paused && isStagedCandidatePointerWrite(inStage, value, expectedPointerBytes)) {
+            paused = true;
+            reachedPointer();
+            await pointerReleased;
+          }
+          return handle.writeFile(value, ...writeArgs);
+        }
+      });
+    }
+  });
+  const publication = installCandidateSnapshot({
+    authority: fixture.authority,
+    candidateId: 'candidate-01',
+    ...replacement,
+    expectedPreviousChainSha256: initialChainHash,
+    fsImpl
+  });
+  await pointerReached;
+  let duringError;
+  try {
+    let during = await readCurrentCandidateSnapshot({
+      authority: fixture.authority,
+      candidateId: 'candidate-01'
+    });
+    assert.equal(during.current_chain_sha256, beforeChainHash);
+    assert.equal(testHash(during.current_chain), beforeCurrentChainHash);
+    const duringFileHashes = fileHashMap(during.files);
+    for (const [name, hash] of Object.entries(beforeFileHashes)) {
+      assert.equal(duringFileHashes[name], hash, name);
+    }
+    during = null;
+  } catch (error) {
+    duringError = error;
+  } finally {
+    releasePointer();
+  }
+  await publication;
+  replacement.files = null;
+  replacement.currentChain = null;
+  if (duringError) throw duringError;
+  const after = await readCurrentCandidateSnapshot({
+    authority: fixture.authority,
+    candidateId: 'candidate-01'
+  });
+  assert.equal(after.current_chain_sha256, replacementChainHash);
+  assert.deepEqual(fileHashMap(after.files), expectedAfterFileHashes);
 });
 
 test('closes every descriptor opened by admission and candidate installation', async (t) => {
@@ -1914,13 +2101,14 @@ test('candidate immutable-body and pointer precommit faults preserve old authori
       const pointerPath = path.join(candidatePath, 'current-chain.json');
       const beforePointer = await fs.readFile(pointerPath);
       const beforePointerStat = await fs.stat(pointerPath);
+      const replacement = replaySnapshot(fixture.initial);
       await assertP5Failure(
         installCandidateSnapshot({
           authority: fixture.authority,
           candidateId: 'candidate-01',
-          ...replaySnapshot(fixture.initial),
+          ...replacement,
           expectedPreviousChainSha256: fixture.initial.chainHash,
-          fsImpl: candidatePointerFaultFs(category)
+          fsImpl: candidatePointerFaultFs(category, candidatePointerBytes(replacement))
         }),
         'P5_INSTALL_FAILED',
         fixture.root,
@@ -2305,7 +2493,7 @@ test('candidate subprocess crashes reopen to one complete old-or-new chain', asy
   }
 });
 
-function candidatePointerFaultFs(failCategory) {
+function candidatePointerFaultFs(failCategory, expectedPointerBytes) {
   let bodyMoved = false;
   let pointerMoved = false;
   let failed = false;
@@ -2325,7 +2513,7 @@ function candidatePointerFaultFs(failCategory) {
       const candidateDirectoryHandle = stat.isDirectory() && path.basename(targetText) === 'candidate-01';
       return wrapFileHandle(handle, {
         async writeFile(value, ...writeArgs) {
-          const pointer = isCandidatePointerBytes(value);
+          const pointer = isStagedCandidatePointerWrite(inStage, value, expectedPointerBytes);
           if (inStage) fail(pointer ? 'pointerWrite' : 'stageWrite');
           return handle.writeFile(value, ...writeArgs);
         },
@@ -2365,14 +2553,25 @@ function candidatePointerFaultFs(failCategory) {
   });
 }
 
-function isCandidatePointerBytes(value) {
-  try {
-    const parsed = JSON.parse(Buffer.from(value).toString('utf8'));
-    return Object.keys(parsed).sort().join(',') ===
-      'candidate_id,chain_revision,chain_sha256,schema_version';
-  } catch {
-    return false;
-  }
+function isStagedCandidatePointerWrite(
+  inStage,
+  value,
+  expectedPointerBytes
+) {
+  return inStage
+    && Buffer.isBuffer(value)
+    && Buffer.isBuffer(expectedPointerBytes)
+    && value.byteLength === expectedPointerBytes.byteLength
+    && value.equals(expectedPointerBytes);
+}
+
+function candidatePointerBytes(snapshot) {
+  return canonicalBytes({
+    schema_version: 1,
+    candidate_id: snapshot.chain.candidate_id,
+    chain_revision: snapshot.chain.chain_revision,
+    chain_sha256: snapshot.chainHash
+  });
 }
 
 function assertHistoricalRowsUnchanged(before, after) {
@@ -2983,6 +3182,30 @@ async function buildStorageAuthorities() {
     const reviewBytes = Buffer.from(stableJson(review));
     const operationListBytes = Buffer.from(stableJson(compiled.blueprint.operations));
     const buildFunctionBytes = Buffer.from(await fs.readFile(compiled.artifacts.buildFunction));
+    const replayBlueprint = structuredClone(compiled.blueprint);
+    const firstOperation = replayBlueprint.operations[0];
+    assert.ok(firstOperation);
+    replayBlueprint.operations[0] = {
+      ...firstOperation,
+      block: firstOperation.block === 'minecraft:stone'
+        ? 'minecraft:cobblestone'
+        : 'minecraft:stone'
+    };
+    const replayBlueprintBytes = Buffer.from(`${JSON.stringify(replayBlueprint, null, 2)}\n`);
+    const replayHardQa = new BlueprintQAAgent().run(replayBlueprint);
+    assert.equal(replayHardQa.ok, true);
+    const replayReview = await buildDeterministicShadowReview({
+      projectRoot,
+      blueprintBytes: replayBlueprintBytes,
+      blueprintRelativePath: 'blueprint.json'
+    });
+    const replayHardQaBytes = Buffer.from(stableJson(replayHardQa));
+    const replayReviewBytes = Buffer.from(stableJson(replayReview));
+    const replayOperationListBytes = Buffer.from(stableJson(replayBlueprint.operations));
+    const replayBuildFunctionBytes = Buffer.concat([
+      buildFunctionBytes,
+      Buffer.from('# replay fixture executable authority\n')
+    ]);
     return new Map(['candidate-01', 'candidate-02', 'candidate-03'].map((candidateId) => {
       const frozenDesign = { ...structuredClone(baseDesign), candidate_id: candidateId };
       const frozenDesignBytes = Buffer.from(stableJson(frozenDesign));
@@ -3006,7 +3229,17 @@ async function buildStorageAuthorities() {
         hardQaBytes: Buffer.from(hardQaBytes),
         hardQaHash: sha256(hardQaBytes),
         reviewBytes: Buffer.from(reviewBytes),
-        reviewHash: sha256(reviewBytes)
+        reviewHash: sha256(reviewBytes),
+        replayBlueprintBytes: Buffer.from(replayBlueprintBytes),
+        replayBlueprintHash: sha256(replayBlueprintBytes),
+        replayOperationListBytes: Buffer.from(replayOperationListBytes),
+        replayOperationListHash: sha256(replayOperationListBytes),
+        replayBuildFunctionBytes: Buffer.from(replayBuildFunctionBytes),
+        replayBuildFunctionHash: sha256(replayBuildFunctionBytes),
+        replayHardQaBytes: Buffer.from(replayHardQaBytes),
+        replayHardQaHash: sha256(replayHardQaBytes),
+        replayReviewBytes: Buffer.from(replayReviewBytes),
+        replayReviewHash: sha256(replayReviewBytes)
       })];
     }));
   } finally {
@@ -3061,8 +3294,8 @@ function initialSnapshot(candidateId = 'candidate-01') {
       'frozen/frozen-design.json': Buffer.from(authority.designBytes),
       'frozen/frozen-generator-context.json': Buffer.from(authority.contextBytes),
       'blueprints/chain-0001.json': Buffer.from(authority.blueprintBytes),
-      'artifacts/operation-list.json': Buffer.from(authority.operationListBytes),
-      'artifacts/build.mcfunction': Buffer.from(authority.buildFunctionBytes),
+      'artifacts/chain-0001-operation-list.json': Buffer.from(authority.operationListBytes),
+      'artifacts/chain-0001-build.mcfunction': Buffer.from(authority.buildFunctionBytes),
       'reviews/chain-0001-hard-qa.json': Buffer.from(authority.hardQaBytes),
       'reviews/chain-0001-review.json': Buffer.from(authority.reviewBytes)
     },
@@ -3076,6 +3309,7 @@ function initialSnapshot(candidateId = 'candidate-01') {
 
 function replaySnapshot(initial) {
   const candidateId = initial.chain.candidate_id;
+  const authority = STORAGE_AUTHORITIES.get(candidateId);
   const operation = {
     schema_version: 1,
     compiler_version: 1,
@@ -3135,9 +3369,9 @@ function replaySnapshot(initial) {
     base_chain_sha256: initial.chainHash,
     repair_request_sha256: testHash(request),
     repair_transaction_sha256: transactionHash,
-    blueprint_sha256: initial.chain.blueprint_sha256,
-    hard_qa_sha256: initial.chain.hard_qa_sha256,
-    p4_review_sha256: initial.chain.p4_review_sha256,
+    blueprint_sha256: authority.replayBlueprintHash,
+    hard_qa_sha256: authority.replayHardQaHash,
+    p4_review_sha256: authority.replayReviewHash,
     eligibility
   });
   const envelopes = buildReplayEnvelopes(initial, transactionHash, testHash(result));
@@ -3145,6 +3379,9 @@ function replaySnapshot(initial) {
     chain_revision: 2,
     parent_chain_sha256: initial.chainHash,
     repair_transaction_sha256: transactionHash,
+    blueprint_sha256: authority.replayBlueprintHash,
+    hard_qa_sha256: authority.replayHardQaHash,
+    p4_review_sha256: authority.replayReviewHash,
     created_from: 'replay'
   }));
   const currentChain = chainManifestBytes(chain);
@@ -3153,9 +3390,11 @@ function replaySnapshot(initial) {
       ...cloneBuffers(initial.files),
       [`chains/chain-${padRevision(initial.chain.chain_revision)}.json`]: Buffer.from(initial.currentChain),
       ...checkpointFileMap(envelopes),
-      'blueprints/chain-0002.json': Buffer.from(initial.files['blueprints/chain-0001.json']),
-      'reviews/chain-0002-hard-qa.json': Buffer.from(initial.files['reviews/chain-0001-hard-qa.json']),
-      'reviews/chain-0002-review.json': Buffer.from(initial.files['reviews/chain-0001-review.json']),
+      'blueprints/chain-0002.json': Buffer.from(authority.replayBlueprintBytes),
+      'artifacts/chain-0002-operation-list.json': Buffer.from(authority.replayOperationListBytes),
+      'artifacts/chain-0002-build.mcfunction': Buffer.from(authority.replayBuildFunctionBytes),
+      'reviews/chain-0002-hard-qa.json': Buffer.from(authority.replayHardQaBytes),
+      'reviews/chain-0002-review.json': Buffer.from(authority.replayReviewBytes),
       'repairs/attempt-01-request.json': request,
       'repairs/attempt-01-patch.json': transactionBytes,
       'repairs/attempt-01-result.json': result
@@ -3267,13 +3506,13 @@ function buildReplayEnvelopes(initial, transactionSha256, repairResultSha256) {
       field_patches: [],
       compiled_artifact_hashes: layer === 'facade' ? {
         layer_payload_sha256: ARTIFACT_HASH,
-        operation_list_sha256: authority.operationListHash,
-        build_function_sha256: authority.buildFunctionHash,
+        operation_list_sha256: authority.replayOperationListHash,
+        build_function_sha256: authority.replayBuildFunctionHash,
         datapack_tree_sha256: '6'.repeat(64),
         repair_result_sha256: repairResultSha256
       } : { layer_payload_sha256: ARTIFACT_HASH },
-      hard_qa: { hard_qa_ok: true, hard_qa_sha256: authority.hardQaHash },
-      design_review: { p4_review_sha256: authority.reviewHash },
+      hard_qa: { hard_qa_ok: true, hard_qa_sha256: authority.replayHardQaHash },
+      design_review: { p4_review_sha256: authority.replayReviewHash },
       invalidates_downstream: INVALIDATES[layer],
       replay_origin: {
         kind: 'replay',
@@ -3612,6 +3851,12 @@ function sortObject(value) {
 
 function cloneBuffers(files) {
   return Object.fromEntries(Object.entries(files).map(([name, bytes]) => [name, Buffer.from(bytes)]));
+}
+
+function fileHashMap(files) {
+  return sortObject(Object.fromEntries(
+    Object.entries(files).map(([name, bytes]) => [name, testHash(bytes)])
+  ));
 }
 
 function testHash(bytes) {

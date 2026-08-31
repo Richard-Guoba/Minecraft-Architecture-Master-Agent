@@ -11,10 +11,23 @@ const DATAPACK_BASENAME = 'architect_datapack';
 const BUILD_RELATIVE_PATH = 'data/architect/function/build.mcfunction';
 
 export async function hashReplayArtifacts({ compiledResult } = {}) {
-  return (await snapshotReplayArtifacts({ compiledResult })).hashes;
+  return (await captureReplayArtifacts({ compiledResult })).hashes;
 }
 
-export async function snapshotReplayArtifacts({ compiledResult } = {}) {
+export async function snapshotReplayArtifacts({ compiledResult, chainRevision } = {}) {
+  if (![1, 2].includes(chainRevision)) invalid();
+  const captured = await captureReplayArtifacts({ compiledResult });
+  const suffix = String(chainRevision).padStart(4, '0');
+  return Object.freeze({
+    hashes: captured.hashes,
+    files: Object.freeze({
+      [`artifacts/chain-${suffix}-operation-list.json`]: Buffer.from(captured.operationListBytes),
+      [`artifacts/chain-${suffix}-build.mcfunction`]: Buffer.from(captured.buildFunctionBytes)
+    })
+  });
+}
+
+async function captureReplayArtifacts({ compiledResult } = {}) {
   try {
     const operations = canonicalClone(compiledResult?.blueprint?.operations);
     if (!Array.isArray(operations)) invalid();
@@ -34,10 +47,8 @@ export async function snapshotReplayArtifacts({ compiledResult } = {}) {
     });
     return Object.freeze({
       hashes,
-      files: Object.freeze({
-        'artifacts/operation-list.json': Buffer.from(operationListBytes),
-        'artifacts/build.mcfunction': Buffer.from(buildFunctionBytes)
-      })
+      operationListBytes: Buffer.from(operationListBytes),
+      buildFunctionBytes: Buffer.from(buildFunctionBytes)
     });
   } catch (error) {
     if (error?.code === 'P5_REPLAY_FAILED') throw error;

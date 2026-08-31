@@ -51,8 +51,8 @@ test('massing replay preserves brief and replaces the exact target suffix once',
   const installed = await readCurrentCandidateSnapshot({ authority: input.authority, candidateId: 'candidate-01' });
   assert.equal(installed.current_chain_sha256, result.current_chain_sha256);
   for (const name of ['repairs/attempt-01-request.json', 'repairs/attempt-01-patch.json', 'repairs/attempt-01-result.json']) assert.ok(installed.files[name]);
-  assert.deepEqual(installed.files['artifacts/operation-list.json'], Buffer.from(stable(result.compiled_result.blueprint.operations)));
-  assert.deepEqual(installed.files['artifacts/build.mcfunction'], await fs.readFile(result.compiled_result.artifacts.buildFunction));
+  assert.deepEqual(installed.files['artifacts/chain-0002-operation-list.json'], Buffer.from(stable(result.compiled_result.blueprint.operations)));
+  assert.deepEqual(installed.files['artifacts/chain-0002-build.mcfunction'], await fs.readFile(result.compiled_result.artifacts.buildFunction));
 });
 
 test('replay is provider-free and deterministic across roots', async (t) => {
@@ -412,8 +412,8 @@ async function fixture(t, { structureOnly = false, activeContext = false } = {})
     ...Object.fromEntries(envelopes.map((envelope) => [`checkpoints/${envelope.checkpoint.layer}/r0001.json`, checkpointBytes(envelope)])),
     'frozen/frozen-design.json': Buffer.from(stable(frozenDesign)),
     'frozen/frozen-generator-context.json': Buffer.from(stable(prepared.frozen_generator_context)),
-    'artifacts/operation-list.json': initialOperationListBytes,
-    'artifacts/build.mcfunction': initialBuildFunctionBytes,
+    'artifacts/chain-0001-operation-list.json': initialOperationListBytes,
+    'artifacts/chain-0001-build.mcfunction': initialBuildFunctionBytes,
     'blueprints/chain-0001.json': Buffer.from(blueprintBytes),
     'reviews/chain-0001-hard-qa.json': Buffer.from(stable(hardQa)),
     'reviews/chain-0001-review.json': Buffer.from(stable(p4Review))

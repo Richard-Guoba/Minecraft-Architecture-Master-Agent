@@ -112,7 +112,10 @@ export async function replayCandidate({
     await hit(faultInjector, 'hashing');
     const recheckedBlueprintBytes = await exactBlueprintBytes(compiledResult);
     if (!recheckedBlueprintBytes.equals(blueprintBytes)) replayFailed();
-    const executableArtifacts = await snapshotReplayArtifacts({ compiledResult });
+    const executableArtifacts = await snapshotReplayArtifacts({
+      compiledResult,
+      chainRevision: 2
+    });
     const artifactHashes = executableArtifacts.hashes;
     const hardQaBytes = bytes(hardQa);
     const p4ReviewBytes = bytes(p4Review);

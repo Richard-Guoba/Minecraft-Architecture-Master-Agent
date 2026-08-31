@@ -158,7 +158,10 @@ async function executeCandidate({ index, normalized, seedPlan, runDir, projectRo
       return failedRecord(candidateId, seed, evaluateExecuteEligibility({ review, hardQa: { ok: false }, repairBudgetUsed: 0, candidateAuthority }));
     }
     let eligibility = evaluateExecuteEligibility({ review, hardQa: { ok: true }, repairBudgetUsed: 0, candidateAuthority });
-    const executableArtifacts = await snapshotReplayArtifacts({ compiledResult: result });
+    const executableArtifacts = await snapshotReplayArtifacts({
+      compiledResult: result,
+      chainRevision: 1
+    });
     const artifactHashes = executableArtifacts.hashes;
     const envelopes = initialCheckpoints({ candidateId, frozenDesign, compiled, hardQa, hardQaSha256, reviewSha256, artifactHashes });
     const chain = createChainManifest({ candidate_id: candidateId, chain_revision: 1, parent_chain_sha256: null,

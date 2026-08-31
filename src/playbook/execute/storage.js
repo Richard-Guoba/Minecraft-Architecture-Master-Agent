@@ -12,7 +12,6 @@ import { sha256, stableJson } from '../shadow/canonical.js';
 import {
   assertCandidateId,
   assertImmutableHistory,
-  BUILD_FUNCTION_PATH,
   CANDIDATE_IDS,
   cloneFileMap,
   CURRENT_CHAIN_BASENAME,
@@ -20,7 +19,6 @@ import {
   normalizeCandidateSnapshot,
   normalizeInitialFailureFiles,
   normalizeSelectionFiles,
-  OPERATION_LIST_PATH,
   sameFileMap,
   SELECTION_PATHS,
   selectionProjectionForCandidateEvidence,
@@ -1529,7 +1527,9 @@ async function readDirectoryTree(ops, parentHandle, basename, fallbackCode, { al
             await closeHandle(child);
           }
         } else if (stat.isFile()) {
-          const read = await readRegularFile(ops, handle, name, fallbackCode);
+          const read = await readRegularPath(ops, handle, name, fallbackCode, {
+            requireSingleLink: relative !== CURRENT_CHAIN_BASENAME
+          });
           files[relative] = read.bytes;
           modes[relative] = read.mode;
           identities[relative] = read.identity;
@@ -1546,174 +1546,12 @@ async function readDirectoryTree(ops, parentHandle, basename, fallbackCode, { al
   }
 }
 
-async function replaceCandidateExecutableArtifacts({ internal, ops, tree, directoryHandles, incoming }) {
-  const records = [];
-  let active = true;
-  try {
-    for (const name of [OPERATION_LIST_PATH, BUILD_FUNCTION_PATH]) {
-      const parentName = path.posix.dirname(name);
-      const parentHandle = directoryHandles.get(parentName);
-      const basename = path.posix.basename(name);
-      const oldRead = await readRegularFile(ops, parentHandle, basename, 'P5_OUTPUT_OWNERSHIP');
-      const incomingBytes = incoming.files[name];
-      if (!Buffer.isBuffer(incomingBytes)) throw executeError('P5_INSTALL_FAILED');
-      if (oldRead.bytes.equals(incomingBytes)) continue;
-      const stageName = await unusedTemporaryBasename(internal, ops, tree, tree.candidatesHandle, STAGE_PREFIX);
-      let stageHandle;
-      let stageRead;
-      try {
-        stageHandle = await ops.open(
-          descriptorEntryPath(tree.candidatesHandle, stageName), WRITE_FLAGS, 0o600
-        );
-        const createdIdentity = identity(await stageHandle.stat());
-        await stageHandle.writeFile(incomingBytes);
-        await stageHandle.sync();
-        await stageHandle.chmod(0o400);
-        await stageHandle.sync();
-        stageRead = await readRegularFile(
-          ops, tree.candidatesHandle, stageName, 'P5_INSTALL_FAILED'
-        );
-        if (!sameIdentity(stageRead.identity, createdIdentity)
-          || !stageRead.bytes.equals(incomingBytes)) throw executeError('P5_INSTALL_FAILED');
-      } finally { await closeHandle(stageHandle); }
-      records.push({
-        name, parentHandle, basename, oldRead, stageName, stageRead,
-        backupName: await unusedTemporaryBasename(
-          internal, ops, tree, tree.candidatesHandle, BACKUP_PREFIX
-        ),
-        oldMoved: false,
-        newMoved: false
-      });
-    }
-
-    for (const record of records) {
-      await trackedMove(record, 'oldMoved', {
-        sourceHandle: record.parentHandle,
-        sourceName: record.basename,
-        destinationHandle: tree.candidatesHandle,
-        destinationName: record.backupName,
-        expectedRead: record.oldRead
-      });
-      await trackedMove(record, 'newMoved', {
-        sourceHandle: tree.candidatesHandle,
-        sourceName: record.stageName,
-        destinationHandle: record.parentHandle,
-        destinationName: record.basename,
-        expectedRead: record.stageRead
-      });
-    }
-  } catch (error) {
-    await rollback();
-    throw error;
-  }
-
-  return Object.freeze({
-    commit: async () => {
-      if (!active) return;
-      active = false;
-      for (const record of records) {
-        try {
-          const backup = await readRegularFileIfPresent(
-            ops, tree.candidatesHandle, record.backupName
-          );
-          if (backup && sameRegularRead(backup, record.oldRead)) {
-            await unlinkBoundRegularFile(ops, tree.candidatesHandle, record.backupName, backup);
-          }
-        } catch {
-          // The committed candidate is authoritative; a bound generated backup is safe residue.
-        }
-      }
-    },
-    rollback
-  });
-
-  async function trackedMove(record, field, move) {
-    try {
-      await moveBoundRegularFile({
-        ops,
-        ...move,
-        beforeMove: () => assertTreeAuthority(internal, ops, tree),
-        afterMove: () => assertTreeAuthority(internal, ops, tree)
-      });
-      record[field] = true;
-    } catch (error) {
-      const destination = await readRegularFileIfPresent(
-        ops, move.destinationHandle, move.destinationName
-      );
-      if (destination && sameRegularRead(destination, move.expectedRead)) record[field] = true;
-      throw error;
-    }
-  }
-
-  async function rollback() {
-    if (!active) return;
-    active = false;
-    let failed = false;
-    for (const record of [...records].reverse()) {
-      try {
-        if (record.newMoved) {
-          await reconcileMove({
-            sourceHandle: record.parentHandle,
-            sourceName: record.basename,
-            destinationHandle: tree.candidatesHandle,
-            destinationName: record.stageName,
-            expectedRead: record.stageRead
-          });
-        }
-        if (record.oldMoved) {
-          await reconcileMove({
-            sourceHandle: tree.candidatesHandle,
-            sourceName: record.backupName,
-            destinationHandle: record.parentHandle,
-            destinationName: record.basename,
-            expectedRead: record.oldRead
-          });
-        }
-        const staged = await readRegularFileIfPresent(
-          ops, tree.candidatesHandle, record.stageName
-        );
-        if (staged && sameRegularRead(staged, record.stageRead)) {
-          await unlinkBoundRegularFile(ops, tree.candidatesHandle, record.stageName, staged);
-        }
-      } catch {
-        failed = true;
-      }
-    }
-    if (failed) throw executeError('P5_INSTALL_FAILED');
-  }
-
-  async function reconcileMove(move) {
-    const source = await readRegularFileIfPresent(ops, move.sourceHandle, move.sourceName);
-    const destination = await readRegularFileIfPresent(
-      ops, move.destinationHandle, move.destinationName
-    );
-    if (!source && destination && sameRegularRead(destination, move.expectedRead)) return;
-    if (!source || !sameRegularRead(source, move.expectedRead) || destination) {
-      throw executeError('P5_INSTALL_FAILED');
-    }
-    try {
-      await moveBoundRegularFile({
-        ops,
-        ...move,
-        beforeMove: () => assertTreeAuthority(internal, ops, tree),
-        afterMove: () => assertTreeAuthority(internal, ops, tree)
-      });
-    } catch (error) {
-      const after = await readRegularFileIfPresent(
-        ops, move.destinationHandle, move.destinationName
-      );
-      if (!after || !sameRegularRead(after, move.expectedRead)) throw error;
-    }
-  }
-}
-
 async function publishCandidateUpdate({ internal, ops, tree, existing, incoming, candidateId }) {
   let candidateHandle;
   const directoryHandles = new Map();
   const createdDirectories = [];
   let pointerStage;
   let pointerStageRead;
-  let artifactTransaction;
   try {
     candidateHandle = await openDirectoryEntry(
       ops, tree.candidatesHandle, candidateId, 'P5_INSTALL_FAILED', 'P5_OUTPUT_OWNERSHIP'
@@ -1745,12 +1583,8 @@ async function publishCandidateUpdate({ internal, ops, tree, existing, incoming,
       directoryHandles.set(directory, child);
     }
 
-    artifactTransaction = await replaceCandidateExecutableArtifacts({
-      internal, ops, tree, directoryHandles, incoming
-    });
-
     for (const [name, bytes] of Object.entries(incoming.files)) {
-      if ([CURRENT_CHAIN_BASENAME, OPERATION_LIST_PATH, BUILD_FUNCTION_PATH].includes(name)) continue;
+      if (name === CURRENT_CHAIN_BASENAME) continue;
       const parentName = path.posix.dirname(name) === '.' ? '' : path.posix.dirname(name);
       const parent = directoryHandles.get(parentName);
       const basename = path.posix.basename(name);
@@ -1855,15 +1689,7 @@ async function publishCandidateUpdate({ internal, ops, tree, existing, incoming,
       });
       pointerStage = undefined;
     } finally { await closeHandle(pointerHandle); }
-    await artifactTransaction.commit();
-    artifactTransaction = undefined;
   } catch (error) {
-    try {
-      await artifactTransaction?.rollback();
-      artifactTransaction = undefined;
-    } catch {
-      throw executeError('P5_INSTALL_FAILED');
-    }
     for (const created of [...createdDirectories].reverse()) {
       try {
         await removeVerifiedEmptyCreatedDirectory(
@@ -2644,7 +2470,13 @@ async function readRegularFile(ops, directoryHandle, basename, fallbackCode) {
   return readRegularPath(ops, directoryHandle, basename, fallbackCode);
 }
 
-async function readRegularPath(ops, directoryHandle, relative, fallbackCode) {
+async function readRegularPath(
+  ops,
+  directoryHandle,
+  relative,
+  fallbackCode,
+  { requireSingleLink = false } = {}
+) {
   const target = descriptorEntryPath(directoryHandle, relative);
   let handle;
   try {
@@ -2664,7 +2496,16 @@ async function readRegularPath(ops, directoryHandle, relative, fallbackCode) {
       || !pathAfter.isFile()
       || !sameIdentity(identity(opened), identity(after))
       || !sameIdentity(identity(after), identity(pathAfter))
+      || Number(before.size) !== bytes.length
+      || Number(opened.size) !== bytes.length
       || Number(after.size) !== bytes.length
+      || Number(pathAfter.size) !== bytes.length
+      || requireSingleLink && (
+        Number(before.nlink) !== 1
+        || Number(opened.nlink) !== 1
+        || Number(after.nlink) !== 1
+        || Number(pathAfter.nlink) !== 1
+      )
     ) throw executeError(fallbackCode);
     return { bytes, identity: identity(after), mode: after.mode };
   } catch (error) {

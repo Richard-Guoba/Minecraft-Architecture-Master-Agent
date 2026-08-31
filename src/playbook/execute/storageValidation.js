@@ -26,8 +26,6 @@ export const CURRENT_CHAIN_BASENAME = 'current-chain.json';
 export const SELECTION_PATHS = Object.freeze(['manifest.json', 'selection.json', 'selection-report.md']);
 export const FROZEN_DESIGN_PATH = 'frozen/frozen-design.json';
 export const FROZEN_CONTEXT_PATH = 'frozen/frozen-generator-context.json';
-export const OPERATION_LIST_PATH = 'artifacts/operation-list.json';
-export const BUILD_FUNCTION_PATH = 'artifacts/build.mcfunction';
 
 const SELECTION_BODY_PATHS = Object.freeze(['selection.json', 'selection-report.md']);
 const UNSAFE_PATH_CHARACTER = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u;
@@ -37,6 +35,8 @@ const CHAIN_PATH = new RegExp(`^chains/chain-(${REVISION})\\.json$`, 'u');
 const HARD_QA_PATH = new RegExp(`^reviews/chain-(${REVISION})-hard-qa\\.json$`, 'u');
 const REVIEW_PATH = new RegExp(`^reviews/chain-(${REVISION})-review\\.json$`, 'u');
 const BLUEPRINT_PATH = new RegExp(`^blueprints/chain-(${REVISION})\\.json$`, 'u');
+const OPERATION_LIST_PATH = new RegExp(`^artifacts/chain-(${REVISION})-operation-list\\.json$`, 'u');
+const BUILD_FUNCTION_PATH = new RegExp(`^artifacts/chain-(${REVISION})-build\\.mcfunction$`, 'u');
 const REPAIR_REQUEST_PATH = 'repairs/attempt-01-request.json';
 const REPAIR_PATCH_PATH = 'repairs/attempt-01-patch.json';
 const REPAIR_RESULT_PATH = 'repairs/attempt-01-result.json';
@@ -218,11 +218,17 @@ export function validateCandidateFiles(candidateId, files, code) {
         parseCanonicalValidatedJson(bytes, validateFrozenDesignEnvelope);
       } else if (name === FROZEN_CONTEXT_PATH) {
         parseCanonicalValidatedJson(bytes, validateFrozenGeneratorContext);
-      } else if (name === OPERATION_LIST_PATH) {
+      } else if (OPERATION_LIST_PATH.test(name)) {
         const operations = parseCanonicalValue(bytes, code);
-        if (!Array.isArray(operations)) throw executeError(code);
-      } else if (name === BUILD_FUNCTION_PATH) {
-        if (bytes.length === 0) throw executeError(code);
+        if (!Array.isArray(operations)
+          || ![1, 2].includes(parseRevision(OPERATION_LIST_PATH.exec(name)[1]))) {
+          throw executeError(code);
+        }
+      } else if (BUILD_FUNCTION_PATH.test(name)) {
+        if (bytes.length === 0
+          || ![1, 2].includes(parseRevision(BUILD_FUNCTION_PATH.exec(name)[1]))) {
+          throw executeError(code);
+        }
       } else if (BLUEPRINT_PATH.test(name)) {
         if (![1, 2].includes(parseRevision(BLUEPRINT_PATH.exec(name)[1]))) throw executeError(code);
         parseJsonBytes(bytes, code);
@@ -313,7 +319,7 @@ export function validateCandidateFiles(candidateId, files, code) {
     if (currentStored.hash !== pointer.chain_sha256) throw executeError(code);
     validatePersistedCandidateAuthority(files, new Map(
       [...chainsByRevision].filter(([revision]) => revision <= current.chain_revision)
-    ), checkpointByHash, current, code);
+    ), checkpointByHash, code);
     validateReplayEvidence(files, current, checkpointByHash, code, currentStored.hash, chainsByRevision);
     return Object.freeze({
       currentChainSha256: currentStored.hash,
@@ -360,7 +366,7 @@ export function normalizeSelectionFiles(files) {
 
 export function assertImmutableHistory(existingFiles, incomingFiles) {
   for (const [name, bytes] of Object.entries(existingFiles)) {
-    if ([CURRENT_CHAIN_BASENAME, OPERATION_LIST_PATH, BUILD_FUNCTION_PATH].includes(name)) continue;
+    if (name === CURRENT_CHAIN_BASENAME) continue;
     if (!incomingFiles[name] || !incomingFiles[name].equals(bytes)) {
       throw executeError('P5_OUTPUT_OWNERSHIP');
     }
@@ -474,7 +480,7 @@ function parseCurrentPointer(bytes, code) {
   return pointer;
 }
 
-function validatePersistedCandidateAuthority(files, chainsByRevision, checkpointByHash, current, code) {
+function validatePersistedCandidateAuthority(files, chainsByRevision, checkpointByHash, code) {
   const hasFrozenDesign = Buffer.isBuffer(files[FROZEN_DESIGN_PATH]);
   const hasFrozenContext = Buffer.isBuffer(files[FROZEN_CONTEXT_PATH]);
   if (!hasFrozenDesign || !hasFrozenContext) throw executeError(code);
@@ -490,13 +496,27 @@ function validatePersistedCandidateAuthority(files, chainsByRevision, checkpoint
       || chain.frozen_generator_context_sha256 !== contextHash) throw executeError(code);
     const suffix = padRevision(revision);
     const blueprintBytes = files[`blueprints/chain-${suffix}.json`];
+    const operationListBytes = files[`artifacts/chain-${suffix}-operation-list.json`];
+    const buildFunctionBytes = files[`artifacts/chain-${suffix}-build.mcfunction`];
     const hardQaBytes = files[`reviews/chain-${suffix}-hard-qa.json`];
     const reviewBytes = files[`reviews/chain-${suffix}-review.json`];
-    if (!blueprintBytes || !hardQaBytes || !reviewBytes
+    if (!blueprintBytes || !Buffer.isBuffer(operationListBytes)
+      || !Buffer.isBuffer(buildFunctionBytes) || buildFunctionBytes.length === 0
+      || !hardQaBytes || !reviewBytes
       || sha256(blueprintBytes) !== chain.blueprint_sha256
       || sha256(hardQaBytes) !== chain.hard_qa_sha256
       || sha256(reviewBytes) !== chain.p4_review_sha256) throw executeError(code);
     const blueprint = parseJsonBytes(blueprintBytes, code);
+    const operations = parseCanonicalValue(operationListBytes, code);
+    if (!Array.isArray(operations) || !Array.isArray(blueprint.operations)
+      || stableJson(blueprint.operations) !== stableJson(operations)) throw executeError(code);
+    const facadeRow = chain.checkpoint_hashes.find((row) => row.layer === 'facade');
+    const facade = checkpointByHash.get(facadeRow?.checkpoint_sha256)?.checkpoint;
+    if (!facade
+      || facade.compiled_artifact_hashes.operation_list_sha256 !== sha256(operationListBytes)
+      || facade.compiled_artifact_hashes.build_function_sha256 !== sha256(buildFunctionBytes)) {
+      throw executeError(code);
+    }
     const hardQa = parseCanonicalJson(hardQaBytes, code);
     const recomputed = new BlueprintQAAgent().run(blueprint);
     if (stableJson(recomputed) !== stableJson(hardQa)) throw executeError(code);
@@ -507,24 +527,6 @@ function validatePersistedCandidateAuthority(files, chainsByRevision, checkpoint
       seed: context.seed
     });
   }
-  const operationListBytes = files[OPERATION_LIST_PATH];
-  const buildFunctionBytes = files[BUILD_FUNCTION_PATH];
-  if (!Buffer.isBuffer(operationListBytes) || !Buffer.isBuffer(buildFunctionBytes)
-    || buildFunctionBytes.length === 0) throw executeError(code);
-  const operations = parseCanonicalValue(operationListBytes, code);
-  if (!Array.isArray(operations)) throw executeError(code);
-  const currentBlueprint = parseJsonBytes(
-    files[`blueprints/chain-${padRevision(current.chain_revision)}.json`], code
-  );
-  if (!Array.isArray(currentBlueprint.operations)
-    || stableJson(currentBlueprint.operations) !== stableJson(operations)) throw executeError(code);
-  const facadeRow = current.checkpoint_hashes.find((row) => row.layer === 'facade');
-  const facade = checkpointByHash.get(facadeRow?.checkpoint_sha256)?.checkpoint;
-  if (!facade
-    || facade.compiled_artifact_hashes.operation_list_sha256 !== sha256(operationListBytes)
-    || facade.compiled_artifact_hashes.build_function_sha256 !== sha256(buildFunctionBytes)) {
-    throw executeError(code);
-  }
 }
 
 function isAllowedImmutablePath(value) {
@@ -533,7 +535,7 @@ function isAllowedImmutablePath(value) {
     && (CHECKPOINT_PATH.test(value) || CHAIN_PATH.test(value) || HARD_QA_PATH.test(value)
       || REVIEW_PATH.test(value) || BLUEPRINT_PATH.test(value)
       || value === FROZEN_DESIGN_PATH || value === FROZEN_CONTEXT_PATH
-      || value === OPERATION_LIST_PATH || value === BUILD_FUNCTION_PATH
+      || OPERATION_LIST_PATH.test(value) || BUILD_FUNCTION_PATH.test(value)
       || [REPAIR_REQUEST_PATH, REPAIR_PATCH_PATH, REPAIR_RESULT_PATH, FAILURE_PATH, REPAIR_PLANNING_FAILURE_PATH].includes(value));
 }
 
