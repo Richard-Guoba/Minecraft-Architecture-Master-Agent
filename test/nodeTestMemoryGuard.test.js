@@ -108,6 +108,23 @@ test('child environment preserves quoted unrelated Node option values', () => {
   });
 });
 
+test('child environment removes inherited heap percentage limits in both spellings and forms', () => {
+  const overrides = [
+    '--max-old-space-size-percentage=95',
+    '--max-old-space-size-percentage 95',
+    '--max_old_space_size_percentage=95',
+    '--max_old_space_size_percentage 95'
+  ];
+
+  for (const override of overrides) {
+    assert.deepEqual(buildChildEnv({
+      NODE_OPTIONS: `--trace-warnings ${override} --enable-source-maps`
+    }), {
+      NODE_OPTIONS: '--trace-warnings --enable-source-maps --max-old-space-size=1536'
+    }, override);
+  }
+});
+
 test('node test argv strips CLI heap-limit overrides in both spellings', () => {
   const heapOptionNames = [
     '--max-old-space-size',
@@ -131,6 +148,23 @@ test('node test argv strips CLI heap-limit overrides in both spellings', () => {
         override.join(' ')
       );
     }
+  }
+});
+
+test('node test argv strips heap percentage limits in both spellings and forms', () => {
+  const overrides = [
+    ['--max-old-space-size-percentage=95'],
+    ['--max-old-space-size-percentage', '95'],
+    ['--max_old_space_size_percentage=95'],
+    ['--max_old_space_size_percentage', '95']
+  ];
+
+  for (const override of overrides) {
+    assert.deepEqual(
+      buildNodeTestArgs([...override, 'test/example.test.js']),
+      ['--test', '--test-concurrency=2', 'test/example.test.js'],
+      override.join(' ')
+    );
   }
 });
 

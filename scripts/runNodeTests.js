@@ -6,7 +6,8 @@ import { pathToFileURL } from 'node:url';
 const MAX_TEST_CONCURRENCY = 2;
 const HEAP_LIMIT_OPTION = '--max-old-space-size=1536';
 const HEAP_LIMIT_ARGUMENT = '--max-old-space-size';
-const INHERITED_HEAP_LIMIT_PATTERN = /(?:^|\s)--max[-_]old[-_]space[-_]size(?:=(?:"[^"]*"|'[^']*'|\S*)|\s+(?!['"]?--)(?:"[^"]*"|'[^']*'|\S+))?/gu;
+const HEAP_LIMIT_PERCENTAGE_ARGUMENT = '--max-old-space-size-percentage';
+const INHERITED_HEAP_LIMIT_PATTERN = /(?:^|\s)--max[-_]old[-_]space[-_]size(?:[-_]percentage)?(?:=(?:"[^"]*"|'[^']*'|\S*)|\s+(?!['"]?--)(?:"[^"]*"|'[^']*'|\S+))?/gu;
 const SYSTEMD_RUN_PATH = '/usr/bin/systemd-run';
 const HARD_SCOPE_ARGS = Object.freeze([
   '--user',
@@ -80,7 +81,10 @@ export function buildNodeTestArgs(argv = []) {
       ? argument
       : argument.slice(0, equalsIndex);
     const normalizedOptionName = optionName.replaceAll('_', '-');
-    if (normalizedOptionName === HEAP_LIMIT_ARGUMENT) {
+    if (
+      normalizedOptionName === HEAP_LIMIT_ARGUMENT
+      || normalizedOptionName === HEAP_LIMIT_PERCENTAGE_ARGUMENT
+    ) {
       const value = equalsIndex === -1
         ? argv[index + 1]
         : argument.slice(equalsIndex + 1);
