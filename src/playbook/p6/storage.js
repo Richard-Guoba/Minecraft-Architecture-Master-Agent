@@ -9,8 +9,7 @@ import {
   createBoundDirectory,
   openBoundDirectory,
   removeBoundEntry,
-  removeOwnedTree,
-  retireBoundEntry
+  removeOwnedTree
 } from '../execute/ownedTree.js';
 import { moveIdentityNoReplace } from '../execute/storageTransaction.js';
 import { p6Error, sanitizeP6Error } from './contracts.js';
@@ -46,12 +45,14 @@ let sequence = 0;
 export async function createP6Run({ runDir, fsImpl } = {}) {
   if (!isSafeAbsolutePath(runDir)) throw p6Error('P6_AUTHORITY_INVALID');
   const ops = fsOperations(fsImpl);
+  let absoluteAuthority;
   let parentHandle;
   let runHandle;
   let p6;
   let marker;
   try {
-    ({ parentHandle, runHandle } = await openAbsoluteDirectory(ops, runDir));
+    absoluteAuthority = await openAbsoluteDirectory(ops, runDir);
+    ({ parentHandle, runHandle } = absoluteAuthority);
     p6 = await createBoundDirectory({
       ops,
       parentHandle: runHandle,
@@ -67,6 +68,7 @@ export async function createP6Run({ runDir, fsImpl } = {}) {
       ops, parentHandle, runHandle, p6Handle: p6.handle,
       runBasename: path.basename(runDir), runDir,
       p6Dir: path.join(runDir, OUTPUT_BASENAME),
+      absoluteAuthority,
       parentIdentity: identity(await parentHandle.stat()),
       runIdentity: identity(await runHandle.stat()),
       p6Identity: p6.identity,
@@ -75,7 +77,7 @@ export async function createP6Run({ runDir, fsImpl } = {}) {
     await close(marker.handle);
     marker.handle = undefined;
     await assertP6Internal(internal, ops);
-    return Object.freeze({ p6Dir: internal.p6Dir, authority: createAuthority(internal) });
+    return Object.freeze({ p6Dir: OUTPUT_BASENAME, authority: createAuthority(internal) });
   } catch (error) {
     await close(marker?.handle);
     if (p6?.identity && marker?.identity) {
@@ -94,8 +96,7 @@ export async function createP6Run({ runDir, fsImpl } = {}) {
       } catch {}
     }
     await close(p6?.handle);
-    await close(runHandle);
-    await close(parentHandle);
+    await closeAbsoluteDirectory(absoluteAuthority);
     throw publicError(error);
   }
 }
@@ -106,11 +107,13 @@ export async function admitP6Run({ p6Dir, fsImpl } = {}) {
   }
   const ops = fsOperations(fsImpl);
   const runDir = path.dirname(p6Dir);
+  let absoluteAuthority;
   let parentHandle;
   let runHandle;
   let p6Handle;
   try {
-    ({ parentHandle, runHandle } = await openAbsoluteDirectory(ops, runDir));
+    absoluteAuthority = await openAbsoluteDirectory(ops, runDir);
+    ({ parentHandle, runHandle } = absoluteAuthority);
     const p6Stat = await ops.lstat(entry(runHandle, OUTPUT_BASENAME));
     if (p6Stat.isSymbolicLink() || !p6Stat.isDirectory()) fail();
     const p6Identity = identity(p6Stat);
@@ -122,6 +125,7 @@ export async function admitP6Run({ p6Dir, fsImpl } = {}) {
     const internal = makeInternal({
       ops, parentHandle, runHandle, p6Handle,
       runBasename: path.basename(runDir), runDir, p6Dir,
+      absoluteAuthority,
       parentIdentity: identity(await parentHandle.stat()),
       runIdentity: identity(await runHandle.stat()),
       p6Identity,
@@ -132,8 +136,7 @@ export async function admitP6Run({ p6Dir, fsImpl } = {}) {
     return createAuthority(internal);
   } catch (error) {
     await close(p6Handle);
-    await close(runHandle);
-    await close(parentHandle);
+    await closeAbsoluteDirectory(absoluteAuthority);
     throw publicError(error);
   }
 }
@@ -235,22 +238,30 @@ export async function readCurrentP6Generation({ authority, kind, fsImpl } = {}) 
   try {
     await assertP6Internal(internal, ops);
     tree = await openKindTree(internal, ops, kind);
-    const parsed = await validateKindHistory(internal, ops, tree, {
-      allowPointerJournals: true
-    });
-    const generation = await verifyGeneration(
-      internal, ops, tree, kind, parsed.generation,
-      { expectedManifestSha256: parsed.manifest_sha256 }
-    );
-    await assertP6Internal(internal, ops);
-    return Object.freeze({
-      kind,
-      generation: parsed.generation,
-      manifest_sha256: parsed.manifest_sha256,
-      manifest: generation.manifest,
-      files: Object.freeze(generation.files),
-      private_file_count: generation.privateFileCount
-    });
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      try {
+        const parsed = await validateKindHistory(internal, ops, tree, {
+          allowPointerJournals: true
+        });
+        if (!parsed) fail();
+        const generation = await verifyGeneration(
+          internal, ops, tree, kind, parsed.generation,
+          { expectedManifestSha256: parsed.manifest_sha256 }
+        );
+        await assertP6Internal(internal, ops);
+        return Object.freeze({
+          kind,
+          generation: parsed.generation,
+          manifest_sha256: parsed.manifest_sha256,
+          manifest: generation.manifest,
+          files: Object.freeze(generation.files),
+          private_file_count: generation.privateFileCount
+        });
+      } catch (error) {
+        if (attempt === 7) throw error;
+      }
+    }
+    fail();
   } catch (error) {
     throw publicError(error);
   } finally {
@@ -271,19 +282,20 @@ export async function readExternalP6InputAuthority({ authority, rootDir, relativ
   const internal = authorityInternal(authority);
   if (!isSafeAbsolutePath(rootDir)) throw p6Error('P6_AUTHORITY_INVALID');
   const ops = fsOperations(internal.ops.source);
-  let parentHandle;
-  let rootHandle;
+  let absoluteAuthority;
   try {
     await assertP6Internal(internal, ops);
-    ({ parentHandle, runHandle: rootHandle } = await openAbsoluteDirectory(ops, rootDir));
-    const snapshot = await snapshotRelativeFile(ops, rootHandle, relativePath);
+    absoluteAuthority = await openAbsoluteDirectory(ops, rootDir);
+    const snapshot = await snapshotRelativeFile(
+      ops, absoluteAuthority.runHandle, relativePath
+    );
+    await assertAbsoluteDirectory(ops, absoluteAuthority);
     await assertP6Internal(internal, ops);
     return snapshot;
   } catch (error) {
     throw publicError(error);
   } finally {
-    await close(rootHandle);
-    await close(parentHandle);
+    await closeAbsoluteDirectory(absoluteAuthority);
   }
 }
 
@@ -524,16 +536,11 @@ async function replaceCurrentPointer({ internal, ops, tree, kind, bytes }) {
 }
 
 async function deleteBoundFile(ops, parentHandle, basename, expectedIdentity) {
-  await retireBoundEntry({
+  await removeBoundEntry({
     ops, parentHandle, basename, expectedIdentity, expectedKind: 'file',
-    fallbackCode: 'P6_AUTHORITY_INVALID',
-    destroy: async (retirementHandle, retiredBasename) => {
-      await removeBoundEntry({
-        ops, parentHandle: retirementHandle, basename: retiredBasename,
-        expectedIdentity, expectedKind: 'file', fallbackCode: 'P6_AUTHORITY_INVALID'
-      });
-    }
+    fallbackCode: 'P6_AUTHORITY_INVALID'
   });
+  await parentHandle.sync();
 }
 
 async function verifyGeneration(internal, ops, tree, kind, generationName, { expectedManifestSha256 }) {
@@ -616,11 +623,65 @@ async function validateExistingP6Tree(internal, ops) {
     let tree;
     try {
       tree = await openKindTree(internal, ops, kind);
+      await recoverKindPointer(internal, ops, tree);
       await validateKindHistory(internal, ops, tree, { allowPointerJournals: false });
     } finally {
       await closeKindTree(tree);
     }
   }
+}
+
+async function recoverKindPointer(internal, ops, tree) {
+  const names = (await ops.readdir(descriptor(tree.kindHandle))).sort();
+  const stages = names.filter(name => name.startsWith(CURRENT_STAGE_PREFIX));
+  const backups = names.filter(name => name.startsWith(POINTER_BACKUP_PREFIX));
+  if (stages.length > 1 || backups.length > 1) fail();
+  if (stages.length === 0 && backups.length === 0) return;
+  const current = await readRegularFile(
+    ops, tree.kindHandle, CURRENT_BASENAME, { allowMissing: true }
+  );
+  const stage = stages.length === 1
+    ? await readRegularFile(ops, tree.kindHandle, stages[0]) : null;
+  const backup = backups.length === 1
+    ? await readRegularFile(ops, tree.kindHandle, backups[0]) : null;
+  for (const pointer of [current, stage, backup].filter(Boolean)) {
+    const parsed = parsePointer(pointer.bytes, tree.kind);
+    await verifyGeneration(internal, ops, tree, tree.kind, parsed.generation, {
+      expectedManifestSha256: parsed.manifest_sha256
+    });
+  }
+  if (!current) {
+    const source = stage ?? backup;
+    const sourceName = stage ? stages[0] : backups[0];
+    if (!source) fail();
+    await moveIdentityNoReplace({
+      ops,
+      sourceHandle: tree.kindHandle,
+      sourceName,
+      destinationHandle: tree.kindHandle,
+      destinationName: CURRENT_BASENAME,
+      expectedIdentity: source.identity,
+      expectedKind: 'file',
+      moveForward: () => ops.renameNoReplace(
+        tree.kindHandle, sourceName, CURRENT_BASENAME
+      ),
+      moveReverse: () => ops.renameNoReplace(
+        tree.kindHandle, CURRENT_BASENAME, sourceName
+      ),
+      beforeMove: () => assertP6Internal(internal, ops)
+    });
+    if (stage) stages.length = 0;
+    else backups.length = 0;
+  }
+  for (const [name, pointer] of [
+    [stages[0], stage], [backups[0], backup]
+  ]) {
+    if (name && pointer) await deleteBoundFile(
+      ops, tree.kindHandle, name, pointer.identity
+    );
+  }
+  await tree.kindHandle.sync();
+  await assertP6Internal(internal, ops);
 }
 
 async function validateKindHistory(internal, ops, tree, { allowPointerJournals }) {
@@ -696,14 +757,9 @@ async function openOrCreateMarkedDirectory({ ops, parentHandle, basename, marker
 
 async function assertP6Internal(internal, ops) {
   if (internal.closed) fail();
-  const parent = await internal.parentHandle.stat();
-  const run = await internal.runHandle.stat();
+  await assertAbsoluteDirectory(ops, internal.absoluteAuthority);
   const p6 = await internal.p6Handle.stat();
-  if (!parent.isDirectory() || !run.isDirectory() || !p6.isDirectory()
-    || !sameIdentity(identity(parent), internal.parentIdentity)
-    || !sameIdentity(identity(run), internal.runIdentity)
-    || !sameIdentity(identity(p6), internal.p6Identity)) fail();
-  await assertNamedDirectory(ops, internal.parentHandle, internal.runBasename, internal.runIdentity);
+  if (!p6.isDirectory() || !sameIdentity(identity(p6), internal.p6Identity)) fail();
   await assertNamedDirectory(ops, internal.runHandle, OUTPUT_BASENAME, internal.p6Identity);
   const marker = await readRegularFile(ops, internal.p6Handle, OWNERSHIP_BASENAME);
   if (!marker.bytes.equals(ROOT_MARKER) || !sameIdentity(marker.identity, internal.markerIdentity)) fail();
@@ -735,9 +791,7 @@ async function assertKindTree(internal, ops, tree, {
     if ([OWNERSHIP_BASENAME, GENERATIONS_BASENAME, CURRENT_BASENAME].includes(name)) continue;
     if (!allowPointerJournals || !isPointerJournalBasename(name)) fail();
     const stat = await ops.lstat(entry(tree.kindHandle, name));
-    const expectedDirectory = /^\.p5-retirement-[a-f0-9]{32}$/u.test(name);
-    if (stat.isSymbolicLink()
-      || (expectedDirectory ? !stat.isDirectory() : !stat.isFile())) fail();
+    if (stat.isSymbolicLink() || !stat.isFile()) fail();
   }
   const generationEntries = (await ops.readdir(descriptor(tree.generationsHandle))).sort();
   for (const name of generationEntries) {
@@ -891,25 +945,57 @@ function canonicalJson(bytes) {
 }
 
 async function openAbsoluteDirectory(ops, absolutePath) {
-  const parentPath = path.dirname(absolutePath);
-  const basename = path.basename(absolutePath);
-  let parentHandle;
-  let runHandle;
+  if (!isSafeAbsolutePath(absolutePath)) fail();
+  const parsed = path.parse(absolutePath);
+  const components = absolutePath.slice(parsed.root.length).split(path.sep).filter(Boolean);
+  let rootHandle;
+  const ancestry = [];
   try {
-    parentHandle = await ops.open(parentPath, DIRECTORY_FLAGS);
-    const parent = await parentHandle.stat();
-    const before = await ops.lstat(entry(parentHandle, basename));
-    if (!parent.isDirectory() || before.isSymbolicLink() || !before.isDirectory()) fail();
-    const runIdentity = identity(before);
-    runHandle = await openBoundDirectory(
-      ops, parentHandle, basename, runIdentity, 'P6_AUTHORITY_INVALID'
-    );
-    return { parentHandle, runHandle };
+    rootHandle = await ops.open(parsed.root, DIRECTORY_FLAGS);
+    const rootStat = await rootHandle.stat();
+    if (!rootStat.isDirectory()) fail();
+    let current = rootHandle;
+    for (const basename of components) {
+      const named = await ops.lstat(entry(current, basename));
+      if (named.isSymbolicLink() || !named.isDirectory()) fail();
+      const nodeIdentity = identity(named);
+      const handle = await openBoundDirectory(
+        ops, current, basename, nodeIdentity, 'P6_AUTHORITY_INVALID'
+      );
+      ancestry.push({ parentHandle: current, handle, basename, identity: nodeIdentity });
+      current = handle;
+    }
+    const parentHandle = ancestry.length === 1
+      ? rootHandle : ancestry.at(-2).handle;
+    return {
+      rootHandle,
+      rootIdentity: identity(rootStat),
+      ancestry,
+      parentHandle,
+      runHandle: ancestry.at(-1).handle
+    };
   } catch (error) {
-    await close(runHandle);
-    await close(parentHandle);
+    await closeAbsoluteDirectory({ rootHandle, ancestry });
     throw error;
   }
+}
+
+async function assertAbsoluteDirectory(ops, absoluteAuthority) {
+  const root = await absoluteAuthority?.rootHandle?.stat();
+  if (!root?.isDirectory() || !sameIdentity(identity(root), absoluteAuthority.rootIdentity)) fail();
+  for (const node of absoluteAuthority.ancestry) {
+    const retained = await node.handle.stat();
+    if (!retained.isDirectory() || !sameIdentity(identity(retained), node.identity)) fail();
+    await assertNamedDirectory(ops, node.parentHandle, node.basename, node.identity);
+  }
+}
+
+async function closeAbsoluteDirectory(absoluteAuthority) {
+  if (!absoluteAuthority) return;
+  for (const node of [...(absoluteAuthority.ancestry ?? [])].reverse()) {
+    await close(node.handle);
+  }
+  await close(absoluteAuthority.rootHandle);
 }
 
 async function assertNamedDirectory(ops, parentHandle, basename, expectedIdentity) {
@@ -991,8 +1077,7 @@ function createAuthority(internal) {
       if (internal.closed) return;
       internal.closed = true;
       await close(internal.p6Handle);
-      await close(internal.runHandle);
-      await close(internal.parentHandle);
+      await closeAbsoluteDirectory(internal.absoluteAuthority);
     }
   });
   AUTHORITIES.set(authority, internal);
@@ -1035,8 +1120,7 @@ function isSafeAbsolutePath(value) {
 function isPlainBasename(value) { return typeof value === 'string' && value.length > 0 && value !== '.' && value !== '..' && !value.includes('/') && !value.includes('\\') && !UNSAFE_PATH_CHARACTER.test(value); }
 function isManagedBasename(value) { return isPlainBasename(value) && ![OWNERSHIP_BASENAME, MANIFEST_BASENAME, CURRENT_BASENAME].includes(value) && !value.startsWith('.p6-'); }
 function isPointerJournalBasename(value) {
-  return /^\.p6-(?:current|pointer-backup)-\d+-\d+-[a-f0-9]{16}$/u.test(value)
-    || /^\.p5-retirement-[a-f0-9]{32}$/u.test(value);
+  return /^\.p6-(?:current|pointer-backup)-\d+-\d+-[a-f0-9]{16}$/u.test(value);
 }
 function plain(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype; }
 function descriptor(handle) { return `/proc/self/fd/${handle.fd}`; }

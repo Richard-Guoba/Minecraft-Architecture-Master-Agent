@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,6 +18,7 @@ import {
   installCandidateSnapshot,
   installExecuteSelection
 } from '../src/playbook/execute/storage.js';
+import * as executeStorage from '../src/playbook/execute/storage.js';
 import { sha256, stableJson } from '../src/playbook/shadow/canonical.js';
 import { createP6CohortFixture } from './fixtures/playbookP6.js';
 
@@ -27,7 +29,9 @@ const KINDS = [
 
 test('createP6Run binds playbook-p6 beneath the exact caller run and publishes exact managed paths', async t => {
   const fixture = await createStorageFixture(t);
-  assert.equal(fixture.p6Dir, path.join(fixture.runDir, 'playbook-p6'));
+  assert.equal(fixture.publicP6Dir, 'playbook-p6');
+  assert.equal(path.isAbsolute(fixture.publicP6Dir), false);
+  assert.equal(JSON.stringify(fixture.created).includes(fixture.root), false);
 
   const files = {
     'cohort.json': Buffer.from('{"cohort":true}'),
@@ -118,13 +122,78 @@ test('a concurrent reader observes the old generation during the current-pointer
     fsImpl: pausing
   });
   await entered;
-  const during = await readCurrentP6Generation({ authority: fixture.authority, kind: 'gate' });
-  assert.equal(during.generation, 'generation-000001');
-  assert.ok(during.files['gate.json'].equals(Buffer.from('old')));
-  releaseMove();
+  let released = false;
+  const racingReader = fsWith({
+    async lstat(target, ...args) {
+      try { return await fs.lstat(target, ...args); }
+      catch (error) {
+        if (!released && error?.code === 'ENOENT' && String(target).endsWith('/current')) {
+          released = true;
+          releaseMove();
+          await publishing;
+        }
+        throw error;
+      }
+    }
+  });
+  const during = await readCurrentP6Generation({
+    authority: fixture.authority,
+    kind: 'gate',
+    fsImpl: racingReader
+  });
+  assert.ok(['generation-000001', 'generation-000002'].includes(during.generation));
   await publishing;
   const after = await readCurrentP6Generation({ authority: fixture.authority, kind: 'gate' });
   assert.equal(after.generation, 'generation-000002');
+});
+
+test('crash journals reopen to one complete old-or-new current generation', async t => {
+  for (const phase of [
+    'before-current-move', 'after-current-move',
+    'before-journal-remove', 'after-journal-remove'
+  ]) await t.test(phase, async t => {
+    const fixture = await createStorageFixture(t);
+    await publishP6Generation({ authority: fixture.authority, kind: 'gate', files: { 'gate.json': Buffer.from('old') } });
+    await fixture.authority.close();
+    const result = await runCrashWorker({
+      p6Dir: fixture.p6Dir,
+      phase,
+      kind: 'gate',
+      files: { 'gate.json': Buffer.from('new').toString('base64') }
+    });
+    assert.equal(result.signal, 'SIGKILL');
+    const reopened = await admitP6Run({ p6Dir: fixture.p6Dir });
+    t.after(() => reopened.close());
+    const current = await readCurrentP6Generation({ authority: reopened, kind: 'gate' });
+    assert.ok(['old', 'new'].includes(current.files['gate.json'].toString('utf8')));
+    await publishP6Generation({ authority: reopened, kind: 'gate', files: { 'gate.json': Buffer.from('later') } });
+  });
+});
+
+test('absolute path admission rejects symlinked intermediates and detects replaced ancestry', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-ancestry-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const real = path.join(root, 'real');
+  await fs.mkdir(path.join(real, 'run'), { recursive: true });
+  await fs.symlink('real', path.join(root, 'alias'));
+  await assert.rejects(
+    createP6Run({ runDir: path.join(root, 'alias', 'run') }),
+    publicCode('P6_AUTHORITY_INVALID')
+  );
+
+  const ancestor = path.join(root, 'ancestor');
+  const runDir = path.join(ancestor, 'run');
+  await fs.mkdir(runDir, { recursive: true });
+  const created = await createP6Run({ runDir });
+  t.after(() => created.authority.close());
+  await fs.rename(ancestor, path.join(root, 'parked-ancestor'));
+  await fs.mkdir(path.join(runDir, 'playbook-p6'), { recursive: true });
+  await fs.writeFile(path.join(runDir, 'playbook-p6', 'foreign.txt'), 'foreign');
+  await assert.rejects(
+    publishP6Generation({ authority: created.authority, kind: 'gate', files: { 'gate.json': Buffer.from('{}') } }),
+    publicCode('P6_AUTHORITY_INVALID')
+  );
+  assert.equal(await fs.readFile(path.join(runDir, 'playbook-p6', 'foreign.txt'), 'utf8'), 'foreign');
 });
 
 test('current reads and admission validate every immutable historical generation', async t => {
@@ -354,6 +423,33 @@ test('admitP6CohortInputs consumes only current P5 snapshots and exact baseline 
   }), publicCode('P6_AUTHORITY_INVALID'));
 });
 
+test('the live admitted P5 boundary returns one hash-bound complete selection snapshot', async t => {
+  const source = await createP6CohortFixture(t);
+  const inputs = await materializeCohortInputs(t, source);
+  const execute = await admitExecuteRun({ runDir: inputs.playbookRunDir });
+  t.after(() => execute.close());
+  assert.equal(typeof executeStorage.readCurrentExecuteSelectionSnapshot, 'function');
+  const snapshot = await executeStorage.readCurrentExecuteSelectionSnapshot({ authority: execute });
+  assert.deepEqual(Object.keys(snapshot.files), ['manifest.json', 'selection.json', 'selection-report.md']);
+  assert.equal(snapshot.manifest_sha256, sha256(snapshot.files['manifest.json']));
+  const selection = JSON.parse(snapshot.files['selection.json']);
+  assert.deepEqual(selection.ranker_result.ranking.map(row => row.rank), [1, 2, 3]);
+  assert.equal(JSON.stringify(snapshot).includes(inputs.root), false);
+
+  const pointer = JSON.parse(await fs.readFile(
+    path.join(inputs.playbookRunDir, 'playbook-execute', 'manifest.json'), 'utf8'
+  ));
+  const reportPath = path.join(
+    inputs.playbookRunDir, 'playbook-execute', pointer.generation, 'selection-report.md'
+  );
+  await fs.chmod(reportPath, 0o600);
+  await fs.writeFile(reportPath, '# substituted selection report\n');
+  await assert.rejects(
+    executeStorage.readCurrentExecuteSelectionSnapshot({ authority: execute }),
+    { code: 'P5_AUTHORITY_INVALID' }
+  );
+});
+
 test('baseline admission rejects ambient guessing, unsafe paths, symlink/hardlink bodies, and noncanonical authority', async t => {
   for (const defect of ['missing-authority', 'unsafe-path', 'symlink', 'hardlink', 'noncanonical']) await t.test(defect, async t => {
     const storage = await createStorageFixture(t);
@@ -395,7 +491,34 @@ async function createStorageFixture(t) {
     await fs.chmod(root, 0o700).catch(() => {});
     await fs.rm(root, { recursive: true, force: true });
   });
-  return { root, runDir, ...created };
+  return {
+    root,
+    runDir,
+    p6Dir: path.join(runDir, 'playbook-p6'),
+    publicP6Dir: created.p6Dir,
+    created,
+    authority: created.authority
+  };
+}
+
+async function runCrashWorker(job) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-crash-job-'));
+  const jobPath = path.join(root, 'job.json');
+  await fs.writeFile(jobPath, JSON.stringify(job));
+  try {
+    return await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [
+        path.join(import.meta.dirname, 'fixtures', 'playbookP6StorageCrashWorker.js'),
+        jobPath
+      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let stderr = '';
+      child.stderr.on('data', chunk => { stderr += chunk; });
+      child.once('error', reject);
+      child.once('close', (code, signal) => resolve({ code, signal, stderr }));
+    });
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
 }
 
 async function materializeCohortInputs(t, source) {

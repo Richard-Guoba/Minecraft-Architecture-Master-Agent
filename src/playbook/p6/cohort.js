@@ -1,6 +1,10 @@
 import path from 'node:path';
 
-import { admitExecuteRun, readCurrentCandidateSnapshot } from '../execute/storage.js';
+import {
+  admitExecuteRun,
+  readCurrentCandidateSnapshot,
+  readCurrentExecuteSelectionSnapshot
+} from '../execute/storage.js';
 import { validateSelectionRecord } from '../execute/contracts.js';
 import { validateCandidateFiles } from '../execute/storageValidation.js';
 import { deepFreeze, sha256, stableJson } from '../shadow/canonical.js';
@@ -81,20 +85,21 @@ export async function admitP6CohortInputs({
       }));
     }
     const selection = await snapshotCurrentSelection({
-      p6Authority, playbookRunDir, slots
+      executeAuthority, slots
     });
     const options = fixedGeneratorOptions();
     const playbook = {
       schema_version: 1,
       kind: 'p5-run-snapshot',
-      run_id: `p5-${selection.manifest.sha256.slice(0, 24)}`,
+      run_id: `p5-${selection.authority_sha256.slice(0, 24)}`,
       request: fixedRequest,
       generator_commit: P6_FIXED_REQUEST.generator_commit,
       minecraft_version: P6_MINECRAFT_VERSION,
       options,
       provenance: frozenProvenance(options),
       slots,
-      selection_rank: selection.rank
+      selection_rank: selection.rank,
+      selection_authority_sha256: selection.authority_sha256
     };
     const baseline = await snapshotBaseline({
       p6Authority,
@@ -150,7 +155,12 @@ export function compileP6Cohort({ fixedRequest, playbook, baseline } = {}) {
     visual_settings_sha256: P6_PROTOCOL_FILE_HASHES['visual-settings.json'],
     solutions: allSolutions.map(manifestRow)
   });
-  const input_sha256 = hashCohortInputs({ fixedRequest: request.value, solutions: allSolutions });
+  const input_sha256 = hashCohortInputs({
+    fixedRequest: request.value,
+    solutions: allSolutions,
+    selectionRank,
+    selectionAuthoritySha256: p5.selection_authority_sha256
+  });
   return deepFreeze({
     manifest,
     solutions: allSolutions,
@@ -234,11 +244,20 @@ function resolveStableBounds(blueprint) {
   return deepFreeze({ ...bounds });
 }
 
-export function hashCohortInputs({ fixedRequest, solutions } = {}) {
+export function hashCohortInputs({
+  fixedRequest,
+  solutions,
+  selectionRank,
+  selectionAuthoritySha256
+} = {}) {
   const request = canonicalP6(fixedRequest, validateFixedRequest);
-  if (!Array.isArray(solutions) || solutions.length !== 4) incomplete();
+  if (!Array.isArray(solutions) || solutions.length !== 4
+    || !Array.isArray(selectionRank) || selectionRank.length !== 3
+    || !HASH.test(selectionAuthoritySha256)) incomplete();
   return sha256(stableJson({
     fixed_request_sha256: request.sha256,
+    selection_authority_sha256: selectionAuthoritySha256,
+    selection_rank: selectionRank,
     solutions: solutions.map(solution => ({
       solution_id: solution.solution_id,
       input_hashes: solution.input_hashes ?? null,
@@ -311,30 +330,14 @@ async function snapshotPlaybookSlot({
   };
 }
 
-async function snapshotCurrentSelection({ p6Authority, playbookRunDir, slots }) {
-  const pointer = await readExternalP6InputAuthority({
-    authority: p6Authority,
-    rootDir: playbookRunDir,
-    relativePath: 'playbook-execute/manifest.json'
-  });
-  const pointerValue = parseCanonicalJson(pointer.bytes);
-  if (!plain(pointerValue)
-    || !/^selection-generations\/selection-[a-f0-9]{64}$/u.test(pointerValue.generation)
-    || pointerValue.generation !== `selection-generations/selection-${pointerValue.manifest_sha256}`) authority();
-  const prefix = `playbook-execute/${pointerValue.generation}`;
-  const manifest = await readExternalP6InputAuthority({
-    authority: p6Authority,
-    rootDir: playbookRunDir,
-    relativePath: `${prefix}/manifest.json`
-  });
-  const selectionFile = await readExternalP6InputAuthority({
-    authority: p6Authority,
-    rootDir: playbookRunDir,
-    relativePath: `${prefix}/selection.json`
-  });
-  if (manifest.sha256 !== pointerValue.manifest_sha256) authority();
+async function snapshotCurrentSelection({ executeAuthority, slots }) {
+  const admitted = await readCurrentExecuteSelectionSnapshot({ authority: executeAuthority });
+  if (!plain(admitted) || !plain(admitted.files)
+    || !/^selection-generations\/selection-[a-f0-9]{64}$/u.test(admitted.generation)
+    || admitted.generation !== `selection-generations/selection-${admitted.manifest_sha256}`
+    || admitted.manifest_sha256 !== sha256(admitted.files['manifest.json'])) authority();
   let selection;
-  try { selection = validateSelectionRecord(parseCanonicalJson(selectionFile.bytes)); }
+  try { selection = validateSelectionRecord(parseCanonicalJson(admitted.files['selection.json'])); }
   catch { authority(); }
   for (const slot of slots) {
     const row = selection.candidates.find(item => item.candidate_id === slot.candidate_id);
@@ -351,7 +354,16 @@ async function snapshotCurrentSelection({ p6Authority, playbookRunDir, slots }) 
   }));
   if (new Set(rank.map(row => row.candidate_id)).size !== 3
     || new Set(rank.map(row => row.rank)).size !== 3) authority();
-  return { manifest, rank };
+  return {
+    rank,
+    authority_sha256: sha256(stableJson({
+      generation: admitted.generation,
+      manifest_sha256: admitted.manifest_sha256,
+      files: Object.fromEntries(Object.entries(admitted.files).map(([name, bytes]) => [
+        name, sha256(bytes)
+      ]))
+    }))
+  };
 }
 
 async function snapshotBaseline({ p6Authority, baselineRunDir, fixedRequest }) {
@@ -461,6 +473,7 @@ function validateAuthorityEnvelope(value, kind, code) {
     code === 'P6_AUTHORITY_INVALID' ? authority() : incomplete();
   }
   assertFile(value.request, 'P6_AUTHORITY_INVALID');
+  if (kind === 'p5-run-snapshot' && !HASH.test(value.selection_authority_sha256)) incomplete();
   if (value.request.sha256 !== P6_PROTOCOL_FILE_HASHES['fixed-request.json']) incomplete();
   if (value.options.mode !== 'mock' || value.options.candidate_count !== 3
     || value.options.candidate_rounds !== 1 || value.options.candidate_force_rounds !== false) incomplete();

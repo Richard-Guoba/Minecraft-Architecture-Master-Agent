@@ -392,6 +392,25 @@ export async function readCurrentCandidateSnapshot({ authority, candidateId, fsI
   }
 }
 
+export async function readCurrentExecuteSelectionSnapshot({ authority, fsImpl } = {}) {
+  const internal = authorityInternal(authority);
+  const ops = fsOperations(fsImpl ?? internal.ops.source);
+  let tree;
+  try {
+    tree = await openExecuteTree(internal, ops, { create: false });
+    if (!tree.selection) throw executeError('P5_OUTPUT_OWNERSHIP');
+    return Object.freeze({
+      generation: tree.selection.pointer.generation,
+      manifest_sha256: tree.selection.pointer.manifest_sha256,
+      files: cloneFileMap(tree.selection.files)
+    });
+  } catch (error) {
+    throw publicError(error, 'P5_OUTPUT_OWNERSHIP');
+  } finally {
+    await closeExecuteTree(tree);
+  }
+}
+
 export async function inspectCandidateEvidence({ authority, candidateId, fsImpl } = {}) {
   const internal = authorityInternal(authority);
   const ops = fsOperations(fsImpl ?? internal.ops.source);

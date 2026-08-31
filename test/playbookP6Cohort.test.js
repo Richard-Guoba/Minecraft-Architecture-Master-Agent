@@ -65,6 +65,12 @@ test('cohort bytes are stable and post-compile authority mutation cannot alter t
     const ranked = await createP6CohortFixture(t, { selectionRank: order });
     assert.equal(compileP6Cohort({ fixedRequest: ranked.fixedRequest, playbook: ranked.playbookAuthority, baseline: ranked.baselineAuthority }).solutions.length, 4);
   }
+  const reranked = await createP6CohortFixture(t, { selectionRank: [3, 2, 1] });
+  assert.notEqual(first.input_sha256, compileP6Cohort({
+    fixedRequest: reranked.fixedRequest,
+    playbook: reranked.playbookAuthority,
+    baseline: reranked.baselineAuthority
+  }).input_sha256, 'selection ranking authority must change the cohort input hash');
 });
 
 test('fixture authority snapshots preserve actual lstat node kinds without publishing paths', async t => {
