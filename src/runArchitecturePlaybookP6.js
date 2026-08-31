@@ -2,7 +2,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { deriveFixedViewManifest, deriveSharedFraming } from './playbook/p6/cameras.js';
-import { validateImportedCaptures } from './playbook/p6/captures.js';
+import {
+  createCaptureSession,
+  renderCaptureChecklist as renderFormalCaptureChecklist,
+  validateImportedCaptures
+} from './playbook/p6/captures.js';
 import { admitP6CohortInputs } from './playbook/p6/cohort.js';
 import { p6Error, sanitizeP6Error } from './playbook/p6/contracts.js';
 import { renderReferenceViews } from './playbook/p6/offlineRenderer.js';
@@ -15,11 +19,12 @@ import {
 import { P6_VIEW_IDS, P6_VISUAL_SETTINGS } from './playbook/p6/constants.js';
 import { sha256, stableJson } from './playbook/shadow/canonical.js';
 
-const ACTIONS = new Set(['prepare', 'capture', 'import-captures']);
+const ACTIONS = new Set(['prepare', 'prepare-capture-session', 'capture', 'import-captures']);
 const PREPARE_FLAGS = new Set(['--playbook-run', '--baseline-run', '--run-dir']);
 const CAPTURE_VALUE_FLAGS = new Set(['--world', '--expected-world-identity']);
 const CAPTURE_BOOLEAN_FLAGS = new Set(['--authorize-disposable-world']);
 const IMPORT_FLAGS = new Set(['--run-dir', '--capture-root']);
+const SESSION_FLAGS = new Set(['--run-dir', '--expected-world-identity', '--plot-origin']);
 const HASH = /^[a-f0-9]{64}$/u;
 
 export function parseP6Args(argv) {
@@ -32,6 +37,7 @@ export function parseP6Args(argv) {
     const flag = argv[index];
     const allowed = action === 'prepare' ? PREPARE_FLAGS
       : action === 'import-captures' ? IMPORT_FLAGS
+        : action === 'prepare-capture-session' ? SESSION_FLAGS
         : new Set([...CAPTURE_VALUE_FLAGS, ...CAPTURE_BOOLEAN_FLAGS]);
     if (!allowed.has(flag) || values.has(flag)) invalid();
     if (CAPTURE_BOOLEAN_FLAGS.has(flag)) {
@@ -61,6 +67,13 @@ export function parseP6Args(argv) {
     if (!safeAbsolutePath(runDir) || !safeAbsolutePath(captureRoot)) invalid();
     return Object.freeze({ action, runDir, captureRoot });
   }
+  if (action === 'prepare-capture-session') {
+    const runDir = values.get('--run-dir');
+    const worldIdentityHash = values.get('--expected-world-identity');
+    const plotOrigin = parsePlotOrigin(values.get('--plot-origin'));
+    if (!safeAbsolutePath(runDir) || !HASH.test(worldIdentityHash) || !plotOrigin) invalid();
+    return Object.freeze({ action, runDir, worldIdentityHash, plotOrigin });
+  }
   const required = [...PREPARE_FLAGS].map(flag => values.get(flag));
   if (required.some(value => !safeAbsolutePath(value))) invalid();
   return Object.freeze({
@@ -79,6 +92,45 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
     // Capture is intentionally unimplemented: the flags are parsed only so a
     // future reviewed action has an explicit authorization shape.
     if (options.action === 'capture') throw p6Error('P6_CAPTURE_AUTHORIZATION_REQUIRED');
+    if (options.action === 'prepare-capture-session') {
+      const authority = await deps.admitP6Run({
+        p6Dir: path.join(options.runDir, 'playbook-p6')
+      });
+      created = { authority };
+      const current = await deps.readCurrentP6Generation({ authority, kind: 'cohort' });
+      const cohortDocument = parseJsonBytes(current?.files?.['cohort.json']);
+      if (!plain(cohortDocument) || !plain(cohortDocument.cohort)
+        || !HASH.test(cohortDocument.cohort_input_sha256)) invalid();
+      const cameraManifests = cohortDocument.cohort.solutions?.map(solution => (
+        parseJsonBytes(current.files[`camera-${solution?.solution_id}.json`])
+      ));
+      const session = deps.createCaptureSession({
+        cohort: {
+          input_sha256: cohortDocument.cohort_input_sha256,
+          manifest: cohortDocument.cohort
+        },
+        cameraManifests,
+        settings: P6_VISUAL_SETTINGS,
+        worldIdentityHash: options.worldIdentityHash,
+        plotOrigin: options.plotOrigin
+      });
+      const publication = await deps.publishP6Generation({
+        authority,
+        kind: 'capture-session',
+        files: {
+          'capture-session.json': bytes(deps.stableJson(session)),
+          'capture-checklist.md': bytes(deps.renderFormalCaptureChecklist(session))
+        }
+      });
+      return Object.freeze({
+        status: 'capture-session-prepared',
+        capture_session_sha256: session.capture_session_sha256,
+        environment_sha256: session.environment_sha256,
+        publication_manifest_sha256: publication.manifest_sha256,
+        output: `capture-session/${publication.generation}`,
+        next_action: 'import-captures'
+      });
+    }
     if (options.action === 'import-captures') {
       const authority = await deps.admitP6Run({
         p6Dir: path.join(options.runDir, 'playbook-p6')
@@ -209,6 +261,7 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
 
 const defaultDependencies = Object.freeze({
   admitP6Run,
+  createCaptureSession,
   createP6Run,
   admitP6CohortInputs,
   deriveSharedFraming,
@@ -216,6 +269,7 @@ const defaultDependencies = Object.freeze({
   renderReferenceViews,
   publishP6Generation,
   readCurrentP6Generation,
+  renderFormalCaptureChecklist,
   validateImportedCaptures,
   sha256,
   stableJson
@@ -252,11 +306,23 @@ function safeAbsolutePath(value) {
     && path.resolve(value) === value && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(value);
 }
 
+function parsePlotOrigin(value) {
+  if (typeof value !== 'string' || !/^-?(?:0|[1-9]\d*),-?(?:0|[1-9]\d*),-?(?:0|[1-9]\d*)$/u.test(value)) return null;
+  const [x, y, z] = value.split(',').map(Number);
+  return [x, y, z].every(Number.isSafeInteger) ? Object.freeze({ x, y, z }) : null;
+}
+
+function parseJsonBytes(value) {
+  if (!Buffer.isBuffer(value)) invalid();
+  try { return JSON.parse(value.toString('utf8')); }
+  catch { invalid(); }
+}
+
 function bytes(value) { return Buffer.isBuffer(value) ? Buffer.from(value) : Buffer.from(value); }
 function plain(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype; }
 function invalid() { throw p6Error('P6_OPTIONS_INVALID'); }
 
-const HELP = `Usage:\n  npm run playbook:p6 -- prepare --playbook-run <absolute-p5-run> --baseline-run <absolute-baseline-run> --run-dir <absolute-run>\n  npm run playbook:p6 -- import-captures --run-dir <absolute-run> --capture-root <absolute-capture-root>\n  npm run playbook:p6 -- capture [--authorize-disposable-world --world <absolute-path> --expected-world-identity <sha256>]\n\nprepare creates offline reference-render outputs only. import-captures validates one complete current-session-bound batch without changing its source. Neither action launches Minecraft or changes a world. capture remains deliberately unavailable.\n`;
+const HELP = `Usage:\n  npm run playbook:p6 -- prepare --playbook-run <absolute-p5-run> --baseline-run <absolute-baseline-run> --run-dir <absolute-run>\n  npm run playbook:p6 -- prepare-capture-session --run-dir <absolute-run> --expected-world-identity <sha256> --plot-origin <x,y,z>\n  npm run playbook:p6 -- import-captures --run-dir <absolute-run> --capture-root <absolute-capture-root>\n  npm run playbook:p6 -- capture [--authorize-disposable-world --world <absolute-path> --expected-world-identity <sha256>]\n\nprepare creates offline reference-render outputs only. prepare-capture-session publishes commands and a checklist for one exact world identity without opening or changing it. import-captures validates one complete current-session-bound batch without changing its source. No action launches Minecraft or changes a world; capture remains deliberately unavailable.\n`;
 
 async function main(argv = process.argv.slice(2)) {
   try {

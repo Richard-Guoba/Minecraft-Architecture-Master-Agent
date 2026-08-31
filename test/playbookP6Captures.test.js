@@ -12,6 +12,7 @@ import {
 import { P6_PROTOCOL_FILE_HASHES, P6_VIEW_IDS, P6_VISUAL_SETTINGS } from '../src/playbook/p6/constants.js';
 import { createP6Run, publishP6Generation, readCurrentP6Generation } from '../src/playbook/p6/storage.js';
 import { sha256, stableJson } from '../src/playbook/shadow/canonical.js';
+import { p6CapturePngHeader } from './fixtures/playbookP6Captures.js';
 
 const SOLUTION_IDS = [
   'playbook-candidate-01',
@@ -153,6 +154,90 @@ test('formal import rejects a capture root reached through an intermediate symli
   );
 });
 
+test('formal import revalidates every named capture-root ancestor and preserves its replacement', async t => {
+  const fixture = await importFixture(t);
+  const parent = path.dirname(fixture.captureRoot);
+  const parked = path.join(fixture.root, 'capture-parent-parked');
+  const foreignMarker = path.join(parent, 'foreign-marker.txt');
+  let replaced = false;
+  const interleaving = {
+    async readdir(target, options) {
+      if (!replaced) {
+        replaced = true;
+        await fs.rename(parent, parked);
+        await fs.mkdir(parent);
+        await fs.mkdir(path.join(parent, 'submitted'));
+        await fs.writeFile(foreignMarker, 'foreign');
+      }
+      return fs.readdir(target, options);
+    }
+  };
+
+  await assert.rejects(
+    validateImportedCaptures({
+      authority: fixture.authority,
+      session: fixture.session,
+      captureRoot: fixture.captureRoot,
+      fsImpl: interleaving
+    }),
+    { code: 'P6_CAPTURE_INVALID' }
+  );
+  assert.equal(await fs.readFile(foreignMarker, 'utf8'), 'foreign');
+  await assert.rejects(
+    readCurrentP6Generation({ authority: fixture.authority, kind: 'minecraft-captures' }),
+    { code: 'P6_AUTHORITY_INVALID' }
+  );
+});
+
+test('formal import rechecks exact membership and file identities immediately before publication', async t => {
+  for (const [name, mutate, verify] of [
+    ['add', async fixture => {
+      await fs.writeFile(path.join(fixture.captureRoot, 'foreign-preserved.png'), Buffer.from('foreign'));
+    }, async fixture => {
+      assert.equal(await fs.readFile(path.join(fixture.captureRoot, 'foreign-preserved.png'), 'utf8'), 'foreign');
+    }],
+    ['remove', async fixture => {
+      await fs.unlink(path.join(fixture.captureRoot, 'capture-24-opaque.png'));
+    }, async fixture => {
+      await assert.rejects(fs.lstat(path.join(fixture.captureRoot, 'capture-24-opaque.png')), { code: 'ENOENT' });
+    }],
+    ['replace', async fixture => {
+      const target = path.join(fixture.captureRoot, 'capture-24-opaque.png');
+      fixture.parkedCapture = path.join(fixture.root, 'parked-capture-24.png');
+      await fs.rename(target, fixture.parkedCapture);
+      await fs.writeFile(target, p6CapturePngHeader());
+    }, async fixture => {
+      assert.deepEqual(await fs.readFile(fixture.parkedCapture), p6CapturePngHeader());
+    }]
+  ]) {
+    await t.test(name, async t2 => {
+      const fixture = await importFixture(t2);
+      let reads = 0;
+      const interleaving = {
+        async readdir(target, options) {
+          reads += 1;
+          if (reads === 2) await mutate(fixture);
+          return fs.readdir(target, options);
+        }
+      };
+      await assert.rejects(
+        validateImportedCaptures({
+          authority: fixture.authority,
+          session: fixture.session,
+          captureRoot: fixture.captureRoot,
+          fsImpl: interleaving
+        }),
+        { code: 'P6_CAPTURE_INVALID' }
+      );
+      await verify(fixture);
+      await assert.rejects(
+        readCurrentP6Generation({ authority: fixture.authority, kind: 'minecraft-captures' }),
+        { code: 'P6_AUTHORITY_INVALID' }
+      );
+    });
+  }
+});
+
 test('formal import rejects a current session whose environment or authority hash was tampered', async t => {
   for (const [name, mutate] of [
     ['environment', session => { session.environment.shader_pack = 'custom-shader'; }],
@@ -175,8 +260,10 @@ async function importFixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-capture-disposable-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const runDir = path.join(root, 'run');
-  const captureRoot = path.join(root, 'submitted');
+  const captureParent = path.join(root, 'capture-parent');
+  const captureRoot = path.join(captureParent, 'submitted');
   await fs.mkdir(runDir);
+  await fs.mkdir(captureParent);
   await fs.mkdir(captureRoot);
   const created = await createP6Run({ runDir });
   t.after(() => created.authority.close());
@@ -270,15 +357,7 @@ function captureSession({ worldIdentityHash = hashFor('world') } = {}) {
 }
 
 function pngHeader(width = 1920, height = 1080) {
-  const bytes = Buffer.alloc(33);
-  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(bytes);
-  bytes.writeUInt32BE(13, 8);
-  bytes.write('IHDR', 12, 'ascii');
-  bytes.writeUInt32BE(width, 16);
-  bytes.writeUInt32BE(height, 20);
-  bytes[24] = 8;
-  bytes[25] = 6;
-  return bytes;
+  return p6CapturePngHeader(width, height);
 }
 
 function hashFor(value) { return sha256(String(value)); }

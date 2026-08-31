@@ -162,10 +162,11 @@ export async function readP6InputAuthority({ authority, relativePath } = {}) {
   }
 }
 
-export async function publishP6Generation({ authority, kind, files, fsImpl } = {}) {
+export async function publishP6Generation({ authority, kind, files, expectedCurrent, fsImpl } = {}) {
   const internal = authorityInternal(authority);
   if (!KINDS.includes(kind)) throw p6Error('P6_AUTHORITY_INVALID');
   const normalized = normalizeFiles(kind, files);
+  const currentPrecondition = normalizeExpectedCurrent(kind, expectedCurrent);
   return (async () => {
     const ops = fsOperations(fsImpl ?? internal.ops.source);
     let tree;
@@ -217,6 +218,9 @@ export async function publishP6Generation({ authority, kind, files, fsImpl } = {
         );
         throw error;
       }
+      if (currentPrecondition) {
+        await assertExpectedCurrent(internal, ops, currentPrecondition);
+      }
       await replaceCurrentPointer({
         internal, ops, tree, kind, bytes: pointerBytes, prepared: pointerStage
       });
@@ -253,6 +257,24 @@ export async function publishP6Generation({ authority, kind, files, fsImpl } = {
       await closeKindTree(tree);
     }
   })();
+}
+
+async function assertExpectedCurrent(internal, ops, expected) {
+  let tree;
+  try {
+    tree = await openKindTree(internal, ops, expected.kind);
+    const current = await validateKindHistory(internal, ops, tree, {
+      allowPointerJournals: true
+    });
+    if (!current || current.generation !== expected.generation
+      || current.manifest_sha256 !== expected.manifest_sha256) fail();
+    await verifyGeneration(internal, ops, tree, expected.kind, current.generation, {
+      expectedManifestSha256: current.manifest_sha256
+    });
+    await assertP6Internal(internal, ops);
+  } finally {
+    await closeKindTree(tree);
+  }
 }
 
 export async function readCurrentP6Generation({ authority, kind, fsImpl } = {}) {
@@ -1246,6 +1268,23 @@ function normalizeFiles(kind, files) {
   }
   if (Object.keys(publicFiles).length === 0) fail();
   return { publicFiles, privateFiles };
+}
+
+function normalizeExpectedCurrent(publishingKind, value) {
+  if (value === undefined) {
+    if (publishingKind === 'minecraft-captures') fail();
+    return null;
+  }
+  if (publishingKind !== 'minecraft-captures' || !plain(value)
+    || Object.keys(value).sort().join(',') !== 'generation,kind,manifest_sha256'
+    || value.kind !== 'capture-session'
+    || !GENERATION.test(value.generation)
+    || !HASH.test(value.manifest_sha256)) fail();
+  return Object.freeze({
+    kind: value.kind,
+    generation: value.generation,
+    manifest_sha256: value.manifest_sha256
+  });
 }
 
 function parseManifest(bytes, kind, generation) {

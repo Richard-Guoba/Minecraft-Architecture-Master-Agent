@@ -186,39 +186,42 @@ export function renderCaptureChecklist(session) {
   return `${lines.join('\n')}\n`;
 }
 
-export async function validateImportedCaptures({ authority, session, captureRoot } = {}) {
-  let rootHandle;
+export async function validateImportedCaptures({ authority, session, captureRoot, fsImpl } = {}) {
+  let captureAuthority;
   try {
     assertSession(session);
     if (!safeAbsolutePath(captureRoot)) invalid();
+    const ops = captureFsOperations(fsImpl);
+    captureAuthority = await openCaptureRoot(ops, captureRoot);
+    await assertCaptureRoot(ops, captureAuthority);
     await assertCurrentSession(authority, session);
+    await assertCaptureRoot(ops, captureAuthority);
 
-    if (await fs.realpath(captureRoot) !== captureRoot) invalid();
-    const rootStat = await fs.lstat(captureRoot);
-    if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) invalid();
-    rootHandle = await fs.open(captureRoot, DIRECTORY_FLAGS);
-    const boundRootStat = await rootHandle.stat();
-    if (!sameIdentity(rootStat, boundRootStat)) invalid();
-    const rootDescriptor = descriptor(rootHandle);
+    const rootDescriptor = descriptor(captureAuthority.captureRootHandle);
     const expectedNames = [
       'capture-provenance.json',
       ...session.captures.map(row => row.filename)
     ].sort();
-    const actualNames = (await fs.readdir(rootDescriptor)).sort();
+    const actualNames = (await ops.readdir(rootDescriptor)).sort();
     if (!sameStrings(actualNames, expectedNames)) invalid();
+    await assertCaptureRoot(ops, captureAuthority);
 
-    const provenanceBytes = await readBoundFile(
-      rootHandle, 'capture-provenance.json', MAX_PROVENANCE_BYTES
+    const provenanceRead = await readBoundFile(
+      ops, captureAuthority, 'capture-provenance.json', MAX_PROVENANCE_BYTES
     );
+    const provenanceBytes = provenanceRead.bytes;
     const provenance = canonicalJson(provenanceBytes);
     if (stableJson(provenance) !== stableJson(session.required_provenance)) invalid();
     assertProvenance(provenance, session);
 
     const files = {};
+    const fileIdentities = new Map([['capture-provenance.json', provenanceRead.identity]]);
     const images = [];
     for (const [index, row] of session.captures.entries()) {
       if (!CAPTURE_NAME.test(row.filename)) invalid();
-      const imageBytes = await readBoundFile(rootHandle, row.filename, MAX_CAPTURE_BYTES);
+      const imageRead = await readBoundFile(ops, captureAuthority, row.filename, MAX_CAPTURE_BYTES);
+      const imageBytes = imageRead.bytes;
+      fileIdentities.set(row.filename, imageRead.identity);
       const header = inspectCapturePng(imageBytes);
       if (header.width !== P6_VISUAL_SETTINGS.width_px
         || header.height !== P6_VISUAL_SETTINGS.height_px) invalid();
@@ -236,12 +239,6 @@ export async function validateImportedCaptures({ authority, session, captureRoot
         image_sha256: sha256(imageBytes)
       });
     }
-    const finalRootStat = await rootHandle.stat();
-    const finalPathStat = await fs.lstat(captureRoot);
-    if (await fs.realpath(captureRoot) !== captureRoot
-      || !sameIdentity(rootStat, finalRootStat)
-      || !sameIdentity(rootStat, finalPathStat)) invalid();
-
     const captureManifest = {
       schema_version: P6_SCHEMA_VERSION,
       protocol_version: P6_PROTOCOL_VERSION,
@@ -268,11 +265,21 @@ export async function validateImportedCaptures({ authority, session, captureRoot
     validateCaptureManifest(captureManifest);
     const captureManifestBytes = Buffer.from(stableJson(captureManifest));
     files['capture-manifest.json'] = captureManifestBytes;
-    await assertCurrentSession(authority, session);
+    const currentSession = await assertCurrentSession(authority, session);
+    await assertCaptureRoot(ops, captureAuthority);
+    const finalNames = (await ops.readdir(rootDescriptor)).sort();
+    if (!sameStrings(finalNames, expectedNames)) invalid();
+    for (const basename of expectedNames) {
+      const retained = await ops.lstat(`${rootDescriptor}/${basename}`);
+      if (retained.isSymbolicLink() || !retained.isFile() || retained.nlink !== 1
+        || !sameIdentity(retained, fileIdentities.get(basename))) invalid();
+    }
+    await assertCaptureRoot(ops, captureAuthority);
     const publication = await publishP6Generation({
       authority,
       kind: 'minecraft-captures',
-      files
+      files,
+      expectedCurrent: currentSession
     });
     return Object.freeze({
       status: 'imported',
@@ -284,7 +291,7 @@ export async function validateImportedCaptures({ authority, session, captureRoot
   } catch (error) {
     throw sanitizeP6Error(error, 'P6_CAPTURE_INVALID');
   } finally {
-    await close(rootHandle);
+    await closeCaptureRoot(captureAuthority);
   }
 }
 
@@ -293,6 +300,11 @@ async function assertCurrentSession(authority, session) {
   const currentBytes = current.files['capture-session.json'];
   if (!Buffer.isBuffer(currentBytes)
     || !currentBytes.equals(Buffer.from(stableJson(session)))) invalid();
+  return Object.freeze({
+    kind: 'capture-session',
+    generation: current.generation,
+    manifest_sha256: current.manifest_sha256
+  });
 }
 
 function assertSession(session) {
@@ -384,25 +396,87 @@ function assertProvenance(value, session) {
   if (pairs.size !== 24) invalid();
 }
 
-async function readBoundFile(rootHandle, basename, maxBytes) {
+async function readBoundFile(ops, captureAuthority, basename, maxBytes) {
   if (!safeBasename(basename)) invalid();
-  const filename = `${descriptor(rootHandle)}/${basename}`;
-  const before = await fs.lstat(filename);
+  await assertCaptureRoot(ops, captureAuthority);
+  const filename = `${descriptor(captureAuthority.captureRootHandle)}/${basename}`;
+  const before = await ops.lstat(filename);
   if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1
     || before.size <= 0 || before.size > maxBytes) invalid();
   let handle;
   try {
-    handle = await fs.open(filename, READ_FLAGS);
+    handle = await ops.open(filename, READ_FLAGS);
     const opened = await handle.stat();
     if (!sameIdentity(before, opened) || !opened.isFile() || opened.nlink !== 1) invalid();
     const bytes = await handle.readFile();
     const after = await handle.stat();
     if (!sameIdentity(opened, after) || after.nlink !== 1
       || after.size !== bytes.length || after.size !== before.size) invalid();
-    return bytes;
+    return { bytes, identity: identity(opened) };
   } finally {
     await close(handle);
+    await assertCaptureRoot(ops, captureAuthority);
   }
+}
+
+async function openCaptureRoot(ops, absolutePath) {
+  const parsed = path.parse(absolutePath);
+  const components = absolutePath.slice(parsed.root.length).split(path.sep).filter(Boolean);
+  let rootHandle;
+  const ancestry = [];
+  try {
+    rootHandle = await ops.open(parsed.root, DIRECTORY_FLAGS);
+    const rootStat = await rootHandle.stat();
+    if (!rootStat.isDirectory()) invalid();
+    let parentHandle = rootHandle;
+    for (const basename of components) {
+      const named = await ops.lstat(`${descriptor(parentHandle)}/${basename}`);
+      if (named.isSymbolicLink() || !named.isDirectory()) invalid();
+      const nodeIdentity = identity(named);
+      const handle = await ops.open(`${descriptor(parentHandle)}/${basename}`, DIRECTORY_FLAGS);
+      const opened = await handle.stat();
+      if (!opened.isDirectory() || !sameIdentity(opened, nodeIdentity)) invalid();
+      ancestry.push({ parentHandle, handle, basename, identity: nodeIdentity });
+      parentHandle = handle;
+    }
+    if (ancestry.length === 0) invalid();
+    return {
+      rootHandle,
+      rootIdentity: identity(rootStat),
+      ancestry,
+      captureRootHandle: ancestry.at(-1).handle
+    };
+  } catch (error) {
+    await closeCaptureRoot({ rootHandle, ancestry });
+    throw error;
+  }
+}
+
+async function assertCaptureRoot(ops, authority) {
+  const root = await authority?.rootHandle?.stat();
+  if (!root?.isDirectory() || !sameIdentity(root, authority.rootIdentity)) invalid();
+  for (const node of authority.ancestry) {
+    const retained = await node.handle.stat();
+    const named = await ops.lstat(`${descriptor(node.parentHandle)}/${node.basename}`);
+    if (!retained.isDirectory() || !sameIdentity(retained, node.identity)
+      || named.isSymbolicLink() || !named.isDirectory()
+      || !sameIdentity(named, node.identity)) invalid();
+  }
+}
+
+async function closeCaptureRoot(authority) {
+  if (!authority) return;
+  for (const node of [...(authority.ancestry ?? [])].reverse()) await close(node.handle);
+  await close(authority.rootHandle);
+}
+
+function captureFsOperations(source) {
+  const provided = source?.source ?? source;
+  const operation = name => {
+    const owner = provided && typeof provided[name] === 'function' ? provided : fs;
+    return owner[name].bind(owner);
+  };
+  return Object.freeze({ open: operation('open'), lstat: operation('lstat'), readdir: operation('readdir') });
 }
 
 function inspectCapturePng(bytes) {
@@ -476,6 +550,7 @@ function canonicalJson(bytes) {
 }
 
 function descriptor(handle) { return `/proc/self/fd/${handle.fd}`; }
+function identity(stat) { return { dev: stat.dev, ino: stat.ino }; }
 function sameIdentity(left, right) { return left.dev === right.dev && left.ino === right.ino; }
 function sameStrings(left, right) { return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => value === right[index]); }
 function indexDiv(value, divisor) { return Math.floor(value / divisor); }

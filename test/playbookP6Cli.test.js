@@ -6,6 +6,13 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { parseP6Args, runP6Cli } from '../src/runArchitecturePlaybookP6.js';
+import { admitP6Run, createP6Run, publishP6Generation, readCurrentP6Generation } from '../src/playbook/p6/storage.js';
+import { stableJson } from '../src/playbook/shadow/canonical.js';
+import {
+  createP6CaptureInputs,
+  p6CaptureHash,
+  p6CapturePngHeader
+} from './fixtures/playbookP6Captures.js';
 
 const HASH = 'a'.repeat(64);
 const POSIX_ROOT = '/tmp/p6-cli-disposable';
@@ -148,6 +155,61 @@ test('import-captures consumes the exact current session and never reaches world
     ['validate', session, `${POSIX_ROOT}/submitted`],
     ['close']
   ]);
+});
+
+test('prepare-capture-session and import-captures form a real commands-only formal capture flow', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-cli-formal-disposable-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const runDir = path.join(root, 'run');
+  const captureRoot = path.join(root, 'submitted');
+  const inputs = createP6CaptureInputs();
+  await fs.mkdir(runDir);
+  await fs.mkdir(captureRoot);
+  const created = await createP6Run({ runDir });
+  await publishP6Generation({
+    authority: created.authority,
+    kind: 'cohort',
+    files: {
+      'cohort.json': Buffer.from(stableJson({
+        schema_version: 1,
+        cohort: inputs.cohort.manifest,
+        cohort_input_sha256: inputs.cohort.input_sha256,
+        selection_rank: []
+      })),
+      ...Object.fromEntries(inputs.cameraManifests.map(camera => [
+        `camera-${camera.solution_id}.json`, Buffer.from(stableJson(camera))
+      ]))
+    }
+  });
+  await created.authority.close();
+
+  const worldIdentity = p6CaptureHash('formal-world');
+  const prepared = await runP6Cli([
+    'prepare-capture-session', '--run-dir', runDir,
+    '--expected-world-identity', worldIdentity, '--plot-origin', '100,64,200'
+  ]);
+  assert.equal(prepared.status, 'capture-session-prepared');
+  assert.equal(prepared.output, 'capture-session/generation-000001');
+  assert.equal(JSON.stringify(prepared).includes(root), false);
+
+  const authority = await admitP6Run({ p6Dir: path.join(runDir, 'playbook-p6') });
+  const current = await readCurrentP6Generation({ authority, kind: 'capture-session' });
+  const session = JSON.parse(current.files['capture-session.json']);
+  for (const row of session.captures) {
+    await fs.writeFile(path.join(captureRoot, row.filename), p6CapturePngHeader());
+  }
+  await fs.writeFile(
+    path.join(captureRoot, 'capture-provenance.json'), stableJson(session.required_provenance)
+  );
+  await authority.close();
+
+  const imported = await runP6Cli([
+    'import-captures', '--run-dir', runDir, '--capture-root', captureRoot
+  ]);
+  assert.equal(imported.status, 'imported');
+  assert.equal(imported.capture_count, 24);
+  assert.equal(imported.output, 'minecraft-captures/generation-000001');
+  assert.equal(JSON.stringify(imported).includes(root), false);
 });
 
 test('CLI capture refusal is non-zero and does not expose its disposable POSIX path', async t => {

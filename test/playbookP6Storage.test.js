@@ -67,9 +67,23 @@ test('createP6Run binds playbook-p6 beneath the exact caller run and publishes e
 
 test('all and only approved P6 output kinds can publish immutable generations', async t => {
   const fixture = await createStorageFixture(t);
+  let captureSessionCurrent;
   for (const kind of KINDS) {
-    const result = await publishP6Generation({ authority: fixture.authority, kind, files: { 'body.json': Buffer.from(`{"kind":"${kind}"}`) } });
+    const expectedCurrent = kind === 'minecraft-captures' ? {
+      kind: 'capture-session',
+      generation: captureSessionCurrent.generation,
+      manifest_sha256: captureSessionCurrent.manifest_sha256
+    } : undefined;
+    const result = await publishP6Generation({
+      authority: fixture.authority,
+      kind,
+      files: { 'body.json': Buffer.from(`{"kind":"${kind}"}`) },
+      expectedCurrent
+    });
     assert.equal(result.generation, 'generation-000001');
+    if (kind === 'capture-session') {
+      captureSessionCurrent = await readCurrentP6Generation({ authority: fixture.authority, kind });
+    }
   }
   await assert.rejects(
     publishP6Generation({ authority: fixture.authority, kind: 'worlds', files: { 'body.json': Buffer.from('{}') } }),
@@ -77,6 +91,23 @@ test('all and only approved P6 output kinds can publish immutable generations', 
   );
   await assert.rejects(
     publishP6Generation({ authority: fixture.authority, kind: 'cohort', files: { '../escape': Buffer.from('x') } }),
+    publicCode('P6_AUTHORITY_INVALID')
+  );
+});
+
+test('minecraft capture publication cannot omit its exact capture-session precondition', async t => {
+  const fixture = await createStorageFixture(t);
+  await publishP6Generation({
+    authority: fixture.authority,
+    kind: 'capture-session',
+    files: { 'capture-session.json': Buffer.from('session') }
+  });
+  await assert.rejects(
+    publishP6Generation({
+      authority: fixture.authority,
+      kind: 'minecraft-captures',
+      files: { 'capture-manifest.json': Buffer.from('{}') }
+    }),
     publicCode('P6_AUTHORITY_INVALID')
   );
 });
@@ -145,6 +176,63 @@ test('a concurrent reader observes the old generation during the current-pointer
   await publishing;
   const after = await readCurrentP6Generation({ authority: fixture.authority, kind: 'gate' });
   assert.equal(after.generation, 'generation-000002');
+});
+
+test('cross-kind expected-current precondition rejects a capture publication after session replacement', async t => {
+  const fixture = await createStorageFixture(t);
+  await publishP6Generation({
+    authority: fixture.authority,
+    kind: 'capture-session',
+    files: { 'capture-session.json': Buffer.from('old-session') }
+  });
+  const expected = await readCurrentP6Generation({
+    authority: fixture.authority,
+    kind: 'capture-session'
+  });
+  const secondAuthority = await admitP6Run({ p6Dir: fixture.p6Dir });
+  t.after(() => secondAuthority.close());
+  let replaced = false;
+  const interleaving = fsWith({
+    async lstat(target, ...args) {
+      if (!replaced) {
+        replaced = true;
+        await publishP6Generation({
+          authority: secondAuthority,
+          kind: 'capture-session',
+          files: { 'capture-session.json': Buffer.from('new-session') }
+        });
+      }
+      return fs.lstat(target, ...args);
+    }
+  });
+
+  await assert.rejects(
+    publishP6Generation({
+      authority: fixture.authority,
+      kind: 'minecraft-captures',
+      files: { 'capture-manifest.json': Buffer.from('{}') },
+      expectedCurrent: {
+        kind: 'capture-session',
+        generation: expected.generation,
+        manifest_sha256: expected.manifest_sha256
+      },
+      fsImpl: interleaving
+    }),
+    publicCode('P6_AUTHORITY_INVALID')
+  );
+  const session = await readCurrentP6Generation({
+    authority: fixture.authority,
+    kind: 'capture-session'
+  });
+  assert.ok(session.files['capture-session.json'].equals(Buffer.from('new-session')));
+  await assert.rejects(
+    readCurrentP6Generation({ authority: fixture.authority, kind: 'minecraft-captures' }),
+    publicCode('P6_AUTHORITY_INVALID')
+  );
+  assert.deepEqual(
+    (await fs.readdir(path.join(fixture.p6Dir, 'minecraft-captures', 'generations'))).sort(),
+    ['.p6-owned.json']
+  );
 });
 
 test('crash journals reopen to one complete old-or-new current generation', async t => {
