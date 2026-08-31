@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test",
+    "test": "node scripts/runNodeTests.js",
     "query:templates": "node src/queryTemplateKnowledge.js",
     "query:patches": "node src/querySemanticPatchCandidates.js",
     "evaluate:retrieval": "node src/evaluateTemplateRetrieval.js",
