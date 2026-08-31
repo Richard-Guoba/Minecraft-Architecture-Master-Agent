@@ -14,6 +14,7 @@ import {
 } from './contracts.js';
 
 const HASH = /^[a-f0-9]{64}$/u;
+const COMPILED_OBSERVATION_SETS = new WeakSet();
 const OPAQUE_SOLUTION_ORDER = Object.freeze([
   'opaque-solution-alpha',
   'opaque-solution-bravo',
@@ -38,7 +39,9 @@ const CRITERION_LAYERS = deepFreeze({
 });
 const PROHIBITED_PREFERENCE = Object.freeze([
   /\b(?:prefer(?:red|s|ence)?|better|worse|winner|superior|inferior|outperform(?:s|ed)?|rank(?:ed|ing)?)\b/iu,
-  /\b(?:solution|candidate|option|design|it|this)\s+(?:wins?|loses?)\b/iu,
+  /\b(?:solution|candidate|option)\s+(?:clearly\s+)?(?:wins?|loses?)\b/iu,
+  /\b(?:design|it|this)\s+(?:clearly\s+)?(?:wins?|loses?)(?=\s*$|\s+(?:overall|on|against|over|despite|because|the\s+(?:comparison|pair))\b)/iu,
+  /\b(?:wins?|loses?)\s+(?:the\s+)?(?:comparison|pair|preference)\b/iu,
   /\b(?:best|worst)\s+(?:solution|candidate|option|design)\b/iu,
   /\b(?:solution|candidate|option|design)\s+(?:is|looks?|appears?)\s+(?:the\s+)?(?:best|worst)\b/iu
 ]);
@@ -53,10 +56,7 @@ const INSUFFICIENT_EVIDENCE = Object.freeze([
   /\b(?:not\s+visible|insufficient\s+(?:visual\s+)?evidence|outside\s+the\s+(?:frame|view))\b/iu,
   /\b(?:evidence\s+(?:is|remains|appears)\s+unclear|unclear\s+(?:visual\s+)?evidence)\b/iu
 ]);
-const EXPLICIT_CAVEAT = Object.freeze([
-  /\b(?:does\s+not|cannot|can't)\s+(?:establish|determine|show|confirm|verify)\b/iu,
-  /\b(?:not\s+visible|insufficient\s+(?:visual\s+)?evidence|evidence\s+(?:is|remains|appears)\s+unclear)\b/iu
-]);
+const CLAUSE_BOUNDARY = /(?:[.!?;\n]+|,\s*(?=(?:but|however|although|yet|while)\b)|\b(?:but|however|although|yet|while)\b)/iu;
 
 export function createObservation(value, { captureManifest, cohort } = {}) {
   try {
@@ -112,7 +112,7 @@ export function compileObservationSet({ cohort, captureManifest, observations } 
     });
     const required = authorities.solutionAuthorityOrder.length * P6_OBSERVATION_CRITERIA.length;
     const complete = rows.length === required;
-    return deepFreeze({
+    const observationSet = deepFreeze({
       schema_version: P6_SCHEMA_VERSION,
       protocol_version: P6_PROTOCOL_VERSION,
       status: complete ? 'complete' : 'partial',
@@ -123,6 +123,8 @@ export function compileObservationSet({ cohort, captureManifest, observations } 
       gate_ready: complete,
       observations: rows
     });
+    COMPILED_OBSERVATION_SETS.add(observationSet);
+    return observationSet;
   } catch (error) {
     throw sanitizeP6Error(error, 'P6_OBSERVATION_INVALID');
   }
@@ -130,6 +132,7 @@ export function compileObservationSet({ cohort, captureManifest, observations } 
 
 export function renderObservationReport(observationSet) {
   try {
+    if (!plain(observationSet) || !COMPILED_OBSERVATION_SETS.has(observationSet)) invalid();
     assertObservationSet(observationSet);
     const lines = [
       '# P6 image-grounded observation report',
@@ -263,15 +266,36 @@ function assertObservationSemantics(observation) {
     || observation.limitations.length === 0) invalid();
   const prose = [observation.observable_paraphrase, ...observation.limitations];
   for (const text of prose) {
-    for (const segment of text.split(/[.!?;\n]+/u).filter(Boolean)) {
+    for (const segment of text.split(CLAUSE_BOUNDARY).filter(Boolean)) {
       if (PROHIBITED_PREFERENCE.some(pattern => pattern.test(segment))) invalid();
-      if (PROHIBITED_HIDDEN_CLAIMS.some(pattern => pattern.test(segment))
-        && !EXPLICIT_CAVEAT.some(pattern => pattern.test(segment))) invalid();
+      if (hasUnlicensedHiddenClaim(segment)) invalid();
     }
   }
   if (prose.some(text => INSUFFICIENT_EVIDENCE.some(pattern => pattern.test(text)))
     && observation.rating !== 'unknown') invalid();
   for (const region of observation.evidence_regions) assertNormalizedRegion(region);
+}
+
+function hasUnlicensedHiddenClaim(segment) {
+  for (const pattern of PROHIBITED_HIDDEN_CLAIMS) {
+    const expression = new RegExp(pattern.source, `${pattern.flags}g`);
+    for (const match of segment.matchAll(expression)) {
+      if (!claimIsExplicitlyNegated(segment, match.index)) return true;
+    }
+  }
+  return false;
+}
+
+function claimIsExplicitlyNegated(segment, claimIndex) {
+  const prefix = segment.slice(Math.max(0, claimIndex - 160), claimIndex);
+  const bridge = String.raw`(?:\s+(?:the|an?|any|claimed|apparent|architect(?:'s)?|designer(?:'s)?|builder(?:'s)?|about|for|regarding)){0,8}\s*$`;
+  return new RegExp(
+    String.raw`\b(?:does\s+not|cannot|can't)\s+(?:establish|determine|show|confirm|verify)${bridge}`,
+    'iu'
+  ).test(prefix) || new RegExp(
+    String.raw`\b(?:evidence\s+(?:is|remains|appears)\s+unclear|insufficient\s+(?:visual\s+)?evidence)${bridge}`,
+    'iu'
+  ).test(prefix);
 }
 
 function sameKeys(value, fields) {

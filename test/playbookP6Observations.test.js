@@ -152,6 +152,16 @@ test('rejects preference language and claims of intent, authenticity, engineerin
     rating: 'unknown',
     limitations: ['The exterior image cannot establish historical authenticity or unseen interior conditions.']
   }), context));
+  assert.doesNotThrow(() => createObservation(observationFor(context, {
+    observable_paraphrase: 'This design loses definition toward the roof edge.'
+  }), context));
+
+  assert.throws(() => createObservation(observationFor(context, {
+    rating: 'unknown',
+    limitations: [
+      'Evidence remains unclear for unseen interior conditions, but the architect intended a dominant center.'
+    ]
+  }), context), { code: 'P6_OBSERVATION_INVALID' });
 });
 
 test('requires unknown plus a limitation when exterior evidence is explicitly insufficient', () => {
@@ -217,7 +227,19 @@ test('report rendering rejects forged semantic sets instead of trusting complete
     value => { value.observations[0].design_layer = 'roof'; },
     value => { value.observations[0].capture_manifest_hash = p6CaptureHash('other-capture'); },
     value => { value.observations.reverse(); },
-    value => { value.observations[0].limitations = ['This candidate wins.']; }
+    value => { value.observations[0].limitations = ['This candidate wins.']; },
+    value => { value.observations[0].evidence_regions[0].screenshot_id = 'capture-99-opaque'; },
+    value => { value.observations[0].evidence_regions[0].screenshot_id = 'capture-13-opaque'; },
+    value => { value.observations[0].view_ids = ['side-east']; },
+    value => {
+      value.observations = [
+        ...value.observations.slice(9, 18),
+        ...value.observations.slice(0, 9),
+        ...value.observations.slice(18)
+      ];
+    },
+    value => { value.cohort_sha256 = p6CaptureHash('drifted-cohort'); },
+    value => { value.capture_manifest_hash = p6CaptureHash('drifted-capture'); }
   ];
   for (const forge of forgeries) {
     const value = structuredClone(complete);
