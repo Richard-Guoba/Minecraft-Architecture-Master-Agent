@@ -520,11 +520,11 @@ function validateEvidenceRegion(value) {
   }
   if (value.region_kind !== 'rect') fail('P6_OBSERVATION_INVALID');
   assertExactObject(value.region, RECT_REGION_FIELDS, 'P6_OBSERVATION_INVALID');
-  for (const field of RECT_REGION_FIELDS) {
-    assertInteger(value.region[field], 'P6_OBSERVATION_INVALID');
-    if (value.region[field] < 0) fail('P6_OBSERVATION_INVALID');
-  }
-  if (value.region.width < 1 || value.region.height < 1) fail('P6_OBSERVATION_INVALID');
+  const { x, y, width, height } = value.region;
+  if (![x, y, width, height].every(Number.isFinite)
+    || x < 0 || y < 0 || width <= 0 || height <= 0
+    || x > 1 || y > 1 || width > 1 || height > 1
+    || x + width > 1 || y + height > 1) fail('P6_OBSERVATION_INVALID');
 }
 
 function validateGateFailure(value) {

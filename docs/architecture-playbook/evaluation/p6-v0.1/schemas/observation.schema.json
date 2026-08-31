@@ -38,10 +38,10 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "height": { "minimum": 1, "type": "integer" },
-                  "width": { "minimum": 1, "type": "integer" },
-                  "x": { "minimum": 0, "type": "integer" },
-                  "y": { "minimum": 0, "type": "integer" }
+                  "height": { "exclusiveMinimum": 0, "maximum": 1, "type": "number" },
+                  "width": { "exclusiveMinimum": 0, "maximum": 1, "type": "number" },
+                  "x": { "minimum": 0, "maximum": 1, "type": "number" },
+                  "y": { "minimum": 0, "maximum": 1, "type": "number" }
                 },
                 "required": ["x", "y", "width", "height"],
                 "type": "object"
@@ -66,10 +66,10 @@
             "region": {
               "additionalProperties": false,
               "properties": {
-                "height": { "minimum": 1, "type": "integer" },
-                "width": { "minimum": 1, "type": "integer" },
-                "x": { "minimum": 0, "type": "integer" },
-                "y": { "minimum": 0, "type": "integer" }
+                "height": { "exclusiveMinimum": 0, "maximum": 1, "type": "number" },
+                "width": { "exclusiveMinimum": 0, "maximum": 1, "type": "number" },
+                "x": { "minimum": 0, "maximum": 1, "type": "number" },
+                "y": { "minimum": 0, "maximum": 1, "type": "number" }
               },
               "required": ["x", "y", "width", "height"],
               "type": "object"

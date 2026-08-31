@@ -1,3 +1,5 @@
+import { constants } from 'node:fs';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,6 +13,10 @@ import { admitP6CohortInputs } from './playbook/p6/cohort.js';
 import { p6Error, sanitizeP6Error } from './playbook/p6/contracts.js';
 import { renderReferenceViews } from './playbook/p6/offlineRenderer.js';
 import {
+  compileObservationSet,
+  renderObservationReport
+} from './playbook/p6/observations.js';
+import {
   admitP6Run,
   createP6Run,
   publishP6Generation,
@@ -19,13 +25,18 @@ import {
 import { P6_VIEW_IDS, P6_VISUAL_SETTINGS } from './playbook/p6/constants.js';
 import { sha256, stableJson } from './playbook/shadow/canonical.js';
 
-const ACTIONS = new Set(['prepare', 'prepare-capture-session', 'capture', 'import-captures']);
+const ACTIONS = new Set([
+  'prepare', 'prepare-capture-session', 'capture', 'import-captures', 'import-observations'
+]);
 const PREPARE_FLAGS = new Set(['--playbook-run', '--baseline-run', '--run-dir']);
 const CAPTURE_VALUE_FLAGS = new Set(['--world', '--expected-world-identity']);
 const CAPTURE_BOOLEAN_FLAGS = new Set(['--authorize-disposable-world']);
 const IMPORT_FLAGS = new Set(['--run-dir', '--capture-root']);
 const SESSION_FLAGS = new Set(['--run-dir', '--expected-world-identity', '--plot-origin']);
+const OBSERVATION_FLAGS = new Set(['--run-dir', '--file']);
 const HASH = /^[a-f0-9]{64}$/u;
+const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
+const MAX_OBSERVATION_IMPORT_BYTES = 4 * 1024 * 1024;
 
 export function parseP6Args(argv) {
   if (!Array.isArray(argv) || argv.some(value => typeof value !== 'string')) invalid();
@@ -38,6 +49,7 @@ export function parseP6Args(argv) {
     const allowed = action === 'prepare' ? PREPARE_FLAGS
       : action === 'import-captures' ? IMPORT_FLAGS
         : action === 'prepare-capture-session' ? SESSION_FLAGS
+          : action === 'import-observations' ? OBSERVATION_FLAGS
         : new Set([...CAPTURE_VALUE_FLAGS, ...CAPTURE_BOOLEAN_FLAGS]);
     if (!allowed.has(flag) || values.has(flag)) invalid();
     if (CAPTURE_BOOLEAN_FLAGS.has(flag)) {
@@ -73,6 +85,12 @@ export function parseP6Args(argv) {
     const plotOrigin = parsePlotOrigin(values.get('--plot-origin'));
     if (!safeAbsolutePath(runDir) || !HASH.test(worldIdentityHash) || !plotOrigin) invalid();
     return Object.freeze({ action, runDir, worldIdentityHash, plotOrigin });
+  }
+  if (action === 'import-observations') {
+    const runDir = values.get('--run-dir');
+    const file = values.get('--file');
+    if (!safeAbsolutePath(runDir) || !safeAbsolutePath(file)) invalid();
+    return Object.freeze({ action, runDir, file });
   }
   const required = [...PREPARE_FLAGS].map(flag => values.get(flag));
   if (required.some(value => !safeAbsolutePath(value))) invalid();
@@ -149,6 +167,52 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         authority,
         session,
         captureRoot: options.captureRoot
+      });
+    }
+    if (options.action === 'import-observations') {
+      const authority = await deps.admitP6Run({
+        p6Dir: path.join(options.runDir, 'playbook-p6')
+      });
+      created = { authority };
+      const cohortCurrent = await deps.readCurrentP6Generation({ authority, kind: 'cohort' });
+      const capturesCurrent = await deps.readCurrentP6Generation({
+        authority, kind: 'minecraft-captures'
+      });
+      const cohortDocument = parseJsonBytes(cohortCurrent?.files?.['cohort.json']);
+      const cohort = cohortDocument?.cohort;
+      const captureManifest = parseJsonBytes(capturesCurrent?.files?.['capture-manifest.json']);
+      const submitted = await readObservationImport(options.file);
+      if (!plain(submitted)
+        || !sameExactKeys(submitted, ['schema_version', 'protocol_version', 'status', 'observations'])
+        || submitted.schema_version !== 1 || submitted.protocol_version !== '0.1.0'
+        || !['complete', 'partial'].includes(submitted.status)
+        || !Array.isArray(submitted.observations)) throw p6Error('P6_OBSERVATION_INVALID');
+      const observationSet = compileObservationSet({
+        cohort, captureManifest, observations: submitted.observations
+      });
+      if (submitted.status !== observationSet.status) throw p6Error('P6_OBSERVATION_INVALID');
+      const observationBytes = bytes(deps.stableJson?.(observationSet) ?? stableJson(observationSet));
+      const publication = await deps.publishP6Generation({
+        authority,
+        kind: 'observations',
+        files: {
+          'observations.json': observationBytes,
+          'observation-report.md': bytes(renderObservationReport(observationSet))
+        },
+        expectedCurrent: {
+          kind: 'minecraft-captures',
+          generation: capturesCurrent.generation,
+          manifest_sha256: capturesCurrent.manifest_sha256
+        }
+      });
+      return Object.freeze({
+        status: 'observations-imported',
+        completeness: observationSet.status,
+        observation_count: observationSet.observation_count,
+        required_observation_count: observationSet.required_observation_count,
+        gate_ready: observationSet.gate_ready,
+        observation_set_sha256: deps.sha256?.(observationBytes) ?? sha256(observationBytes),
+        output: `observations/${publication.generation}`
       });
     }
 
@@ -322,7 +386,44 @@ function bytes(value) { return Buffer.isBuffer(value) ? Buffer.from(value) : Buf
 function plain(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype; }
 function invalid() { throw p6Error('P6_OPTIONS_INVALID'); }
 
-const HELP = `Usage:\n  npm run playbook:p6 -- prepare --playbook-run <absolute-p5-run> --baseline-run <absolute-baseline-run> --run-dir <absolute-run>\n  npm run playbook:p6 -- prepare-capture-session --run-dir <absolute-run> --expected-world-identity <sha256> --plot-origin <x,y,z>\n  npm run playbook:p6 -- import-captures --run-dir <absolute-run> --capture-root <absolute-capture-root>\n  npm run playbook:p6 -- capture [--authorize-disposable-world --world <absolute-path> --expected-world-identity <sha256>]\n\nprepare creates offline reference-render outputs only. prepare-capture-session publishes commands and a checklist for one exact world identity without opening or changing it. import-captures validates one complete current-session-bound batch without changing its source. No action launches Minecraft or changes a world; capture remains deliberately unavailable.\n`;
+async function readObservationImport(filename) {
+  let handle;
+  try {
+    const before = await fs.lstat(filename);
+    if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1
+      || before.size <= 0 || before.size > MAX_OBSERVATION_IMPORT_BYTES) {
+      throw p6Error('P6_OBSERVATION_INVALID');
+    }
+    handle = await fs.open(filename, READ_FLAGS);
+    const opened = await handle.stat();
+    if (!sameFileIdentity(before, opened) || !opened.isFile() || opened.nlink !== 1) {
+      throw p6Error('P6_OBSERVATION_INVALID');
+    }
+    const content = await handle.readFile();
+    const after = await handle.stat();
+    if (!sameFileIdentity(opened, after) || after.size !== content.length) {
+      throw p6Error('P6_OBSERVATION_INVALID');
+    }
+    return JSON.parse(content.toString('utf8'));
+  } catch (error) {
+    throw sanitizeP6Error(error, 'P6_OBSERVATION_INVALID');
+  } finally {
+    await handle?.close();
+  }
+}
+
+function sameFileIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino
+    && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
+}
+
+function sameExactKeys(value, fields) {
+  const actual = Object.keys(value).sort();
+  const expected = [...fields].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+const HELP = `Usage:\n  npm run playbook:p6 -- prepare --playbook-run <absolute-p5-run> --baseline-run <absolute-baseline-run> --run-dir <absolute-run>\n  npm run playbook:p6 -- prepare-capture-session --run-dir <absolute-run> --expected-world-identity <sha256> --plot-origin <x,y,z>\n  npm run playbook:p6 -- import-captures --run-dir <absolute-run> --capture-root <absolute-capture-root>\n  npm run playbook:p6 -- import-observations --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- capture [--authorize-disposable-world --world <absolute-path> --expected-world-identity <sha256>]\n\nprepare creates offline reference-render outputs only. prepare-capture-session publishes commands and a checklist for one exact world identity without opening or changing it. import-captures validates one complete current-session-bound batch without changing its source. import-observations publishes complete or explicitly partial image-grounded records; partial records keep the gate blocked. No action launches Minecraft or changes a world; capture remains deliberately unavailable.\n`;
 
 async function main(argv = process.argv.slice(2)) {
   try {

@@ -182,7 +182,7 @@ export async function publishP6Generation({ authority, kind, files, expectedCurr
         await assertExpectedCurrent(internal, ops, currentPrecondition);
         await ops.afterExpectedCurrentValidation?.();
       }
-      if (requiresSharedPublicationLock(kind)) {
+      if (requiresSharedPublicationLock(kind, currentPrecondition)) {
         publicationLock = await acquireSharedPublicationLock(internal, ops);
         await assertP6Internal(internal, ops);
         if (currentPrecondition) {
@@ -270,8 +270,9 @@ export async function publishP6Generation({ authority, kind, files, expectedCurr
   })();
 }
 
-function requiresSharedPublicationLock(kind) {
-  return kind === 'capture-session' || kind === 'minecraft-captures';
+function requiresSharedPublicationLock(kind, currentPrecondition) {
+  return kind === 'capture-session' || kind === 'minecraft-captures'
+    || (kind === 'observations' && currentPrecondition !== null);
 }
 
 async function acquireSharedPublicationLock(internal, ops) {
@@ -1317,13 +1318,16 @@ function normalizeFiles(kind, files) {
 }
 
 function normalizeExpectedCurrent(publishingKind, value) {
+  const requiredKind = publishingKind === 'minecraft-captures' ? 'capture-session'
+    : publishingKind === 'observations' ? 'minecraft-captures'
+      : null;
   if (value === undefined) {
     if (publishingKind === 'minecraft-captures') fail();
     return null;
   }
-  if (publishingKind !== 'minecraft-captures' || !plain(value)
+  if (!requiredKind || !plain(value)
     || Object.keys(value).sort().join(',') !== 'generation,kind,manifest_sha256'
-    || value.kind !== 'capture-session'
+    || value.kind !== requiredKind
     || !GENERATION.test(value.generation)
     || !HASH.test(value.manifest_sha256)) fail();
   return Object.freeze({
