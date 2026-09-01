@@ -340,12 +340,7 @@ export async function runCandidatePipeline({
       concepts: conceptCount, conceptStrategy: normalizedConceptStrategy, critics: Boolean(critics),
       neuralRetrieval: Boolean(neuralRetrieval), coarseVoxelMode, coarseVoxelProvider,
       coarseVoxelPlan: coarseVoxelPlan ?? null, playbook: 'off'
-    },
-    selectionPath: selectionJsonPath,
-    selectedCandidateId: finalSelection.selected_candidate_id,
-    selectedDir: selectedResult.outputDir,
-    blueprintPath: selectedResult.artifacts.blueprint,
-    buildFunctionPath: selectedResult.artifacts.buildFunction
+    }
   });
   selectedResult.artifacts.generationAuthority = generationAuthority.path;
 

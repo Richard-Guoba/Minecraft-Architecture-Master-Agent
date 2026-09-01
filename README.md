@@ -99,6 +99,8 @@ npm run playbook:p6 -- prepare-baseline-authority \
 
 `--source-run` is the top run containing `generation-authority.json`, `candidate_selection.json`, and `candidates/`; a selected candidate directory is deliberately not accepted. `--baseline-run` must not exist. The offline command verifies the fixed request, seed, every fixed generation option, three-candidate selection, selected artifact layout, and the exact Minecraft 1.21.9 compiler output; it recomputes hard QA and the deterministic P4 review and snapshots the exact source blueprint/build bytes plus canonical operations into the new authority. It does not write to the source run, launch Minecraft, or touch a world.
 
+Receipt publication uses a fresh private `.generation-authority-*` stage and never overwrites an existing receipt. Version 1 stages do not contain durable ownership provenance, so the pipeline deliberately does not scavenge prefix-matching crash residue: a fresh run root is required, and any residue must be inspected out of band rather than risk deleting a foreign replacement.
+
 After producing the exact frozen P5 run and matching baseline authority, prepare the P6 reference package under a disposable ignored run directory:
 
 ```bash
