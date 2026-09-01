@@ -14,6 +14,7 @@ import { admitP6CohortInputs } from './playbook/p6/cohort.js';
 import { p6Error, sanitizeP6Error } from './playbook/p6/contracts.js';
 import {
   compileBlindComparison,
+  revealPreferenceResults,
   sealPreferences,
   validateBlindComparisonPackage,
   validatePrivateComparisonAuthority
@@ -23,6 +24,7 @@ import {
   compileObservationSet,
   renderObservationReport
 } from './playbook/p6/observations.js';
+import { evaluateP6Gate, renderP6Report } from './playbook/p6/report.js';
 import {
   admitP6Run,
   createP6Run,
@@ -34,7 +36,7 @@ import { sha256, stableJson } from './playbook/shadow/canonical.js';
 
 const ACTIONS = new Set([
   'prepare', 'prepare-capture-session', 'capture', 'import-captures', 'import-observations',
-  'prepare-comparisons', 'import-preferences'
+  'prepare-comparisons', 'import-preferences', 'report'
 ]);
 const PREPARE_FLAGS = new Set(['--playbook-run', '--baseline-run', '--run-dir']);
 const CAPTURE_VALUE_FLAGS = new Set(['--world', '--expected-world-identity']);
@@ -44,6 +46,7 @@ const SESSION_FLAGS = new Set(['--run-dir', '--expected-world-identity', '--plot
 const OBSERVATION_FLAGS = new Set(['--run-dir', '--file']);
 const COMPARISON_FLAGS = new Set(['--run-dir']);
 const PREFERENCE_FLAGS = new Set(['--run-dir', '--file']);
+const REPORT_FLAGS = new Set(['--run-dir']);
 const HASH = /^[a-f0-9]{64}$/u;
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
 const MAX_OBSERVATION_IMPORT_BYTES = 4 * 1024 * 1024;
@@ -62,6 +65,7 @@ export function parseP6Args(argv) {
           : action === 'import-observations' ? OBSERVATION_FLAGS
             : action === 'prepare-comparisons' ? COMPARISON_FLAGS
               : action === 'import-preferences' ? PREFERENCE_FLAGS
+                : action === 'report' ? REPORT_FLAGS
         : new Set([...CAPTURE_VALUE_FLAGS, ...CAPTURE_BOOLEAN_FLAGS]);
     if (!allowed.has(flag) || values.has(flag)) invalid();
     if (CAPTURE_BOOLEAN_FLAGS.has(flag)) {
@@ -115,6 +119,11 @@ export function parseP6Args(argv) {
     if (!safeAbsolutePath(runDir) || !safeAbsolutePath(file)) invalid();
     return Object.freeze({ action, runDir, file });
   }
+  if (action === 'report') {
+    const runDir = values.get('--run-dir');
+    if (!safeAbsolutePath(runDir)) invalid();
+    return Object.freeze({ action, runDir });
+  }
   const required = [...PREPARE_FLAGS].map(flag => values.get(flag));
   if (required.some(value => !safeAbsolutePath(value))) invalid();
   return Object.freeze({
@@ -133,6 +142,85 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
     // Capture is intentionally unimplemented: the flags are parsed only so a
     // future reviewed action has an explicit authorization shape.
     if (options.action === 'capture') throw p6Error('P6_CAPTURE_AUTHORIZATION_REQUIRED');
+    if (options.action === 'report') {
+      const authority = await deps.admitP6Run({ p6Dir: path.join(options.runDir, 'playbook-p6') });
+      created = { authority };
+      const cohortCurrent = await readOptionalCurrent(deps, authority, 'cohort', { fileNames: ['cohort.json'] });
+      const referenceCurrent = await readOptionalCurrent(deps, authority, 'reference-renders', { fileNames: ['reference-renders.json'] });
+      const sessionCurrent = await readOptionalCurrent(deps, authority, 'capture-session', { fileNames: ['capture-session.json'] });
+      const capturesCurrent = await readOptionalCurrent(deps, authority, 'minecraft-captures', { fileNames: ['capture-manifest.json'] });
+      const observationsCurrent = await readOptionalCurrent(deps, authority, 'observations', { fileNames: ['observations.json'] });
+      const comparisonCurrent = await readOptionalCurrent(deps, authority, 'blind-comparison', {
+        includePrivate: true, fileNames: ['comparison-manifest.json']
+      });
+      const gateCurrent = await readOptionalCurrent(deps, authority, 'gate');
+      const cohortDocument = parseJsonBytesOptional(cohortCurrent?.files?.['cohort.json']);
+      const referenceManifest = parseJsonBytesOptional(referenceCurrent?.files?.['reference-renders.json']);
+      const captureSession = parseJsonBytesOptional(sessionCurrent?.files?.['capture-session.json']);
+      let captureManifest = parseJsonBytesOptional(capturesCurrent?.files?.['capture-manifest.json']);
+      const observationSet = parseJsonBytesOptional(observationsCurrent?.files?.['observations.json']);
+      const comparisonManifest = parseJsonBytesOptional(comparisonCurrent?.files?.['comparison-manifest.json']);
+      const sealedPreferences = parseJsonBytesOptional(comparisonCurrent?.privateFiles?.['sealed-preferences.json']);
+      const identityMap = parseJsonBytesOptional(comparisonCurrent?.privateFiles?.['identity-map.json']);
+      const regressions = gateCurrent?.files?.['regressions.json']
+        ? (parseJsonBytesOptional(gateCurrent.files['regressions.json'])
+          ?? { p4: 'invalid', p5: 'invalid', playbook_off: 'invalid', six_episode_golden: 'invalid' })
+        : { p4: 'missing', p5: 'missing', playbook_off: 'missing', six_episode_golden: 'missing' };
+      const cohort = cohortDocument?.cohort;
+      if (captureSession?.cohort_sha256 !== deps.sha256(deps.stableJson(cohort))
+        || captureSession?.camera_manifest_sha256 !== captureManifest?.camera_manifest_sha256
+        || referenceManifest?.camera_manifest_sha256 !== captureManifest?.camera_manifest_sha256
+        || cohortDocument?.cohort_input_sha256 !== referenceManifest?.cohort_input_sha256
+        || captureSession?.environment?.minecraft_version !== captureManifest?.environment?.minecraft_version
+        || captureSession?.environment?.world_identifier_sha256 !== captureManifest?.environment?.world_identifier_sha256) {
+        captureManifest = null;
+      }
+      let revealedResults = null;
+      try { revealedResults = deps.revealPreferenceResults({ sealedPreferences, privateIdentityMap: identityMap }); }
+      catch {}
+      const gate = deps.evaluateP6Gate({
+        cohort, referenceManifest, captureManifest, observationSet,
+        comparisonManifest, sealedPreferences, revealedResults, regressions
+      });
+      const evidenceHashes = {
+        cohort: evidenceHash(deps, 'cohort', cohortCurrent?.files?.['cohort.json']),
+        reference_renders: evidenceHash(deps, 'reference-renders', referenceCurrent?.files?.['reference-renders.json']),
+        formal_captures: evidenceHash(deps, 'formal-captures', capturesCurrent?.files?.['capture-manifest.json']),
+        observations: evidenceHash(deps, 'observations', observationsCurrent?.files?.['observations.json']),
+        comparisons: evidenceHash(deps, 'comparisons', comparisonCurrent?.files?.['comparison-manifest.json']),
+        sealed_preferences: evidenceHash(deps, 'sealed-preferences', comparisonCurrent?.privateFiles?.['sealed-preferences.json']),
+        private_reveal: deps.sha256(deps.stableJson(revealedResults ?? {})),
+        regressions: deps.sha256(deps.stableJson(regressions))
+      };
+      const reportJson = bytes(deps.stableJson({ gate, evidence_hashes: evidenceHashes }));
+      const publication = await deps.publishP6Generation({
+        authority,
+        kind: 'gate',
+        expectedCurrent: [
+          currentReferenceOrAbsent('cohort', cohortCurrent),
+          currentReferenceOrAbsent('reference-renders', referenceCurrent),
+          currentReferenceOrAbsent('capture-session', sessionCurrent),
+          currentReferenceOrAbsent('minecraft-captures', capturesCurrent),
+          currentReferenceOrAbsent('observations', observationsCurrent),
+          currentReferenceOrAbsent('blind-comparison', comparisonCurrent),
+          currentReferenceOrAbsent('gate', gateCurrent)
+        ],
+        files: {
+          'report.json': reportJson,
+          'report.md': bytes(deps.renderP6Report({ gate, evidenceHashes })),
+          'regressions.json': bytes(deps.stableJson(regressions))
+        }
+      });
+      return Object.freeze({
+        status: gate.status,
+        p7_allowed: gate.p7_allowed,
+        outcome: gate.outcome,
+        next_action: gate.next_action.kind,
+        report_sha256: deps.sha256(reportJson),
+        publication_manifest_sha256: publication.manifest_sha256,
+        output: `gate/${publication.generation}`
+      });
+    }
     if (options.action === 'prepare-capture-session') {
       const authority = await deps.admitP6Run({
         p6Dir: path.join(options.runDir, 'playbook-p6')
@@ -512,9 +600,12 @@ const defaultDependencies = Object.freeze({
   renderFormalCaptureChecklist,
   validateImportedCaptures,
   compileBlindComparison,
+  revealPreferenceResults,
   sealPreferences,
   validateBlindComparisonPackage,
   validatePrivateComparisonAuthority,
+  evaluateP6Gate,
+  renderP6Report,
   randomBytes,
   now: () => new Date(),
   sha256,
@@ -629,6 +720,32 @@ function currentReference(kind, current) {
   return Object.freeze({ kind, generation: current.generation, manifest_sha256: current.manifest_sha256 });
 }
 
+function currentReferenceOrAbsent(kind, current) {
+  return current ? currentReference(kind, current)
+    : Object.freeze({ kind, generation: null, manifest_sha256: null });
+}
+
+async function readOptionalCurrent(deps, authority, kind, options = {}) {
+  try {
+    return await deps.readCurrentP6Generation({ authority, kind, ...options });
+  } catch (error) {
+    if (error?.code === 'P6_AUTHORITY_INVALID') return null;
+    throw error;
+  }
+}
+
+function parseJsonBytesOptional(value) {
+  if (!Buffer.isBuffer(value)) return null;
+  try { return JSON.parse(value.toString('utf8')); }
+  catch { return null; }
+}
+
+function evidenceHash(deps, kind, value) {
+  return Buffer.isBuffer(value)
+    ? deps.sha256(value)
+    : deps.sha256(deps.stableJson({ kind, status: 'missing' }));
+}
+
 function sameFileIdentity(left, right) {
   return left.dev === right.dev && left.ino === right.ino
     && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
@@ -640,7 +757,7 @@ function sameExactKeys(value, fields) {
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
-const HELP = `Usage:\n  npm run playbook:p6 -- prepare --playbook-run <absolute-p5-run> --baseline-run <absolute-baseline-run> --run-dir <absolute-run>\n  npm run playbook:p6 -- prepare-capture-session --run-dir <absolute-run> --expected-world-identity <sha256> --plot-origin <x,y,z>\n  npm run playbook:p6 -- import-captures --run-dir <absolute-run> --capture-root <absolute-capture-root>\n  npm run playbook:p6 -- import-observations --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- prepare-comparisons --run-dir <absolute-run>\n  npm run playbook:p6 -- import-preferences --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- capture [--authorize-disposable-world --world <absolute-path> --expected-world-identity <sha256>]\n\nprepare creates offline reference-render outputs only. prepare-capture-session publishes commands and a checklist for one exact world identity without opening or changing it. import-captures validates one complete current-session-bound batch without changing its source. import-observations publishes complete or explicitly partial image-grounded records; partial records keep the gate blocked. prepare-comparisons publishes six anonymous public pair files while retaining the identity map privately. import-preferences validates and seals exactly six user-supplied choices. No action launches Minecraft or changes a world; capture remains deliberately unavailable.\n`;
+const HELP = `Usage:\n  npm run playbook:p6 -- prepare --playbook-run <absolute-p5-run> --baseline-run <absolute-baseline-run> --run-dir <absolute-run>\n  npm run playbook:p6 -- prepare-capture-session --run-dir <absolute-run> --expected-world-identity <sha256> --plot-origin <x,y,z>\n  npm run playbook:p6 -- import-captures --run-dir <absolute-run> --capture-root <absolute-capture-root>\n  npm run playbook:p6 -- import-observations --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- prepare-comparisons --run-dir <absolute-run>\n  npm run playbook:p6 -- import-preferences --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- report --run-dir <absolute-run>\n  npm run playbook:p6 -- capture [--authorize-disposable-world --world <absolute-path> --expected-world-identity <sha256>]\n\nprepare creates offline reference-render outputs only. prepare-capture-session publishes commands and a checklist for one exact world identity without opening or changing it. import-captures validates one complete current-session-bound batch without changing its source. import-observations publishes complete or explicitly partial image-grounded records; partial records keep the gate blocked. prepare-comparisons publishes six anonymous public pair files while retaining the identity map privately. import-preferences validates and seals exactly six user-supplied choices. report reads the current immutable evidence generations and publishes a hash inventory; missing formal or regression evidence stays blocked. No action launches Minecraft or changes a world; capture remains deliberately unavailable.\n`;
 
 async function main(argv = process.argv.slice(2)) {
   try {

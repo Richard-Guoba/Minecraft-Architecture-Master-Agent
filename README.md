@@ -91,6 +91,14 @@ The command never launches, installs, opens, or changes Minecraft or any world. 
 
 Formal screenshots are a later, separate checkpoint: they require explicit authorization for one exact disposable world, its expected identity hash, and a human-run capture/import step. The blind-comparison step then waits for human A/B/tie choices; no command invents a preference or opens P7 without those records. In this release, `capture` always stops with `P6_CAPTURE_AUTHORIZATION_REQUIRED`, even if authorization-looking flags are supplied.
 
+After the current immutable evidence generations exist, publish the deterministic gate report with:
+
+```bash
+npm run playbook:p6 -- report --run-dir /absolute/path/to/p6-run
+```
+
+The report is compare-and-swap bound to the exact current cohort, references, capture session, formal captures, observations, sealed blind-comparison package, private reveal, and gate regression receipt. Missing formal evidence, human choices, private reveal, or required regression results produces `blocked`; the command never invents a choice or a passing suite. Preference outcomes affect the operating advice, while only evidence completeness controls the gate. The checked-in [P6 report shell](docs/architecture-playbook/reports/p6-fixed-view-blind-comparison.md) remains explicitly blocked until the authorized evidence workflow is completed.
+
 ## Generate a datapack
 
 A run writes an ignored directory below `out/` containing the main artifacts:

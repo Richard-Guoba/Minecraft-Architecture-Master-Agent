@@ -271,7 +271,7 @@ export async function publishP6Generation({ authority, kind, files, expectedCurr
 
 function requiresSharedPublicationLock(kind, currentPrecondition) {
   return kind === 'cohort' || kind === 'capture-session' || kind === 'minecraft-captures'
-    || kind === 'blind-comparison'
+    || kind === 'blind-comparison' || kind === 'gate'
     || (kind === 'observations' && currentPrecondition !== null);
 }
 
@@ -1382,6 +1382,13 @@ function normalizeExpectedCurrent(publishingKind, value) {
     const seal = (kinds.join(',') === 'cohort,minecraft-captures,blind-comparison'
         && normalized.every(item => item.generation !== null));
     if (!prepare && !seal) fail();
+    return Object.freeze(normalized);
+  }
+  if (publishingKind === 'gate' && Array.isArray(value)) {
+    if (value.length !== 7) fail();
+    const normalized = value.map(normalizeExpectedReference);
+    const kinds = normalized.map(item => item.kind);
+    if (kinds.join(',') !== 'cohort,reference-renders,capture-session,minecraft-captures,observations,blind-comparison,gate') fail();
     return Object.freeze(normalized);
   }
   if (!requiredKind || !plain(value)
