@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -14,9 +15,12 @@ const LEDGER_PATH = '.local/architecture-playbook/work/p7/chapter-ledger.json';
 const HASH = /^[a-f0-9]{64}$/u;
 const BVID = /^BV[0-9A-Za-z]{10}$/u;
 const EVIDENCE_FIELD = /^[a-z][a-z0-9_]*(?:_sha256|_count)$/u;
+const DIRECTORY_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
-const LOCK_ATTEMPTS = 100;
-const LOCK_RETRY_MS = 10;
+const FLOCK_BINARY = '/usr/bin/flock';
+const PRIVATE_COMPONENTS = Object.freeze([
+  '.local', 'architecture-playbook', 'work', 'p7'
+]);
 const STAGES = Object.freeze([
   'pending',
   'media-verified',
@@ -58,8 +62,8 @@ export async function createChapterLedger({ projectRoot, chapterPlan, fsImpl } =
   const bytes = Buffer.from(stableJson(ledger));
   const ledgerPath = await privateLedgerPath(projectRoot, { createParent: true });
   try {
-    return await withLedgerLock(ledgerPath, ops, async () => {
-      const existing = await readLedgerFile(ledgerPath, ops, { allowMissing: true });
+    return await withLedgerLock(ledgerPath, ops, async (boundLedgerPath, assertAuthority) => {
+      const existing = await readLedgerFile(boundLedgerPath, ops, { allowMissing: true });
       if (existing) {
         if (existing.bytes.equals(bytes)) return envelope('unchanged', existing);
         fail('PLAYBOOK_CHAPTER_LEDGER_EXISTS', 'ledger', 'ledger already initialized');
@@ -67,16 +71,17 @@ export async function createChapterLedger({ projectRoot, chapterPlan, fsImpl } =
 
       let stagePath;
       try {
-        stagePath = await writeExclusiveStage(ledgerPath, bytes, ops);
-        const collision = await readLedgerFile(ledgerPath, ops, { allowMissing: true });
+        stagePath = await writeExclusiveStage(boundLedgerPath, bytes, ops);
+        const collision = await readLedgerFile(boundLedgerPath, ops, { allowMissing: true });
         if (collision) {
           if (collision.bytes.equals(bytes)) return envelope('unchanged', collision);
           fail('PLAYBOOK_CHAPTER_LEDGER_EXISTS', 'ledger', 'ledger already initialized');
         }
-        await ops.rename(stagePath, ledgerPath);
+        await assertAuthority();
+        await ops.rename(stagePath, boundLedgerPath);
         stagePath = undefined;
-        await syncDirectory(path.dirname(ledgerPath), ops);
-        const published = await readLedgerFile(ledgerPath, ops);
+        await syncDirectory(path.dirname(boundLedgerPath), ops);
+        const published = await readLedgerFile(boundLedgerPath, ops);
         if (!published.bytes.equals(bytes)) {
           fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'publication mismatch');
         }
@@ -94,8 +99,8 @@ export async function readChapterLedger({ projectRoot, fsImpl } = {}) {
   const ops = fsOperations(fsImpl);
   const ledgerPath = await privateLedgerPath(projectRoot, { missingIsLedger: true });
   try {
-    return await withLedgerLock(ledgerPath, ops, async () => {
-      const current = await readLedgerFile(ledgerPath, ops);
+    return await withLedgerLock(ledgerPath, ops, async (boundLedgerPath) => {
+      const current = await readLedgerFile(boundLedgerPath, ops);
       return readEnvelope(current);
     });
   } catch (error) {
@@ -116,8 +121,8 @@ export async function advanceEpisodeStage({
   const ops = fsOperations(fsImpl);
   const ledgerPath = await privateLedgerPath(projectRoot, { missingIsLedger: true });
   try {
-    return await withLedgerLock(ledgerPath, ops, async () => {
-      const current = await readLedgerFile(ledgerPath, ops);
+    return await withLedgerLock(ledgerPath, ops, async (boundLedgerPath, assertAuthority) => {
+      const current = await readLedgerFile(boundLedgerPath, ops);
       if (current.sha256 !== expectedLedgerSha256) {
         fail('PLAYBOOK_CHAPTER_LEDGER_STALE', 'expectedLedgerSha256', 'stale ledger');
       }
@@ -166,15 +171,16 @@ export async function advanceEpisodeStage({
 
       let stagePath;
       try {
-        stagePath = await writeExclusiveStage(ledgerPath, nextBytes, ops);
-        const latest = await readLedgerFile(ledgerPath, ops);
+        stagePath = await writeExclusiveStage(boundLedgerPath, nextBytes, ops);
+        const latest = await readLedgerFile(boundLedgerPath, ops);
         if (latest.sha256 !== expectedLedgerSha256) {
           fail('PLAYBOOK_CHAPTER_LEDGER_STALE', 'expectedLedgerSha256', 'stale ledger');
         }
-        await ops.rename(stagePath, ledgerPath);
+        await assertAuthority();
+        await ops.rename(stagePath, boundLedgerPath);
         stagePath = undefined;
-        await syncDirectory(path.dirname(ledgerPath), ops);
-        const published = await readLedgerFile(ledgerPath, ops);
+        await syncDirectory(path.dirname(boundLedgerPath), ops);
+        const published = await readLedgerFile(boundLedgerPath, ops);
         if (!published.bytes.equals(nextBytes)) {
           fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'publication mismatch');
         }
@@ -379,70 +385,123 @@ function transitionEvidenceMatches(current, requested, nextStage) {
 }
 
 async function withLedgerLock(ledgerPath, ops, operation) {
-  const lock = await acquireLedgerLock(ledgerPath, ops);
-  let operationError;
+  const authority = await acquireLedgerAuthority(ledgerPath, ops);
   try {
-    return await operation();
-  } catch (error) {
-    operationError = error;
-    throw error;
+    await flockExclusive(authority.root.handle);
+    await assertLedgerAuthority(authority, ops);
+    const result = await operation(
+      entry(authority.p7.handle, 'chapter-ledger.json'),
+      () => assertLedgerAuthority(authority, ops)
+    );
+    await assertLedgerAuthority(authority, ops);
+    return result;
   } finally {
-    try {
-      await releaseLedgerLock(lock, ops);
-    } catch (error) {
-      if (!operationError) throw error;
-    }
+    await closeLedgerAuthority(authority);
   }
 }
 
-async function acquireLedgerLock(ledgerPath, ops) {
-  const lockPath = path.join(path.dirname(ledgerPath), '.chapter-ledger.lock');
-  for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt += 1) {
-    let handle;
-    let identity;
-    try {
-      handle = await ops.open(lockPath, 'wx+', 0o600);
-      identity = await handle.stat();
-      if (!identity.isFile()) privateAuthorityInvalid();
-      await handle.writeFile(randomBytes(16).toString('hex'));
-      await handle.sync();
-      await syncDirectory(path.dirname(ledgerPath), ops);
-      return { path: lockPath, handle, identity };
-    } catch (error) {
-      if (handle) {
-        try { await handle.close(); } catch {}
-        await removeOwnedLock(lockPath, identity, ops);
-      }
-      if (error?.code !== 'EEXIST') throw error;
-      if (attempt === LOCK_ATTEMPTS - 1) {
-        fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'ledger lock unavailable');
-      }
-      await delay(LOCK_RETRY_MS);
-    }
-  }
-  fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'ledger lock unavailable');
-}
-
-async function releaseLedgerLock(lock, ops) {
+async function acquireLedgerAuthority(ledgerPath, ops) {
+  const projectRoot = path.resolve(path.dirname(ledgerPath), '../../../..');
+  const expectedLedgerPath = path.join(
+    projectRoot,
+    ...PRIVATE_COMPONENTS,
+    'chapter-ledger.json'
+  );
+  if (expectedLedgerPath !== ledgerPath) privateAuthorityInvalid();
+  const authority = { projectRoot, root: null, chain: [], p7: null };
   try {
-    await lock.handle.close();
-  } catch {
-    fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'ledger lock close failed');
+    authority.root = await openAbsoluteDirectory(ops, projectRoot);
+    let parent = authority.root;
+    for (const basename of PRIVATE_COMPONENTS) {
+      const node = await openRetainedDirectory(ops, parent.handle, basename);
+      authority.chain.push({ ...node, parent, basename });
+      parent = node;
+    }
+    authority.p7 = parent;
+    await assertLedgerAuthority(authority, ops);
+    return authority;
+  } catch (error) {
+    await closeLedgerAuthority(authority);
+    throw error;
   }
-  const current = await lstatOrNull(lock.path, ops);
-  if (!current || !current.isFile() || !sameIdentity(current, lock.identity)) {
-    fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'ledger lock authority changed');
-  }
-  await ops.unlink(lock.path);
-  await syncDirectory(path.dirname(lock.path), ops);
 }
 
-async function removeOwnedLock(lockPath, identity, ops) {
-  if (!identity) return;
+async function openAbsoluteDirectory(ops, directory) {
+  let handle;
   try {
-    const current = await ops.lstat(lockPath);
-    if (current.isFile() && sameIdentity(current, identity)) await ops.unlink(lockPath);
-  } catch {}
+    const before = await ops.lstat(directory);
+    if (before.isSymbolicLink() || !before.isDirectory()) privateAuthorityInvalid();
+    handle = await ops.open(directory, DIRECTORY_FLAGS);
+    const opened = await handle.stat();
+    const after = await ops.lstat(directory);
+    if (!opened.isDirectory() || after.isSymbolicLink() || !after.isDirectory()
+      || !sameIdentity(before, opened) || !sameIdentity(opened, after)) {
+      privateAuthorityInvalid();
+    }
+    return { handle, identity: opened };
+  } catch (error) {
+    try { await handle?.close(); } catch {}
+    if (error?.code === 'ELOOP' || error?.code === 'ENOTDIR') privateAuthorityInvalid();
+    throw error;
+  }
+}
+
+async function openRetainedDirectory(ops, parentHandle, basename) {
+  let handle;
+  const target = entry(parentHandle, basename);
+  try {
+    const before = await ops.lstat(target);
+    if (before.isSymbolicLink() || !before.isDirectory()) privateAuthorityInvalid();
+    handle = await ops.open(target, DIRECTORY_FLAGS);
+    const opened = await handle.stat();
+    const after = await ops.lstat(target);
+    if (!opened.isDirectory() || after.isSymbolicLink() || !after.isDirectory()
+      || !sameIdentity(before, opened) || !sameIdentity(opened, after)) {
+      privateAuthorityInvalid();
+    }
+    return { handle, identity: opened };
+  } catch (error) {
+    try { await handle?.close(); } catch {}
+    if (error?.code === 'ELOOP' || error?.code === 'ENOTDIR') privateAuthorityInvalid();
+    throw error;
+  }
+}
+
+async function assertLedgerAuthority(authority, ops) {
+  const rootRetained = await authority.root.handle.stat();
+  const rootNamed = await ops.lstat(authority.projectRoot);
+  if (!rootRetained.isDirectory() || rootNamed.isSymbolicLink() || !rootNamed.isDirectory()
+    || !sameIdentity(rootRetained, authority.root.identity)
+    || !sameIdentity(rootNamed, authority.root.identity)) privateAuthorityInvalid();
+  for (const node of authority.chain) {
+    const retained = await node.handle.stat();
+    const named = await ops.lstat(entry(node.parent.handle, node.basename));
+    if (!retained.isDirectory() || named.isSymbolicLink() || !named.isDirectory()
+      || !sameIdentity(retained, node.identity)
+      || !sameIdentity(named, node.identity)) privateAuthorityInvalid();
+  }
+}
+
+async function flockExclusive(handle) {
+  await new Promise((resolve, reject) => {
+    const child = spawn(FLOCK_BINARY, ['--exclusive', '3'], {
+      stdio: ['ignore', 'ignore', 'ignore', handle.fd]
+    });
+    child.once('error', () => reject(new Error('ledger advisory lock failed')));
+    child.once('close', (code) => code === 0
+      ? resolve()
+      : reject(new Error('ledger advisory lock failed')));
+  });
+}
+
+async function closeLedgerAuthority(authority) {
+  const handles = [
+    ...(authority?.chain || []).map((node) => node.handle).reverse(),
+    authority?.root?.handle
+  ];
+  await Promise.all(handles.map(async (handle) => {
+    try { await handle?.close(); } catch {}
+  }));
 }
 
 async function assertRegularLedger(ledgerPath, ops, { allowMissing = false } = {}) {
@@ -468,9 +527,8 @@ function sameIdentity(left, right) {
   return left.dev === right.dev && left.ino === right.ino;
 }
 
-function delay(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
+function descriptor(handle) { return `/proc/self/fd/${handle.fd}`; }
+function entry(handle, basename) { return `${descriptor(handle)}/${basename}`; }
 
 async function writeExclusiveStage(ledgerPath, bytes, ops) {
   const stagePath = path.join(

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -489,6 +490,71 @@ test('unchanged replay requires the exact prior transition evidence', async (t) 
   assert.deepEqual(await fs.readFile(fixture.ledgerPath), before);
 });
 
+test('process death releases ledger serialization and a later advance reopens', {
+  timeout: 10000
+}, async (t) => {
+  const fixture = await ledgerFixture(t);
+  const jobPath = path.join(fixture.projectRoot, 'ledger-crash-job.json');
+  await fs.writeFile(jobPath, JSON.stringify({
+    projectRoot: fixture.projectRoot,
+    bvid: FIRST_BVID,
+    expectedLedgerSha256: fixture.created.ledger_sha256,
+    evidence: EVIDENCE_BY_STAGE['media-verified']
+  }));
+
+  const crashed = await runCrashWorker(jobPath);
+  assert.equal(crashed.signal, 'SIGKILL', crashed.stderr);
+
+  const reopened = await advanceEpisodeStage({
+    projectRoot: fixture.projectRoot,
+    bvid: FIRST_BVID,
+    expectedLedgerSha256: fixture.created.ledger_sha256,
+    expectedStage: 'pending',
+    nextStage: 'media-verified',
+    evidence: EVIDENCE_BY_STAGE['media-verified']
+  });
+  assert.equal(reopened.status, 'updated');
+  assert.equal(reopened.ledger.episodes[FIRST_BVID].stage, 'media-verified');
+});
+
+test('p7 ancestor replacement after validation fails without outside publication', async (t) => {
+  const fixture = await ledgerFixture(t);
+  const p7Path = path.dirname(fixture.ledgerPath);
+  const parkedP7 = path.join(path.dirname(p7Path), 'p7-parked');
+  const outsideP7 = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-p7-swap-'));
+  t.after(() => fs.rm(outsideP7, { recursive: true, force: true }));
+  const outsideLedger = path.join(outsideP7, 'chapter-ledger.json');
+  const initialBytes = await fs.readFile(fixture.ledgerPath);
+  await fs.writeFile(outsideLedger, initialBytes);
+  const swappingFs = ancestorSwapFs({ p7Path, parkedP7, outsideP7 });
+
+  let rejection;
+  try {
+    await advanceEpisodeStage({
+      projectRoot: fixture.projectRoot,
+      bvid: FIRST_BVID,
+      expectedLedgerSha256: fixture.created.ledger_sha256,
+      expectedStage: 'pending',
+      nextStage: 'media-verified',
+      evidence: EVIDENCE_BY_STAGE['media-verified'],
+      fsImpl: swappingFs
+    });
+  } catch (error) {
+    rejection = error;
+  }
+
+  assert.equal(rejection?.code, 'PLAYBOOK_PRIVATE_PATH_ESCAPE');
+  assert.equal(String(rejection).includes(fixture.projectRoot), false);
+  assert.equal(String(rejection).includes(outsideP7), false);
+  assert.equal((await fs.lstat(p7Path)).isSymbolicLink(), true);
+  assert.deepEqual(await fs.readFile(outsideLedger), initialBytes);
+  assert.deepEqual(
+    await fs.readFile(path.join(parkedP7, 'chapter-ledger.json')),
+    initialBytes
+  );
+  assert.deepEqual((await fs.readdir(outsideP7)).sort(), ['chapter-ledger.json']);
+});
+
 async function ledgerFixture(t, { create = true } = {}) {
   const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-ledger-'));
   t.after(() => fs.rm(projectRoot, { recursive: true, force: true }));
@@ -540,23 +606,25 @@ function publicationRace(ledgerPath) {
   function fsFor(role) {
     let initialObserved = false;
     let renamed = false;
+    const isLedgerTarget = (targetPath) => String(targetPath) === ledgerPath
+      || String(targetPath).endsWith('/chapter-ledger.json');
     return new Proxy(fs, {
       get(target, property, receiver) {
         if (property === 'lstat') {
           return async (targetPath, ...args) => {
             try {
               const value = await fs.lstat(targetPath, ...args);
-              if (String(targetPath) === ledgerPath && role === 'first' && !initialObserved) {
+              if (isLedgerTarget(targetPath) && role === 'first' && !initialObserved) {
                 initialObserved = true;
                 initialRead.resolve();
                 await releaseInitial.promise;
               }
-              if (String(targetPath) === ledgerPath && role === 'first' && renamed) {
+              if (isLedgerTarget(targetPath) && role === 'first' && renamed) {
                 firstPublishedRead.resolve();
               }
               return value;
             } catch (error) {
-              if (String(targetPath) === ledgerPath && role === 'first' && !initialObserved) {
+              if (isLedgerTarget(targetPath) && role === 'first' && !initialObserved) {
                 initialObserved = true;
                 initialRead.resolve();
                 await releaseInitial.promise;
@@ -569,17 +637,17 @@ function publicationRace(ledgerPath) {
           return async (targetPath, ...args) => {
             try {
               const value = await fs.readFile(targetPath, ...args);
-              if (String(targetPath) === ledgerPath && role === 'first' && !initialObserved) {
+              if (isLedgerTarget(targetPath) && role === 'first' && !initialObserved) {
                 initialObserved = true;
                 initialRead.resolve();
                 await releaseInitial.promise;
               }
-              if (String(targetPath) === ledgerPath && role === 'first' && renamed) {
+              if (isLedgerTarget(targetPath) && role === 'first' && renamed) {
                 firstPublishedRead.resolve();
               }
               return value;
             } catch (error) {
-              if (String(targetPath) === ledgerPath && role === 'first' && !initialObserved) {
+              if (isLedgerTarget(targetPath) && role === 'first' && !initialObserved) {
                 initialObserved = true;
                 initialRead.resolve();
                 await releaseInitial.promise;
@@ -623,4 +691,38 @@ function deferred() {
 
 function oneTurn() {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+function runCrashWorker(jobPath) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [
+      path.join(import.meta.dirname, 'fixtures', 'playbookChapterLedgerCrashWorker.js'),
+      jobPath
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('close', (code, signal) => resolve({ code, signal, stdout, stderr }));
+  });
+}
+
+function ancestorSwapFs({ p7Path, parkedP7, outsideP7 }) {
+  let swapped = false;
+  return new Proxy(fs, {
+    get(target, property, receiver) {
+      if (property === 'open') {
+        return async (targetPath, ...args) => {
+          if (!swapped) {
+            swapped = true;
+            await fs.rename(p7Path, parkedP7);
+            await fs.symlink(outsideP7, p7Path, 'dir');
+          }
+          return fs.open(targetPath, ...args);
+        };
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
 }
