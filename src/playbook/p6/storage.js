@@ -179,15 +179,13 @@ export async function publishP6Generation({ authority, kind, files, expectedCurr
     try {
       await assertP6Internal(internal, ops);
       if (currentPrecondition) {
-        await assertExpectedCurrent(internal, ops, currentPrecondition);
+        await assertExpectedCurrents(internal, ops, currentPrecondition);
         await ops.afterExpectedCurrentValidation?.();
       }
       if (requiresSharedPublicationLock(kind, currentPrecondition)) {
         publicationLock = await acquireSharedPublicationLock(internal, ops);
         await assertP6Internal(internal, ops);
-        if (currentPrecondition) {
-          await assertExpectedCurrent(internal, ops, currentPrecondition);
-        }
+        if (currentPrecondition) await assertExpectedCurrents(internal, ops, currentPrecondition);
       }
       await validateExistingP6Tree(internal, ops);
       tree = await openOrCreateKindTree(internal, ops, kind);
@@ -271,7 +269,8 @@ export async function publishP6Generation({ authority, kind, files, expectedCurr
 }
 
 function requiresSharedPublicationLock(kind, currentPrecondition) {
-  return kind === 'capture-session' || kind === 'minecraft-captures'
+  return kind === 'cohort' || kind === 'capture-session' || kind === 'minecraft-captures'
+    || kind === 'blind-comparison'
     || (kind === 'observations' && currentPrecondition !== null);
 }
 
@@ -307,6 +306,12 @@ async function flockExclusive(handle) {
 }
 
 async function assertExpectedCurrent(internal, ops, expected) {
+  if (expected.generation === null) {
+    await assertP6Internal(internal, ops);
+    const names = await ops.readdir(descriptor(internal.p6Handle));
+    if (names.includes(expected.kind)) fail();
+    return;
+  }
   let tree;
   try {
     tree = await openKindTree(internal, ops, expected.kind);
@@ -324,9 +329,14 @@ async function assertExpectedCurrent(internal, ops, expected) {
   }
 }
 
-export async function readCurrentP6Generation({ authority, kind, fsImpl } = {}) {
+async function assertExpectedCurrents(internal, ops, expected) {
+  for (const item of expected) await assertExpectedCurrent(internal, ops, item);
+}
+
+export async function readCurrentP6Generation({ authority, kind, includePrivate = false, fsImpl } = {}) {
   const internal = authorityInternal(authority);
-  if (!KINDS.includes(kind)) throw p6Error('P6_AUTHORITY_INVALID');
+  if (!KINDS.includes(kind) || typeof includePrivate !== 'boolean'
+    || (includePrivate && kind !== 'blind-comparison')) throw p6Error('P6_AUTHORITY_INVALID');
   const ops = fsOperations(fsImpl ?? internal.ops.source);
   let tree;
   try {
@@ -340,17 +350,19 @@ export async function readCurrentP6Generation({ authority, kind, fsImpl } = {}) 
         if (!parsed) fail();
         const generation = await verifyGeneration(
           internal, ops, tree, kind, parsed.generation,
-          { expectedManifestSha256: parsed.manifest_sha256 }
+          { expectedManifestSha256: parsed.manifest_sha256, includePrivate }
         );
         await assertP6Internal(internal, ops);
-        return Object.freeze({
+        const result = {
           kind,
           generation: parsed.generation,
           manifest_sha256: parsed.manifest_sha256,
           manifest: generation.manifest,
           files: Object.freeze(generation.files),
           private_file_count: generation.privateFileCount
-        });
+        };
+        if (includePrivate) result.privateFiles = Object.freeze(generation.privateFiles);
+        return Object.freeze(result);
       } catch (error) {
         if (attempt === 7) throw error;
       }
@@ -821,7 +833,7 @@ function retirementAuthorityBasename(retirementBasename) {
   return `${RETIREMENT_AUTHORITY_PREFIX}${retirementBasename.slice('.p5-retirement-'.length)}`;
 }
 
-async function verifyGeneration(internal, ops, tree, kind, generationName, { expectedManifestSha256 }) {
+async function verifyGeneration(internal, ops, tree, kind, generationName, { expectedManifestSha256, includePrivate = false }) {
   if (!GENERATION.test(generationName)) fail();
   const stat = await ops.lstat(entry(tree.generationsHandle, generationName));
   if (stat.isSymbolicLink() || !stat.isDirectory()) fail();
@@ -848,6 +860,7 @@ async function verifyGeneration(internal, ops, tree, kind, generationName, { exp
       files[name] = Buffer.from(file.bytes);
     }
     let privateFileCount = 0;
+    const privateFiles = {};
     if (hasPrivate) {
       if (kind !== 'blind-comparison') fail();
       const privateStat = await ops.lstat(entry(handle, PRIVATE_BASENAME));
@@ -864,11 +877,12 @@ async function verifyGeneration(internal, ops, tree, kind, generationName, { exp
       for (const name of privateManifest.managed_paths) {
         const file = await readRegularFile(ops, privateHandle, name);
         if (file.sha256 !== privateManifest.artifact_hashes[name]) fail();
+        if (includePrivate) privateFiles[name] = Buffer.from(file.bytes);
       }
       privateFileCount = privateManifest.managed_paths.length;
     }
     await assertP6Internal(internal, ops);
-    return { manifest: Object.freeze(manifest), files, privateFileCount };
+    return { manifest: Object.freeze(manifest), files, privateFileCount, privateFiles };
   } finally {
     await close(privateHandle);
     await close(handle);
@@ -1325,11 +1339,39 @@ function normalizeExpectedCurrent(publishingKind, value) {
     if (publishingKind === 'minecraft-captures') fail();
     return null;
   }
+  if (publishingKind === 'blind-comparison' && Array.isArray(value)) {
+    if (value.length === 0 || value.length > 3) fail();
+    const normalized = value.map(normalizeExpectedReference);
+    const kinds = normalized.map(item => item.kind);
+    if (new Set(kinds).size !== kinds.length) fail();
+    const prepare = kinds.join(',') === 'cohort,minecraft-captures,blind-comparison'
+      && normalized[2].generation === null;
+    const seal = (kinds.join(',') === 'blind-comparison'
+      && normalized[0].generation !== null)
+      || (kinds.join(',') === 'minecraft-captures,blind-comparison'
+        && normalized.every(item => item.generation !== null));
+    if (!prepare && !seal) fail();
+    return Object.freeze(normalized);
+  }
   if (!requiredKind || !plain(value)
     || Object.keys(value).sort().join(',') !== 'generation,kind,manifest_sha256'
     || value.kind !== requiredKind
     || !GENERATION.test(value.generation)
     || !HASH.test(value.manifest_sha256)) fail();
+  return Object.freeze([{
+    kind: value.kind,
+    generation: value.generation,
+    manifest_sha256: value.manifest_sha256
+  }]);
+}
+
+function normalizeExpectedReference(value) {
+  if (!plain(value)
+    || Object.keys(value).sort().join(',') !== 'generation,kind,manifest_sha256'
+    || !KINDS.includes(value.kind)) fail();
+  const absent = value.generation === null && value.manifest_sha256 === null;
+  const present = GENERATION.test(value.generation) && HASH.test(value.manifest_sha256);
+  if (!absent && !present) fail();
   return Object.freeze({
     kind: value.kind,
     generation: value.generation,

@@ -1,4 +1,5 @@
 import { constants } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +12,10 @@ import {
 } from './playbook/p6/captures.js';
 import { admitP6CohortInputs } from './playbook/p6/cohort.js';
 import { p6Error, sanitizeP6Error } from './playbook/p6/contracts.js';
+import {
+  compileBlindComparison,
+  sealPreferences
+} from './playbook/p6/comparisons.js';
 import { renderReferenceViews } from './playbook/p6/offlineRenderer.js';
 import {
   compileObservationSet,
@@ -26,7 +31,8 @@ import { P6_VIEW_IDS, P6_VISUAL_SETTINGS } from './playbook/p6/constants.js';
 import { sha256, stableJson } from './playbook/shadow/canonical.js';
 
 const ACTIONS = new Set([
-  'prepare', 'prepare-capture-session', 'capture', 'import-captures', 'import-observations'
+  'prepare', 'prepare-capture-session', 'capture', 'import-captures', 'import-observations',
+  'prepare-comparisons', 'import-preferences'
 ]);
 const PREPARE_FLAGS = new Set(['--playbook-run', '--baseline-run', '--run-dir']);
 const CAPTURE_VALUE_FLAGS = new Set(['--world', '--expected-world-identity']);
@@ -34,6 +40,8 @@ const CAPTURE_BOOLEAN_FLAGS = new Set(['--authorize-disposable-world']);
 const IMPORT_FLAGS = new Set(['--run-dir', '--capture-root']);
 const SESSION_FLAGS = new Set(['--run-dir', '--expected-world-identity', '--plot-origin']);
 const OBSERVATION_FLAGS = new Set(['--run-dir', '--file']);
+const COMPARISON_FLAGS = new Set(['--run-dir']);
+const PREFERENCE_FLAGS = new Set(['--run-dir', '--file']);
 const HASH = /^[a-f0-9]{64}$/u;
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
 const MAX_OBSERVATION_IMPORT_BYTES = 4 * 1024 * 1024;
@@ -50,6 +58,8 @@ export function parseP6Args(argv) {
       : action === 'import-captures' ? IMPORT_FLAGS
         : action === 'prepare-capture-session' ? SESSION_FLAGS
           : action === 'import-observations' ? OBSERVATION_FLAGS
+            : action === 'prepare-comparisons' ? COMPARISON_FLAGS
+              : action === 'import-preferences' ? PREFERENCE_FLAGS
         : new Set([...CAPTURE_VALUE_FLAGS, ...CAPTURE_BOOLEAN_FLAGS]);
     if (!allowed.has(flag) || values.has(flag)) invalid();
     if (CAPTURE_BOOLEAN_FLAGS.has(flag)) {
@@ -87,6 +97,17 @@ export function parseP6Args(argv) {
     return Object.freeze({ action, runDir, worldIdentityHash, plotOrigin });
   }
   if (action === 'import-observations') {
+    const runDir = values.get('--run-dir');
+    const file = values.get('--file');
+    if (!safeAbsolutePath(runDir) || !safeAbsolutePath(file)) invalid();
+    return Object.freeze({ action, runDir, file });
+  }
+  if (action === 'prepare-comparisons') {
+    const runDir = values.get('--run-dir');
+    if (!safeAbsolutePath(runDir)) invalid();
+    return Object.freeze({ action, runDir });
+  }
+  if (action === 'import-preferences') {
     const runDir = values.get('--run-dir');
     const file = values.get('--file');
     if (!safeAbsolutePath(runDir) || !safeAbsolutePath(file)) invalid();
@@ -217,6 +238,104 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         output: `observations/${publication.generation}`
       });
     }
+    if (options.action === 'prepare-comparisons') {
+      const authority = await deps.admitP6Run({ p6Dir: path.join(options.runDir, 'playbook-p6') });
+      created = { authority };
+      const cohortCurrent = await deps.readCurrentP6Generation({ authority, kind: 'cohort' });
+      const capturesCurrent = await deps.readCurrentP6Generation({ authority, kind: 'minecraft-captures' });
+      const cohort = parseJsonBytes(cohortCurrent?.files?.['cohort.json'])?.cohort;
+      const captureManifest = parseJsonBytes(capturesCurrent?.files?.['capture-manifest.json']);
+      const bundle = deps.compileBlindComparison({
+        cohort,
+        captureManifest,
+        randomBytes: deps.randomBytes,
+        generatedAt: deps.now().toISOString()
+      });
+      const files = {
+        'comparison-manifest.json': bytes(deps.stableJson(bundle.publicManifest)),
+        'presentation-order.json': bytes(deps.stableJson(bundle.publicPresentation)),
+        'private/identity-map.json': bytes(deps.stableJson(bundle.privateIdentityMap)),
+        'private/randomization.json': bytes(deps.stableJson(bundle.privateRandomization))
+      };
+      for (const comparison of bundle.publicComparisons) {
+        files[comparison.filename] = bytes(deps.stableJson(comparison));
+      }
+      const publication = await deps.publishP6Generation({
+        authority,
+        kind: 'blind-comparison',
+        files,
+        expectedCurrent: [
+          currentReference('cohort', cohortCurrent),
+          currentReference('minecraft-captures', capturesCurrent),
+          { kind: 'blind-comparison', generation: null, manifest_sha256: null }
+        ]
+      });
+      return Object.freeze({
+        status: 'comparisons-prepared',
+        comparison_manifest_hash: deps.sha256(deps.stableJson(bundle.publicManifest)),
+        comparison_count: 6,
+        output: `blind-comparison/${publication.generation}`,
+        next_action: 'P6_HUMAN_PREFERENCE_REQUIRED'
+      });
+    }
+    if (options.action === 'import-preferences') {
+      const authority = await deps.admitP6Run({ p6Dir: path.join(options.runDir, 'playbook-p6') });
+      created = { authority };
+      const current = await deps.readCurrentP6Generation({
+        authority, kind: 'blind-comparison', includePrivate: true
+      });
+      if (current?.files?.['preference-seal.json']) throw p6Error('P6_COMPARISON_INVALID');
+      const capturesCurrent = await deps.readCurrentP6Generation({
+        authority, kind: 'minecraft-captures'
+      });
+      const publicManifest = parseJsonBytes(current?.files?.['comparison-manifest.json']);
+      const captureManifestBytes = capturesCurrent?.files?.['capture-manifest.json'];
+      if (!Buffer.isBuffer(captureManifestBytes)
+        || deps.sha256(captureManifestBytes) !== publicManifest.capture_manifest_hash) {
+        throw p6Error('P6_COMPARISON_INVALID');
+      }
+      const identityMapBytes = current?.privateFiles?.['identity-map.json'];
+      const randomizationBytes = current?.privateFiles?.['randomization.json'];
+      if (!Buffer.isBuffer(identityMapBytes) || !Buffer.isBuffer(randomizationBytes)
+        || deps.sha256(identityMapBytes) !== publicManifest.identity_map_sha256
+        || deps.sha256(randomizationBytes) !== publicManifest.randomization_sha256) {
+        throw p6Error('P6_COMPARISON_INVALID');
+      }
+      const submitted = await readPreferenceImport(options.file);
+      const sealed = deps.sealPreferences({
+        publicManifest,
+        records: submitted.records,
+        reviewerPseudonym: submitted.reviewer_pseudonym
+      });
+      const files = Object.fromEntries(Object.entries(current.files).map(([name, value]) => [name, Buffer.from(value)]));
+      files['preference-seal.json'] = bytes(deps.stableJson({
+        schema_version: sealed.schema_version,
+        protocol_version: sealed.protocol_version,
+        status: sealed.status,
+        comparison_manifest_hash: sealed.comparison_manifest_hash,
+        preference_record_count: sealed.records.length,
+        sealed_preference_hashes: sealed.sealed_preference_hashes
+      }));
+      for (const [name, value] of Object.entries(current.privateFiles)) {
+        files[`private/${name}`] = Buffer.from(value);
+      }
+      files['private/sealed-preferences.json'] = bytes(deps.stableJson(sealed));
+      const publication = await deps.publishP6Generation({
+        authority,
+        kind: 'blind-comparison',
+        files,
+        expectedCurrent: [
+          currentReference('minecraft-captures', capturesCurrent),
+          currentReference('blind-comparison', current)
+        ]
+      });
+      return Object.freeze({
+        status: 'preferences-sealed',
+        preference_record_count: sealed.records.length,
+        comparison_manifest_hash: sealed.comparison_manifest_hash,
+        output: `blind-comparison/${publication.generation}`
+      });
+    }
 
     created = await deps.createP6Run({ runDir: options.runDir });
     const cohort = await deps.admitP6CohortInputs({
@@ -337,6 +456,10 @@ const defaultDependencies = Object.freeze({
   readCurrentP6Generation,
   renderFormalCaptureChecklist,
   validateImportedCaptures,
+  compileBlindComparison,
+  sealPreferences,
+  randomBytes,
+  now: () => new Date(),
   sha256,
   stableJson
 });
@@ -414,6 +537,41 @@ async function readObservationImport(filename) {
   }
 }
 
+async function readPreferenceImport(filename) {
+  let value;
+  try {
+    value = await readBoundedJsonFile(filename, MAX_OBSERVATION_IMPORT_BYTES);
+  } catch (error) {
+    throw sanitizeP6Error(error, 'P6_COMPARISON_INVALID');
+  }
+  if (!plain(value) || !sameExactKeys(value, ['reviewer_pseudonym', 'records'])
+    || !Array.isArray(value.records)) throw p6Error('P6_COMPARISON_INVALID');
+  return value;
+}
+
+async function readBoundedJsonFile(filename, maxBytes) {
+  let handle;
+  try {
+    const before = await fs.lstat(filename);
+    if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1
+      || before.size <= 0 || before.size > maxBytes) throw new Error('invalid input');
+    handle = await fs.open(filename, READ_FLAGS);
+    const opened = await handle.stat();
+    if (!sameFileIdentity(before, opened) || !opened.isFile() || opened.nlink !== 1) throw new Error('invalid input');
+    const content = await handle.readFile();
+    const after = await handle.stat();
+    if (!sameFileIdentity(opened, after) || after.size !== content.length) throw new Error('invalid input');
+    return JSON.parse(content.toString('utf8'));
+  } finally {
+    await handle?.close();
+  }
+}
+
+function currentReference(kind, current) {
+  if (!plain(current) || typeof current.generation !== 'string' || !HASH.test(current.manifest_sha256)) invalid();
+  return Object.freeze({ kind, generation: current.generation, manifest_sha256: current.manifest_sha256 });
+}
+
 function sameFileIdentity(left, right) {
   return left.dev === right.dev && left.ino === right.ino
     && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
@@ -425,7 +583,7 @@ function sameExactKeys(value, fields) {
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
-const HELP = `Usage:\n  npm run playbook:p6 -- prepare --playbook-run <absolute-p5-run> --baseline-run <absolute-baseline-run> --run-dir <absolute-run>\n  npm run playbook:p6 -- prepare-capture-session --run-dir <absolute-run> --expected-world-identity <sha256> --plot-origin <x,y,z>\n  npm run playbook:p6 -- import-captures --run-dir <absolute-run> --capture-root <absolute-capture-root>\n  npm run playbook:p6 -- import-observations --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- capture [--authorize-disposable-world --world <absolute-path> --expected-world-identity <sha256>]\n\nprepare creates offline reference-render outputs only. prepare-capture-session publishes commands and a checklist for one exact world identity without opening or changing it. import-captures validates one complete current-session-bound batch without changing its source. import-observations publishes complete or explicitly partial image-grounded records; partial records keep the gate blocked. No action launches Minecraft or changes a world; capture remains deliberately unavailable.\n`;
+const HELP = `Usage:\n  npm run playbook:p6 -- prepare --playbook-run <absolute-p5-run> --baseline-run <absolute-baseline-run> --run-dir <absolute-run>\n  npm run playbook:p6 -- prepare-capture-session --run-dir <absolute-run> --expected-world-identity <sha256> --plot-origin <x,y,z>\n  npm run playbook:p6 -- import-captures --run-dir <absolute-run> --capture-root <absolute-capture-root>\n  npm run playbook:p6 -- import-observations --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- prepare-comparisons --run-dir <absolute-run>\n  npm run playbook:p6 -- import-preferences --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- capture [--authorize-disposable-world --world <absolute-path> --expected-world-identity <sha256>]\n\nprepare creates offline reference-render outputs only. prepare-capture-session publishes commands and a checklist for one exact world identity without opening or changing it. import-captures validates one complete current-session-bound batch without changing its source. import-observations publishes complete or explicitly partial image-grounded records; partial records keep the gate blocked. prepare-comparisons publishes six anonymous public pair files while retaining the identity map privately. import-preferences validates and seals exactly six user-supplied choices. No action launches Minecraft or changes a world; capture remains deliberately unavailable.\n`;
 
 async function main(argv = process.argv.slice(2)) {
   try {
