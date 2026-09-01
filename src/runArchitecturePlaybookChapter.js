@@ -45,6 +45,9 @@ const COMMAND_BY_STAGE = Object.freeze({
   'visual-reviewed': (bvid) =>
     `npm run playbook:evidence -- pack --bvid ${bvid}`
 });
+const REVIEW_BOUNDARY_BY_STAGE = Object.freeze({
+  'asr-complete': 'reviewed teaching-event index'
+});
 
 export async function runChapterCli(argv, {
   projectRoot = SOURCE_ROOT,
@@ -268,6 +271,18 @@ function nextAction(chapter, ledger) {
   }
   const currentStage = ledger.episodes[next.bvid].stage;
   const commandBuilder = COMMAND_BY_STAGE[currentStage];
+  const requiredArtifact = REVIEW_BOUNDARY_BY_STAGE[currentStage];
+  if (requiredArtifact) {
+    return deepFreeze({
+      chapter_id: chapter.chapter_id,
+      bvid: next.bvid,
+      current_stage: currentStage,
+      next_stage: followingStage(currentStage),
+      command: null,
+      human_review_required: true,
+      required_artifact: requiredArtifact
+    });
+  }
   if (!commandBuilder) {
     failPlaybookContract(
       'PLAYBOOK_CHAPTER_ACTION_UNAVAILABLE',

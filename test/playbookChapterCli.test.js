@@ -244,6 +244,40 @@ test('next returns the exact existing evidence command without advancing state',
   assert.deepEqual(await fileIdentity(fixture.ledgerPath), before);
 });
 
+test('next exposes the transcript-to-events human review boundary', async (t) => {
+  const fixture = await chapterFixture(t);
+  let current = fixture.created;
+  for (const [expectedStage, nextStage] of [
+    ['pending', 'media-verified'],
+    ['media-verified', 'asr-complete']
+  ]) {
+    current = await advanceEpisodeStage({
+      projectRoot: fixture.projectRoot,
+      bvid: FIRST_BVID,
+      expectedLedgerSha256: current.ledger_sha256,
+      expectedStage,
+      nextStage,
+      evidence: EVIDENCE_BY_STAGE[nextStage]
+    });
+  }
+  const before = await fileIdentity(fixture.ledgerPath);
+
+  assert.deepEqual(await runChapterCli([
+    'next',
+    '--chapter',
+    FIRST_CHAPTER
+  ], fixture.deps), {
+    chapter_id: FIRST_CHAPTER,
+    bvid: FIRST_BVID,
+    current_stage: 'asr-complete',
+    next_stage: 'events-indexed',
+    command: null,
+    human_review_required: true,
+    required_artifact: 'reviewed teaching-event index'
+  });
+  assert.deepEqual(await fileIdentity(fixture.ledgerPath), before);
+});
+
 test('advance reopens the canonical artifact and returns only public transition data', async (t) => {
   const fixture = await chapterFixture(t);
   await writeMediaArtifact(fixture.projectRoot);
