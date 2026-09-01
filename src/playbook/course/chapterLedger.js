@@ -1,6 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { constants } from 'node:fs';
+import {
+  constants,
+  fstatSync,
+  lstatSync,
+  rmdirSync
+} from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -422,6 +427,7 @@ async function withLedgerLock(
   { createMissing = false } = {}
 ) {
   const authority = await acquireLedgerAuthority(ledgerPath, ops, { createMissing });
+  let completed = false;
   try {
     await flockExclusive(authority.root.handle);
     await assertLedgerAuthority(authority, ops);
@@ -430,8 +436,10 @@ async function withLedgerLock(
       () => assertLedgerAuthority(authority, ops)
     );
     await assertLedgerAuthority(authority, ops);
+    completed = true;
     return result;
   } finally {
+    if (!completed) cleanupCreatedDirectories(authority);
     await closeLedgerAuthority(authority);
   }
 }
@@ -448,13 +456,20 @@ async function acquireLedgerAuthority(
     'chapter-ledger.json'
   );
   if (expectedLedgerPath !== ledgerPath) privateAuthorityInvalid();
-  const authority = { projectRoot, root: null, chain: [], p7: null };
+  const authority = {
+    projectRoot,
+    root: null,
+    chain: [],
+    createdDirectories: [],
+    p7: null
+  };
   try {
     authority.root = await openAbsoluteDirectory(ops, projectRoot);
     let parent = authority.root;
     for (const basename of PRIVATE_COMPONENTS) {
       const node = await openRetainedDirectory(ops, parent.handle, basename, {
-        createMissing
+        createMissing,
+        createdDirectories: authority.createdDirectories
       });
       authority.chain.push({ ...node, parent, basename });
       parent = node;
@@ -464,6 +479,7 @@ async function acquireLedgerAuthority(
     await assertLedgerAuthority(authority, ops);
     return authority;
   } catch (error) {
+    cleanupCreatedDirectories(authority);
     await closeLedgerAuthority(authority);
     throw error;
   }
@@ -493,9 +509,12 @@ async function openRetainedDirectory(
   ops,
   parentHandle,
   basename,
-  { createMissing = false } = {}
+  { createMissing = false, createdDirectories } = {}
 ) {
   let handle;
+  let createdByInvocation = false;
+  let createdDirectory;
+  let postEffectMkdirError;
   const target = entry(parentHandle, basename);
   try {
     if (createMissing) {
@@ -508,8 +527,16 @@ async function openRetainedDirectory(
       if (!existing) {
         try {
           await ops.mkdir(target, { mode: 0o700 });
+          createdByInvocation = true;
         } catch (error) {
-          if (error?.code !== 'EEXIST') throw error;
+          if (error?.code !== 'EEXIST') {
+            // Supported injected post-effect failures leave the directory made
+            // by this mkdir at the previously absent descriptor-relative name.
+            // Retain and identity-check that exact entry before treating it as
+            // owned; injectors that replace the effect are outside this
+            // ownership signal and must use the normal identity-drift boundary.
+            postEffectMkdirError = error;
+          }
         }
       }
     }
@@ -517,14 +544,29 @@ async function openRetainedDirectory(
     if (before.isSymbolicLink() || !before.isDirectory()) privateAuthorityInvalid();
     handle = await ops.open(target, DIRECTORY_FLAGS);
     const opened = await handle.stat();
+    if (!opened.isDirectory() || !sameIdentity(before, opened)) {
+      privateAuthorityInvalid();
+    }
+    if (createdByInvocation || postEffectMkdirError) {
+      createdDirectory = {
+        parentHandle,
+        basename,
+        handle,
+        identity: opened
+      };
+      createdDirectories?.push(createdDirectory);
+    }
     const after = await ops.lstat(target);
     if (!opened.isDirectory() || after.isSymbolicLink() || !after.isDirectory()
       || !sameIdentity(before, opened) || !sameIdentity(opened, after)) {
       privateAuthorityInvalid();
     }
+    if (postEffectMkdirError) throw postEffectMkdirError;
     return { handle, identity: opened };
   } catch (error) {
-    try { await handle?.close(); } catch {}
+    if (!createdDirectory) {
+      try { await handle?.close(); } catch {}
+    }
     if (error?.code === 'ELOOP' || error?.code === 'ENOTDIR') privateAuthorityInvalid();
     throw error;
   }
@@ -560,11 +602,39 @@ async function flockExclusive(handle) {
 async function closeLedgerAuthority(authority) {
   const handles = [
     ...(authority?.chain || []).map((node) => node.handle).reverse(),
+    ...(authority?.createdDirectories || []).map((node) => node.handle).reverse(),
     authority?.root?.handle
   ];
-  await Promise.all(handles.map(async (handle) => {
+  await Promise.all([...new Set(handles)].map(async (handle) => {
     try { await handle?.close(); } catch {}
   }));
+}
+
+function cleanupCreatedDirectories(authority) {
+  for (const created of [...(authority?.createdDirectories || [])].reverse()) {
+    removeExactOwnedEmptyDirectory(created);
+  }
+}
+
+function removeExactOwnedEmptyDirectory({
+  parentHandle,
+  basename,
+  handle,
+  identity
+}) {
+  try {
+    const retained = fstatSync(handle.fd);
+    const target = entry(parentHandle, basename);
+    const named = lstatSync(target);
+    if (
+      !retained.isDirectory()
+      || !named.isDirectory()
+      || named.isSymbolicLink()
+      || !sameIdentity(retained, identity)
+      || !sameIdentity(named, identity)
+    ) return;
+    rmdirSync(target);
+  } catch {}
 }
 
 async function assertRegularLedger(ledgerPath, ops, { allowMissing = false } = {}) {
