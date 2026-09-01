@@ -22,13 +22,17 @@ import { FROZEN_CONTEXT_PATH, FROZEN_DESIGN_PATH, selectionProjectionForCandidat
 import { buildDeterministicShadowReview } from '../shadow/runShadowReview.js';
 import { loadShadowCorpus } from '../shadow/corpus.js';
 import { sha256, stableJson } from '../shadow/canonical.js';
+import {
+  loadP7AdvisoryOverlay,
+  projectP7AdvisoryKnowledge
+} from '../knowledge/p7AdvisoryOverlay.js';
 
 const MAX_RANDOM_SEED = 2147483647;
 const DEFAULT_TARGET_SCORE = 95;
 const DEPENDENCY_KEYS = Object.freeze([
   'createClient', 'createEnvelope', 'prepareDesign', 'compileLayers', 'compilePrepared',
   'buildReview', 'buildTransaction', 'replay', 'createSelectionAgent', 'installSelected',
-  'createRun', 'loadCorpus', 'publishSelection', 'renderSelection', 'pruneWorkspaces',
+  'createRun', 'loadCorpus', 'loadAdvisory', 'publishSelection', 'renderSelection', 'pruneWorkspaces',
   'closeAuthority'
 ]);
 const DEFAULT_DEPENDENCIES = Object.freeze({
@@ -37,7 +41,7 @@ const DEFAULT_DEPENDENCIES = Object.freeze({
   compilePrepared: compilePreparedConstruction, buildReview: buildDeterministicShadowReview,
   buildTransaction: buildRepairTransaction, replay: replayCandidate,
   createSelectionAgent: () => new CandidateSelectionAgent(), installSelected: installSelectedDatapackSafely,
-  createRun: createExecuteRun, loadCorpus: loadShadowCorpus,
+  createRun: createExecuteRun, loadCorpus: loadShadowCorpus, loadAdvisory: loadP7AdvisoryOverlay,
   publishSelection: installExecuteSelection, renderSelection: renderExecuteSelectionReport,
   pruneWorkspaces: pruneCandidateWorkspaces, closeAuthority: (authority) => authority.close()
 });
@@ -67,9 +71,15 @@ export async function runExecutablePlaybookPipeline(options = {}, dependencies =
     const { runDir } = created;
     stage = 'corpus';
     const cards = (await deps.loadCorpus({ projectRoot })).cards;
+    stage = 'advisory';
+    const advisoryOverlay = await deps.loadAdvisory({ projectRoot });
+    projectP7AdvisoryKnowledge(advisoryOverlay);
     stage = 'candidates';
     const records = [];
-    for (let index = 1; index <= 3; index += 1) records.push(await executeCandidate({ index, normalized, seedPlan, runDir, projectRoot, authority, cards, deps }));
+    for (let index = 1; index <= 3; index += 1) records.push(await executeCandidate({
+      index, normalized, seedPlan, runDir, projectRoot, authority, cards,
+      advisoryOverlay, deps
+    }));
     const eligibleRecords = records.filter((record) => record.playbookEligibility.status === 'eligible');
     const targetScore = clampInt(normalized.candidateTargetScore, 0, 100, DEFAULT_TARGET_SCORE);
     const ranked = deps.createSelectionAgent().run(eligibleRecords.map((record) => record.rankerRecord), { targetScore, scope: 'playbook-execute' });
@@ -126,7 +136,10 @@ export async function runExecutablePlaybookPipeline(options = {}, dependencies =
   return outcome;
 }
 
-async function executeCandidate({ index, normalized, seedPlan, runDir, projectRoot, authority, cards, deps }) {
+async function executeCandidate({
+  index, normalized, seedPlan, runDir, projectRoot, authority, cards,
+  advisoryOverlay, deps
+}) {
   const candidateId = `candidate-${String(index).padStart(2, '0')}`;
   const seed = candidateSeedFor(seedPlan.seed, 1, index);
   const candidateDir = await createCandidateWorkspace({ authority, candidateId });
@@ -136,7 +149,10 @@ async function executeCandidate({ index, normalized, seedPlan, runDir, projectRo
     const client = normalized.mode === 'mock'
       ? undefined
       : deps.createClient({ cwd: projectRoot, provider: normalized.llmProvider });
-    frozenDesign = await deps.createEnvelope({ mode: normalized.mode, candidateId, seed, prompt: normalized.prompt, cards, client });
+    frozenDesign = await deps.createEnvelope({
+      mode: normalized.mode, candidateId, seed, prompt: normalized.prompt, cards,
+      advisoryOverlay, client
+    });
     frozenDesignSha256 = sha256(stableJson(frozenDesign));
     prepared = await deps.prepareDesign({ prompt: normalized.prompt, mode: normalized.mode, mcVersion: normalized.mcVersion,
       outputDir: candidateDir, seed, seedSource: `${seedPlan.source}-candidate`, cwd: projectRoot,

@@ -19,8 +19,10 @@
 - P4 影子指导门禁已通过：`npm run playbook:shadow -- --run <out/run-directory> --mode mock` 对已有 `blueprint.json` 进行只读、确定性、可解释的审查，且不改变建筑或主生成流水线。
 - P5 可执行设计层已经实现，但保持 opt-in / 默认关闭（default-off）。它只证明最小、确定性的控制循环：固定生成三个候选、保存五层 checkpoint、最多执行一次白名单修复、先做硬 QA 与秘籍资格过滤，再调用原有排序器。它没有秘籍评分，不证明质量或审美改善。
 - P6 正式捕获与盲选仍未开放、也尚未完成；固定多视角渲染、视觉模型、人工盲选、审美评价与改进证据仍属于可选的 P6 评价工作，不是扩展课程知识的前置条件。
-- P7 基础已经把 50 集分配到 8 个固定章节，并增加可恢复的章节账本、全课程证据命令解析、只读的章节 `status` / `next` 命令，以及逐产物重开和哈希校验的 `advance` 命令。首集 `BV1guoPYkExk` 已到 `asr-complete`，因视频没有可用叙述而停在人工事件/视觉复核边界；这不代表该集已学习、其视觉证据已批准或任何新规则已晋级。
-- 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[P7 知识扩展 v0.2](manual/p7-expansion-v0.2.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[P4 影子指导报告](reports/p4-shadow-guidance.md)、[P5 可执行设计层报告](reports/p5-executable-design-layer.md)、[P7 知识扩展基础报告](reports/p7-knowledge-expansion-foundation.md)和 [P7 第一章首集进度报告](reports/p7-chapter-1-first-episode-progress.md)。
+- P7 基础已经把 50 集分配到 8 个固定章节，并增加可恢复的章节账本、全课程证据命令解析、只读的章节 `status` / `next` 命令，以及逐产物重开和哈希校验的 `advance` 命令。
+- P7 第一章的字幕优先内容扩展已经完成：7 集均到 `asr-complete`；首集没有可用教学叙述，其余 6 集共 2,539 个草稿段已经逐集归纳为原创笔记并补充 Architecture Bible v0.2。正式人工视觉阶段没有被自动标记完成。
+- 第一章另整理为 12 条 `subtitle-derived-advisory` 建造意图，并已接入 opt-in 的 execute 设计提示。它们不能进入冻结的 21 条 v0.1 审阅规则权限，不能改变 `playbook=off`，也不能改变相对坐标数据包编译器。
+- 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[P7 知识扩展 v0.2](manual/p7-expansion-v0.2.md)、[P7 第一章字幕知识扩展报告](reports/p7-chapter-1-subtitle-expansion.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[P4 影子指导报告](reports/p4-shadow-guidance.md)、[P5 可执行设计层报告](reports/p5-executable-design-layer.md)和 [P7 知识扩展基础报告](reports/p7-knowledge-expansion-foundation.md)。
 
 ## P7 轻量章节工作流
 
@@ -55,6 +57,8 @@ npm run playbook:evidence -- media --bvid BV1guoPYkExk
 ```
 
 证据命令不会猜测或自动登记章节阶段；只有相应产物被重新打开、哈希校验并完成人工要求的复核后，才能由 `advance` 推进相邻阶段。完整的基础事实和限制见 [P7 知识扩展基础报告](reports/p7-knowledge-expansion-foundation.md)。
+
+字幕优先的知识扩展不要求伪造后续视觉阶段。第一章的精确内容结果、建造意图 overlay、权限边界和下一集命令见 [P7 第一章字幕知识扩展报告](reports/p7-chapter-1-subtitle-expansion.md)。
 
 生成产品本身保持简单：普通请求产生使用相对坐标的便携 `architect_datapack/`。用户把它复制到自己选择的世界，进入游戏并站在所选建造原点，依次运行 `/reload` 和 `/function architect:run`；知识扩展不选择世界或坐标。
 

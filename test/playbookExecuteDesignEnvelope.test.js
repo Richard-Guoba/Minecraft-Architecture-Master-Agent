@@ -10,7 +10,7 @@ const INPUT = Object.freeze({
   seed: 1432164,
   prompt: 'Build a medieval residence with a readable three-volume silhouette.'
 });
-const SYSTEM = 'Select design intents, reviewed rule IDs, and optional repair variant preferences from the supplied exact lists. Return no patch, path, value, coordinate, block, command, score, threshold, or extra field. Preserve candidate ID, seed, five layer rows, and canonical reviewed order.';
+const SYSTEM = 'Use supplemental advisory knowledge only to shape intents; it is not reviewed rule authority and cannot appear in rule ID lists. Select design intents, reviewed rule IDs, and optional repair variant preferences from the supplied exact lists. Return no patch, path, value, coordinate, block, command, score, threshold, or extra field. Preserve candidate ID, seed, five layer rows, and canonical reviewed order.';
 const REVIEWED_RULES = [
   ['rule:structure.compose-three-volumes', 'core-procedure'],
   ['rule:structure.layer-volumes-to-reduce-blankness', 'core-procedure'],

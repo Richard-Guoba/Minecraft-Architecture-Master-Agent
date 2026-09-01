@@ -2,8 +2,9 @@ import { DESIGN_LAYER_ORDER, EXECUTABLE_REPAIR_ROWS, EXECUTE_SCHEMA_VERSION } fr
 import { executeError, validateFrozenDesignEnvelope } from './contracts.js';
 import { deepFreeze } from '../shadow/canonical.js';
 import { createCheckerDefinitions } from '../shadow/checkerRegistry.js';
+import { projectP7AdvisoryKnowledge } from '../knowledge/p7AdvisoryOverlay.js';
 
-const SYSTEM_INSTRUCTION = 'Select design intents, reviewed rule IDs, and optional repair variant preferences from the supplied exact lists. Return no patch, path, value, coordinate, block, command, score, threshold, or extra field. Preserve candidate ID, seed, five layer rows, and canonical reviewed order.';
+const SYSTEM_INSTRUCTION = 'Use supplemental advisory knowledge only to shape intents; it is not reviewed rule authority and cannot appear in rule ID lists. Select design intents, reviewed rule IDs, and optional repair variant preferences from the supplied exact lists. Return no patch, path, value, coordinate, block, command, score, threshold, or extra field. Preserve candidate ID, seed, five layer rows, and canonical reviewed order.';
 const ENVELOPE_FIELDS = Object.freeze([
   'schema_version', 'candidate_id', 'seed', 'brief_intent', 'layer_intents',
   'selected_rule_ids', 'rejected_rule_ids', 'repair_variant_preferences'
@@ -30,8 +31,11 @@ const REVIEWED_REPAIRS = Object.freeze([
 
 export function buildDesignEnvelopePrompt(input = {}) {
   try {
-    const { candidateId, seed, prompt, cards } = input;
+    const { candidateId, seed, prompt, cards, advisoryOverlay } = input;
     const reviewedRules = reviewedRulesFrom(cards);
+    const advisoryKnowledge = advisoryOverlay === undefined
+      ? undefined
+      : projectP7AdvisoryKnowledge(advisoryOverlay);
     assertCandidateSeed(candidateId, seed);
     if (typeof prompt !== 'string') invalid();
     return deepFreeze({
@@ -40,6 +44,7 @@ export function buildDesignEnvelopePrompt(input = {}) {
       seed,
       prompt_intent: capCodePoints(prompt, 800),
       reviewed_rules: reviewedRules,
+      ...(advisoryKnowledge ? { advisory_knowledge: advisoryKnowledge } : {}),
       executable_repair_variants: EXECUTABLE_REPAIR_ROWS.map((row) => ({
         repair_operation_id: row.repair_operation_id,
         allowed_variant_ids: [...row.allowed_variant_ids]
@@ -60,14 +65,16 @@ export function buildDesignEnvelopePrompt(input = {}) {
 
 export async function createFrozenDesignEnvelope(input = {}) {
   try {
-    const { mode, candidateId, seed, prompt, cards } = input;
+    const { mode, candidateId, seed, prompt, cards, advisoryOverlay } = input;
     if (mode === 'mock') {
       const reviewedRules = reviewedRulesFrom(cards);
       assertCandidateSeed(candidateId, seed);
       return validateCandidate(mockEnvelope(candidateId, seed), candidateId, seed, reviewedRules);
     }
     if (mode !== 'llm') invalid();
-    const packet = buildDesignEnvelopePrompt({ candidateId, seed, prompt, cards });
+    const packet = buildDesignEnvelopePrompt({
+      candidateId, seed, prompt, cards, advisoryOverlay
+    });
     const { client } = input;
     if (!client || typeof client.isConfigured !== 'function' || client.isConfigured() !== true) invalid();
     if (typeof client.chatJson !== 'function') invalid();

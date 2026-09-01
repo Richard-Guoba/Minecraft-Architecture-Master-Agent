@@ -1,0 +1,102 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
+import { deepFreeze, sha256, stableJson } from '../shadow/canonical.js';
+
+export const P7_ADVISORY_OVERLAY_PATH =
+  'docs/architecture-playbook/rules/schools/heihui-jileniao/p7-advisory-v0.2.json';
+
+const TOP_FIELDS = Object.freeze([
+  'schema_version', 'overlay_version', 'school_id', 'status', 'chapter_id',
+  'source_bvids', 'entries'
+]);
+const ENTRY_FIELDS = Object.freeze([
+  'knowledge_id', 'design_layers', 'intent', 'source_bvids'
+]);
+const EXPECTED_SOURCES = Object.freeze([
+  'BV1aBV1zwELe', 'BV1SwdfBHEx5', 'BV1SG6GY9ETe',
+  'BV1iVLbzcEfG', 'BV1cLJtz1ELx', 'BV14XMtzFEzb'
+]);
+const LAYERS = new Set(['brief', 'massing', 'structure', 'roof', 'facade']);
+const ID = /^knowledge:p7:[a-z0-9][a-z0-9-]*$/u;
+
+export async function loadP7AdvisoryOverlay({ projectRoot, readFile = fs.readFile } = {}) {
+  try {
+    const root = path.resolve(projectRoot || process.cwd());
+    const raw = await readFile(path.join(root, P7_ADVISORY_OVERLAY_PATH), 'utf8');
+    const value = JSON.parse(String(raw));
+    validateOverlay(value);
+    return deepFreeze({
+      ...value,
+      overlay_sha256: sha256(stableJson(value))
+    });
+  } catch (error) {
+    if (error?.code === 'P7_ADVISORY_INVALID') throw error;
+    throw invalid();
+  }
+}
+
+export function projectP7AdvisoryKnowledge(overlay) {
+  try {
+    exactObject(overlay, [...TOP_FIELDS, 'overlay_sha256']);
+    const { overlay_sha256: overlaySha256, ...value } = overlay;
+    validateOverlay(value);
+    if (typeof overlaySha256 !== 'string'
+      || overlaySha256 !== sha256(stableJson(value))) throw invalid();
+    return deepFreeze({
+      overlay_version: value.overlay_version,
+      overlay_sha256: overlaySha256,
+      status: value.status,
+      authority: 'intent-guidance-only-not-reviewed-rules',
+      entries: value.entries.map(({ knowledge_id, design_layers, intent }) => ({
+        knowledge_id, design_layers, intent
+      }))
+    });
+  } catch (error) {
+    if (error?.code === 'P7_ADVISORY_INVALID') throw error;
+    throw invalid();
+  }
+}
+
+function validateOverlay(value) {
+  exactObject(value, TOP_FIELDS);
+  if (value.schema_version !== 1 || value.overlay_version !== '0.2.0'
+    || value.school_id !== 'heihui-jileniao'
+    || value.status !== 'subtitle-derived-advisory'
+    || value.chapter_id !== 'foundations-tools-blocks-modularity-color'
+    || !sameStrings(value.source_bvids, EXPECTED_SOURCES)
+    || !Array.isArray(value.entries) || value.entries.length !== 12) throw invalid();
+  const ids = new Set();
+  for (const entry of value.entries) {
+    exactObject(entry, ENTRY_FIELDS);
+    if (!ID.test(entry.knowledge_id) || ids.has(entry.knowledge_id)
+      || !Array.isArray(entry.design_layers) || entry.design_layers.length === 0
+      || entry.design_layers.some((layer, index) => !LAYERS.has(layer)
+        || entry.design_layers.indexOf(layer) !== index)
+      || typeof entry.intent !== 'string' || entry.intent.length === 0
+      || Array.from(entry.intent).length > 240
+      || entry.intent.includes('.local/architecture-playbook')
+      || !Array.isArray(entry.source_bvids) || entry.source_bvids.length === 0
+      || entry.source_bvids.some((bvid, index) => !EXPECTED_SOURCES.includes(bvid)
+        || entry.source_bvids.indexOf(bvid) !== index)) throw invalid();
+    ids.add(entry.knowledge_id);
+  }
+}
+
+function exactObject(value, fields) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+    || Object.keys(value).length !== fields.length
+    || fields.some((field) => !Object.hasOwn(value, field))) throw invalid();
+}
+
+function sameStrings(actual, expected) {
+  return Array.isArray(actual) && actual.length === expected.length
+    && actual.every((value, index) => value === expected[index]);
+}
+
+function invalid() {
+  const error = new Error('P7_ADVISORY_INVALID');
+  error.code = 'P7_ADVISORY_INVALID';
+  return error;
+}
