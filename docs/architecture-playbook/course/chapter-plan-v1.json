@@ -1,0 +1,442 @@
+{
+  "schema_version": 1,
+  "chapter_plan_id": "heihui-jileniao-course-chapters-v1",
+  "created_at": "2026-09-01T00:00:00.000Z",
+  "source_manifest_id": "bilibili-ugc-season-4369851",
+  "source_snapshot_sha256": "18ac639c11ab68ba7cfaea59f3efefeb029f4968afa857a642531df95ebab98c",
+  "chapter_count": 8,
+  "episode_count": 50,
+  "total_duration_seconds": 51992,
+  "chapters": [
+    {
+      "chapter_order": 1,
+      "chapter_id": "foundations-tools-blocks-modularity-color",
+      "course_order_start": 1,
+      "course_order_end": 7,
+      "episode_count": 7,
+      "total_duration_seconds": 6225,
+      "episodes": [
+        {
+          "course_order": 1,
+          "bvid": "BV1guoPYkExk",
+          "cid": 29440478157,
+          "duration_seconds": 205,
+          "metadata_fingerprint_sha256": "f6e8fbeae57aacbf478dff3484ebdd163deec9bc5fcf0c7dddbec9ec45d2600b"
+        },
+        {
+          "course_order": 2,
+          "bvid": "BV1aBV1zwELe",
+          "cid": 29817176566,
+          "duration_seconds": 1635,
+          "metadata_fingerprint_sha256": "b2c5cb97220e41cba2f9fa88df88628508fff6a76b1e58916a67f18de8007a5b"
+        },
+        {
+          "course_order": 3,
+          "bvid": "BV1SwdfBHEx5",
+          "cid": 37634836596,
+          "duration_seconds": 372,
+          "metadata_fingerprint_sha256": "4cab658c975232f326be8ffa6a6847bd5c85ba12ec3ac044c9cde11124a19aaa"
+        },
+        {
+          "course_order": 4,
+          "bvid": "BV1SG6GY9ETe",
+          "cid": 27607697154,
+          "duration_seconds": 656,
+          "metadata_fingerprint_sha256": "cc942a30e6e0ab0646a32495fbf61acefe765cf43a5bf65598fba681eb3d31dc"
+        },
+        {
+          "course_order": 5,
+          "bvid": "BV1iVLbzcEfG",
+          "cid": 29565124686,
+          "duration_seconds": 642,
+          "metadata_fingerprint_sha256": "3fabe347aa237986d938e0b66790251c053b14eb05a5c40a373368fe66fd5323"
+        },
+        {
+          "course_order": 6,
+          "bvid": "BV1cLJtz1ELx",
+          "cid": 30054744577,
+          "duration_seconds": 1641,
+          "metadata_fingerprint_sha256": "a0fc0ec28819bbf14ebdb4be4822ae22ad2ab7208fde00d032eade63d6c582cc"
+        },
+        {
+          "course_order": 7,
+          "bvid": "BV14XMtzFEzb",
+          "cid": 30510550070,
+          "duration_seconds": 1074,
+          "metadata_fingerprint_sha256": "0ffbd24869f1099d79b54a339da99ae5c5bf78661880c15c237211e86411d2ad"
+        }
+      ]
+    },
+    {
+      "chapter_order": 2,
+      "chapter_id": "complete-structure",
+      "course_order_start": 8,
+      "course_order_end": 12,
+      "episode_count": 5,
+      "total_duration_seconds": 4315,
+      "episodes": [
+        {
+          "course_order": 8,
+          "bvid": "BV1fNkgYBEyy",
+          "cid": 27418560409,
+          "duration_seconds": 587,
+          "metadata_fingerprint_sha256": "ce0e4cc091e393333317e882c614569e5fdc0283f7e170a0d14b9055304e2c6a"
+        },
+        {
+          "course_order": 9,
+          "bvid": "BV1HhEuzZEyZ",
+          "cid": 29903029909,
+          "duration_seconds": 781,
+          "metadata_fingerprint_sha256": "7b5c63d1b2ab64f4a61782ed9c24565302ea6c26242ed9c34e381e121b85b42e"
+        },
+        {
+          "course_order": 10,
+          "bvid": "BV1ecj4zsE27",
+          "cid": 30123885142,
+          "duration_seconds": 1181,
+          "metadata_fingerprint_sha256": "5d875c20982df2985b618e79dbbd00c60a513fad63682aa50904c9c0ec812380"
+        },
+        {
+          "course_order": 11,
+          "bvid": "BV1Mp7UzyE3P",
+          "cid": 30282416561,
+          "duration_seconds": 799,
+          "metadata_fingerprint_sha256": "23043453a85346f47c73610f4ee56162838c9d9bdaadcba81215c2079c440b23"
+        },
+        {
+          "course_order": 12,
+          "bvid": "BV1MA7Bz2EE1",
+          "cid": 30314856697,
+          "duration_seconds": 967,
+          "metadata_fingerprint_sha256": "8d7a569529955a03316c9ceaaa9d0a0d7f53154bcaf92d4d88b02c10ee6bc620"
+        }
+      ]
+    },
+    {
+      "chapter_order": 3,
+      "chapter_id": "complete-roofs",
+      "course_order_start": 13,
+      "course_order_end": 15,
+      "episode_count": 3,
+      "total_duration_seconds": 3871,
+      "episodes": [
+        {
+          "course_order": 13,
+          "bvid": "BV1WhkbYeE5k",
+          "cid": 27454801403,
+          "duration_seconds": 1239,
+          "metadata_fingerprint_sha256": "1e8e082b7f627bc9d925d3b0f8b1d47192675ecc5767d5af637822fabfe5022f"
+        },
+        {
+          "course_order": 14,
+          "bvid": "BV1h1keYbEMd",
+          "cid": 27470270264,
+          "duration_seconds": 1282,
+          "metadata_fingerprint_sha256": "61df587498c2e07ed457533c24ae6a32d4895bc3a2c3a84d32fdf3f417a8aba1"
+        },
+        {
+          "course_order": 15,
+          "bvid": "BV1unj9z4EnW",
+          "cid": 30176968876,
+          "duration_seconds": 1350,
+          "metadata_fingerprint_sha256": "dfd2ce3f89b074c456f282c57dabdb14aacfa7d5a89d2df6aa0f35c13660c1ee"
+        }
+      ]
+    },
+    {
+      "chapter_order": 4,
+      "chapter_id": "complete-walls-facades",
+      "course_order_start": 16,
+      "course_order_end": 20,
+      "episode_count": 5,
+      "total_duration_seconds": 5494,
+      "episodes": [
+        {
+          "course_order": 16,
+          "bvid": "BV1HTCaY6EDt",
+          "cid": 27575124287,
+          "duration_seconds": 1067,
+          "metadata_fingerprint_sha256": "df381dd8db5478abe93fc52984dc80d8411e9f02a5765cdbd427292883e59c49"
+        },
+        {
+          "course_order": 17,
+          "bvid": "BV1ZJTLzgEdm",
+          "cid": 30367484239,
+          "duration_seconds": 1338,
+          "metadata_fingerprint_sha256": "a855694cb545a5658190bcfe5aa34d445e5a2301471d948339856d9602f8c225"
+        },
+        {
+          "course_order": 18,
+          "bvid": "BV1XtGvzPEFR",
+          "cid": 29732310486,
+          "duration_seconds": 1153,
+          "metadata_fingerprint_sha256": "dd8c8bbb9761989a912ed7d9dfc958d5139320fa3c109a8cdffc68a70c4a62da"
+        },
+        {
+          "course_order": 19,
+          "bvid": "BV1nCJJzWEHH",
+          "cid": 30088758450,
+          "duration_seconds": 858,
+          "metadata_fingerprint_sha256": "1ac0b1fa0a08c02669992b3881402bbde8c348ca07e7963443409773e5da2c4e"
+        },
+        {
+          "course_order": 20,
+          "bvid": "BV1FrPazJEFD",
+          "cid": 36523935658,
+          "duration_seconds": 1078,
+          "metadata_fingerprint_sha256": "e79e755f383563ae00498dde81967265a68385f47f8ae6a7a460bf14c84a0952"
+        }
+      ]
+    },
+    {
+      "chapter_order": 5,
+      "chapter_id": "landscaping-terrain",
+      "course_order_start": 21,
+      "course_order_end": 29,
+      "episode_count": 9,
+      "total_duration_seconds": 9062,
+      "episodes": [
+        {
+          "course_order": 21,
+          "bvid": "BV1HRVnzVEFa",
+          "cid": 29767766003,
+          "duration_seconds": 842,
+          "metadata_fingerprint_sha256": "d5e12bded183844d24877b102ec03e84ab472be083c77f8e3c13520d9eba8625"
+        },
+        {
+          "course_order": 22,
+          "bvid": "BV1rx6yYNEYr",
+          "cid": 27675199917,
+          "duration_seconds": 1987,
+          "metadata_fingerprint_sha256": "f6de9db3be39d93befe630189655ca6e25291df2e4f4662b212e9be7aa254ce6"
+        },
+        {
+          "course_order": 23,
+          "bvid": "BV1KN91Y1ELG",
+          "cid": 28736752294,
+          "duration_seconds": 1437,
+          "metadata_fingerprint_sha256": "33d3c8523e43d0963a8e2a13d9e5b8504b7a24c43a9550edc5c29ae844a38f82"
+        },
+        {
+          "course_order": 24,
+          "bvid": "BV1xtXKYYEF2",
+          "cid": 28966519230,
+          "duration_seconds": 798,
+          "metadata_fingerprint_sha256": "0d146d3dcef725367625b377c72216de6431734598872ee6b478faf4497bca96"
+        },
+        {
+          "course_order": 25,
+          "bvid": "BV1Hy5pzQE5n",
+          "cid": 29495397263,
+          "duration_seconds": 882,
+          "metadata_fingerprint_sha256": "d9b9d24a0a07530119f30d01939126a693402cdd22d294fc0d230cace09bb384"
+        },
+        {
+          "course_order": 26,
+          "bvid": "BV1oFJPzqE9k",
+          "cid": 30005330481,
+          "duration_seconds": 885,
+          "metadata_fingerprint_sha256": "468597fdacb3e2fc338b74f0895739fb02a4d51255f0ad4c798799d4e080a28d"
+        },
+        {
+          "course_order": 27,
+          "bvid": "BV1i2JBzPE8m",
+          "cid": 30072899814,
+          "duration_seconds": 739,
+          "metadata_fingerprint_sha256": "c99ab057dbd380796eb17cc260918385d8df912e47ab9940b36ab743eedbb923"
+        },
+        {
+          "course_order": 28,
+          "bvid": "BV1Cm7VzzEXd",
+          "cid": 30209476476,
+          "duration_seconds": 667,
+          "metadata_fingerprint_sha256": "82a56f08c499c9d98fbbc6dad8b1a969f19d02bf8b93505f7c09fad5ee3ec4ec"
+        },
+        {
+          "course_order": 29,
+          "bvid": "BV1a5TDzhE9M",
+          "cid": 30384456974,
+          "duration_seconds": 825,
+          "metadata_fingerprint_sha256": "270d3efd45336938e229bea5cbe3df4aea5ee9531a1c7653520a6529868653b4"
+        }
+      ]
+    },
+    {
+      "chapter_order": 6,
+      "chapter_id": "interiors",
+      "course_order_start": 30,
+      "course_order_end": 36,
+      "episode_count": 7,
+      "total_duration_seconds": 9089,
+      "episodes": [
+        {
+          "course_order": 30,
+          "bvid": "BV1DkPVexESz",
+          "cid": 28598535553,
+          "duration_seconds": 1852,
+          "metadata_fingerprint_sha256": "3986d637e506bd21277fc5e18c06f7f58088baf38a2d67b3002300acee90e297"
+        },
+        {
+          "course_order": 31,
+          "bvid": "BV1ux2sBvECk",
+          "cid": 34540945862,
+          "duration_seconds": 1080,
+          "metadata_fingerprint_sha256": "55c730770d62b0bccb3d09db14f98ded92440f409fe738f79cf087c57e05d7c0"
+        },
+        {
+          "course_order": 32,
+          "bvid": "BV1VULRzAE3x",
+          "cid": 29622207035,
+          "duration_seconds": 555,
+          "metadata_fingerprint_sha256": "f2e29a6952eb8b58a1f0864e1baed01a23741215c67d85a1dcc4d09f7110c383"
+        },
+        {
+          "course_order": 33,
+          "bvid": "BV1Rf7nz5Eic",
+          "cid": 30227826860,
+          "duration_seconds": 1622,
+          "metadata_fingerprint_sha256": "656453495474e643347a76eaf8470dafced5897bb308ba4d49d135537196f596"
+        },
+        {
+          "course_order": 34,
+          "bvid": "BV1tepJz3EuZ",
+          "cid": 32356959768,
+          "duration_seconds": 1038,
+          "metadata_fingerprint_sha256": "bdd1657e5cadaf4539809af275014ead0e5b47a75e42c4bfbad9c8cd01e09351"
+        },
+        {
+          "course_order": 35,
+          "bvid": "BV1TUHHz1ECZ",
+          "cid": 32785958414,
+          "duration_seconds": 797,
+          "metadata_fingerprint_sha256": "ca8b0ca3c520c4fbb4f7bc7d44426347daf6fe5cd8578858686f2f2fa56a2a4d"
+        },
+        {
+          "course_order": 36,
+          "bvid": "BV1YNLnzeEx3",
+          "cid": 29603399849,
+          "duration_seconds": 2145,
+          "metadata_fingerprint_sha256": "aa728e92dc2c079e9d9716dd96f6a18304b183be0c49187a10b48bbcbb953dbc"
+        }
+      ]
+    },
+    {
+      "chapter_order": 7,
+      "chapter_id": "advanced-architecture",
+      "course_order_start": 37,
+      "course_order_end": 42,
+      "episode_count": 6,
+      "total_duration_seconds": 5830,
+      "episodes": [
+        {
+          "course_order": 37,
+          "bvid": "BV1JcQ3YYEg5",
+          "cid": 28859957937,
+          "duration_seconds": 780,
+          "metadata_fingerprint_sha256": "86c1533f5e69188782ad46cf466a11382fd02a0cf42f347fbed34e86c510e259"
+        },
+        {
+          "course_order": 38,
+          "bvid": "BV1j7QSYKEHA",
+          "cid": 28877065249,
+          "duration_seconds": 1178,
+          "metadata_fingerprint_sha256": "cd57af57f81839456b0b6d733e593a9cea9e96660edf6edebbadfdebcef64db6"
+        },
+        {
+          "course_order": 39,
+          "bvid": "BV1yHEtz2EJh",
+          "cid": 29990258103,
+          "duration_seconds": 875,
+          "metadata_fingerprint_sha256": "47b97d4244b551f17a169fcf05d19b165f8a55ab7b1647fdde1ffee6637846cb"
+        },
+        {
+          "course_order": 40,
+          "bvid": "BV1SNdSBtErf",
+          "cid": 37695455387,
+          "duration_seconds": 1114,
+          "metadata_fingerprint_sha256": "c05b3cc099fc1ccd6019b9f50d1968a9162ae160fda49a19a0fd725f09559e39"
+        },
+        {
+          "course_order": 41,
+          "bvid": "BV1LxjEzKEH7",
+          "cid": 30105338983,
+          "duration_seconds": 858,
+          "metadata_fingerprint_sha256": "c16447dbc7e7e2e30a04ccecf325cf5b8a3805e84513d6c39671cc15a53768c0"
+        },
+        {
+          "course_order": 42,
+          "bvid": "BV17QjvzpEuA",
+          "cid": 30192242202,
+          "duration_seconds": 1025,
+          "metadata_fingerprint_sha256": "4a3c355943020c1339f165685672de7236b7e73ce38f3d1ea0b2562d407daf49"
+        }
+      ]
+    },
+    {
+      "chapter_order": 8,
+      "chapter_id": "style-specialist-cases",
+      "course_order_start": 43,
+      "course_order_end": 50,
+      "episode_count": 8,
+      "total_duration_seconds": 8106,
+      "episodes": [
+        {
+          "course_order": 43,
+          "bvid": "BV1K1oXYGEm2",
+          "cid": 29112140692,
+          "duration_seconds": 332,
+          "metadata_fingerprint_sha256": "65590dbbc3b5b61fbf3324d5e825bd287f2574b6a361962778b824a409279a72"
+        },
+        {
+          "course_order": 44,
+          "bvid": "BV1WsZcYZEMQ",
+          "cid": 29129180211,
+          "duration_seconds": 1073,
+          "metadata_fingerprint_sha256": "0bb5faf8eb4974e1afebd1eae27b2b69be24af8a3e005f406ee60dd48cbb8a0e"
+        },
+        {
+          "course_order": 45,
+          "bvid": "BV1jbdUYCEjG",
+          "cid": 29354033993,
+          "duration_seconds": 2634,
+          "metadata_fingerprint_sha256": "76af2f78176f1fae1c79bc73039ba02b4671cf92f38b3bc2121a4e32254ab95e"
+        },
+        {
+          "course_order": 46,
+          "bvid": "BV1bWX6YPEsG",
+          "cid": 28987559214,
+          "duration_seconds": 802,
+          "metadata_fingerprint_sha256": "e65ea267311bf7c821a15b8e64e561f3afda9334489aec001a0f3a8a488b179c"
+        },
+        {
+          "course_order": 47,
+          "bvid": "BV1JT5ez2EjF",
+          "cid": 29461645202,
+          "duration_seconds": 934,
+          "metadata_fingerprint_sha256": "0bbfee29742b6789605f2586508578c52d3ab1f43fb479358e863cc83b1a63b7"
+        },
+        {
+          "course_order": 48,
+          "bvid": "BV1267wzyErC",
+          "cid": 30245585165,
+          "duration_seconds": 998,
+          "metadata_fingerprint_sha256": "6ecc84c01965d11274f52b46d51085b86a6202e1d6f5e89de7e078572763ec21"
+        },
+        {
+          "course_order": 49,
+          "bvid": "BV1ifomBqEJJ",
+          "cid": 37805424780,
+          "duration_seconds": 505,
+          "metadata_fingerprint_sha256": "39106599f9a5be23e7b77e1ff60541a71e43314a7b7c86d26c41dd7743566ced"
+        },
+        {
+          "course_order": 50,
+          "bvid": "BV1SN9xBWEmF",
+          "cid": 37952815530,
+          "duration_seconds": 828,
+          "metadata_fingerprint_sha256": "e5ade694be2224fa8b94234fa7527ec01779c03b0f3e4bbe8f72cdafbb88face"
+        }
+      ]
+    }
+  ]
+}
