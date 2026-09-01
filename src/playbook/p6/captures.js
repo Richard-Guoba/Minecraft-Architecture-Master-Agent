@@ -186,6 +186,24 @@ export function renderCaptureChecklist(session) {
   return `${lines.join('\n')}\n`;
 }
 
+export function validateCaptureSession(session, { cohort, cameraManifests, settings } = {}) {
+  try {
+    assertSession(session);
+    const origin = session.plots?.[0]?.origin;
+    const replay = createCaptureSession({
+      cohort,
+      cameraManifests,
+      settings,
+      worldIdentityHash: session.environment.world_identifier_sha256,
+      plotOrigin: origin
+    });
+    if (stableJson(replay) !== stableJson(session)) invalid();
+    return session;
+  } catch (error) {
+    throw sanitizeP6Error(error, 'P6_CAPTURE_INVALID');
+  }
+}
+
 export async function validateImportedCaptures({ authority, session, captureRoot, fsImpl } = {}) {
   let captureAuthority;
   try {

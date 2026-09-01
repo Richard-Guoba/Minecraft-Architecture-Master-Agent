@@ -176,8 +176,10 @@ export async function publishP6Generation({ authority, kind, files, expectedCurr
     let generationName;
     let pointerStage;
     let publicationLock;
+    let implicitCurrent;
     try {
       await assertP6Internal(internal, ops);
+      if (!currentPrecondition) implicitCurrent = await snapshotExpectedCurrent(internal, ops, kind);
       if (currentPrecondition) {
         await assertExpectedCurrents(internal, ops, currentPrecondition);
         await ops.afterExpectedCurrentValidation?.();
@@ -186,6 +188,7 @@ export async function publishP6Generation({ authority, kind, files, expectedCurr
         publicationLock = await acquireSharedPublicationLock(internal, ops);
         await assertP6Internal(internal, ops);
         if (currentPrecondition) await assertExpectedCurrents(internal, ops, currentPrecondition);
+        else await assertExpectedCurrent(internal, ops, implicitCurrent);
       }
       await validateExistingP6Tree(internal, ops);
       tree = await openOrCreateKindTree(internal, ops, kind);
@@ -269,10 +272,10 @@ export async function publishP6Generation({ authority, kind, files, expectedCurr
   })();
 }
 
-function requiresSharedPublicationLock(kind, currentPrecondition) {
-  return kind === 'cohort' || kind === 'capture-session' || kind === 'minecraft-captures'
-    || kind === 'blind-comparison' || kind === 'gate'
-    || (kind === 'observations' && currentPrecondition !== null);
+function requiresSharedPublicationLock() {
+  // Every kind can be a gate dependency. One root-identity-bound lock gives
+  // gate validation and every dependency pointer commit a single ordering.
+  return true;
 }
 
 async function acquireSharedPublicationLock(internal, ops) {
@@ -337,6 +340,23 @@ async function assertExpectedCurrent(internal, ops, expected) {
       expectedManifestSha256: current.manifest_sha256
     });
     await assertP6Internal(internal, ops);
+  } finally {
+    await closeKindTree(tree);
+  }
+}
+
+async function snapshotExpectedCurrent(internal, ops, kind) {
+  await assertP6Internal(internal, ops);
+  const names = await ops.readdir(descriptor(internal.p6Handle));
+  if (!names.includes(kind)) return Object.freeze({ kind, generation: null, manifest_sha256: null });
+  let tree;
+  try {
+    tree = await openKindTree(internal, ops, kind);
+    const current = await validateKindHistory(internal, ops, tree, { allowPointerJournals: true });
+    await assertP6Internal(internal, ops);
+    return current
+      ? Object.freeze({ kind, generation: current.generation, manifest_sha256: current.manifest_sha256 })
+      : Object.freeze({ kind, generation: null, manifest_sha256: null });
   } finally {
     await closeKindTree(tree);
   }

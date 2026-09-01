@@ -1,5 +1,6 @@
 import { constants } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +27,10 @@ import {
 } from './playbook/p6/observations.js';
 import { evaluateP6Gate, renderP6Report } from './playbook/p6/report.js';
 import {
+  runRegressionCommand,
+  verifyP6Regressions
+} from './playbook/p6/regressions.js';
+import {
   admitP6Run,
   createP6Run,
   publishP6Generation,
@@ -36,7 +41,7 @@ import { sha256, stableJson } from './playbook/shadow/canonical.js';
 
 const ACTIONS = new Set([
   'prepare', 'prepare-capture-session', 'capture', 'import-captures', 'import-observations',
-  'prepare-comparisons', 'import-preferences', 'report'
+  'prepare-comparisons', 'import-preferences', 'verify-regressions', 'report'
 ]);
 const PREPARE_FLAGS = new Set(['--playbook-run', '--baseline-run', '--run-dir']);
 const CAPTURE_VALUE_FLAGS = new Set(['--world', '--expected-world-identity']);
@@ -65,7 +70,7 @@ export function parseP6Args(argv) {
           : action === 'import-observations' ? OBSERVATION_FLAGS
             : action === 'prepare-comparisons' ? COMPARISON_FLAGS
               : action === 'import-preferences' ? PREFERENCE_FLAGS
-                : action === 'report' ? REPORT_FLAGS
+                : ['report', 'verify-regressions'].includes(action) ? REPORT_FLAGS
         : new Set([...CAPTURE_VALUE_FLAGS, ...CAPTURE_BOOLEAN_FLAGS]);
     if (!allowed.has(flag) || values.has(flag)) invalid();
     if (CAPTURE_BOOLEAN_FLAGS.has(flag)) {
@@ -119,7 +124,7 @@ export function parseP6Args(argv) {
     if (!safeAbsolutePath(runDir) || !safeAbsolutePath(file)) invalid();
     return Object.freeze({ action, runDir, file });
   }
-  if (action === 'report') {
+  if (action === 'report' || action === 'verify-regressions') {
     const runDir = values.get('--run-dir');
     if (!safeAbsolutePath(runDir)) invalid();
     return Object.freeze({ action, runDir });
@@ -142,10 +147,43 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
     // Capture is intentionally unimplemented: the flags are parsed only so a
     // future reviewed action has an explicit authorization shape.
     if (options.action === 'capture') throw p6Error('P6_CAPTURE_AUTHORIZATION_REQUIRED');
+    if (options.action === 'verify-regressions') {
+      const authority = await deps.admitP6Run({ p6Dir: path.join(options.runDir, 'playbook-p6') });
+      created = { authority };
+      const kinds = [
+        'cohort', 'reference-renders', 'capture-session', 'minecraft-captures',
+        'observations', 'blind-comparison', 'gate'
+      ];
+      const currents = [];
+      for (const kind of kinds) currents.push(await readOptionalCurrent(deps, authority, kind));
+      const gitCommit = await deps.resolveGitCommit();
+      const receipt = await deps.verifyP6Regressions({
+        runner: deps.runRegressionCommand,
+        gitCommit,
+        now: deps.now
+      });
+      const publication = await deps.publishP6Generation({
+        authority,
+        kind: 'gate',
+        expectedCurrent: kinds.map((kind, index) => currentReferenceOrAbsent(kind, currents[index])),
+        files: { 'regression-receipt.json': bytes(deps.stableJson(receipt)) }
+      });
+      return Object.freeze({
+        status: 'regressions-verified',
+        regression_status: receipt.status,
+        receipt_sha256: receipt.receipt_sha256,
+        output: `gate/${publication.generation}`
+      });
+    }
     if (options.action === 'report') {
       const authority = await deps.admitP6Run({ p6Dir: path.join(options.runDir, 'playbook-p6') });
       created = { authority };
-      const cohortCurrent = await readOptionalCurrent(deps, authority, 'cohort', { fileNames: ['cohort.json'] });
+      const cohortFileNames = [
+        'cohort.json',
+        'camera-playbook-candidate-01.json', 'camera-playbook-candidate-02.json',
+        'camera-playbook-candidate-03.json', 'camera-baseline-current.json'
+      ];
+      const cohortCurrent = await readOptionalCurrent(deps, authority, 'cohort', { fileNames: cohortFileNames });
       const referenceCurrent = await readOptionalCurrent(deps, authority, 'reference-renders', { fileNames: ['reference-renders.json'] });
       const sessionCurrent = await readOptionalCurrent(deps, authority, 'capture-session', { fileNames: ['capture-session.json'] });
       const capturesCurrent = await readOptionalCurrent(deps, authority, 'minecraft-captures', { fileNames: ['capture-manifest.json'] });
@@ -162,11 +200,12 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
       const comparisonManifest = parseJsonBytesOptional(comparisonCurrent?.files?.['comparison-manifest.json']);
       const sealedPreferences = parseJsonBytesOptional(comparisonCurrent?.privateFiles?.['sealed-preferences.json']);
       const identityMap = parseJsonBytesOptional(comparisonCurrent?.privateFiles?.['identity-map.json']);
-      const regressions = gateCurrent?.files?.['regressions.json']
-        ? (parseJsonBytesOptional(gateCurrent.files['regressions.json'])
-          ?? { p4: 'invalid', p5: 'invalid', playbook_off: 'invalid', six_episode_golden: 'invalid' })
-        : { p4: 'missing', p5: 'missing', playbook_off: 'missing', six_episode_golden: 'missing' };
+      const regressions = parseJsonBytesOptional(gateCurrent?.files?.['regression-receipt.json']);
       const cohort = cohortDocument?.cohort;
+      const cameraManifests = cohort?.solutions?.map(solution => (
+        parseJsonBytesOptional(cohortCurrent?.files?.[`camera-${solution.solution_id}.json`])
+      ));
+      const gitCommit = await deps.resolveGitCommit();
       if (captureSession?.cohort_sha256 !== deps.sha256(deps.stableJson(cohort))
         || captureSession?.camera_manifest_sha256 !== captureManifest?.camera_manifest_sha256
         || referenceManifest?.camera_manifest_sha256 !== captureManifest?.camera_manifest_sha256
@@ -179,8 +218,19 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
       try { revealedResults = deps.revealPreferenceResults({ sealedPreferences, privateIdentityMap: identityMap }); }
       catch {}
       const gate = deps.evaluateP6Gate({
-        cohort, referenceManifest, captureManifest, observationSet,
-        comparisonManifest, sealedPreferences, revealedResults, regressions
+        cohort,
+        cohortInputSha256: cohortDocument?.cohort_input_sha256,
+        cameraManifests,
+        referenceManifest,
+        captureSession,
+        captureManifest,
+        observationSet,
+        comparisonManifest,
+        sealedPreferences,
+        privateIdentityMap: identityMap,
+        revealedResults,
+        gitCommit,
+        regressions
       });
       const evidenceHashes = {
         cohort: evidenceHash(deps, 'cohort', cohortCurrent?.files?.['cohort.json']),
@@ -190,7 +240,7 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         comparisons: evidenceHash(deps, 'comparisons', comparisonCurrent?.files?.['comparison-manifest.json']),
         sealed_preferences: evidenceHash(deps, 'sealed-preferences', comparisonCurrent?.privateFiles?.['sealed-preferences.json']),
         private_reveal: deps.sha256(deps.stableJson(revealedResults ?? {})),
-        regressions: deps.sha256(deps.stableJson(regressions))
+        regressions: evidenceHash(deps, 'regression-receipt', gateCurrent?.files?.['regression-receipt.json'])
       };
       const reportJson = bytes(deps.stableJson({ gate, evidence_hashes: evidenceHashes }));
       const publication = await deps.publishP6Generation({
@@ -208,7 +258,9 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         files: {
           'report.json': reportJson,
           'report.md': bytes(deps.renderP6Report({ gate, evidenceHashes })),
-          'regressions.json': bytes(deps.stableJson(regressions))
+          'regression-receipt.json': Buffer.isBuffer(gateCurrent?.files?.['regression-receipt.json'])
+            ? gateCurrent.files['regression-receipt.json']
+            : bytes(deps.stableJson({ status: 'missing' }))
         }
       });
       return Object.freeze({
@@ -606,6 +658,9 @@ const defaultDependencies = Object.freeze({
   validatePrivateComparisonAuthority,
   evaluateP6Gate,
   renderP6Report,
+  verifyP6Regressions,
+  runRegressionCommand,
+  resolveGitCommit,
   randomBytes,
   now: () => new Date(),
   sha256,
@@ -746,6 +801,25 @@ function evidenceHash(deps, kind, value) {
     : deps.sha256(deps.stableJson({ kind, status: 'missing' }));
 }
 
+async function resolveGitCommit() {
+  return await new Promise((resolve, reject) => {
+    const child = spawn('git', ['rev-parse', 'HEAD'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const chunks = [];
+    let size = 0;
+    child.stdout.on('data', chunk => {
+      size += chunk.length;
+      if (size > 128) child.kill('SIGKILL');
+      else chunks.push(Buffer.from(chunk));
+    });
+    child.once('error', () => reject(p6Error('P6_GATE_FAILED')));
+    child.once('close', code => {
+      const value = Buffer.concat(chunks).toString('utf8').trim();
+      if (code !== 0 || !/^[a-f0-9]{40}$/u.test(value)) reject(p6Error('P6_GATE_FAILED'));
+      else resolve(value);
+    });
+  });
+}
+
 function sameFileIdentity(left, right) {
   return left.dev === right.dev && left.ino === right.ino
     && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
@@ -757,7 +831,7 @@ function sameExactKeys(value, fields) {
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
-const HELP = `Usage:\n  npm run playbook:p6 -- prepare --playbook-run <absolute-p5-run> --baseline-run <absolute-baseline-run> --run-dir <absolute-run>\n  npm run playbook:p6 -- prepare-capture-session --run-dir <absolute-run> --expected-world-identity <sha256> --plot-origin <x,y,z>\n  npm run playbook:p6 -- import-captures --run-dir <absolute-run> --capture-root <absolute-capture-root>\n  npm run playbook:p6 -- import-observations --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- prepare-comparisons --run-dir <absolute-run>\n  npm run playbook:p6 -- import-preferences --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- report --run-dir <absolute-run>\n  npm run playbook:p6 -- capture [--authorize-disposable-world --world <absolute-path> --expected-world-identity <sha256>]\n\nprepare creates offline reference-render outputs only. prepare-capture-session publishes commands and a checklist for one exact world identity without opening or changing it. import-captures validates one complete current-session-bound batch without changing its source. import-observations publishes complete or explicitly partial image-grounded records; partial records keep the gate blocked. prepare-comparisons publishes six anonymous public pair files while retaining the identity map privately. import-preferences validates and seals exactly six user-supplied choices. report reads the current immutable evidence generations and publishes a hash inventory; missing formal or regression evidence stays blocked. No action launches Minecraft or changes a world; capture remains deliberately unavailable.\n`;
+const HELP = `Usage:\n  npm run playbook:p6 -- prepare --playbook-run <absolute-p5-run> --baseline-run <absolute-baseline-run> --run-dir <absolute-run>\n  npm run playbook:p6 -- prepare-capture-session --run-dir <absolute-run> --expected-world-identity <sha256> --plot-origin <x,y,z>\n  npm run playbook:p6 -- import-captures --run-dir <absolute-run> --capture-root <absolute-capture-root>\n  npm run playbook:p6 -- import-observations --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- prepare-comparisons --run-dir <absolute-run>\n  npm run playbook:p6 -- import-preferences --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- verify-regressions --run-dir <absolute-run>\n  npm run playbook:p6 -- report --run-dir <absolute-run>\n  npm run playbook:p6 -- capture [--authorize-disposable-world --world <absolute-path> --expected-world-identity <sha256>]\n\nprepare creates offline reference-render outputs only. prepare-capture-session publishes commands and a checklist for one exact world identity without opening or changing it. import-captures validates one complete current-session-bound batch without changing its source. import-observations publishes complete or explicitly partial image-grounded records; partial records keep the gate blocked. prepare-comparisons publishes six anonymous public pair files while retaining the identity map privately. import-preferences validates and seals exactly six user-supplied choices. verify-regressions runs the frozen required suites sequentially through the bounded npm test entry point and publishes their commit-bound receipt; it never opens Minecraft. report reads the current immutable evidence generations and publishes a hash inventory; missing formal or regression evidence stays blocked. No action launches Minecraft or changes a world; capture remains deliberately unavailable.\n`;
 
 async function main(argv = process.argv.slice(2)) {
   try {

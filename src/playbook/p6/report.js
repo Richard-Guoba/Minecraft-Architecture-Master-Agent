@@ -5,7 +5,8 @@ import {
   P6_ERROR_CODES,
   P6_PROTOCOL_VERSION,
   P6_SCHEMA_VERSION,
-  P6_VIEW_IDS
+  P6_VIEW_IDS,
+  P6_VISUAL_SETTINGS
 } from './constants.js';
 import {
   validateCaptureManifest,
@@ -14,12 +15,14 @@ import {
   validatePreferenceRecord
 } from './contracts.js';
 import { compileObservationSet } from './observations.js';
+import { revealPreferenceResults } from './comparisons.js';
+import { validateCaptureSession } from './captures.js';
+import { validateP6RegressionReceipt } from './regressions.js';
 
 const HASH = /^[a-f0-9]{64}$/u;
 const SOLUTION_IDS = Object.freeze([
   'playbook-candidate-01', 'playbook-candidate-02', 'playbook-candidate-03', 'baseline-current'
 ]);
-const REGRESSION_FIELDS = Object.freeze(['p4', 'p5', 'playbook_off', 'six_episode_golden']);
 const EVIDENCE_HASH_FIELDS = Object.freeze([
   'cohort', 'reference_renders', 'formal_captures', 'observations',
   'comparisons', 'sealed_preferences', 'private_reveal', 'regressions'
@@ -35,6 +38,10 @@ const SUMMARY_FIELDS = Object.freeze([
 const COLLECT_ADVICE = Object.freeze({
   kind: 'collect-p6-evidence',
   message: 'Collect and validate every listed prerequisite before interpreting a preference outcome.'
+});
+const CAPTURE_ADVICE = Object.freeze({
+  kind: 'review-camera-capture-validity',
+  message: 'Correct the fixed camera, capture-session, or environment comparability defect before interpreting preferences.'
 });
 const START_ADVICE = Object.freeze({
   kind: 'start-p7',
@@ -54,6 +61,7 @@ export function evaluateP6Gate(evidence) {
   let cohort;
   let captureManifest;
   let comparisonManifest;
+  let captureSessionValid = false;
 
   try {
     cohort = validateCohortManifest(value.cohort);
@@ -73,6 +81,19 @@ export function evaluateP6Gate(evidence) {
   if (captureManifest && value.referenceManifest?.camera_manifest_sha256
     !== captureManifest.camera_manifest_sha256) fail('reference-renders', 'P6_RENDER_FAILED');
   if (!validEnvironment(captureManifest?.environment)) fail('environment', 'P6_CAPTURE_INVALID');
+  try {
+    validateCaptureSession(value.captureSession, {
+      cohort: { manifest: cohort, input_sha256: value.cohortInputSha256 },
+      cameraManifests: value.cameraManifests,
+      settings: P6_VISUAL_SETTINGS
+    });
+    if (!captureManifest
+      || value.captureSession.cohort_sha256 !== captureManifest.cohort_sha256
+      || value.captureSession.camera_manifest_sha256 !== captureManifest.camera_manifest_sha256
+      || value.captureSession.environment.world_identifier_sha256
+        !== captureManifest.environment.world_identifier_sha256) throw new Error('capture authority drift');
+    captureSessionValid = true;
+  } catch { fail('formal-captures', 'P6_CAPTURE_INVALID'); }
 
   if (!validObservationSet(value.observationSet, cohort, captureManifest)) {
     fail('observations', 'P6_OBSERVATION_INVALID');
@@ -90,15 +111,21 @@ export function evaluateP6Gate(evidence) {
   if (!validSealedPreferences(value.sealedPreferences, comparisonManifest)) {
     fail('sealed-preferences', 'P6_HUMAN_PREFERENCE_REQUIRED');
   }
-  if (!validReveal(value.revealedResults, value.sealedPreferences)) {
+  if (!validReveal(
+    value.revealedResults, value.sealedPreferences, value.privateIdentityMap,
+    comparisonManifest, cohort, captureManifest
+  )) {
     fail('private-reveal', 'P6_COMPARISON_INVALID');
   }
-  if (!validRegressions(value.regressions)) fail('regressions', 'P6_GATE_FAILED');
+  if (!validRegressions(value.regressions, value.gitCommit)) fail('regressions', 'P6_GATE_FAILED');
 
   const complete = failures.length === 0;
-  const outcome = complete ? categoricalOutcome(value.revealedResults) : 'not-evaluated';
+  const captureInvalid = Boolean(cohort) && value.captureManifest != null && (!captureManifest
+    || !captureSessionValid || !validEnvironment(captureManifest?.environment));
+  const outcome = complete ? categoricalOutcome(value.revealedResults)
+    : captureInvalid ? 'capture-invalid' : 'not-evaluated';
   const advice = !complete
-    ? COLLECT_ADVICE
+    ? captureInvalid ? CAPTURE_ADVICE : COLLECT_ADVICE
     : outcome === 'playbook-supported'
     ? START_ADVICE
     : REVIEW_ADVICE;
@@ -110,8 +137,11 @@ export function evaluateP6Gate(evidence) {
     outcome,
     failures,
     next_action: complete
-      ? { kind: 'start-p7' }
-      : { kind: 'collect-p6-evidence', stages: failures.map(row => row.stage) },
+      ? { kind: outcome === 'playbook-supported'
+          ? 'start-p7' : 'review-executable-design-layer-expression' }
+      : outcome === 'capture-invalid'
+        ? { kind: 'review-camera-capture-validity' }
+        : { kind: 'collect-p6-evidence', stages: failures.map(row => row.stage) },
     advice,
     summary_counts: {
       solution_count: cohort?.solutions?.length ?? 0,
@@ -150,18 +180,22 @@ function validGate(value) {
   if (!plain(value) || !sameExactKeys(value, GATE_FIELDS)
     || value.schema_version !== P6_SCHEMA_VERSION || value.protocol_version !== P6_PROTOCOL_VERSION
     || !['pass', 'blocked'].includes(value.status) || value.p7_allowed !== (value.status === 'pass')
-    || !['playbook-supported', 'baseline-supported', 'inconclusive', 'not-evaluated'].includes(value.outcome)
+    || !['playbook-supported', 'baseline-supported', 'inconclusive', 'capture-invalid', 'not-evaluated'].includes(value.outcome)
     || !Array.isArray(value.failures) || !plain(value.next_action) || !plain(value.advice)
     || !plain(value.summary_counts) || !sameExactKeys(value.summary_counts, SUMMARY_FIELDS)
     || SUMMARY_FIELDS.some(field => !Number.isSafeInteger(value.summary_counts[field]) || value.summary_counts[field] < 0)) return false;
   if (value.failures.some(row => !plain(row) || !sameExactKeys(row, ['stage', 'code'])
     || typeof row.stage !== 'string' || !P6_ERROR_CODES.includes(row.code))) return false;
   const expectedNext = value.status === 'pass'
-    ? { kind: 'start-p7' }
-    : { kind: 'collect-p6-evidence', stages: value.failures.map(row => row.stage) };
-  const expectedAdvice = value.status === 'blocked' ? COLLECT_ADVICE
+    ? { kind: value.outcome === 'playbook-supported'
+        ? 'start-p7' : 'review-executable-design-layer-expression' }
+    : value.outcome === 'capture-invalid'
+      ? { kind: 'review-camera-capture-validity' }
+      : { kind: 'collect-p6-evidence', stages: value.failures.map(row => row.stage) };
+  const expectedAdvice = value.status === 'blocked'
+    ? value.outcome === 'capture-invalid' ? CAPTURE_ADVICE : COLLECT_ADVICE
     : value.outcome === 'playbook-supported' ? START_ADVICE : REVIEW_ADVICE;
-  return (value.status === 'blocked') === (value.outcome === 'not-evaluated')
+  return (value.status === 'pass') === !['not-evaluated', 'capture-invalid'].includes(value.outcome)
     && (value.status === 'blocked') === (value.failures.length > 0)
     && stableJson(value.next_action) === stableJson(expectedNext)
     && stableJson(value.advice) === stableJson(expectedAdvice);
@@ -226,6 +260,7 @@ function validSealedPreferences(value, comparisonManifest) {
       ])
       || value.schema_version !== P6_SCHEMA_VERSION || value.protocol_version !== P6_PROTOCOL_VERSION
       || !HASH.test(value.identity_map_sha256)
+      || value.identity_map_sha256 !== comparisonManifest.identity_map_sha256
       || value.comparison_manifest_hash !== sha256(stableJson(comparisonManifest))
       || !Array.isArray(value.records) || value.records.length !== 6
       || !Array.isArray(value.pairs) || stableJson(value.pairs) !== stableJson(comparisonManifest.pairs)
@@ -239,7 +274,15 @@ function validSealedPreferences(value, comparisonManifest) {
   } catch { return false; }
 }
 
-function validReveal(value, sealed) {
+function validReveal(value, sealed, privateIdentityMap, comparisonManifest, cohort, captureManifest) {
+  try {
+    if (!plain(comparisonManifest)
+      || sha256(stableJson(privateIdentityMap)) !== comparisonManifest.identity_map_sha256
+      || !validPrivateIdentityAuthority(privateIdentityMap, comparisonManifest, cohort, captureManifest)
+      || stableJson(revealPreferenceResults({
+        sealedPreferences: sealed, privateIdentityMap
+      })) !== stableJson(value)) return false;
+  } catch { return false; }
   if (!plain(value) || !plain(sealed)
     || !sameExactKeys(value, ['categorical_counts', 'pair_decisions'])
     || !plain(value.categorical_counts)
@@ -266,9 +309,52 @@ function validReveal(value, sealed) {
     && stableJson(counts) === stableJson(value.categorical_counts);
 }
 
-function validRegressions(value) {
-  return plain(value) && sameExactKeys(value, REGRESSION_FIELDS)
-    && REGRESSION_FIELDS.every(field => value[field] === 'pass');
+function validPrivateIdentityAuthority(value, comparisonManifest, cohort, captureManifest) {
+  if (!plain(value) || !plain(cohort) || !plain(captureManifest)
+    || value.cohort_sha256 !== comparisonManifest.cohort_sha256
+    || value.capture_manifest_hash !== comparisonManifest.capture_manifest_hash
+    || value.cohort_sha256 !== sha256(stableJson(cohort))
+    || value.capture_manifest_hash !== sha256(stableJson(captureManifest))
+    || !Array.isArray(value.mappings) || value.mappings.length !== 4
+    || !Array.isArray(value.screenshot_mappings) || value.screenshot_mappings.length !== 24) return false;
+  const byCode = new Map();
+  for (const mapping of value.mappings) {
+    const solution = cohort.solutions.find(row => row.solution_id === mapping.solution_id);
+    const images = captureManifest.images.filter(row => (
+      row.solution_id === mapping.capture_solution_id
+      && row.build_function_sha256 === solution?.build_function_sha256
+    ));
+    if (!solution || images.length !== P6_VIEW_IDS.length
+      || P6_VIEW_IDS.some(viewId => !images.some(row => row.camera?.view_id === viewId))) return false;
+    byCode.set(mapping.solution_code, { mapping, images });
+  }
+  if (byCode.size !== 4) return false;
+  const pairs = new Set();
+  const presentationIds = new Set();
+  for (const row of value.screenshot_mappings) {
+    if (!plain(row) || !sameExactKeys(row, [
+      'solution_code', 'view_id', 'presentation_screenshot_id', 'presentation_filename',
+      'source_screenshot_id', 'source_filename', 'source_image_sha256'
+    ])) return false;
+    const authority = byCode.get(row.solution_code);
+    const image = authority?.images.find(item => item.camera?.view_id === row.view_id);
+    const pair = `${row.solution_code}/${row.view_id}`;
+    if (!image || pairs.has(pair) || presentationIds.has(row.presentation_screenshot_id)
+      || row.presentation_filename !== `${row.presentation_screenshot_id}.png`
+      || row.source_screenshot_id !== image.screenshot_id
+      || row.source_filename !== `${image.screenshot_id}.png`
+      || row.source_image_sha256 !== image.image_sha256) return false;
+    pairs.add(pair);
+    presentationIds.add(row.presentation_screenshot_id);
+  }
+  return pairs.size === 24;
+}
+
+function validRegressions(value, gitCommit) {
+  try {
+    validateP6RegressionReceipt(value, { gitCommit, requirePass: true });
+    return true;
+  } catch { return false; }
 }
 
 function categoricalOutcome(reveal) {

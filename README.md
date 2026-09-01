@@ -94,10 +94,13 @@ Formal screenshots are a later, separate checkpoint: they require explicit autho
 After the current immutable evidence generations exist, publish the deterministic gate report with:
 
 ```bash
+npm run playbook:p6 -- verify-regressions --run-dir /absolute/path/to/p6-run
 npm run playbook:p6 -- report --run-dir /absolute/path/to/p6-run
 ```
 
-The report is compare-and-swap bound to the exact current cohort, references, capture session, formal captures, observations, sealed blind-comparison package, private reveal, and gate regression receipt. Missing formal evidence, human choices, private reveal, or required regression results produces `blocked`; the command never invents a choice or a passing suite. Preference outcomes affect the operating advice, while only evidence completeness controls the gate. The checked-in [P6 report shell](docs/architecture-playbook/reports/p6-fixed-view-blind-comparison.md) remains explicitly blocked until the authorized evidence workflow is completed.
+`verify-regressions` runs the frozen P6, P4, P5, off/pipeline, six-episode, manual-drift, and diff checks sequentially. Node tests always use the repository's hard-capped `npm test -- ...` entry point. It records exact commands, the current commit and protocol, exit statuses, timestamps, bounded output hashes, and a canonical receipt hash; a failed or missing suite cannot become a passing receipt.
+
+The report is compare-and-swap bound to the exact current cohort, references, capture session, formal captures, observations, sealed blind-comparison package, private reveal, and gate regression receipt. Missing formal evidence, human choices, private reveal, or required regression results produces `blocked`; the command never invents a choice or a passing suite. Preference outcomes affect the operating advice, while only evidence completeness controls `p7_allowed`. A baseline-supported or inconclusive complete package directs the correction loop before starting P7. The checked-in [P6 report shell](docs/architecture-playbook/reports/p6-fixed-view-blind-comparison.md) remains explicitly blocked until the authorized evidence workflow is completed.
 
 ## Generate a datapack
 
