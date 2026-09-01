@@ -20,7 +20,7 @@
 - P5 可执行设计层已经实现，但保持 opt-in / 默认关闭（default-off）。它只证明最小、确定性的控制循环：固定生成三个候选、保存五层 checkpoint、最多执行一次白名单修复、先做硬 QA 与秘籍资格过滤，再调用原有排序器。它没有秘籍评分，不证明质量或审美改善。
 - P6 正式捕获与盲选仍未开放、也尚未完成；固定多视角渲染、视觉模型、人工盲选、审美评价与改进证据仍属于可选的 P6 评价工作，不是扩展课程知识的前置条件。
 - P7 基础已经把 50 集分配到 8 个固定章节，并增加可恢复的章节账本、全课程证据命令解析、只读的章节 `status` / `next` 命令，以及逐产物重开和哈希校验的 `advance` 命令。首集 `BV1guoPYkExk` 已到 `asr-complete`，因视频没有可用叙述而停在人工事件/视觉复核边界；这不代表该集已学习、其视觉证据已批准或任何新规则已晋级。
-- 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[P4 影子指导报告](reports/p4-shadow-guidance.md)、[P5 可执行设计层报告](reports/p5-executable-design-layer.md)、[P7 知识扩展基础报告](reports/p7-knowledge-expansion-foundation.md)和 [P7 第一章首集进度报告](reports/p7-chapter-1-first-episode-progress.md)。
+- 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[P7 知识扩展 v0.2](manual/p7-expansion-v0.2.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[P4 影子指导报告](reports/p4-shadow-guidance.md)、[P5 可执行设计层报告](reports/p5-executable-design-layer.md)、[P7 知识扩展基础报告](reports/p7-knowledge-expansion-foundation.md)和 [P7 第一章首集进度报告](reports/p7-chapter-1-first-episode-progress.md)。
 
 ## P7 轻量章节工作流
 
