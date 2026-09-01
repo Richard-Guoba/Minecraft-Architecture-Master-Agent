@@ -18,7 +18,7 @@ import {
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
-test('loads the bounded processed-chapter subtitle advisory without changing reviewed-rule authority', async () => {
+test('loads the bounded represented-chapter subtitle advisory without changing reviewed-rule authority', async () => {
   const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
 
   assert.equal(P7_ADVISORY_OVERLAY_PATH,
@@ -29,8 +29,9 @@ test('loads the bounded processed-chapter subtitle advisory without changing rev
     'foundations-tools-blocks-modularity-color',
     'complete-structure'
   ]);
-  assert.equal(overlay.source_bvids.length, 7);
-  assert.equal(overlay.entries.length, 15);
+  assert.equal(overlay.source_bvids.length, 8);
+  assert.equal(overlay.source_bvids.at(-1), 'BV1Mp7UzyE3P');
+  assert.equal(overlay.entries.length, 18);
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
@@ -40,9 +41,18 @@ test('loads the bounded processed-chapter subtitle advisory without changing rev
   assert.deepEqual(
     overlay.entries.slice(-3).map(({ knowledge_id }) => knowledge_id),
     [
-      'knowledge:p7:connected-mass-addition',
-      'knowledge:p7:facade-partition-volume',
-      'knowledge:p7:visual-support-check'
+      'knowledge:p7:purposeful-volume-subtraction',
+      'knowledge:p7:void-fragmentation-control',
+      'knowledge:p7:supported-cut-recomposition'
+    ]
+  );
+  assert.deepEqual(
+    overlay.entries.at(-3).evidence_refs,
+    [
+      'BV1Mp7UzyE3P@19-100',
+      'BV1Mp7UzyE3P@174-329',
+      'BV1Mp7UzyE3P@330-538',
+      'BV1Mp7UzyE3P@559-650'
     ]
   );
   assert.ok(Object.isFrozen(overlay));

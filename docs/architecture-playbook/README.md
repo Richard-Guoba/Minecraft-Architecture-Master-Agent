@@ -21,8 +21,8 @@
 - P6 正式捕获与盲选仍未开放、也尚未完成；固定多视角渲染、视觉模型、人工盲选、审美评价与改进证据仍属于可选的 P6 评价工作，不是扩展课程知识的前置条件。
 - P7 基础已经把 50 集分配到 8 个固定章节，并增加可恢复的章节账本、全课程证据命令解析、只读的章节 `status` / `next` 命令，以及逐产物重开和哈希校验的 `advance` 命令。
 - P7 第一章的字幕优先内容扩展已经完成：7 集均到 `asr-complete`；首集没有可用教学叙述，其余 6 集共 2,539 个草稿段已经逐集归纳为原创笔记并补充 Architecture Bible v0.2。正式人工视觉阶段没有被自动标记完成。
-- P7 第二章跳过原六集中的 order 8、9 后，首个新课次 order 10 已到 `asr-complete`：508 个草稿段已经归纳为“结构加法”笔记，并补充 Architecture Bible 与建造意图。
-- 已处理课次聚合为 15 条 `subtitle-derived-advisory` 建造意图，并接入 opt-in 的 execute 设计提示。它们不能进入冻结的 21 条 v0.1 审阅规则权限，不能改变 `playbook=off`，也不能改变相对坐标数据包编译器。
+- P7 第二章跳过原六集中的 order 8、9 后，新课次 order 10–11 均已到 `asr-complete`：共 919 个草稿段已经归纳为“结构加法”和“结构减法”笔记，并补充 Architecture Bible 与建造意图。
+- 已处理课次聚合为 18 条 `subtitle-derived-advisory` 建造意图，并接入 opt-in 的 execute 设计提示。它们不能进入冻结的 21 条 v0.1 审阅规则权限，不能改变 `playbook=off`，也不能改变相对坐标数据包编译器。
 - 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[P7 知识扩展 v0.2](manual/p7-expansion-v0.2.md)、[P7 第一章字幕知识扩展报告](reports/p7-chapter-1-subtitle-expansion.md)、[P7 第二章字幕知识扩展检查点](reports/p7-chapter-2-subtitle-expansion.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[P4 影子指导报告](reports/p4-shadow-guidance.md)、[P5 可执行设计层报告](reports/p5-executable-design-layer.md)和 [P7 知识扩展基础报告](reports/p7-knowledge-expansion-foundation.md)。
 
 ## P7 轻量章节工作流

@@ -14,7 +14,8 @@
     "BV1iVLbzcEfG",
     "BV1cLJtz1ELx",
     "BV14XMtzFEzb",
-    "BV1ecj4zsE27"
+    "BV1ecj4zsE27",
+    "BV1Mp7UzyE3P"
   ],
   "entries": [
     {
@@ -136,6 +137,30 @@
       "source_bvids": ["BV1ecj4zsE27"],
       "classification": "inference",
       "evidence_refs": ["BV1ecj4zsE27@526-612", "BV1ecj4zsE27@938-950"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:purposeful-volume-subtraction",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Assign every void a visible composition or spatial purpose and choose its base, middle, corner, top or full-layer position accordingly; reject cuts that flatten useful articulation or reduce readable hierarchy.",
+      "source_bvids": ["BV1Mp7UzyE3P"],
+      "classification": "inference",
+      "evidence_refs": ["BV1Mp7UzyE3P@19-100", "BV1Mp7UzyE3P@174-329", "BV1Mp7UzyE3P@330-538", "BV1Mp7UzyE3P@559-650"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:void-fragmentation-control",
+      "design_layers": ["massing", "facade"],
+      "intent": "Preserve a continuous primary mass and clear solid-void hierarchy by merging or removing adjacent small cuts that have no independent role; do not invent a universal hole count or spacing.",
+      "source_bvids": ["BV1Mp7UzyE3P"],
+      "classification": "inference",
+      "evidence_refs": ["BV1Mp7UzyE3P@42-100"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:supported-cut-recomposition",
+      "design_layers": ["massing", "structure"],
+      "intent": "Give base, middle and full-layer voids a visible support path appropriate to the material role; after translating, rotating or offsetting a cut volume, recheck joins, collisions, support and silhouette.",
+      "source_bvids": ["BV1Mp7UzyE3P"],
+      "classification": "inference",
+      "evidence_refs": ["BV1Mp7UzyE3P@103-172", "BV1Mp7UzyE3P@371-409", "BV1Mp7UzyE3P@559-785"]
     }
   ]
 }
