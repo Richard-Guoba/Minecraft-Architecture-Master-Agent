@@ -10,6 +10,7 @@ import {
 } from '../src/playbook/execute/designEnvelope.js';
 import { runExecutablePlaybookPipeline } from '../src/playbook/execute/orchestrator.js';
 import { buildPlaybookGuidedPrompt } from '../src/construction/designStages.js';
+import { sha256, stableJson } from '../src/playbook/shadow/canonical.js';
 import {
   P7_ADVISORY_OVERLAY_PATH,
   loadP7AdvisoryOverlay
@@ -104,7 +105,9 @@ test('execute rejects an injected advisory drift before creating any candidate',
   const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p7-advisory-drift-'));
   t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
   const overlay = structuredClone(await loadP7AdvisoryOverlay({ projectRoot: ROOT }));
-  overlay.overlay_sha256 = '0'.repeat(64);
+  delete overlay.overlay_sha256;
+  overlay.entries[0].intent = 'Different but structurally valid bounded intent.';
+  overlay.overlay_sha256 = sha256(stableJson(overlay));
   let candidateCalls = 0;
 
   await assert.rejects(runExecutablePlaybookPipeline({

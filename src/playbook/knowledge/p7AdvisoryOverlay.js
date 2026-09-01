@@ -23,7 +23,7 @@ const LAYERS = new Set(['brief', 'massing', 'structure', 'roof', 'facade']);
 const ID = /^knowledge:p7:[a-z0-9][a-z0-9-]*$/u;
 const EVIDENCE_REF = /^(BV[0-9A-Za-z]+)@[0-9]+-[0-9]+$/u;
 const CLASSIFICATIONS = new Set(['author_claim', 'inference', 'contrast']);
-const EXPECTED_OVERLAY_SHA256 = 'd21f94d3727fe69de0827b674a3d9fa93e67ffc0b374f66bc22d1de46603e9f1';
+const EXPECTED_OVERLAY_SHA256 = '30519d5503d68eeafffda31b61322d04fa3d761ab5a49251a21cb0cd0e213eae';
 
 export async function loadP7AdvisoryOverlay({ projectRoot, readFile } = {}) {
   try {
@@ -67,7 +67,8 @@ export function projectP7AdvisoryKnowledge(overlay) {
     const { overlay_sha256: overlaySha256, ...value } = overlay;
     validateOverlay(value);
     if (typeof overlaySha256 !== 'string'
-      || overlaySha256 !== sha256(stableJson(value))) throw invalid();
+      || overlaySha256 !== sha256(stableJson(value))
+      || overlaySha256 !== EXPECTED_OVERLAY_SHA256) throw invalid();
     return deepFreeze({
       overlay_version: value.overlay_version,
       overlay_sha256: overlaySha256,

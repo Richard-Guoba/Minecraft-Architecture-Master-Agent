@@ -34,8 +34,8 @@
       "design_layers": ["brief", "massing", "facade"],
       "intent": "Use close evaluation for entrances and joins and distant compressed evaluation for silhouette, proportion, palette blocks and context; do not rely on showcase lighting alone.",
       "source_bvids": ["BV1SwdfBHEx5"],
-      "classification": "author_claim",
-      "evidence_refs": ["BV1SwdfBHEx5@51-94", "BV1SwdfBHEx5@202-250"]
+      "classification": "inference",
+      "evidence_refs": ["BV1SwdfBHEx5@51-94", "BV1SwdfBHEx5@202-250", "BV1SwdfBHEx5@338-362"]
     },
     {
       "knowledge_id": "knowledge:p7:palette-ramp",
@@ -98,7 +98,7 @@
       "design_layers": ["structure", "roof", "facade"],
       "intent": "Give roof, frame, infill, base and accent explicit palette roles; use coordinated value contrast so structural lines remain readable without unrelated high-contrast noise.",
       "source_bvids": ["BV14XMtzFEzb"],
-      "classification": "author_claim",
+      "classification": "inference",
       "evidence_refs": ["BV14XMtzFEzb@79-124", "BV14XMtzFEzb@127-179"]
     },
     {
