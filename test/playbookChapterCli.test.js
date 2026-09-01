@@ -271,7 +271,7 @@ test('next exposes the transcript-to-events human review boundary', async (t) =>
     bvid: FIRST_BVID,
     current_stage: 'asr-complete',
     next_stage: 'events-indexed',
-    command: null,
+    command: `npm run playbook:chapter -- advance --bvid ${FIRST_BVID}`,
     human_review_required: true,
     required_artifact: 'reviewed teaching-event index'
   });

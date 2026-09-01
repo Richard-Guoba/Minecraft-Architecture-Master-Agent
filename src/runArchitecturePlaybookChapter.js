@@ -278,7 +278,7 @@ function nextAction(chapter, ledger) {
       bvid: next.bvid,
       current_stage: currentStage,
       next_stage: followingStage(currentStage),
-      command: null,
+      command: `npm run playbook:chapter -- advance --bvid ${next.bvid}`,
       human_review_required: true,
       required_artifact: requiredArtifact
     });

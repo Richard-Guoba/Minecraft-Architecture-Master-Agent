@@ -37,6 +37,7 @@ Only after artifact validation does the verifier reopen the ledger, confirm prio
 - next stage: `events-indexed`
 - human review required: yes
 - required artifact: `reviewed teaching-event index`
+- next command after that artifact is reviewed: `npm run playbook:chapter -- advance --bvid BV1guoPYkExk`
 
 Because this episode is a silent architectural showcase, transcript-derived event selection is not defensible. A reviewer must inspect the private survey/video and decide whether visually grounded events should be admitted under a separately reviewed method or whether the episode contributes no teachable evidence. Until that decision is recorded, the ledger must remain at `asr-complete` and Chapter 1 must not scale to later episodes.
 
