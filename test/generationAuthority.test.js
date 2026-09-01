@@ -119,6 +119,48 @@ test('generation authority preserves a foreign same-byte receipt-stage replaceme
   assert.equal((await privateStages(fixture.runDir)).length, 1);
 });
 
+test('generation authority never removes a stage replacement after final-link verification', async t => {
+  const fixture = await makeFixture(t);
+  await assert.rejects(publishGenerationAuthority({
+    runDir: fixture.runDir,
+    options: OPTIONS,
+    fsImpl: {
+      async afterFinalLinkVerificationBeforeStageRemoval({ stagePath }) {
+        await fs.unlink(stagePath);
+        await fs.writeFile(stagePath, 'foreign-final-stage\n', { mode: 0o400 });
+      }
+    }
+  }), /GENERATION_AUTHORITY_INVALID/u);
+  const receiptPath = path.join(fixture.runDir, 'generation-authority.json');
+  assert.equal((await fs.lstat(receiptPath)).nlink, 1);
+  assert.equal((await fs.readFile(receiptPath, 'utf8')).includes('construction-generation-authority'), true);
+  const stages = await privateStages(fixture.runDir);
+  assert.equal(stages.length, 1);
+  assert.equal(await fs.readFile(path.join(fixture.runDir, stages[0]), 'utf8'), 'foreign-final-stage\n');
+});
+
+test('generation authority error cleanup never removes a post-verification stage replacement', async t => {
+  const fixture = await makeFixture(t);
+  const receiptPath = path.join(fixture.runDir, 'generation-authority.json');
+  await assert.rejects(publishGenerationAuthority({
+    runDir: fixture.runDir,
+    options: OPTIONS,
+    fsImpl: {
+      async afterReceiptStageWritten() {
+        await fs.writeFile(receiptPath, 'foreign-receipt\n');
+      },
+      async afterCleanupVerificationBeforeStageRemoval({ stagePath }) {
+        await fs.unlink(stagePath);
+        await fs.writeFile(stagePath, 'foreign-error-stage\n', { mode: 0o400 });
+      }
+    }
+  }), /GENERATION_AUTHORITY_INVALID/u);
+  assert.equal(await fs.readFile(receiptPath, 'utf8'), 'foreign-receipt\n');
+  const stages = await privateStages(fixture.runDir);
+  assert.equal(stages.length, 1);
+  assert.equal(await fs.readFile(path.join(fixture.runDir, stages[0]), 'utf8'), 'foreign-error-stage\n');
+});
+
 async function makeFixture(t, { spacedParent = false } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'generation-authority-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

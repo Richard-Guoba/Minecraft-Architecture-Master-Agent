@@ -1,5 +1,6 @@
+import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { constants } from 'node:fs';
+import nativeFs, { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -12,6 +13,9 @@ const UNSAFE_PATH_CHARACTER = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u;
 const MAX_SELECTION_BYTES = 64 * 1024 * 1024;
 const MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
 const RECEIPT_NAME = 'generation-authority.json';
+const RETIREMENT_PREFIX = '.generation-retirement-';
+const RETIRED_NAME = 'owned-entry';
+const MOVE_BINARY = '/usr/bin/mv';
 
 export async function publishGenerationAuthority({ runDir, options, fsImpl } = {}) {
   let authority;
@@ -85,27 +89,192 @@ async function publishReceipt(authority, bytes, hooks) {
     const linkedStat = await fs.lstat(path.join(descriptor(root), RECEIPT_NAME));
     if (!sameIdentity(linkedStat, node.identity) || linkedStat.nlink !== 2) invalid();
     await root.sync();
-    await fs.unlink(path.join(descriptor(root), stageName));
+    await retireExactStage({
+      authority, handle, node, expectedLinks: 2,
+      beforeRetirement: hooks?.afterFinalLinkVerificationBeforeStageRemoval
+        ? () => hooks.afterFinalLinkVerificationBeforeStageRemoval({
+          stagePath: path.join(authority.absolutePath, stageName)
+        }) : undefined
+    });
     node.name = RECEIPT_NAME;
     await verifyOpenFile(root, handle, node);
     await root.sync();
     await assertAbsoluteAuthority(authority);
   } catch (error) {
-    if (!linked && handle && node) await cleanupExactStage(authority, handle, node);
+    if (!linked && handle && node) await cleanupExactStage(authority, handle, node, hooks);
     throw error;
   } finally {
     await handle?.close();
   }
 }
 
-async function cleanupExactStage(authority, handle, node) {
+async function cleanupExactStage(authority, handle, node, hooks) {
   try {
-    await assertAbsoluteAuthority(authority);
-    await verifyOpenFile(authority.leaf, handle, node);
-    await fs.unlink(path.join(descriptor(authority.leaf), node.name));
+    await retireExactStage({
+      authority, handle, node, expectedLinks: 1,
+      beforeRetirement: hooks?.afterCleanupVerificationBeforeStageRemoval
+        ? () => hooks.afterCleanupVerificationBeforeStageRemoval({
+          stagePath: path.join(authority.absolutePath, node.name)
+        }) : undefined
+    });
+  } catch {}
+}
+
+async function retireExactStage({ authority, handle, node, expectedLinks, beforeRetirement }) {
+  await assertAbsoluteAuthority(authority);
+  await verifyOpenFile(authority.leaf, handle, node, expectedLinks);
+  await beforeRetirement?.();
+  await assertAbsoluteAuthority(authority);
+  await verifyOpenFile(authority.leaf, handle, node, expectedLinks);
+  const retirement = await createRetirement(authority);
+  let moved = false;
+  try {
+    await moveIdentityNoReplace({
+      sourceHandle: authority.leaf, sourceName: node.name,
+      destinationHandle: retirement.handle, destinationName: RETIRED_NAME,
+      expectedIdentity: node.identity
+    });
+    moved = true;
+    const retiredNode = { ...node, name: RETIRED_NAME };
+    await verifyOpenFile(retirement.handle, handle, retiredNode, expectedLinks);
+    await removeBoundSync({
+      parentHandle: retirement.handle, basename: RETIRED_NAME,
+      expectedIdentity: node.identity, expectedKind: 'file',
+      assertAuthority: async () => {
+        await assertAbsoluteAuthority(authority);
+        await assertRetirement(authority, retirement);
+        await verifyOpenFile(retirement.handle, handle, retiredNode, expectedLinks);
+      }
+    });
+    await retirement.handle.sync();
+    await removeBoundSync({
+      parentHandle: authority.leaf, basename: retirement.name,
+      expectedIdentity: retirement.identity, expectedKind: 'directory',
+      assertAuthority: async () => {
+        await assertAbsoluteAuthority(authority);
+        await assertRetirement(authority, retirement);
+        if ((await fs.readdir(descriptor(retirement.handle))).length !== 0) invalid();
+      }
+    });
+    await authority.leaf.sync();
+  } catch (error) {
+    if (!moved) await removeEmptyRetirement(authority, retirement);
+    throw error;
+  } finally {
+    await retirement.handle.close();
+  }
+}
+
+async function createRetirement(authority) {
+  const name = `${RETIREMENT_PREFIX}${randomBytes(16).toString('hex')}`;
+  const target = path.join(descriptor(authority.leaf), name);
+  await fs.mkdir(target, { mode: 0o700 });
+  const before = await fs.lstat(target);
+  let handle;
+  try {
+    if (before.isSymbolicLink() || !before.isDirectory()) invalid();
+    handle = await fs.open(target, DIRECTORY_FLAGS);
+    if (!sameIdentity(before, await handle.stat())) invalid();
+    const retirement = { name, handle, identity: identity(before) };
+    await assertRetirement(authority, retirement);
+    await authority.leaf.sync();
+    return retirement;
+  } catch (error) {
+    await handle?.close();
+    throw error;
+  }
+}
+
+async function assertRetirement(authority, retirement) {
+  const opened = await retirement.handle.stat();
+  const named = await fs.lstat(path.join(descriptor(authority.leaf), retirement.name));
+  if (!opened.isDirectory() || named.isSymbolicLink() || !named.isDirectory()
+    || !sameIdentity(opened, retirement.identity) || !sameIdentity(named, retirement.identity)) invalid();
+}
+
+async function removeEmptyRetirement(authority, retirement) {
+  try {
+    await removeBoundSync({
+      parentHandle: authority.leaf, basename: retirement.name,
+      expectedIdentity: retirement.identity, expectedKind: 'directory',
+      assertAuthority: async () => {
+        await assertAbsoluteAuthority(authority);
+        await assertRetirement(authority, retirement);
+        if ((await fs.readdir(descriptor(retirement.handle))).length !== 0) invalid();
+      }
+    });
     await authority.leaf.sync();
   } catch {}
 }
+
+async function moveIdentityNoReplace({
+  sourceHandle, sourceName, destinationHandle, destinationName, expectedIdentity
+}) {
+  const before = await describeEntry(sourceHandle, sourceName);
+  if (!before || before.kind !== 'file' || !sameIdentity(before.identity, expectedIdentity)) invalid();
+  let moveError;
+  try { await moveNoReplace(sourceHandle, sourceName, destinationHandle, destinationName); }
+  catch (error) { moveError = error; }
+  const source = await describeEntry(sourceHandle, sourceName);
+  const destination = await describeEntry(destinationHandle, destinationName);
+  if (source === null && destination?.kind === 'file'
+    && sameIdentity(destination.identity, expectedIdentity)) {
+    if (moveError) invalid();
+    return;
+  }
+  if (source === null && destination) {
+    try {
+      await moveNoReplace(destinationHandle, destinationName, sourceHandle, sourceName);
+      const restored = await describeEntry(sourceHandle, sourceName);
+      const destinationAfter = await describeEntry(destinationHandle, destinationName);
+      if (destinationAfter !== null || !restored
+        || !sameIdentity(restored.identity, destination.identity)) invalid();
+    } catch {}
+  }
+  invalid();
+}
+
+async function moveNoReplace(sourceHandle, sourceName, destinationHandle, destinationName) {
+  await new Promise((resolve, reject) => {
+    const child = spawn(MOVE_BINARY, [
+      '--no-clobber', '--no-target-directory',
+      `/proc/self/fd/3/${sourceName}`, `/proc/self/fd/4/${destinationName}`
+    ], { stdio: ['ignore', 'ignore', 'ignore', sourceHandle.fd, destinationHandle.fd] });
+    child.once('error', reject);
+    child.once('close', code => code === 0 ? resolve() : reject(new Error('move failed')));
+  });
+}
+
+async function removeBoundSync({
+  parentHandle, basename, expectedIdentity, expectedKind, assertAuthority
+}) {
+  await assertAuthority();
+  const target = path.join(descriptor(parentHandle), basename);
+  const exact = describeEntrySync(target);
+  if (!exact || exact.kind !== expectedKind || !sameIdentity(exact.identity, expectedIdentity)) invalid();
+  if (expectedKind === 'file') nativeFs.unlinkSync(target);
+  else nativeFs.rmdirSync(target);
+  if (describeEntrySync(target)) invalid();
+}
+
+async function describeEntry(handle, basename) {
+  try {
+    const stat = await fs.lstat(path.join(descriptor(handle), basename));
+    return describeStat(stat);
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return null;
+    throw error;
+  }
+}
+
+function describeEntrySync(target) {
+  try { return describeStat(nativeFs.lstatSync(target)); }
+  catch (error) { if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return null; throw error; }
+}
+function describeStat(stat) { return {
+  kind: stat.isSymbolicLink() ? 'symlink' : stat.isFile() ? 'file' : stat.isDirectory() ? 'directory' : 'other',
+  identity: identity(stat)
+}; }
 
 async function bindRelativeFile(authority, relativePath, maxBytes) {
   if (!safeRelative(relativePath)) invalid();
@@ -218,11 +387,11 @@ async function closeAbsoluteAuthority(authority) {
   if (authority?.handles) await Promise.allSettled([...authority.handles].reverse().map(handle => handle.close()));
 }
 
-async function verifyOpenFile(directory, handle, node) {
+async function verifyOpenFile(directory, handle, node, expectedLinks = 1) {
   const opened = await handle.stat();
   const named = await fs.lstat(path.join(descriptor(directory), node.name));
-  if (!opened.isFile() || opened.nlink !== 1 || named.isSymbolicLink() || !named.isFile()
-    || named.nlink !== 1 || !sameIdentity(opened, node.identity) || !sameIdentity(named, node.identity)
+  if (!opened.isFile() || opened.nlink !== expectedLinks || named.isSymbolicLink() || !named.isFile()
+    || named.nlink !== expectedLinks || !sameIdentity(opened, node.identity) || !sameIdentity(named, node.identity)
     || opened.size !== node.bytes.length) invalid();
   const buffer = Buffer.alloc(node.bytes.length);
   const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
