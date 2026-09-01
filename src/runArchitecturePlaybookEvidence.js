@@ -14,6 +14,7 @@ import {
 
 const VALUE_OPTIONS = new Set(['--bvid']);
 const BOOLEAN_OPTIONS = new Set(['--replace']);
+const SOURCE_ROOT = path.resolve(import.meta.dirname, '..');
 const COURSE_MANIFEST_PATH =
   'docs/architecture-playbook/course/course-manifest.json';
 const CHAPTER_PLAN_PATH =
@@ -22,7 +23,7 @@ const CHAPTER_PLAN_PATH =
 export function parseArchitecturePlaybookEvidenceArgs(
   argv,
   {
-    projectRoot = path.resolve(import.meta.dirname, '..'),
+    projectRoot = SOURCE_ROOT,
     courseManifest,
     chapterPlan
   } = {}
@@ -98,10 +99,10 @@ export function parseArchitecturePlaybookEvidenceArgs(
 export async function main(argv = process.argv.slice(2)) {
   const projectRoot = process.env.PLAYBOOK_PROJECT_ROOT
     ? path.resolve(process.env.PLAYBOOK_PROJECT_ROOT)
-    : path.resolve(import.meta.dirname, '..');
+    : SOURCE_ROOT;
   const [courseManifest, chapterPlan] = await Promise.all([
-    readJson(path.join(projectRoot, COURSE_MANIFEST_PATH)),
-    readJson(path.join(projectRoot, CHAPTER_PLAN_PATH))
+    readJson(path.join(SOURCE_ROOT, COURSE_MANIFEST_PATH)),
+    readJson(path.join(SOURCE_ROOT, CHAPTER_PLAN_PATH))
   ]);
   const options = parseArchitecturePlaybookEvidenceArgs(argv, {
     projectRoot,

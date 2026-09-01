@@ -143,6 +143,56 @@ test('ledger advances adjacent stages by mandatory compare-and-swap and survives
   assert.equal(current.ledger.unresolved_count, 49);
 });
 
+test('reopen rejects canonical ledgers whose evidence is not exact for its recorded stage', async (t) => {
+  const forgeries = [
+    {
+      name: 'rules-reviewed generic foo_count',
+      stage: 'rules-reviewed',
+      mutate(episode) {
+        episode.evidence.foo_count = 1;
+      }
+    },
+    {
+      name: 'rules-reviewed missing prior media field',
+      stage: 'rules-reviewed',
+      mutate(episode) {
+        delete episode.evidence.media_sha256;
+      }
+    },
+    {
+      name: 'media-verified later-stage known field',
+      stage: 'media-verified',
+      mutate(episode) {
+        episode.evidence.segment_count = 41;
+      }
+    },
+    {
+      name: 'pending nonempty evidence',
+      stage: 'pending',
+      mutate(episode) {
+        episode.evidence.media_sha256 = HASH;
+      }
+    }
+  ];
+
+  for (const forgery of forgeries) {
+    await t.test(forgery.name, async (t) => {
+      const fixture = await ledgerAtStage(t, forgery.stage);
+      const forged = JSON.parse(await fs.readFile(fixture.ledgerPath, 'utf8'));
+      forgery.mutate(forged.episodes[FIRST_BVID]);
+      const forgedBytes = Buffer.from(stableJson(forged));
+      await fs.writeFile(fixture.ledgerPath, forgedBytes);
+      assert.deepEqual(await fs.readFile(fixture.ledgerPath), forgedBytes);
+
+      await assert.rejects(
+        readChapterLedger({ projectRoot: fixture.projectRoot }),
+        { code: 'PLAYBOOK_CHAPTER_LEDGER_INVALID' }
+      );
+      assert.deepEqual(await fs.readFile(fixture.ledgerPath), forgedBytes);
+    });
+  }
+});
+
 test('ledger rejects missing CAS, skipped stages, unknown episodes, and absent initialization', async (t) => {
   const fixture = await ledgerFixture(t);
 
@@ -286,6 +336,47 @@ test('ledger rejects symlinked private ancestors without writing outside private
   assert.equal(String(rejection).includes(outsideRoot), false);
   assert.equal(String(rejection).includes(fixture.projectRoot), false);
   assert.deepEqual(await fs.readdir(outsideRoot), []);
+});
+
+test('missing-component creation stays descriptor-relative during an ancestor swap', async (t) => {
+  const fixture = await ledgerFixture(t, { create: false });
+  const namedLocal = path.join(fixture.projectRoot, '.local');
+  const parkedLocal = path.join(fixture.projectRoot, '.local-parked');
+  const outsideRoot = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'playbook-ledger-create-swap-')
+  );
+  t.after(() => fs.rm(outsideRoot, { recursive: true, force: true }));
+  const race = missingComponentCreationSwapFs({
+    namedLocal,
+    parkedLocal,
+    outsideRoot
+  });
+
+  let rejection;
+  try {
+    await createChapterLedger({
+      projectRoot: fixture.projectRoot,
+      chapterPlan: fixture.chapterPlan,
+      fsImpl: race.fsImpl
+    });
+  } catch (error) {
+    rejection = error;
+  }
+
+  assert.equal(race.mkdirIntercepted(), true);
+  assert.equal(rejection?.code, 'PLAYBOOK_PRIVATE_PATH_ESCAPE');
+  assert.equal(String(rejection).includes(fixture.projectRoot), false);
+  assert.equal(String(rejection).includes(outsideRoot), false);
+  assert.equal((await fs.lstat(namedLocal)).isSymbolicLink(), true);
+  assert.deepEqual(await fs.readdir(outsideRoot), []);
+  await assert.rejects(fs.access(path.join(
+    outsideRoot,
+    'architecture-playbook/work/p7/chapter-ledger.json'
+  )));
+  await assert.rejects(fs.access(path.join(
+    parkedLocal,
+    'architecture-playbook/work/p7/chapter-ledger.json'
+  )));
 });
 
 test('ledger rejects source paths and transcript or media text in evidence', async (t) => {
@@ -567,6 +658,23 @@ async function ledgerFixture(t, { create = true } = {}) {
   return fixture;
 }
 
+async function ledgerAtStage(t, targetStage) {
+  const fixture = await ledgerFixture(t);
+  let current = fixture.created;
+  for (let index = 1; index <= STAGES.indexOf(targetStage); index += 1) {
+    current = await advanceEpisodeStage({
+      projectRoot: fixture.projectRoot,
+      bvid: FIRST_BVID,
+      expectedLedgerSha256: current.ledger_sha256,
+      expectedStage: STAGES[index - 1],
+      nextStage: STAGES[index],
+      evidence: EVIDENCE_BY_STAGE[STAGES[index]]
+    });
+  }
+  fixture.current = current;
+  return fixture;
+}
+
 async function fileIdentity(filePath) {
   const stat = await fs.lstat(filePath);
   return {
@@ -725,4 +833,34 @@ function ancestorSwapFs({ p7Path, parkedP7, outsideP7 }) {
       return Reflect.get(target, property, receiver);
     }
   });
+}
+
+function missingComponentCreationSwapFs({
+  namedLocal,
+  parkedLocal,
+  outsideRoot
+}) {
+  let intercepted = false;
+  const fsImpl = new Proxy(fs, {
+    get(target, property, receiver) {
+      if (property === 'mkdir') {
+        return async (targetPath, ...args) => {
+          if (
+            !intercepted
+            && path.basename(String(targetPath)) === 'architecture-playbook'
+          ) {
+            intercepted = true;
+            await fs.rename(namedLocal, parkedLocal);
+            await fs.symlink(outsideRoot, namedLocal, 'dir');
+          }
+          return fs.mkdir(targetPath, ...args);
+        };
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  return {
+    fsImpl,
+    mkdirIntercepted: () => intercepted
+  };
 }

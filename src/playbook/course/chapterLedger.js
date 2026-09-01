@@ -60,36 +60,41 @@ export async function createChapterLedger({ projectRoot, chapterPlan, fsImpl } =
   const ops = fsOperations(fsImpl);
   const ledger = initialLedger(chapterPlan);
   const bytes = Buffer.from(stableJson(ledger));
-  const ledgerPath = await privateLedgerPath(projectRoot, { createParent: true });
+  const ledgerPath = await privateLedgerPath(projectRoot, { initialize: true });
   try {
-    return await withLedgerLock(ledgerPath, ops, async (boundLedgerPath, assertAuthority) => {
-      const existing = await readLedgerFile(boundLedgerPath, ops, { allowMissing: true });
-      if (existing) {
-        if (existing.bytes.equals(bytes)) return envelope('unchanged', existing);
-        fail('PLAYBOOK_CHAPTER_LEDGER_EXISTS', 'ledger', 'ledger already initialized');
-      }
-
-      let stagePath;
-      try {
-        stagePath = await writeExclusiveStage(boundLedgerPath, bytes, ops);
-        const collision = await readLedgerFile(boundLedgerPath, ops, { allowMissing: true });
-        if (collision) {
-          if (collision.bytes.equals(bytes)) return envelope('unchanged', collision);
+    return await withLedgerLock(
+      ledgerPath,
+      ops,
+      async (boundLedgerPath, assertAuthority) => {
+        const existing = await readLedgerFile(boundLedgerPath, ops, { allowMissing: true });
+        if (existing) {
+          if (existing.bytes.equals(bytes)) return envelope('unchanged', existing);
           fail('PLAYBOOK_CHAPTER_LEDGER_EXISTS', 'ledger', 'ledger already initialized');
         }
-        await assertAuthority();
-        await ops.rename(stagePath, boundLedgerPath);
-        stagePath = undefined;
-        await syncDirectory(path.dirname(boundLedgerPath), ops);
-        const published = await readLedgerFile(boundLedgerPath, ops);
-        if (!published.bytes.equals(bytes)) {
-          fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'publication mismatch');
+
+        let stagePath;
+        try {
+          stagePath = await writeExclusiveStage(boundLedgerPath, bytes, ops);
+          const collision = await readLedgerFile(boundLedgerPath, ops, { allowMissing: true });
+          if (collision) {
+            if (collision.bytes.equals(bytes)) return envelope('unchanged', collision);
+            fail('PLAYBOOK_CHAPTER_LEDGER_EXISTS', 'ledger', 'ledger already initialized');
+          }
+          await assertAuthority();
+          await ops.rename(stagePath, boundLedgerPath);
+          stagePath = undefined;
+          await syncDirectory(path.dirname(boundLedgerPath), ops);
+          const published = await readLedgerFile(boundLedgerPath, ops);
+          if (!published.bytes.equals(bytes)) {
+            fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'publication mismatch');
+          }
+          return envelope('created', published);
+        } finally {
+          if (stagePath) await removeStage(stagePath, ops);
         }
-        return envelope('created', published);
-      } finally {
-        if (stagePath) await removeStage(stagePath, ops);
-      }
-    });
+      },
+      { createMissing: true }
+    );
   } catch (error) {
     throw publicWriteError(error);
   }
@@ -237,13 +242,18 @@ function initialLedger(chapterPlan) {
 }
 
 async function privateLedgerPath(projectRoot, {
-  createParent = false,
+  initialize = false,
   missingIsLedger = false
 } = {}) {
   let ledgerPath;
   try {
     ledgerPath = resolvePrivatePlaybookPath(LEDGER_PATH, { projectRoot });
-    await assertPrivatePlaybookStorage(ledgerPath, { projectRoot, createParent });
+    if (!initialize) {
+      await assertPrivatePlaybookStorage(ledgerPath, {
+        projectRoot,
+        createParent: false
+      });
+    }
     return ledgerPath;
   } catch (error) {
     if (missingIsLedger && error?.code === 'ENOENT') {
@@ -322,7 +332,14 @@ function validateLedger(ledger) {
       invalidLedger();
     }
     orders.add(episode.course_order);
-    validateEvidence(episode.evidence, { allowEmpty: episode.stage === 'pending' });
+    let checkedEvidence;
+    try {
+      checkedEvidence = validateEvidence(episode.evidence, { allowEmpty: true });
+    } catch (error) {
+      if (error?.code === 'PLAYBOOK_CHAPTER_EVIDENCE_INVALID') invalidLedger();
+      throw error;
+    }
+    assertStageEvidence(checkedEvidence, episode.stage);
   }
   const unresolved = entries.filter(([, episode]) => episode.stage !== STAGES.at(-1)).length;
   if (ledger.unresolved_count !== unresolved) invalidLedger();
@@ -379,13 +396,32 @@ function assertTransitionEvidence(evidence, nextStage) {
   }
 }
 
+function assertStageEvidence(evidence, stage) {
+  const stageIndex = STAGES.indexOf(stage);
+  const fields = STAGES.slice(1, stageIndex + 1).flatMap(
+    (candidate) => TRANSITION_EVIDENCE_FIELDS[candidate]
+  );
+  const names = Object.keys(evidence);
+  if (
+    names.length !== fields.length
+    || names.some((field) => !fields.includes(field))
+  ) {
+    invalidLedger();
+  }
+}
+
 function transitionEvidenceMatches(current, requested, nextStage) {
   const fields = TRANSITION_EVIDENCE_FIELDS[nextStage];
   return fields.every((field) => current[field] === requested[field]);
 }
 
-async function withLedgerLock(ledgerPath, ops, operation) {
-  const authority = await acquireLedgerAuthority(ledgerPath, ops);
+async function withLedgerLock(
+  ledgerPath,
+  ops,
+  operation,
+  { createMissing = false } = {}
+) {
+  const authority = await acquireLedgerAuthority(ledgerPath, ops, { createMissing });
   try {
     await flockExclusive(authority.root.handle);
     await assertLedgerAuthority(authority, ops);
@@ -400,7 +436,11 @@ async function withLedgerLock(ledgerPath, ops, operation) {
   }
 }
 
-async function acquireLedgerAuthority(ledgerPath, ops) {
+async function acquireLedgerAuthority(
+  ledgerPath,
+  ops,
+  { createMissing = false } = {}
+) {
   const projectRoot = path.resolve(path.dirname(ledgerPath), '../../../..');
   const expectedLedgerPath = path.join(
     projectRoot,
@@ -413,9 +453,12 @@ async function acquireLedgerAuthority(ledgerPath, ops) {
     authority.root = await openAbsoluteDirectory(ops, projectRoot);
     let parent = authority.root;
     for (const basename of PRIVATE_COMPONENTS) {
-      const node = await openRetainedDirectory(ops, parent.handle, basename);
+      const node = await openRetainedDirectory(ops, parent.handle, basename, {
+        createMissing
+      });
       authority.chain.push({ ...node, parent, basename });
       parent = node;
+      await assertLedgerAuthority(authority, ops);
     }
     authority.p7 = parent;
     await assertLedgerAuthority(authority, ops);
@@ -446,10 +489,30 @@ async function openAbsoluteDirectory(ops, directory) {
   }
 }
 
-async function openRetainedDirectory(ops, parentHandle, basename) {
+async function openRetainedDirectory(
+  ops,
+  parentHandle,
+  basename,
+  { createMissing = false } = {}
+) {
   let handle;
   const target = entry(parentHandle, basename);
   try {
+    if (createMissing) {
+      let existing = null;
+      try {
+        existing = await ops.lstat(target);
+      } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+      }
+      if (!existing) {
+        try {
+          await ops.mkdir(target, { mode: 0o700 });
+        } catch (error) {
+          if (error?.code !== 'EEXIST') throw error;
+        }
+      }
+    }
     const before = await ops.lstat(target);
     if (before.isSymbolicLink() || !before.isDirectory()) privateAuthorityInvalid();
     handle = await ops.open(target, DIRECTORY_FLAGS);
