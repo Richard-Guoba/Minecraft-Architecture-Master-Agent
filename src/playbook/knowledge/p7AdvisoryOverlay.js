@@ -8,7 +8,7 @@ export const P7_ADVISORY_OVERLAY_PATH =
   'docs/architecture-playbook/rules/schools/heihui-jileniao/p7-advisory-v0.2.json';
 
 const TOP_FIELDS = Object.freeze([
-  'schema_version', 'overlay_version', 'school_id', 'status', 'chapter_id',
+  'schema_version', 'overlay_version', 'school_id', 'status', 'chapter_ids',
   'source_bvids', 'entries'
 ]);
 const ENTRY_FIELDS = Object.freeze([
@@ -17,13 +17,16 @@ const ENTRY_FIELDS = Object.freeze([
 ]);
 const EXPECTED_SOURCES = Object.freeze([
   'BV1aBV1zwELe', 'BV1SwdfBHEx5', 'BV1SG6GY9ETe',
-  'BV1iVLbzcEfG', 'BV1cLJtz1ELx', 'BV14XMtzFEzb'
+  'BV1iVLbzcEfG', 'BV1cLJtz1ELx', 'BV14XMtzFEzb', 'BV1ecj4zsE27'
+]);
+const EXPECTED_CHAPTERS = Object.freeze([
+  'foundations-tools-blocks-modularity-color', 'complete-structure'
 ]);
 const LAYERS = new Set(['brief', 'massing', 'structure', 'roof', 'facade']);
 const ID = /^knowledge:p7:[a-z0-9][a-z0-9-]*$/u;
 const EVIDENCE_REF = /^(BV[0-9A-Za-z]+)@[0-9]+-[0-9]+$/u;
 const CLASSIFICATIONS = new Set(['author_claim', 'inference', 'contrast']);
-const EXPECTED_OVERLAY_SHA256 = '30519d5503d68eeafffda31b61322d04fa3d761ab5a49251a21cb0cd0e213eae';
+const EXPECTED_OVERLAY_SHA256 = '1c82894421e399d713f2a29a661e51be8d279a66030759853b9d8f90a54c823b';
 
 export async function loadP7AdvisoryOverlay({ projectRoot, readFile } = {}) {
   try {
@@ -89,9 +92,9 @@ function validateOverlay(value) {
   if (value.schema_version !== 1 || value.overlay_version !== '0.2.0'
     || value.school_id !== 'heihui-jileniao'
     || value.status !== 'subtitle-derived-advisory'
-    || value.chapter_id !== 'foundations-tools-blocks-modularity-color'
+    || !sameStrings(value.chapter_ids, EXPECTED_CHAPTERS)
     || !sameStrings(value.source_bvids, EXPECTED_SOURCES)
-    || !Array.isArray(value.entries) || value.entries.length !== 12) throw invalid();
+    || !Array.isArray(value.entries) || value.entries.length !== 15) throw invalid();
   const ids = new Set();
   for (const entry of value.entries) {
     exactObject(entry, ENTRY_FIELDS);

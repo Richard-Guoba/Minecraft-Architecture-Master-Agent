@@ -25,7 +25,7 @@
 
 ## 接入建造工作流
 
-[`p7-advisory-v0.2.json`](../rules/schools/heihui-jileniao/p7-advisory-v0.2.json) 把第一章整理为 12 条有界的 `subtitle-derived-advisory` 建造意图。每条意图都保留 `author_claim`、`inference` 或 `contrast` 分类以及 BVID 时间范围。加载器固定学派、章节、6 个有效来源、条目数量、字段、设计层、长度和规范内容 SHA-256；用 `O_NOFOLLOW` 打开并复核 descriptor 身份，内容、来源、分类或引用漂移均以 `P7_ADVISORY_INVALID` 失败。
+[`p7-advisory-v0.2.json`](../rules/schools/heihui-jileniao/p7-advisory-v0.2.json) 最初把第一章整理为 12 条有界的 `subtitle-derived-advisory` 建造意图，随后按课次聚合新章节知识。每条意图都保留 `author_claim`、`inference` 或 `contrast` 分类以及 BVID 时间范围。加载器固定学派、已处理章节、有效来源、条目数量、字段、设计层、长度和规范内容 SHA-256；用 `O_NOFOLLOW` 打开并复核 descriptor 身份，内容、来源、分类或引用漂移均以 `P7_ADVISORY_INVALID` 失败。
 
 LLM `playbook=execute` 在创建三个候选的冻结设计前加载该 overlay，并把它作为 `intent-guidance-only-not-reviewed-rules` 传入设计 envelope。模型必须把精确 overlay SHA-256 回写到冻结设计；该文件的哈希随后进入 chain authority。经验证的 brief、massing、structure、roof 和 facade 意图会追加到 Architect、Planner 和 CreativeDesign 的实际输入，因此能够影响生成语义。Mock 不加载 overlay，也不改变原冻结输入。
 
@@ -54,7 +54,7 @@ npm run playbook:chapter -- advance --bvid BV1guoPYkExk
 
 它要求 `reviewed teaching-event index`，本轮没有伪造该产物。按已批准的字幕优先知识扩展方向，这个正式视觉 QA 不阻塞下一章。
 
-第二章 `complete-structure` 的 course order 8、9 已属于原六集黄金语料，不应重复处理。下一个尚未学习的课次是 course order 10：
+以下是第一章完成时记录的历史下一步；该命令现已执行，不再是当前动作。第二章 `complete-structure` 的 course order 8、9 已属于原六集黄金语料，没有重复处理；course order 10 当时是下一个尚未学习的课次：
 
 ```bash
 npm run playbook:evidence -- media --bvid BV1ecj4zsE27

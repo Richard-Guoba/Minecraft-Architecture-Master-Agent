@@ -18,22 +18,33 @@ import {
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
-test('loads a bounded Chapter 1 subtitle advisory without changing reviewed-rule authority', async () => {
+test('loads the bounded processed-chapter subtitle advisory without changing reviewed-rule authority', async () => {
   const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
 
   assert.equal(P7_ADVISORY_OVERLAY_PATH,
     'docs/architecture-playbook/rules/schools/heihui-jileniao/p7-advisory-v0.2.json');
   assert.equal(overlay.school_id, 'heihui-jileniao');
   assert.equal(overlay.status, 'subtitle-derived-advisory');
-  assert.equal(overlay.chapter_id, 'foundations-tools-blocks-modularity-color');
-  assert.equal(overlay.source_bvids.length, 6);
-  assert.equal(overlay.entries.length, 12);
+  assert.deepEqual(overlay.chapter_ids, [
+    'foundations-tools-blocks-modularity-color',
+    'complete-structure'
+  ]);
+  assert.equal(overlay.source_bvids.length, 7);
+  assert.equal(overlay.entries.length, 15);
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
   assert.ok(overlay.entries.every((entry) => entry.evidence_refs.length > 0));
   assert.ok(overlay.entries.every((entry) =>
     ['author_claim', 'inference', 'contrast'].includes(entry.classification)));
+  assert.deepEqual(
+    overlay.entries.slice(-3).map(({ knowledge_id }) => knowledge_id),
+    [
+      'knowledge:p7:connected-mass-addition',
+      'knowledge:p7:facade-partition-volume',
+      'knowledge:p7:visual-support-check'
+    ]
+  );
   assert.ok(Object.isFrozen(overlay));
   assert.ok(Object.isFrozen(overlay.entries));
 });

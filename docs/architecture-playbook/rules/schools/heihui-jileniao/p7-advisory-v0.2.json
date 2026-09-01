@@ -3,14 +3,18 @@
   "overlay_version": "0.2.0",
   "school_id": "heihui-jileniao",
   "status": "subtitle-derived-advisory",
-  "chapter_id": "foundations-tools-blocks-modularity-color",
+  "chapter_ids": [
+    "foundations-tools-blocks-modularity-color",
+    "complete-structure"
+  ],
   "source_bvids": [
     "BV1aBV1zwELe",
     "BV1SwdfBHEx5",
     "BV1SG6GY9ETe",
     "BV1iVLbzcEfG",
     "BV1cLJtz1ELx",
-    "BV14XMtzFEzb"
+    "BV14XMtzFEzb",
+    "BV1ecj4zsE27"
   ],
   "entries": [
     {
@@ -108,6 +112,30 @@
       "source_bvids": ["BV14XMtzFEzb"],
       "classification": "inference",
       "evidence_refs": ["BV14XMtzFEzb@302-371", "BV14XMtzFEzb@668-773", "BV14XMtzFEzb@974-1015"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:connected-mass-addition",
+      "design_layers": ["massing", "structure", "roof"],
+      "intent": "Vary the proportions of role-bearing secondary masses, overlap them or share connection faces with the primary mass, and verify that the hierarchy remains readable from primary and corner views.",
+      "source_bvids": ["BV1ecj4zsE27"],
+      "classification": "inference",
+      "evidence_refs": ["BV1ecj4zsE27@135-385", "BV1ecj4zsE27@750-840"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:facade-partition-volume",
+      "design_layers": ["massing", "facade"],
+      "intent": "Partition oversized continuous walls with subordinate entrance, room, tower, dormer or shed volumes, concentrate detail at joins and focal areas, and preserve deliberate blank surfaces elsewhere.",
+      "source_bvids": ["BV1ecj4zsE27"],
+      "classification": "inference",
+      "evidence_refs": ["BV1ecj4zsE27@419-657", "BV1ecj4zsE27@750-1025"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:visual-support-check",
+      "design_layers": ["massing", "structure"],
+      "intent": "Make tall masses, overhangs and links read as supported through a wider or stepped base, adjacent lower masses, or an explicit support path; do not invent a universal numeric ratio.",
+      "source_bvids": ["BV1ecj4zsE27"],
+      "classification": "inference",
+      "evidence_refs": ["BV1ecj4zsE27@526-612", "BV1ecj4zsE27@938-950"]
     }
   ]
 }
