@@ -54,28 +54,59 @@ test('verifier runs every exact required suite sequentially and seals canonical 
   assert.equal(JSON.stringify(receipt).includes(':pass'), false);
 });
 
-test('pinned regression and commit executables ignore poisoned PATH and strip every MC test bypass', async t => {
+test('regression children use a minimal environment immune to PATH, loader, Node, shell, and npm injection', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-regression-path-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const npmMarker = path.join(root, 'fake-npm-ran');
   const gitMarker = path.join(root, 'fake-git-ran');
+  const nodeHookMarker = path.join(root, 'node-hook-ran');
+  const shellMarker = path.join(root, 'fake-shell-ran');
+  const nodeHook = path.join(root, 'hook.cjs');
+  const fakeShell = path.join(root, 'fake-shell');
   await fs.writeFile(path.join(root, 'npm'), `#!/bin/sh\ntouch '${npmMarker}'\nexit 0\n`, { mode: 0o700 });
   await fs.writeFile(path.join(root, 'git'), `#!/bin/sh\ntouch '${gitMarker}'\nprintf '%040d\\n' 0\n`, { mode: 0o700 });
+  await fs.writeFile(nodeHook, `require('node:fs').writeFileSync(${JSON.stringify(nodeHookMarker)}, 'ran')\n`);
+  await fs.writeFile(fakeShell, `#!/bin/sh\ntouch '${shellMarker}'\nexit 0\n`, { mode: 0o700 });
+  await fs.writeFile(path.join(root, 'attacker.npmrc'), [
+    `node-options=--require=${nodeHook}`,
+    `script-shell=${fakeShell}`,
+    ''
+  ].join('\n'));
   const poisoned = {
     ...process.env,
     PATH: `${root}:${process.env.PATH}`,
     MC_TEST_ALLOW_SOFT_FALLBACK: '1',
-    MC_TEST_BYPASS_HARD_SCOPE: '1'
+    MC_TEST_BYPASS_HARD_SCOPE: '1',
+    NODE_OPTIONS: `--require=${nodeHook}`,
+    npm_config_node_options: `--require=${nodeHook}`,
+    NPM_CONFIG_NODE_OPTIONS: `--require=${nodeHook}`,
+    npm_config_script_shell: fakeShell,
+    npm_config_userconfig: path.join(root, 'attacker.npmrc'),
+    LD_PRELOAD: path.join(root, 'attacker.so'),
+    DYLD_INSERT_LIBRARIES: path.join(root, 'attacker.dylib'),
+    BASH_ENV: fakeShell,
+    ENV: fakeShell,
+    NODE_PATH: root,
+    INIT_CWD: root,
+    HOME: root,
+    XDG_RUNTIME_DIR: root,
+    DBUS_SESSION_BUS_ADDRESS: `unix:path=${root}/fake-bus`,
+    ARBITRARY_CALLER_SECRET: 'must-not-cross-boundary'
   };
   const childEnv = createRegressionChildEnvironment(poisoned);
-  assert.equal(Object.keys(childEnv).some(key => key.startsWith('MC_TEST_')), false);
-  assert.equal(childEnv.PATH.split(':').includes(root), false);
+  assert.deepEqual(Object.keys(childEnv).sort(), [
+    'DBUS_SESSION_BUS_ADDRESS', 'HOME', 'LANG', 'LC_ALL', 'PATH', 'TMPDIR',
+    'XDG_RUNTIME_DIR', 'npm_config_globalconfig', 'npm_config_location',
+    'npm_config_script_shell', 'npm_config_userconfig'
+  ]);
+  assert.equal(Object.values(childEnv).some(value => String(value).includes(root)), false);
 
   const manual = P6_REGRESSION_SUITES.find(row => row.suite_id === 'manual-drift');
   assert.equal((await runRegressionCommand(manual, { env: poisoned })).exit_code, 0);
   assert.match(await resolveGitCommit({ env: poisoned }), /^[a-f0-9]{40}$/u);
-  await assert.rejects(fs.lstat(npmMarker), { code: 'ENOENT' });
-  await assert.rejects(fs.lstat(gitMarker), { code: 'ENOENT' });
+  for (const marker of [npmMarker, gitMarker, nodeHookMarker, shellMarker]) {
+    await assert.rejects(fs.lstat(marker), { code: 'ENOENT' });
+  }
 
   const hardBackendExit = runNodeTests({
     env: childEnv,

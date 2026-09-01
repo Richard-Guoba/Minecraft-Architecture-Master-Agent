@@ -157,12 +157,21 @@ export async function runRegressionCommand(
 
 export function createRegressionChildEnvironment(source = process.env) {
   if (!plain(source)) invalid();
-  const environment = { ...source };
-  for (const key of Object.keys(environment)) {
-    if (key.startsWith('MC_TEST_')) delete environment[key];
-  }
-  environment.PATH = [...new Set([path.dirname(process.execPath), '/usr/bin', '/bin'])].join(':');
-  return environment;
+  const runtimeDirectory = typeof process.getuid === 'function'
+    ? `/run/user/${process.getuid()}` : '/nonexistent/p6-runtime';
+  return {
+    PATH: [...new Set([path.dirname(process.execPath), '/usr/bin', '/bin'])].join(':'),
+    LANG: 'C.UTF-8',
+    LC_ALL: 'C.UTF-8',
+    TMPDIR: '/tmp',
+    HOME: '/nonexistent',
+    XDG_RUNTIME_DIR: runtimeDirectory,
+    DBUS_SESSION_BUS_ADDRESS: `unix:path=${runtimeDirectory}/bus`,
+    npm_config_userconfig: '/dev/null',
+    npm_config_globalconfig: '/nonexistent/p6-global-npmrc',
+    npm_config_location: 'global',
+    npm_config_script_shell: '/bin/sh'
+  };
 }
 
 function normalizeRunnerResult(value) {
