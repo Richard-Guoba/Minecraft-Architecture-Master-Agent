@@ -102,7 +102,11 @@ test('legacy entry derivation fails closed for missing, ambiguous, or semantical
 
 test('sparse P5 eligibility ranking preserves all three frozen slots without substituting a solution', () => {
   assert.deepEqual(normalizeP6SelectionRank({
-    candidates: ['candidate-01', 'candidate-02', 'candidate-03'].map(candidate_id => ({ candidate_id })),
+    candidates: [
+      selectionCandidate('candidate-01', 'repair-invalid'),
+      selectionCandidate('candidate-02', 'repair-invalid'),
+      selectionCandidate('candidate-03', 'eligible')
+    ],
     ranking: [{ candidate_id: 'candidate-03', rank: 1 }]
   }), [
     { candidate_id: 'candidate-01', rank: null },
@@ -110,6 +114,45 @@ test('sparse P5 eligibility ranking preserves all three frozen slots without sub
     { candidate_id: 'candidate-03', rank: 1 }
   ]);
 });
+
+test('selection rank rejects an omitted eligible candidate', () => {
+  assert.throws(() => normalizeP6SelectionRank({
+    candidates: [
+      selectionCandidate('candidate-01', 'eligible'),
+      selectionCandidate('candidate-02', 'repair-invalid'),
+      selectionCandidate('candidate-03', 'eligible')
+    ],
+    ranking: [{ candidate_id: 'candidate-03', rank: 1 }]
+  }), { code: 'P6_AUTHORITY_INVALID' });
+});
+
+test('selection rank rejects a ranked ineligible candidate', () => {
+  assert.throws(() => normalizeP6SelectionRank({
+    candidates: [
+      selectionCandidate('candidate-01', 'repair-invalid'),
+      selectionCandidate('candidate-02', 'repair-invalid'),
+      selectionCandidate('candidate-03', 'eligible')
+    ],
+    ranking: [
+      { candidate_id: 'candidate-03', rank: 1 },
+      { candidate_id: 'candidate-02', rank: 2 }
+    ]
+  }), { code: 'P6_AUTHORITY_INVALID' });
+});
+
+function selectionCandidate(candidate_id, status) {
+  return {
+    candidate_id,
+    eligibility: {
+      status,
+      hard_qa_ok: true,
+      unresolved_violated_core_rule_ids: status === 'eligible' ? [] : ['rule:test.unresolved'],
+      neutral_unknown_rule_ids: [],
+      neutral_not_applicable_rule_ids: [],
+      repair_budget_used: status === 'eligible' ? 0 : 1
+    }
+  };
+}
 
 function exactSouthDoor(x, y, z, block) {
   return [
@@ -188,7 +231,7 @@ test('fixture authority snapshots preserve actual lstat node kinds without publi
   assert.equal(JSON.stringify(cohort).includes('"path"'), false);
 });
 
-test('fixed provenance rejects coordinated drift and ranks are exact permutations', async t => {
+test('fixed provenance rejects coordinated drift and invalid rank sequences', async t => {
   for (const mutate of [
     ({ playbook, baseline }) => { playbook.provenance.corpus_sha256 = baseline.provenance.corpus_sha256 = 'd'.repeat(64); },
     ({ playbook, baseline }) => { playbook.provenance.rule_version = baseline.provenance.rule_version = '0.2.0'; },

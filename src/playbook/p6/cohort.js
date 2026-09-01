@@ -5,7 +5,7 @@ import {
   readCurrentCandidateSnapshot,
   readCurrentExecuteSelectionSnapshot
 } from '../execute/storage.js';
-import { validateSelectionRecord } from '../execute/contracts.js';
+import { validateEligibilityRecord, validateSelectionRecord } from '../execute/contracts.js';
 import { validateCandidateFiles } from '../execute/storageValidation.js';
 import { deepFreeze, sha256, stableJson } from '../shadow/canonical.js';
 import {
@@ -497,10 +497,17 @@ export function normalizeP6SelectionRank({ candidates, ranking } = {}) {
   const candidateIds = candidates.map(row => row?.candidate_id);
   if (new Set(candidateIds).size !== 3
     || candidateIds.some(id => !/^candidate-0[1-3]$/u.test(id))) authority();
+  let eligibleIds;
+  try {
+    eligibleIds = new Set(candidates
+      .filter(row => validateEligibilityRecord(row.eligibility).status === 'eligible')
+      .map(row => row.candidate_id));
+  } catch { authority(); }
   const rankedIds = ranking.map(row => row?.candidate_id);
   const rankedValues = ranking.map(row => row?.rank);
   if (new Set(rankedIds).size !== ranking.length
-    || rankedIds.some(id => !candidateIds.includes(id))
+    || rankedIds.length !== eligibleIds.size
+    || rankedIds.some(id => !eligibleIds.has(id))
     || rankedValues.some((rank, index) => rank !== index + 1)) authority();
   const byId = new Map(ranking.map(row => [row.candidate_id, row.rank]));
   return deepFreeze(candidateIds.map(candidate_id => ({
