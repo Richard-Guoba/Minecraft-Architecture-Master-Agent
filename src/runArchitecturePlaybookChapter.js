@@ -6,7 +6,13 @@ import {
   createChapterLedger,
   readChapterLedger
 } from './playbook/course/chapterLedger.js';
-import { validateChapterPlan } from './playbook/course/chapterPlan.js';
+import {
+  getChapterEpisodeIdentity,
+  validateChapterPlan
+} from './playbook/course/chapterPlan.js';
+import {
+  verifyAndAdvanceEpisode
+} from './playbook/course/chapterArtifactVerifier.js';
 import { validateCourseManifest } from './playbook/contracts/courseManifest.js';
 import { failPlaybookContract } from './playbook/contracts/playbookContractError.js';
 import {
@@ -70,6 +76,29 @@ export async function runChapterCli(argv, {
     assertLedgerPlanBinding(created.ledger, plan);
     return deepFreeze({ status: created.status, ...globalStatus(plan, created.ledger) });
   }
+  if (options.command === 'advance') {
+    const episode = getChapterEpisodeIdentity({
+      chapterPlan: plan,
+      courseManifest: manifest,
+      bvid: options.bvid
+    });
+    const current = await readChapterLedger({ projectRoot: resolvedProjectRoot });
+    assertLedgerPlanBinding(current.ledger, plan);
+    const fromStage = current.ledger.episodes[episode.bvid].stage;
+    const advanced = await verifyAndAdvanceEpisode({
+      projectRoot: resolvedProjectRoot,
+      episode,
+      expectedCurrentStage: fromStage
+    });
+    const toStage = advanced.ledger.episodes[episode.bvid].stage;
+    return deepFreeze({
+      status: advanced.status,
+      bvid: episode.bvid,
+      from_stage: fromStage,
+      to_stage: toStage,
+      evidence: transitionEvidence(advanced.ledger.episodes[episode.bvid], toStage)
+    });
+  }
   const chapter = options.chapterId === undefined
     ? undefined
     : plan.chapters.find((candidate) => candidate.chapter_id === options.chapterId);
@@ -101,11 +130,11 @@ export async function main(argv = process.argv.slice(2)) {
 
 function parseChapterArgs(argv) {
   const command = Array.isArray(argv) ? argv[0] : undefined;
-  if (!['init', 'status', 'next'].includes(command)) {
+  if (!['init', 'status', 'next', 'advance'].includes(command)) {
     failPlaybookContract(
       'PLAYBOOK_CHAPTER_COMMAND_INVALID',
       'argv[0]',
-      'expected init, status, or next'
+      'expected init, status, next, or advance'
     );
   }
   if (command === 'init') {
@@ -119,20 +148,22 @@ function parseChapterArgs(argv) {
     return Object.freeze({ command, chapterId: undefined });
   }
   let chapterId;
+  let bvid;
   for (let index = 1; index < argv.length; index += 1) {
     const flag = argv[index];
-    if (flag !== '--chapter') {
+    const expectedFlag = command === 'advance' ? '--bvid' : '--chapter';
+    if (flag !== expectedFlag) {
       failPlaybookContract(
         'PLAYBOOK_CHAPTER_ARGUMENT_UNKNOWN',
         `argv[${index}]`,
         'unsupported argument'
       );
     }
-    if (chapterId !== undefined) {
+    if (chapterId !== undefined || bvid !== undefined) {
       failPlaybookContract(
         'PLAYBOOK_CHAPTER_ARGUMENT_DUPLICATE',
         `argv[${index}]`,
-        '--chapter'
+        expectedFlag
       );
     }
     const value = argv[index + 1];
@@ -140,10 +171,11 @@ function parseChapterArgs(argv) {
       failPlaybookContract(
         'PLAYBOOK_CHAPTER_ARGUMENT_VALUE_MISSING',
         `argv[${index}]`,
-        '--chapter'
+        expectedFlag
       );
     }
-    chapterId = value;
+    if (command === 'advance') bvid = value;
+    else chapterId = value;
     index += 1;
   }
   if (command === 'next' && chapterId === undefined) {
@@ -153,7 +185,34 @@ function parseChapterArgs(argv) {
       'missing option'
     );
   }
-  return Object.freeze({ command, chapterId });
+  if (command === 'advance' && bvid === undefined) {
+    failPlaybookContract(
+      'PLAYBOOK_CHAPTER_ARGUMENT_REQUIRED',
+      '--bvid',
+      'missing option'
+    );
+  }
+  return Object.freeze({ command, chapterId, bvid });
+}
+
+function transitionEvidence(episode, stage) {
+  const fields = {
+    'media-verified': ['media_sha256', 'byte_size'],
+    'asr-complete': ['segment_index_sha256', 'segment_count'],
+    'events-indexed': ['event_index_sha256', 'event_count'],
+    'visual-reviewed': ['visual_review_sha256', 'reviewed_frame_count'],
+    'evidence-packed': ['evidence_pack_sha256', 'evidence_count'],
+    'notes-reviewed': ['notes_sha256', 'note_count'],
+    'rules-reviewed': ['rules_sha256', 'rule_count']
+  }[stage];
+  if (!fields) {
+    failPlaybookContract(
+      'PLAYBOOK_CHAPTER_STAGE_INVALID',
+      'stage',
+      'unsupported transition result'
+    );
+  }
+  return Object.fromEntries(fields.map((field) => [field, episode.evidence[field]]));
 }
 
 function chapterStatus(chapter, ledger) {

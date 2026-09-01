@@ -9,7 +9,8 @@ import test from 'node:test';
 
 import {
   advanceEpisodeStage,
-  createChapterLedger
+  createChapterLedger,
+  readChapterLedger
 } from '../src/playbook/course/chapterLedger.js';
 import { stableJson } from '../src/playbook/shadow/canonical.js';
 import { runChapterCli } from '../src/runArchitecturePlaybookChapter.js';
@@ -30,6 +31,8 @@ const FIRST_CHAPTER = 'foundations-tools-blocks-modularity-color';
 const FIRST_BVID = 'BV1guoPYkExk';
 const SECOND_BVID = 'BV1aBV1zwELe';
 const HASH = 'a'.repeat(64);
+const MEDIA_BYTES = Buffer.from('chapter-cli-media-fixture');
+const MEDIA_SHA256 = createHash('sha256').update(MEDIA_BYTES).digest('hex');
 const STAGES = [
   'pending',
   'media-verified',
@@ -241,6 +244,34 @@ test('next returns the exact existing evidence command without advancing state',
   assert.deepEqual(await fileIdentity(fixture.ledgerPath), before);
 });
 
+test('advance reopens the canonical artifact and returns only public transition data', async (t) => {
+  const fixture = await chapterFixture(t);
+  await writeMediaArtifact(fixture.projectRoot);
+
+  const result = await runChapterCli([
+    'advance',
+    '--bvid',
+    FIRST_BVID
+  ], fixture.deps);
+
+  assert.deepEqual(result, {
+    status: 'updated',
+    bvid: FIRST_BVID,
+    from_stage: 'pending',
+    to_stage: 'media-verified',
+    evidence: {
+      media_sha256: MEDIA_SHA256,
+      byte_size: MEDIA_BYTES.length
+    }
+  });
+  assert.doesNotMatch(JSON.stringify(result), /\.local|ledger|transcript|\/tmp\//u);
+  assert.equal(
+    (await readChapterLedger({ projectRoot: fixture.projectRoot }))
+      .ledger.episodes[FIRST_BVID].stage,
+    'media-verified'
+  );
+});
+
 test('status and next reopen current progress and preserve course order', async (t) => {
   const fixture = await chapterFixture(t);
   const mediaVerified = await advanceEpisodeStage({
@@ -332,6 +363,8 @@ test('argument parsing rejects unknown, duplicate, missing, and command-specific
     ], 'PLAYBOOK_CHAPTER_ARGUMENT_DUPLICATE'],
     [['status', '--chapter'], 'PLAYBOOK_CHAPTER_ARGUMENT_VALUE_MISSING'],
     [['next'], 'PLAYBOOK_CHAPTER_ARGUMENT_REQUIRED'],
+    [['advance'], 'PLAYBOOK_CHAPTER_ARGUMENT_REQUIRED'],
+    [['advance', '--chapter', FIRST_CHAPTER], 'PLAYBOOK_CHAPTER_ARGUMENT_UNKNOWN'],
     [['next', '--chapter', FIRST_CHAPTER, 'extra'], 'PLAYBOOK_CHAPTER_ARGUMENT_UNKNOWN'],
     [['init', '--chapter', FIRST_CHAPTER], 'PLAYBOOK_CHAPTER_ARGUMENT_UNKNOWN'],
     [['init', 'extra'], 'PLAYBOOK_CHAPTER_ARGUMENT_UNKNOWN'],
@@ -489,6 +522,31 @@ async function chapterFixture(t, { create = true } = {}) {
     });
   }
   return fixture;
+}
+
+async function writeMediaArtifact(projectRoot) {
+  const episode = CHAPTER_PLAN.chapters[0].episodes[0];
+  const sourceRoot = path.join(
+    projectRoot,
+    `.local/architecture-playbook/sources/${FIRST_BVID}`
+  );
+  await fs.mkdir(sourceRoot, { recursive: true });
+  await fs.writeFile(path.join(sourceRoot, 'source-360p.mp4'), MEDIA_BYTES);
+  await fs.writeFile(path.join(sourceRoot, 'media-index.json'), JSON.stringify({
+    schema_version: 1,
+    bvid: FIRST_BVID,
+    cid: episode.cid,
+    source_metadata_fingerprint_sha256:
+      episode.metadata_fingerprint_sha256,
+    observed_at: '2026-09-01T12:00:00.000Z',
+    quality: 16,
+    format: 'mp4',
+    declared_duration_ms: episode.duration_seconds * 1000,
+    duration_ms: episode.duration_seconds * 1000,
+    declared_size: MEDIA_BYTES.length,
+    byte_size: MEDIA_BYTES.length,
+    sha256: MEDIA_SHA256
+  }, null, 2) + '\n');
 }
 
 async function assertSafeRejection(promise, code, projectRoot) {
