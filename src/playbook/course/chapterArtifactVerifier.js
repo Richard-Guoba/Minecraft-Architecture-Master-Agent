@@ -412,12 +412,14 @@ function validateFrameIndex(frameIndex, { episode, transcript, events }) {
     || !Array.isArray(frameIndex.frames)
     || frameIndex.frames.length === 0
     || frameIndex.frame_count !== frameIndex.frames.length
+    || frameIndex.frames.length !== events.candidates.length
     || hashStable(frameIndex.frames) !== frameIndex.frame_index_sha256
   ) artifactInvalid();
   const eventById = new Map(events.candidates.map((event) => [
     event.candidate_id, event
   ]));
   const filenames = new Set();
+  const frameIds = new Set();
   for (const frame of frameIndex.frames) {
     assertExactFields(frame, [
       'frame_id',
@@ -435,6 +437,7 @@ function validateFrameIndex(frameIndex, { episode, transcript, events }) {
     const event = eventById.get(frame.frame_id);
     if (
       !event
+      || frameIds.has(frame.frame_id)
       || JSON.stringify(frame.transcript_segment_ids)
         !== JSON.stringify(event.transcript_segment_ids)
       || frame.target_ms !== event.target_ms
@@ -450,6 +453,7 @@ function validateFrameIndex(frameIndex, { episode, transcript, events }) {
       || frame.height < 1
       || frame.visual_review_status !== 'visually-reviewed'
     ) artifactInvalid();
+    frameIds.add(frame.frame_id);
     filenames.add(frame.filename);
   }
 }

@@ -221,6 +221,40 @@ test('pending or changed frame bytes fail before any ledger mutation', async (t)
   }
 });
 
+test('duplicate reviewed-event frame IDs fail before any ledger mutation', async (t) => {
+  const fixture = await eventsFixture(t);
+  const frame = frameFixture();
+  const frameRoot = path.join(
+    fixture.projectRoot,
+    `.local/architecture-playbook/frames/${EPISODE.bvid}`
+  );
+  await fs.mkdir(frameRoot, { recursive: true });
+  await fs.writeFile(path.join(frameRoot, frame.filename), frame.bytes);
+  const duplicateFilename = '02-000001001-course-goals.jpg';
+  await fs.writeFile(path.join(frameRoot, duplicateFilename), frame.bytes);
+  const frameIndex = frameIndexFixture(fixture.transcript, frame);
+  frameIndex.frames.push({
+    ...frameIndex.frames[0],
+    actual_ms: 1001,
+    filename: duplicateFilename
+  });
+  frameIndex.frame_count = frameIndex.frames.length;
+  frameIndex.frame_index_sha256 = hashStable(frameIndex.frames);
+  await fs.writeFile(
+    path.join(frameRoot, 'event-frame-index.json'),
+    `${JSON.stringify(frameIndex, null, 2)}\n`
+  );
+  const before = await readChapterLedger({ projectRoot: fixture.projectRoot });
+
+  await assert.rejects(verifyAndAdvanceEpisode({
+    projectRoot: fixture.projectRoot,
+    episode: EPISODE,
+    expectedCurrentStage: 'events-indexed'
+  }), { code: 'PLAYBOOK_CHAPTER_ARTIFACT_INVALID' });
+
+  assert.deepEqual(await readChapterLedger({ projectRoot: fixture.projectRoot }), before);
+});
+
 test('exactly rebuilds the EvidencePack before advancing to evidence-packed', async (t) => {
   const fixture = await visualFixture(t);
   const evidenceInput = evidencePackInput(fixture);
