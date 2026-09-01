@@ -78,7 +78,18 @@ The P5 command preserves P5's public error boundary, so a design-stage provider 
 
 ## P6 reference preparation (offline only)
 
-An ordinary fixed three-candidate `--playbook off` top-level run does not directly contain P6 authority metadata. Convert that exact selected run into a new disposable authority directory first:
+Create the source as an ordinary fixed three-candidate `--playbook off` top-level run at the P6 compiler target. The ordinary pipeline publishes `generation-authority.json`, which canonically binds the prompt, seed, all generation options, selection, selected blueprint, and selected build:
+
+```bash
+npm start -- --mode mock --mc-version 1.21.9 --seed 424242 \
+  --candidates 3 --candidate-rounds 1 --candidate-target-score 95 \
+  --concepts 0 --concept-strategy select --no-critics --no-neural-retrieval \
+  --coarse-voxel-mode off --coarse-voxel-provider baseline --playbook off \
+  --out /absolute/path/to/new-off-root \
+  "Build a two-story medieval residence with three volumes, a dark pitched roof, timber framing, and a stone base"
+```
+
+Convert that exact selected run into a new disposable authority directory:
 
 ```bash
 npm run playbook:p6 -- prepare-baseline-authority \
@@ -86,7 +97,7 @@ npm run playbook:p6 -- prepare-baseline-authority \
   --baseline-run /absolute/path/to/new-baseline-authority
 ```
 
-`--source-run` is the top run containing `candidate_selection.json` and `candidates/`; a selected candidate directory is deliberately not accepted. `--baseline-run` must not exist. The offline command verifies the fixed request, seed, three-candidate selection, selected artifact layout, exact blueprint/build correspondence, and hard QA; it recomputes the deterministic P4 review and snapshots the exact source blueprint/build bytes plus canonical operations into the new authority. It does not write to the source run, launch Minecraft, or touch a world.
+`--source-run` is the top run containing `generation-authority.json`, `candidate_selection.json`, and `candidates/`; a selected candidate directory is deliberately not accepted. `--baseline-run` must not exist. The offline command verifies the fixed request, seed, every fixed generation option, three-candidate selection, selected artifact layout, and the exact Minecraft 1.21.9 compiler output; it recomputes hard QA and the deterministic P4 review and snapshots the exact source blueprint/build bytes plus canonical operations into the new authority. It does not write to the source run, launch Minecraft, or touch a world.
 
 After producing the exact frozen P5 run and matching baseline authority, prepare the P6 reference package under a disposable ignored run directory:
 
@@ -97,7 +108,7 @@ npm run playbook:p6 -- prepare \
   --run-dir /absolute/path/to/p6-run
 ```
 
-The command never launches, installs, opens, or changes Minecraft or any world. It writes only the owned `playbook-p6/` output beneath `--run-dir` (normally `out/<run>/playbook-p6/`); `out/`, `.local/architecture-playbook/`, worlds, datapacks, screenshots, reference images, and private comparison material are ignored and must remain untracked. Its `reference-render` images are deterministic offline checks, not the required formal Minecraft captures.
+`--run-dir` must already exist as an empty disposable run parent, and its `playbook-p6/` child must not exist. The command never launches, installs, opens, or changes Minecraft or any world. It writes only the owned `playbook-p6/` output beneath `--run-dir` (normally `out/<run>/playbook-p6/`); `out/`, `.local/architecture-playbook/`, worlds, datapacks, screenshots, reference images, and private comparison material are ignored and must remain untracked. Its `reference-render` images are deterministic offline checks, not the required formal Minecraft captures.
 
 Formal screenshots are a later, separate checkpoint: they require explicit authorization for one exact disposable world, its expected identity hash, and a human-run capture/import step. The blind-comparison step then waits for human A/B/tie choices; no command invents a preference or opens P7 without those records. In this release, `capture` always stops with `P6_CAPTURE_AUTHORIZATION_REQUIRED`, even if authorization-looking flags are supplied.
 

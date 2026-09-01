@@ -2,6 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { randomInt } from 'node:crypto';
 import { createTimestamp, ensureDir, writeJson } from './lib/fs.js';
+import { publishGenerationAuthority } from './lib/generationAuthority.js';
 import { runConstructionWorkflow } from './construction/workflow.js';
 import { CandidateSelectionAgent } from './construction/agents/candidateSelectionAgent.js';
 import { candidateSeedFor, installSelectedDatapack } from './construction/candidatePipelineSupport.js';
@@ -331,6 +332,22 @@ export async function runCandidatePipeline({
   };
   await writeJson(selectedResult.artifacts.blueprint, selectedResult.blueprint);
   await fs.appendFile(selectedResult.artifacts.report, `\n${renderSelectedCandidateAppendix(candidateSelection)}\n`, 'utf8');
+  const generationAuthority = await publishGenerationAuthority({
+    runDir: outputDir,
+    options: {
+      prompt, rootSeed: seedPlan.seed, mode, minecraftVersion: mcVersion,
+      candidateCount, candidateRounds: roundCount, candidateForceRounds: Boolean(candidateForceRounds),
+      concepts: conceptCount, conceptStrategy: normalizedConceptStrategy, critics: Boolean(critics),
+      neuralRetrieval: Boolean(neuralRetrieval), coarseVoxelMode, coarseVoxelProvider,
+      coarseVoxelPlan: coarseVoxelPlan ?? null, playbook: 'off'
+    },
+    selectionPath: selectionJsonPath,
+    selectedCandidateId: finalSelection.selected_candidate_id,
+    selectedDir: selectedResult.outputDir,
+    blueprintPath: selectedResult.artifacts.blueprint,
+    buildFunctionPath: selectedResult.artifacts.buildFunction
+  });
+  selectedResult.artifacts.generationAuthority = generationAuthority.path;
 
   return {
     ...selectedResult,

@@ -77,7 +77,7 @@ test('legacy entry derivation fails closed for missing, ambiguous, or semantical
   const blueprint = {
     workflow: 'construction_method_v1',
     bounds: { minX: 0, maxX: 20, minY: 0, maxY: 10, minZ: 0, maxZ: 30 },
-    paths: { mainDoor: { side: 'south', x: 4, z: 12, width: 2, height: 2 } },
+    paths: { mainDoor: { side: 'south', x: 4, z: 12, width: 2, height: 2, doorBlock: 'minecraft:oak_door[facing=south,half=lower,hinge=left]' } },
     opening: { main_entry: { side: 'south', width: 2, height: 2 } }
   };
   const bounds = { min_x: 0, max_x: 20, min_y: 0, max_y: 10, min_z: 0, max_z: 30 };
@@ -86,6 +86,18 @@ test('legacy entry derivation fails closed for missing, ambiguous, or semantical
   assert.throws(() => resolveSouthEntry({ blueprint, operations: [...exact, { ...exact[0], block: exact[0].block.replace('oak_door', 'spruce_door') }], bounds }), { code: 'P6_COHORT_INCOMPLETE' });
   const north = exact.map(row => ({ ...row, block: row.block.replace('facing=south', 'facing=north') }));
   assert.throws(() => resolveSouthEntry({ blueprint, operations: north, bounds }), { code: 'P6_COHORT_INCOMPLETE' });
+  const mixed = exact.map((row, index) => index === 3 ? { ...row, block: row.block.replace('oak_door', 'spruce_door') } : row);
+  assert.throws(() => resolveSouthEntry({ blueprint, operations: mixed, bounds }), { code: 'P6_COHORT_INCOMPLETE' });
+  const powered = exact.map(row => ({ ...row, block: row.block.replace(']', ',open=false,powered=true]') }));
+  assert.throws(() => resolveSouthEntry({ blueprint, operations: powered, bounds }), { code: 'P6_COHORT_INCOMPLETE' });
+  const extra = exact.map(row => ({ ...row, block: row.block.replace(']', ',waterlogged=false]') }));
+  assert.throws(() => resolveSouthEntry({ blueprint, operations: extra, bounds }), { code: 'P6_COHORT_INCOMPLETE' });
+  assert.throws(() => resolveSouthEntry({
+    blueprint: { ...blueprint, paths: { mainDoor: { ...blueprint.paths.mainDoor, height: 3 } } },
+    operations: [...exact, ...exact.slice(2).map(row => ({
+      ...row, from: { ...row.from, y: 3 }, to: { ...row.to, y: 3 }
+    }))], bounds
+  }), { code: 'P6_COHORT_INCOMPLETE' });
 });
 
 test('sparse P5 eligibility ranking preserves all three frozen slots without substituting a solution', () => {

@@ -315,17 +315,18 @@ function resolveLegacySouthEntry({ blueprint, operations, bounds }) {
   if (!plain(semantic) || !plain(door) || semantic.side !== 'south' || door.side !== 'south') incomplete();
   const x = integer(door.x); const z = integer(door.z);
   const width = integer(door.width); const height = integer(door.height);
-  if ([x, z, width, height].some(value => value === null) || width < 1 || height < 2
+  if ([x, z, width, height].some(value => value === null) || ![1, 2].includes(width) || height !== 2
     || semantic.width !== width || semantic.height !== height) incomplete();
-  const doorOps = Array.isArray(operations) ? operations.filter(operation => (
-    plain(operation) && operation.kind === 'fill' && stableJson(operation.from) === stableJson(operation.to)
-      && typeof operation.block === 'string' && /^minecraft:[a-z0-9_]+_door\[/u.test(operation.block)
-      && !/_trapdoor\[/u.test(operation.block)
-  )) : [];
-  const relevant = doorOps.filter(operation => operation.from.z === z
+  const metadataState = parseDoorState(door.doorBlock);
+  if (!metadataState || metadataState.facing !== 'south' || metadataState.half !== 'lower') incomplete();
+  const doorOps = Array.isArray(operations) ? operations.map(operation => ({
+    operation, state: parseDoorState(operation?.block)
+  })).filter(row => row.state && plain(row.operation) && row.operation.kind === 'fill'
+    && stableJson(row.operation.from) === stableJson(row.operation.to)) : [];
+  const relevant = doorOps.filter(({ operation }) => operation.from.z === z
     && operation.from.x >= x && operation.from.x < x + width);
-  const baseYs = [...new Set(relevant.filter(operation => /(?:^|,)half=lower(?:,|\])/u.test(operation.block))
-    .map(operation => operation.from.y))];
+  const baseYs = [...new Set(relevant.filter(row => row.state.half === 'lower')
+    .map(row => row.operation.from.y))];
   if (baseYs.length !== 1) incomplete();
   const baseY = baseYs[0];
   const expectedCells = new Set();
@@ -333,11 +334,13 @@ function resolveLegacySouthEntry({ blueprint, operations, bounds }) {
     for (let dy = 0; dy < height; dy += 1) expectedCells.add(`${x + dx},${baseY + dy},${z}`);
   }
   if (relevant.length !== expectedCells.size) incomplete();
-  for (const operation of relevant) {
+  for (const { operation, state } of relevant) {
     const cell = `${operation.from.x},${operation.from.y},${operation.from.z}`;
     const expectedHalf = operation.from.y === baseY ? 'lower' : 'upper';
-    if (!expectedCells.delete(cell) || !operation.block.includes('facing=south')
-      || !operation.block.includes(`half=${expectedHalf}`)) incomplete();
+    const expectedHinge = width === 2 ? (operation.from.x === x ? 'left' : 'right') : metadataState.hinge;
+    if (!expectedCells.delete(cell) || state.material !== metadataState.material
+      || state.facing !== 'south' || state.half !== expectedHalf || state.hinge !== expectedHinge
+      || state.open !== metadataState.open || state.powered !== metadataState.powered) incomplete();
   }
   if (expectedCells.size !== 0) incomplete();
   const center_x = x + (width - 1) / 2;
@@ -347,6 +350,27 @@ function resolveLegacySouthEntry({ blueprint, operations, bounds }) {
     || center_y < bounds.min_y || center_y > bounds.max_y
     || center_z < bounds.min_z || center_z > bounds.max_z) incomplete();
   return deepFreeze({ center_x, center_y, center_z, facing: 'south' });
+}
+
+function parseDoorState(block) {
+  if (typeof block !== 'string') return null;
+  const match = /^minecraft:((?![a-z0-9_]*trapdoor$)[a-z0-9_]+_door)\[([a-z0-9_=,]+)\]$/u.exec(block);
+  if (!match) return null;
+  const properties = {};
+  for (const item of match[2].split(',')) {
+    const [key, value, ...rest] = item.split('=');
+    if (rest.length || !['facing', 'half', 'hinge', 'open', 'powered'].includes(key)
+      || Object.hasOwn(properties, key)) return null;
+    properties[key] = value;
+  }
+  if (properties.facing !== 'south' || !['lower', 'upper'].includes(properties.half)
+    || !['left', 'right'].includes(properties.hinge)
+    || (properties.open !== undefined && properties.open !== 'false')
+    || (properties.powered !== undefined && properties.powered !== 'false')) return null;
+  return {
+    material: match[1], facing: properties.facing, half: properties.half,
+    hinge: properties.hinge, open: properties.open ?? 'false', powered: properties.powered ?? 'false'
+  };
 }
 
 export function hashCohortInputs({
