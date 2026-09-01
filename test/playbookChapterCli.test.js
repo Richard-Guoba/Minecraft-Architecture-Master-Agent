@@ -1,0 +1,338 @@
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import test from 'node:test';
+
+import {
+  advanceEpisodeStage,
+  createChapterLedger
+} from '../src/playbook/course/chapterLedger.js';
+import { stableJson } from '../src/playbook/shadow/canonical.js';
+import { runChapterCli } from '../src/runArchitecturePlaybookChapter.js';
+
+const execFileAsync = promisify(execFile);
+const ROOT = path.resolve(import.meta.dirname, '..');
+const COURSE_MANIFEST = await readJson(path.join(
+  ROOT,
+  'docs/architecture-playbook/course/course-manifest.json'
+));
+const CHAPTER_PLAN = await readJson(path.join(
+  ROOT,
+  'docs/architecture-playbook/course/chapter-plan-v1.json'
+));
+const LEDGER_RELATIVE_PATH =
+  '.local/architecture-playbook/work/p7/chapter-ledger.json';
+const FIRST_CHAPTER = 'foundations-tools-blocks-modularity-color';
+const FIRST_BVID = 'BV1guoPYkExk';
+const SECOND_BVID = 'BV1aBV1zwELe';
+const HASH = 'a'.repeat(64);
+const STAGES = [
+  'pending',
+  'media-verified',
+  'asr-complete',
+  'events-indexed',
+  'visual-reviewed',
+  'evidence-packed',
+  'notes-reviewed',
+  'rules-reviewed'
+];
+const EVIDENCE_BY_STAGE = {
+  'media-verified': { media_sha256: HASH, byte_size: 1234 },
+  'asr-complete': { segment_index_sha256: 'b'.repeat(64), segment_count: 41 },
+  'events-indexed': { event_index_sha256: 'c'.repeat(64), event_count: 7 },
+  'visual-reviewed': { visual_review_sha256: 'd'.repeat(64), reviewed_frame_count: 7 },
+  'evidence-packed': { evidence_pack_sha256: 'e'.repeat(64), evidence_count: 12 },
+  'notes-reviewed': { notes_sha256: 'f'.repeat(64), note_count: 9 },
+  'rules-reviewed': { rules_sha256: '1'.repeat(64), rule_count: 4 }
+};
+
+test('chapter status reports exact counts without private data', async (t) => {
+  const fixture = await chapterFixture(t);
+  const before = await fileIdentity(fixture.ledgerPath);
+
+  const result = await runChapterCli([
+    'status',
+    '--chapter',
+    FIRST_CHAPTER
+  ], fixture.deps);
+
+  assert.deepEqual(result, {
+    chapter_id: FIRST_CHAPTER,
+    episode_count: 7,
+    completed_count: 0,
+    remaining_count: 7,
+    next_bvid: FIRST_BVID,
+    next_stage: 'media-verified'
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), result);
+  assert.doesNotMatch(JSON.stringify(result), /\.local|transcript|https?:|\/tmp\//u);
+  assert.deepEqual(await fileIdentity(fixture.ledgerPath), before);
+});
+
+test('global status is deterministic in checked-in chapter order', async (t) => {
+  const fixture = await chapterFixture(t);
+
+  assert.deepEqual(await runChapterCli(['status'], fixture.deps), {
+    chapter_count: 8,
+    episode_count: 50,
+    completed_count: 0,
+    remaining_count: 50,
+    next_chapter_id: FIRST_CHAPTER,
+    next_bvid: FIRST_BVID,
+    next_stage: 'media-verified'
+  });
+});
+
+test('next returns the exact existing evidence command without advancing state', async (t) => {
+  const fixture = await chapterFixture(t);
+  const before = await fileIdentity(fixture.ledgerPath);
+
+  const result = await runChapterCli([
+    'next',
+    '--chapter',
+    FIRST_CHAPTER
+  ], fixture.deps);
+
+  assert.deepEqual(result, {
+    chapter_id: FIRST_CHAPTER,
+    bvid: FIRST_BVID,
+    current_stage: 'pending',
+    next_stage: 'media-verified',
+    command: `npm run playbook:evidence -- media --bvid ${FIRST_BVID}`
+  });
+  assert.deepEqual(await fileIdentity(fixture.ledgerPath), before);
+});
+
+test('status and next reopen current progress and preserve course order', async (t) => {
+  const fixture = await chapterFixture(t);
+  const mediaVerified = await advanceEpisodeStage({
+    projectRoot: fixture.projectRoot,
+    bvid: FIRST_BVID,
+    expectedLedgerSha256: fixture.created.ledger_sha256,
+    expectedStage: 'pending',
+    nextStage: 'media-verified',
+    evidence: EVIDENCE_BY_STAGE['media-verified']
+  });
+  const before = await fileIdentity(fixture.ledgerPath);
+
+  assert.deepEqual(await runChapterCli([
+    'status',
+    '--chapter',
+    FIRST_CHAPTER
+  ], fixture.deps), {
+    chapter_id: FIRST_CHAPTER,
+    episode_count: 7,
+    completed_count: 0,
+    remaining_count: 7,
+    next_bvid: FIRST_BVID,
+    next_stage: 'asr-complete'
+  });
+  assert.deepEqual(await runChapterCli([
+    'next',
+    '--chapter',
+    FIRST_CHAPTER
+  ], fixture.deps), {
+    chapter_id: FIRST_CHAPTER,
+    bvid: FIRST_BVID,
+    current_stage: 'media-verified',
+    next_stage: 'asr-complete',
+    command: `npm run playbook:evidence -- transcribe --bvid ${FIRST_BVID}`
+  });
+  assert.deepEqual(await fileIdentity(fixture.ledgerPath), before);
+  assert.equal(mediaVerified.ledger.episodes[FIRST_BVID].stage, 'media-verified');
+});
+
+test('completed episodes are counted and skipped by the next action', async (t) => {
+  const fixture = await chapterFixture(t);
+  let current = fixture.created;
+  for (let index = 1; index < STAGES.length; index += 1) {
+    current = await advanceEpisodeStage({
+      projectRoot: fixture.projectRoot,
+      bvid: FIRST_BVID,
+      expectedLedgerSha256: current.ledger_sha256,
+      expectedStage: STAGES[index - 1],
+      nextStage: STAGES[index],
+      evidence: EVIDENCE_BY_STAGE[STAGES[index]]
+    });
+  }
+  const before = await fileIdentity(fixture.ledgerPath);
+
+  assert.deepEqual(await runChapterCli([
+    'status',
+    '--chapter',
+    FIRST_CHAPTER
+  ], fixture.deps), {
+    chapter_id: FIRST_CHAPTER,
+    episode_count: 7,
+    completed_count: 1,
+    remaining_count: 6,
+    next_bvid: SECOND_BVID,
+    next_stage: 'media-verified'
+  });
+  assert.deepEqual(await runChapterCli([
+    'next',
+    '--chapter',
+    FIRST_CHAPTER
+  ], fixture.deps), {
+    chapter_id: FIRST_CHAPTER,
+    bvid: SECOND_BVID,
+    current_stage: 'pending',
+    next_stage: 'media-verified',
+    command: `npm run playbook:evidence -- media --bvid ${SECOND_BVID}`
+  });
+  assert.deepEqual(await fileIdentity(fixture.ledgerPath), before);
+});
+
+test('argument parsing rejects unknown, duplicate, missing, and command-specific input', async (t) => {
+  const fixture = await chapterFixture(t);
+  const invalidCases = [
+    [[], 'PLAYBOOK_CHAPTER_COMMAND_INVALID'],
+    [['summary'], 'PLAYBOOK_CHAPTER_COMMAND_INVALID'],
+    [['status', '--unknown', FIRST_CHAPTER], 'PLAYBOOK_CHAPTER_ARGUMENT_UNKNOWN'],
+    [[
+      'status', '--chapter', FIRST_CHAPTER, '--chapter', FIRST_CHAPTER
+    ], 'PLAYBOOK_CHAPTER_ARGUMENT_DUPLICATE'],
+    [['status', '--chapter'], 'PLAYBOOK_CHAPTER_ARGUMENT_VALUE_MISSING'],
+    [['next'], 'PLAYBOOK_CHAPTER_ARGUMENT_REQUIRED'],
+    [['next', '--chapter', FIRST_CHAPTER, 'extra'], 'PLAYBOOK_CHAPTER_ARGUMENT_UNKNOWN'],
+    [['status', '--chapter', 'unknown-chapter'], 'PLAYBOOK_CHAPTER_ID_INVALID']
+  ];
+
+  for (const [argv, code] of invalidCases) {
+    await assert.rejects(runChapterCli(argv, fixture.deps), { code });
+  }
+});
+
+test('missing, corrupt, and source-drifted ledgers fail closed without disclosure', async (t) => {
+  const missing = await chapterFixture(t, { create: false });
+  await assertSafeRejection(
+    runChapterCli(['status'], missing.deps),
+    'PLAYBOOK_CHAPTER_LEDGER_MISSING',
+    missing.projectRoot
+  );
+  await assert.rejects(fs.access(path.join(missing.projectRoot, '.local')));
+
+  const corrupt = await chapterFixture(t);
+  await fs.writeFile(
+    corrupt.ledgerPath,
+    '{"transcript_text":"secret","source_path":"/tmp/private-source"}\n'
+  );
+  await assertSafeRejection(
+    runChapterCli(['status'], corrupt.deps),
+    'PLAYBOOK_CHAPTER_LEDGER_INVALID',
+    corrupt.projectRoot
+  );
+
+  const planHashDrift = await chapterFixture(t);
+  const driftedHashLedger = await readJson(planHashDrift.ledgerPath);
+  driftedHashLedger.chapter_plan_sha256 = '0'.repeat(64);
+  await fs.writeFile(planHashDrift.ledgerPath, stableJson(driftedHashLedger));
+  await assertSafeRejection(
+    runChapterCli(['status'], planHashDrift.deps),
+    'PLAYBOOK_CHAPTER_SOURCE_DRIFT',
+    planHashDrift.projectRoot
+  );
+
+  const identityDrift = await chapterFixture(t);
+  const redirectedLedger = await readJson(identityDrift.ledgerPath);
+  redirectedLedger.episodes[FIRST_BVID].chapter_id = 'complete-structure';
+  await fs.writeFile(identityDrift.ledgerPath, stableJson(redirectedLedger));
+  await assertSafeRejection(
+    runChapterCli(['status'], identityDrift.deps),
+    'PLAYBOOK_CHAPTER_SOURCE_DRIFT',
+    identityDrift.projectRoot
+  );
+});
+
+test('package CLI prints one canonical JSON document from fixed checked-in authority', async (t) => {
+  const fixture = await chapterFixture(t);
+  const before = await fileIdentity(fixture.ledgerPath);
+  const npmCli = process.env.npm_execpath;
+  assert.equal(typeof npmCli, 'string');
+
+  const childEnvironment = { ...process.env };
+  delete childEnvironment.NODE_TEST_CONTEXT;
+  delete childEnvironment.NODE_TEST_WORKER_ID;
+  const result = await execFileAsync(process.execPath, [
+    npmCli,
+    'run',
+    '--silent',
+    'playbook:chapter',
+    '--',
+    'status',
+    '--chapter',
+    FIRST_CHAPTER
+  ], {
+    cwd: ROOT,
+    env: {
+      ...childEnvironment,
+      PLAYBOOK_PROJECT_ROOT: fixture.projectRoot
+    },
+    encoding: 'utf8'
+  });
+
+  assert.equal(result.stderr, '');
+  assert.equal(result.stdout, stableJson({
+    chapter_id: FIRST_CHAPTER,
+    episode_count: 7,
+    completed_count: 0,
+    remaining_count: 7,
+    next_bvid: FIRST_BVID,
+    next_stage: 'media-verified'
+  }));
+  assert.deepEqual(await fileIdentity(fixture.ledgerPath), before);
+});
+
+async function chapterFixture(t, { create = true } = {}) {
+  const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-chapter-cli-'));
+  t.after(() => fs.rm(projectRoot, { recursive: true, force: true }));
+  const ledgerPath = path.join(projectRoot, LEDGER_RELATIVE_PATH);
+  const fixture = {
+    projectRoot,
+    ledgerPath,
+    deps: {
+      projectRoot,
+      courseManifest: structuredClone(COURSE_MANIFEST),
+      chapterPlan: structuredClone(CHAPTER_PLAN)
+    }
+  };
+  if (create) {
+    fixture.created = await createChapterLedger({
+      projectRoot,
+      chapterPlan: fixture.deps.chapterPlan
+    });
+  }
+  return fixture;
+}
+
+async function assertSafeRejection(promise, code, projectRoot) {
+  let rejection;
+  try {
+    await promise;
+  } catch (error) {
+    rejection = error;
+  }
+  assert.equal(rejection?.code, code);
+  const text = String(rejection);
+  assert.equal(text.includes(projectRoot), false);
+  assert.doesNotMatch(text, /\.local|transcript|https?:|private-source/u);
+}
+
+async function fileIdentity(filePath) {
+  const stat = await fs.lstat(filePath);
+  return {
+    dev: stat.dev,
+    ino: stat.ino,
+    size: stat.size,
+    mtimeMs: stat.mtimeMs,
+    sha256: createHash('sha256').update(await fs.readFile(filePath)).digest('hex')
+  };
+}
+
+async function readJson(filePath) {
+  return JSON.parse(await fs.readFile(filePath, 'utf8'));
+}

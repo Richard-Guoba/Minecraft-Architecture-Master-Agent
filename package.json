@@ -19,6 +19,7 @@
     "benchmark:baseline": "node src/runBaselineBenchmark.js",
     "analyze:templates": "node src/analyzeTemplateCorpus.js",
     "playbook:course": "node src/runArchitecturePlaybookCourse.js",
+    "playbook:chapter": "node src/runArchitecturePlaybookChapter.js",
     "playbook:evidence": "node src/runArchitecturePlaybookEvidence.js",
     "playbook:manual": "node src/runArchitecturePlaybookManual.js",
     "playbook:shadow": "node src/runArchitecturePlaybookShadow.js",
