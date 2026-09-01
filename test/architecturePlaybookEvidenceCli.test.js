@@ -207,6 +207,42 @@ test('media acquisition accepts an exact manifest-bound non-pilot identity', asy
     CHAPTER_EPISODE.metadata_fingerprint_sha256);
 });
 
+test('media acquisition retries an official backup CDN after a terminated stream', async (t) => {
+  const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-media-'));
+  t.after(() => fs.rm(projectRoot, { recursive: true, force: true }));
+  const requested = [];
+  const fetchImpl = playbackFetch({
+    backupUrl: 'https://backup.fixture.invalid/source.mp4',
+    mediaResponse(url) {
+      requested.push(url);
+      if (url.includes('media.fixture.invalid')) {
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.error(new TypeError('terminated'));
+          }
+        }), { status: 200 });
+      }
+      return new Response(MEDIA_BYTES, {
+        status: 200,
+        headers: { 'content-length': String(MEDIA_BYTES.length) }
+      });
+    }
+  });
+
+  const result = await acquireEpisodeMedia({
+    episode: EPISODE,
+    projectRoot,
+    fetchImpl,
+    observedAt: OBSERVED_AT
+  });
+
+  assert.equal(result.status, 'created');
+  assert.deepEqual(requested, [
+    'https://media.fixture.invalid/source.mp4',
+    'https://backup.fixture.invalid/source.mp4'
+  ]);
+});
+
 test('media acquisition reuses a verified index without network access', async (t) => {
   const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-media-'));
   t.after(() => fs.rm(projectRoot, { recursive: true, force: true }));
@@ -255,7 +291,12 @@ test('media acquisition refuses to replace different existing bytes', async (t) 
   );
 });
 
-function playbackFetch({ episode = EPISODE, directBvid = episode.bvid } = {}) {
+function playbackFetch({
+  episode = EPISODE,
+  directBvid = episode.bvid,
+  backupUrl,
+  mediaResponse
+} = {}) {
   return async (url) => {
     if (url.includes('/x/web-interface/view')) {
       return Response.json({
@@ -278,12 +319,17 @@ function playbackFetch({ episode = EPISODE, directBvid = episode.bvid } = {}) {
             order: 1,
             length: episode.duration_seconds * 1000,
             size: MEDIA_BYTES.length,
-            url: 'https://media.fixture.invalid/source.mp4'
+            url: 'https://media.fixture.invalid/source.mp4',
+            ...(backupUrl ? { backup_url: [backupUrl] } : {})
           }]
         }
       });
     }
-    if (url === 'https://media.fixture.invalid/source.mp4') {
+    if (
+      url === 'https://media.fixture.invalid/source.mp4'
+      || url === backupUrl
+    ) {
+      if (mediaResponse) return mediaResponse(url);
       return new Response(MEDIA_BYTES, {
         status: 200,
         headers: { 'content-length': String(MEDIA_BYTES.length) }

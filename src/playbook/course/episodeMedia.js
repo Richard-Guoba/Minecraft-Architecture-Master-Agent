@@ -46,10 +46,13 @@ export async function resolveEpisodePlayback({ episode, fetchImpl }) {
   const play = await fetchJson(fetchImpl, playUrl, approved.bvid);
   const resource = play.data?.durl?.[0];
   let resourceUrl;
+  let backupUrls;
   try {
     resourceUrl = new URL(resource?.url);
+    backupUrls = (resource?.backup_url || []).map((value) => new URL(value));
   } catch {
     resourceUrl = null;
+    backupUrls = null;
   }
   if (
     play.code !== 0
@@ -60,6 +63,8 @@ export async function resolveEpisodePlayback({ episode, fetchImpl }) {
     || resource?.order !== 1
     || !resourceUrl
     || resourceUrl.protocol !== 'https:'
+    || !backupUrls
+    || backupUrls.some((url) => url.protocol !== 'https:')
     || !Number.isSafeInteger(resource.length)
     || Math.abs(resource.length - approved.duration_seconds * 1000) > 3000
     || !Number.isSafeInteger(resource.size)
@@ -78,7 +83,11 @@ export async function resolveEpisodePlayback({ episode, fetchImpl }) {
     format: play.data.format,
     declared_duration_ms: resource.length,
     declared_size: resource.size,
-    resource_url: resourceUrl.toString()
+    resource_url: resourceUrl.toString(),
+    resource_urls: Object.freeze([
+      resourceUrl.toString(),
+      ...backupUrls.map((url) => url.toString())
+    ])
   });
 }
 
@@ -124,40 +133,26 @@ export async function acquireEpisodeMedia({
     episode: approved,
     fetchImpl
   });
-  const response = await fetchImpl(playback.resource_url, {
-    headers: {
-      accept: '*/*',
-      referer: `https://www.bilibili.com/video/${approved.bvid}/`,
-      'user-agent': USER_AGENT
-    }
-  });
-  if (!response?.ok || !response.body) {
-    failPlaybookContract(
-      'PLAYBOOK_MEDIA_DOWNLOAD_FAILED',
-      approved.bvid,
-      response?.status ?? 'no streaming response'
-    );
-  }
-  const headerSize = parseContentLength(response.headers?.get('content-length'));
-  if (headerSize !== null && headerSize !== playback.declared_size) {
-    failPlaybookContract(
-      'PLAYBOOK_MEDIA_SIZE_DRIFT',
-      approved.bvid,
-      `${headerSize} != ${playback.declared_size}`
-    );
-  }
-
   const temporary = `${mediaPath}.${process.pid}.${Date.now()}.tmp`;
   let streamed;
   try {
-    streamed = await streamAndHash(response.body, temporary);
-    if (streamed.byteSize !== playback.declared_size) {
-      failPlaybookContract(
-        'PLAYBOOK_MEDIA_SIZE_DRIFT',
-        approved.bvid,
-        `${streamed.byteSize} != ${playback.declared_size}`
-      );
+    let lastError;
+    for (const resourceUrl of playback.resource_urls) {
+      try {
+        streamed = await downloadResource({
+          fetchImpl,
+          resourceUrl,
+          temporary,
+          episode: approved,
+          declaredSize: playback.declared_size
+        });
+        break;
+      } catch (error) {
+        lastError = error;
+        await fs.rm(temporary, { force: true });
+      }
     }
+    if (!streamed) throw lastError;
     const status = await installMedia({
       temporary,
       mediaPath,
@@ -188,6 +183,46 @@ export async function acquireEpisodeMedia({
     await fs.rm(temporary, { force: true });
     throw error;
   }
+}
+
+async function downloadResource({
+  fetchImpl,
+  resourceUrl,
+  temporary,
+  episode,
+  declaredSize
+}) {
+  const response = await fetchImpl(resourceUrl, {
+    headers: {
+      accept: '*/*',
+      referer: `https://www.bilibili.com/video/${episode.bvid}/`,
+      'user-agent': USER_AGENT
+    }
+  });
+  if (!response?.ok || !response.body) {
+    failPlaybookContract(
+      'PLAYBOOK_MEDIA_DOWNLOAD_FAILED',
+      episode.bvid,
+      response?.status ?? 'no streaming response'
+    );
+  }
+  const headerSize = parseContentLength(response.headers?.get('content-length'));
+  if (headerSize !== null && headerSize !== declaredSize) {
+    failPlaybookContract(
+      'PLAYBOOK_MEDIA_SIZE_DRIFT',
+      episode.bvid,
+      `${headerSize} != ${declaredSize}`
+    );
+  }
+  const streamed = await streamAndHash(response.body, temporary);
+  if (streamed.byteSize !== declaredSize) {
+    failPlaybookContract(
+      'PLAYBOOK_MEDIA_SIZE_DRIFT',
+      episode.bvid,
+      `${streamed.byteSize} != ${declaredSize}`
+    );
+  }
+  return streamed;
 }
 
 function assertApprovedEpisode(episode) {
