@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { validateEvidenceNote } from '../contracts/evidenceNote.js';
 import { failPlaybookContract } from '../contracts/playbookContractError.js';
+import { validateChapterEpisodeIdentity } from '../course/chapterPlan.js';
 import {
   getPilotEpisodeIdentity,
   validatePilotEpisodeSet
@@ -17,14 +18,17 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 export function buildEvidencePack({
   episode,
   pilotEpisodeSet,
+  approvedEpisodes,
   mediaIndex,
   transcript,
   frameIndex,
   terminologyReview,
   notes
 }) {
-  const pilot = validatePilotEpisodeSet(pilotEpisodeSet);
-  const approved = getPilotEpisodeIdentity(episode?.bvid);
+  const episodeContext = buildEpisodeContext({ pilotEpisodeSet, approvedEpisodes });
+  const approved = episode?.chapter_id === undefined
+    ? getPilotEpisodeIdentity(episode?.bvid)
+    : validateChapterEpisodeIdentity(episode);
   assertEpisodeIdentity(episode, approved);
   validateMediaIndex(mediaIndex, approved);
   validateTranscript(transcript, approved, mediaIndex);
@@ -40,7 +44,7 @@ export function buildEvidencePack({
   const validatedNotes = [];
   const evidenceIds = new Set();
   for (const note of notes) {
-    const validated = validateEvidenceNote(note, { pilotEpisodeSet: pilot });
+    const validated = validateEvidenceNote(note, episodeContext);
     if (evidenceIds.has(validated.evidence_id)) {
       failPlaybookContract(
         'PLAYBOOK_PACK_EVIDENCE_ID_DUPLICATE',
@@ -109,8 +113,17 @@ export function summarizeEvidencePack(pack) {
   });
 }
 
-export async function compileLocalEvidencePack({ bvid, projectRoot }) {
-  const approved = getPilotEpisodeIdentity(bvid);
+export async function compileLocalEvidencePack({ bvid, episode, projectRoot }) {
+  const approved = episode?.chapter_id === undefined
+    ? getPilotEpisodeIdentity(bvid)
+    : validateChapterEpisodeIdentity(episode);
+  if (approved.bvid !== bvid) {
+    failPlaybookContract(
+      'PLAYBOOK_PACK_EPISODE_INVALID',
+      'episode.bvid',
+      `${approved.bvid} != ${bvid}`
+    );
+  }
   const root = path.resolve(projectRoot);
   const pilotPath = path.join(
     root,
@@ -135,10 +148,12 @@ export async function compileLocalEvidencePack({ bvid, projectRoot }) {
     });
     inputs[name] = JSON.parse(await fs.readFile(inputPath, 'utf8'));
   }
-  const pilotEpisodeSet = JSON.parse(await fs.readFile(pilotPath, 'utf8'));
+  const episodeContext = episode?.chapter_id === undefined
+    ? { pilotEpisodeSet: JSON.parse(await fs.readFile(pilotPath, 'utf8')) }
+    : { approvedEpisodes: [approved] };
   const pack = buildEvidencePack({
     episode: approved,
-    pilotEpisodeSet,
+    ...episodeContext,
     ...inputs
   });
   const outputPath = resolvePrivatePlaybookPath(
@@ -155,6 +170,22 @@ export async function compileLocalEvidencePack({ bvid, projectRoot }) {
     status,
     summary: summarizeEvidencePack(pack)
   });
+}
+
+function buildEpisodeContext({ pilotEpisodeSet, approvedEpisodes }) {
+  if (pilotEpisodeSet !== undefined) {
+    return { pilotEpisodeSet: validatePilotEpisodeSet(pilotEpisodeSet) };
+  }
+  if (!Array.isArray(approvedEpisodes) || approvedEpisodes.length === 0) {
+    failPlaybookContract(
+      'PLAYBOOK_PACK_EPISODE_INVALID',
+      'approvedEpisodes',
+      'expected manifest-bound episodes'
+    );
+  }
+  return {
+    approvedEpisodes: approvedEpisodes.map(validateChapterEpisodeIdentity)
+  };
 }
 
 function validateMediaIndex(media, episode) {

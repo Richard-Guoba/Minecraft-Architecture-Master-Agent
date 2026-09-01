@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { failPlaybookContract } from '../contracts/playbookContractError.js';
+import { validateChapterEpisodeIdentity } from './chapterPlan.js';
 import { getPilotEpisodeIdentity } from './pilotEpisodeSet.js';
 import {
   assertPrivatePlaybookStorage,
@@ -18,8 +19,8 @@ const SELECTION_REASONS = [
   'conclusion'
 ];
 
-export function buildTranscriptionCommand({ bvid, projectRoot }) {
-  getPilotEpisodeIdentity(bvid);
+export function buildTranscriptionCommand({ bvid, episode, projectRoot }) {
+  resolveProcessingEpisode({ bvid, episode });
   const root = path.resolve(projectRoot);
   return Object.freeze({
     command: PRIVATE_TOOLCHAIN_PYTHON,
@@ -41,8 +42,8 @@ export function buildTranscriptionCommand({ bvid, projectRoot }) {
   });
 }
 
-export function buildFrameExtractionCommand({ bvid, projectRoot }) {
-  getPilotEpisodeIdentity(bvid);
+export function buildFrameExtractionCommand({ bvid, episode, projectRoot }) {
+  resolveProcessingEpisode({ bvid, episode });
   const root = path.resolve(projectRoot);
   return Object.freeze({
     command: PRIVATE_TOOLCHAIN_PYTHON,
@@ -64,7 +65,10 @@ export function buildFrameExtractionCommand({ bvid, projectRoot }) {
 }
 
 export function validateEventCandidates(value, { episode, transcript }) {
-  const approved = getPilotEpisodeIdentity(episode?.bvid);
+  const approved = resolveProcessingEpisode({
+    bvid: episode?.bvid,
+    episode
+  });
   assertEpisodeIdentity(episode, approved);
   validateTranscriptIdentity(transcript, approved);
   const document = cloneDocument(value);
@@ -135,8 +139,8 @@ export function validateEventCandidates(value, { episode, transcript }) {
   return deepFreeze(document);
 }
 
-export async function runTranscription({ bvid, projectRoot }) {
-  const approved = getPilotEpisodeIdentity(bvid);
+export async function runTranscription({ bvid, episode, projectRoot }) {
+  const approved = resolveProcessingEpisode({ bvid, episode });
   const sourcePath = resolvePrivatePlaybookPath(
     `.local/architecture-playbook/sources/${bvid}/source-360p.mp4`,
     { projectRoot }
@@ -153,7 +157,7 @@ export async function runTranscription({ bvid, projectRoot }) {
     projectRoot,
     createParent: true
   });
-  const command = buildTranscriptionCommand({ bvid, projectRoot });
+  const command = buildTranscriptionCommand({ bvid, episode: approved, projectRoot });
   await execute(command, projectRoot);
   const transcript = JSON.parse(await fs.readFile(outputPath, 'utf8'));
   validateTranscriptIdentity(transcript, approved);
@@ -168,10 +172,11 @@ export async function runTranscription({ bvid, projectRoot }) {
 
 export async function runFrameExtraction({
   bvid,
+  episode,
   projectRoot,
   executeImpl = execute
 }) {
-  const approved = getPilotEpisodeIdentity(bvid);
+  const approved = resolveProcessingEpisode({ bvid, episode });
   const transcriptPath = resolvePrivatePlaybookPath(
     `.local/architecture-playbook/transcripts/${bvid}/draft-transcript.json`,
     { projectRoot }
@@ -201,7 +206,7 @@ export async function runFrameExtraction({
   const transcript = JSON.parse(await fs.readFile(transcriptPath, 'utf8'));
   const candidates = JSON.parse(await fs.readFile(candidatesPath, 'utf8'));
   validateEventCandidates(candidates, { episode: approved, transcript });
-  const command = buildFrameExtractionCommand({ bvid, projectRoot });
+  const command = buildFrameExtractionCommand({ bvid, episode: approved, projectRoot });
   await executeImpl(command, projectRoot);
   const frameIndex = JSON.parse(await fs.readFile(frameIndexPath, 'utf8'));
   return Object.freeze({
@@ -210,6 +215,20 @@ export async function runFrameExtraction({
     frame_count: frameIndex.frame_count,
     frame_index_sha256: frameIndex.frame_index_sha256
   });
+}
+
+function resolveProcessingEpisode({ bvid, episode }) {
+  const approved = episode?.chapter_id === undefined
+    ? getPilotEpisodeIdentity(bvid)
+    : validateChapterEpisodeIdentity(episode);
+  if (approved.bvid !== bvid) {
+    failPlaybookContract(
+      'PLAYBOOK_EVENT_EPISODE_INVALID',
+      'episode.bvid',
+      `${approved.bvid} != ${bvid}`
+    );
+  }
+  return approved;
 }
 
 function validateCandidate(candidate, {

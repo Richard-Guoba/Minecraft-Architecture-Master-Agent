@@ -76,6 +76,15 @@ const PILOT_EPISODE_IDENTITIES = Object.freeze([
   })
 ]);
 const EPISODE = PILOT_EPISODE_IDENTITIES[0];
+const CHAPTER_EPISODE = Object.freeze({
+  chapter_id: 'foundations-tools-blocks-modularity-color',
+  course_order: 1,
+  bvid: 'BV1guoPYkExk',
+  cid: 29440478157,
+  duration_seconds: 205,
+  metadata_fingerprint_sha256:
+    'f6e8fbeae57aacbf478dff3484ebdd163deec9bc5fcf0c7dddbec9ec45d2600b'
+});
 const MEDIA_BYTES = Buffer.from('fixture-mp4-bytes');
 const OBSERVED_AT = '2026-08-25T13:00:00.000Z';
 
@@ -181,6 +190,23 @@ test('media acquisition writes exact bytes and a URL-free hash index', async (t)
   assert.doesNotMatch(JSON.stringify(index), /fixture\.invalid|https?:\/\//u);
 });
 
+test('media acquisition accepts an exact manifest-bound non-pilot identity', async (t) => {
+  const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-media-'));
+  t.after(() => fs.rm(projectRoot, { recursive: true, force: true }));
+
+  const result = await acquireEpisodeMedia({
+    episode: CHAPTER_EPISODE,
+    projectRoot,
+    fetchImpl: playbackFetch({ episode: CHAPTER_EPISODE }),
+    observedAt: OBSERVED_AT
+  });
+
+  assert.equal(result.media_index.bvid, CHAPTER_EPISODE.bvid);
+  assert.equal(result.media_index.cid, CHAPTER_EPISODE.cid);
+  assert.equal(result.media_index.source_metadata_fingerprint_sha256,
+    CHAPTER_EPISODE.metadata_fingerprint_sha256);
+});
+
 test('media acquisition reuses a verified index without network access', async (t) => {
   const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-media-'));
   t.after(() => fs.rm(projectRoot, { recursive: true, force: true }));
@@ -229,15 +255,15 @@ test('media acquisition refuses to replace different existing bytes', async (t) 
   );
 });
 
-function playbackFetch({ directBvid = EPISODE.bvid } = {}) {
+function playbackFetch({ episode = EPISODE, directBvid = episode.bvid } = {}) {
   return async (url) => {
     if (url.includes('/x/web-interface/view')) {
       return Response.json({
         code: 0,
         data: {
           bvid: directBvid,
-          cid: EPISODE.cid,
-          duration: EPISODE.duration_seconds
+          cid: episode.cid,
+          duration: episode.duration_seconds
         }
       });
     }
@@ -247,10 +273,10 @@ function playbackFetch({ directBvid = EPISODE.bvid } = {}) {
         data: {
           quality: 16,
           format: 'mp4',
-          timelength: EPISODE.duration_seconds * 1000,
+          timelength: episode.duration_seconds * 1000,
           durl: [{
             order: 1,
-            length: EPISODE.duration_seconds * 1000,
+            length: episode.duration_seconds * 1000,
             size: MEDIA_BYTES.length,
             url: 'https://media.fixture.invalid/source.mp4'
           }]

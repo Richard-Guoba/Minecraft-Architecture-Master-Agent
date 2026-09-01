@@ -1,4 +1,5 @@
 import { validatePilotEpisodeSet } from '../course/pilotEpisodeSet.js';
+import { validateChapterEpisodeIdentity } from '../course/chapterPlan.js';
 import { failPlaybookContract } from './playbookContractError.js';
 
 const SCHOOL_ID = 'heihui-jileniao';
@@ -28,7 +29,7 @@ const TOP_LEVEL_FIELDS = [
 
 export function validateEvidenceNote(value, context) {
   const note = cloneDocument(value, 'EvidenceNote');
-  const pilot = validateContext(context);
+  const episodeContext = validateContext(context);
   assertExactObject(note, 'EvidenceNote', TOP_LEVEL_FIELDS);
   assertEqual(
     note.schema_version,
@@ -43,7 +44,7 @@ export function validateEvidenceNote(value, context) {
     'PLAYBOOK_EVIDENCE_SCHOOL_INVALID',
     'EvidenceNote.school_id'
   );
-  const episode = pilot.episodes.find(
+  const episode = episodeContext.episodes.find(
     (candidate) => candidate.bvid === note.episode_bvid
   );
   if (!episode) {
@@ -127,14 +128,35 @@ export function validateEvidenceNote(value, context) {
 }
 
 function validateContext(context) {
-  if (!context || typeof context !== 'object' || !context.pilotEpisodeSet) {
+  if (!context || typeof context !== 'object') {
     failPlaybookContract(
       'PLAYBOOK_EVIDENCE_CONTEXT_INVALID',
-      'context.pilotEpisodeSet',
-      'pilot episode set required'
+      'context',
+      'approved episode context required'
     );
   }
-  return validatePilotEpisodeSet(context.pilotEpisodeSet);
+  if (context.pilotEpisodeSet) {
+    return validatePilotEpisodeSet(context.pilotEpisodeSet);
+  }
+  if (
+    !Array.isArray(context.approvedEpisodes)
+    || context.approvedEpisodes.length === 0
+  ) {
+    failPlaybookContract(
+      'PLAYBOOK_EVIDENCE_CONTEXT_INVALID',
+      'context.approvedEpisodes',
+      'expected manifest-bound episodes'
+    );
+  }
+  const episodes = context.approvedEpisodes.map(validateChapterEpisodeIdentity);
+  if (new Set(episodes.map((episode) => episode.bvid)).size !== episodes.length) {
+    failPlaybookContract(
+      'PLAYBOOK_EVIDENCE_CONTEXT_INVALID',
+      'context.approvedEpisodes',
+      'duplicate episode identity'
+    );
+  }
+  return deepFreeze({ episodes });
 }
 
 function validateLanguageEvidence(items, noteRange) {

@@ -13,6 +13,15 @@ import { getPilotEpisodeIdentity } from '../src/playbook/course/pilotEpisodeSet.
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const EPISODE = getPilotEpisodeIdentity('BV1fNkgYBEyy');
+const CHAPTER_EPISODE = Object.freeze({
+  chapter_id: 'foundations-tools-blocks-modularity-color',
+  course_order: 1,
+  bvid: 'BV1guoPYkExk',
+  cid: 29440478157,
+  duration_seconds: 205,
+  metadata_fingerprint_sha256:
+    'f6e8fbeae57aacbf478dff3484ebdd163deec9bc5fcf0c7dddbec9ec45d2600b'
+});
 const TRANSCRIPT_HASH = 'a'.repeat(64);
 
 test('transcription command pins the proven CPython ABI and processor configuration', () => {
@@ -47,6 +56,24 @@ test('frame command consumes reviewed teaching events rather than intervals', ()
   assert.match(command.args.join(' '), /event-candidates\.json/u);
   assert.match(command.args.join(' '), /extract_event_frames\.py/u);
   assert.doesNotMatch(command.args.join(' '), /interval/u);
+});
+
+test('local processor commands accept an exact manifest-bound non-pilot identity', () => {
+  const transcription = buildTranscriptionCommand({
+    bvid: CHAPTER_EPISODE.bvid,
+    episode: CHAPTER_EPISODE,
+    projectRoot: ROOT
+  });
+  const frames = buildFrameExtractionCommand({
+    bvid: CHAPTER_EPISODE.bvid,
+    episode: CHAPTER_EPISODE,
+    projectRoot: ROOT
+  });
+
+  assert.deepEqual(transcription.args.slice(1, 5), [
+    '--project-root', ROOT, '--bvid', CHAPTER_EPISODE.bvid
+  ]);
+  assert.match(frames.args.join(' '), new RegExp(CHAPTER_EPISODE.bvid, 'u'));
 });
 
 test('event candidates trace reviewed teaching events to transcript segments', () => {

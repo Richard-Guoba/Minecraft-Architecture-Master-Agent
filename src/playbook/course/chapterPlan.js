@@ -3,6 +3,7 @@ import { failPlaybookContract } from '../contracts/playbookContractError.js';
 
 const CHAPTER_PLAN_ID = 'heihui-jileniao-course-chapters-v1';
 const SHA256 = /^[a-f0-9]{64}$/u;
+const BVID = /^BV[0-9A-Za-z]{10}$/u;
 const TOP_LEVEL_FIELDS = [
   'schema_version',
   'chapter_plan_id',
@@ -184,6 +185,36 @@ export function getChapterEpisodeIdentity({ chapterPlan, courseManifest, bvid })
     chapter_id: chapter.chapter_id,
     ...structuredClone(episode)
   });
+}
+
+export function validateChapterEpisodeIdentity(value) {
+  const episode = cloneDocument(value);
+  assertExactObject(episode, 'ChapterEpisodeIdentity', [
+    'chapter_id',
+    'course_order',
+    'bvid',
+    'cid',
+    'duration_seconds',
+    'metadata_fingerprint_sha256'
+  ]);
+  const chapter = CHAPTERS.find(([chapterId]) => chapterId === episode.chapter_id);
+  if (
+    !chapter
+    || !Number.isSafeInteger(episode.course_order)
+    || episode.course_order < chapter[1]
+    || episode.course_order > chapter[2]
+    || typeof episode.bvid !== 'string'
+    || !BVID.test(episode.bvid)
+    || !Number.isSafeInteger(episode.cid)
+    || episode.cid < 1
+    || !Number.isSafeInteger(episode.duration_seconds)
+    || episode.duration_seconds < 1
+    || typeof episode.metadata_fingerprint_sha256 !== 'string'
+    || !SHA256.test(episode.metadata_fingerprint_sha256)
+  ) {
+    invalid('ChapterEpisodeIdentity', 'invalid manifest-bound episode identity');
+  }
+  return deepFreeze(episode);
 }
 
 function hasSourceDrift(chapterPlan, manifest) {

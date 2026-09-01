@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { failPlaybookContract } from '../contracts/playbookContractError.js';
+import { validateChapterEpisodeIdentity } from './chapterPlan.js';
 import { getPilotEpisodeIdentity } from './pilotEpisodeSet.js';
 import {
   assertPrivatePlaybookStorage,
@@ -190,7 +191,9 @@ export async function acquireEpisodeMedia({
 }
 
 function assertApprovedEpisode(episode) {
-  const approved = getPilotEpisodeIdentity(episode?.bvid);
+  const approved = episode?.chapter_id === undefined
+    ? getPilotEpisodeIdentity(episode?.bvid)
+    : validateChapterEpisodeIdentity(episode);
   for (const field of [
     'cid',
     'duration_seconds',

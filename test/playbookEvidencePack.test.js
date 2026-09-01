@@ -18,6 +18,15 @@ const PILOT = validatePilotEpisodeSet(JSON.parse(fs.readFileSync(
   'utf8'
 )));
 const EPISODE = PILOT.episodes[0];
+const CHAPTER_EPISODE = Object.freeze({
+  chapter_id: 'foundations-tools-blocks-modularity-color',
+  course_order: 1,
+  bvid: 'BV1guoPYkExk',
+  cid: 29440478157,
+  duration_seconds: 205,
+  metadata_fingerprint_sha256:
+    'f6e8fbeae57aacbf478dff3484ebdd163deec9bc5fcf0c7dddbec9ec45d2600b'
+});
 const MEDIA_SHA = 'a'.repeat(64);
 const RULE_ID = 'rule:structure-foundations:separate-volumes-v1';
 
@@ -33,6 +42,16 @@ test('EvidencePack is byte-stable and traces notes to current inputs', () => {
   assert.equal(first.accepted_for_public_candidates, true);
   assert.ok(Object.isFrozen(first));
   assert.ok(Object.isFrozen(first.notes[0]));
+});
+
+test('EvidencePack accepts an exact manifest-bound non-pilot episode', () => {
+  const input = chapterEvidencePackFixture();
+
+  const pack = buildEvidencePack(input);
+
+  assert.equal(pack.bvid, CHAPTER_EPISODE.bvid);
+  assert.equal(pack.school_id, 'heihui-jileniao');
+  assert.equal(pack.note_count, 1);
 });
 
 test('EvidencePack rejects media, transcript, and frame lineage drift', () => {
@@ -138,6 +157,38 @@ test('local EvidencePack compiler writes once and then rebuilds unchanged', asyn
   assert.doesNotMatch(JSON.stringify(first.summary), /segments|fixture transcript|\/tmp\//u);
 });
 
+test('local EvidencePack compiler accepts a manifest-bound non-pilot episode', async (t) => {
+  const projectRoot = await fsPromises.mkdtemp(
+    path.join(os.tmpdir(), 'playbook-pack-')
+  );
+  t.after(() => fsPromises.rm(projectRoot, { recursive: true, force: true }));
+  const input = chapterEvidencePackFixture();
+  const privateRoot = path.join(projectRoot, '.local/architecture-playbook');
+  const paths = {
+    mediaIndex: `sources/${CHAPTER_EPISODE.bvid}/media-index.json`,
+    transcript: `transcripts/${CHAPTER_EPISODE.bvid}/draft-transcript.json`,
+    frameIndex: `frames/${CHAPTER_EPISODE.bvid}/event-frame-index.json`,
+    terminologyReview: `evidence/${CHAPTER_EPISODE.bvid}/terminology-review.json`,
+    notes: `evidence/${CHAPTER_EPISODE.bvid}/evidence-notes.json`
+  };
+  for (const [key, relative] of Object.entries(paths)) {
+    const target = path.join(privateRoot, relative);
+    await fsPromises.mkdir(path.dirname(target), { recursive: true });
+    await fsPromises.writeFile(target, JSON.stringify(
+      key === 'notes' ? input.notes : input[key]
+    ));
+  }
+
+  const result = await compileLocalEvidencePack({
+    bvid: CHAPTER_EPISODE.bvid,
+    episode: CHAPTER_EPISODE,
+    projectRoot
+  });
+
+  assert.equal(result.status, 'created');
+  assert.equal(result.summary.bvid, CHAPTER_EPISODE.bvid);
+});
+
 function evidencePackFixture() {
   const transcript = transcriptFixture();
   const frames = [{
@@ -231,6 +282,33 @@ function evidencePackFixture() {
       review_status: 'draft'
     }]
   };
+}
+
+function chapterEvidencePackFixture() {
+  const input = evidencePackFixture();
+  input.episode = CHAPTER_EPISODE;
+  delete input.pilotEpisodeSet;
+  input.approvedEpisodes = [CHAPTER_EPISODE];
+  input.mediaIndex.bvid = CHAPTER_EPISODE.bvid;
+  input.mediaIndex.cid = CHAPTER_EPISODE.cid;
+  input.mediaIndex.source_metadata_fingerprint_sha256 =
+    CHAPTER_EPISODE.metadata_fingerprint_sha256;
+  input.mediaIndex.declared_duration_ms = CHAPTER_EPISODE.duration_seconds * 1000;
+  input.mediaIndex.duration_ms = CHAPTER_EPISODE.duration_seconds * 1000;
+  input.transcript.bvid = CHAPTER_EPISODE.bvid;
+  input.transcript.duration_ms = CHAPTER_EPISODE.duration_seconds * 1000;
+  input.frameIndex.bvid = CHAPTER_EPISODE.bvid;
+  input.frameIndex.frames[0].frame_id = `${CHAPTER_EPISODE.bvid}:event:01`;
+  input.frameIndex.frame_index_sha256 = hashStable(input.frameIndex.frames);
+  input.terminologyReview.bvid = CHAPTER_EPISODE.bvid;
+  input.notes[0].episode_bvid = CHAPTER_EPISODE.bvid;
+  input.notes[0].source_metadata_fingerprint_sha256 =
+    CHAPTER_EPISODE.metadata_fingerprint_sha256;
+  input.notes[0].visual_evidence[0].frame_id =
+    `${CHAPTER_EPISODE.bvid}:event:01`;
+  input.notes[0].visual_evidence[0].frame_index_sha256 =
+    input.frameIndex.frame_index_sha256;
+  return input;
 }
 
 function transcriptFixture() {
