@@ -78,7 +78,17 @@ The P5 command preserves P5's public error boundary, so a design-stage provider 
 
 ## P6 reference preparation (offline only)
 
-After producing the exact frozen P5 run and its matching baseline authority, prepare the P6 reference package under a disposable ignored run directory:
+An ordinary fixed three-candidate `--playbook off` top-level run does not directly contain P6 authority metadata. Convert that exact selected run into a new disposable authority directory first:
+
+```bash
+npm run playbook:p6 -- prepare-baseline-authority \
+  --source-run /absolute/path/to/off-top-run \
+  --baseline-run /absolute/path/to/new-baseline-authority
+```
+
+`--source-run` is the top run containing `candidate_selection.json` and `candidates/`; a selected candidate directory is deliberately not accepted. `--baseline-run` must not exist. The offline command verifies the fixed request, seed, three-candidate selection, selected artifact layout, exact blueprint/build correspondence, and hard QA; it recomputes the deterministic P4 review and snapshots the exact source blueprint/build bytes plus canonical operations into the new authority. It does not write to the source run, launch Minecraft, or touch a world.
+
+After producing the exact frozen P5 run and matching baseline authority, prepare the P6 reference package under a disposable ignored run directory:
 
 ```bash
 npm run playbook:p6 -- prepare \

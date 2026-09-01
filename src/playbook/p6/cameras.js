@@ -239,7 +239,7 @@ function normalizeEntry(entry, bounds) {
   if (![result.x, result.y, result.z].every(Number.isFinite) || result.facing !== 'south') invalid();
   if (result.x < bounds.minX || result.x > bounds.maxX
     || result.y < bounds.minY || result.y > bounds.maxY
-    || result.z !== bounds.maxZ) invalid();
+    || result.z < bounds.minZ || result.z > bounds.maxZ) invalid();
   return result;
 }
 

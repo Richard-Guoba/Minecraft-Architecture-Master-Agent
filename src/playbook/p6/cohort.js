@@ -209,6 +209,7 @@ function renderSnapshotForSolution({ solution, snapshot }) {
   return deepFreeze({
     solution_id: solution.solution_id,
     blueprint_sha256: solution.blueprint_sha256,
+    blueprint_value_sha256: sha256(stableJson(blueprint)),
     operation_list_sha256: solution.operation_list_sha256,
     build_function_sha256: solution.build_function_sha256,
     bounds: { ...solution.bounds },
@@ -238,7 +239,7 @@ export function validateP6SolutionAuthority(value, expected) {
   if (hardQa?.ok !== true) incomplete();
   if (expected.require_p5_chain) validateP5Chain(value);
   const advisory_rule_eligibility = validateAdvisory(value.advisory_rule_eligibility);
-  const bounds = resolveStableBounds(blueprint);
+  const bounds = resolveP6Bounds(blueprint);
   const main_entry = resolveSouthEntry({ blueprint, operations, bounds });
   return deepFreeze({
     solution_id: expected.solution_id,
@@ -277,6 +278,10 @@ export function resolveSouthEntry({ blueprint, operations, bounds } = {}) {
   const fromOperation = operationEntries[0];
   if (fromBlueprint && fromOperation && stableJson(fromBlueprint) !== stableJson(fromOperation)) incomplete();
   const entry = fromBlueprint ?? fromOperation;
+  if (plain(entry) && numeric(entry.center_x) === null
+    && blueprint?.workflow === 'construction_method_v1') {
+    return resolveLegacySouthEntry({ blueprint, operations, bounds });
+  }
   if (!plain(entry) || entry.side !== 'south') incomplete();
   const center_x = numeric(entry.center_x); const center_y = numeric(entry.center_y); const center_z = numeric(entry.center_z);
   if ([center_x, center_y, center_z].some(value => value === null)) incomplete();
@@ -284,12 +289,64 @@ export function resolveSouthEntry({ blueprint, operations, bounds } = {}) {
   return deepFreeze({ center_x, center_y, center_z, facing: 'south' });
 }
 
-function resolveStableBounds(blueprint) {
+export function resolveP6Bounds(blueprint) {
   const bounds = blueprint?.bounds;
-  if (!plain(bounds) || Object.keys(bounds).sort().join(',') !== 'max_x,max_y,max_z,min_x,min_y,min_z') incomplete();
-  for (const key of Object.keys(bounds)) if (!Number.isInteger(bounds[key])) incomplete();
-  if (bounds.min_x > bounds.max_x || bounds.min_y > bounds.max_y || bounds.min_z > bounds.max_z) incomplete();
-  return deepFreeze({ ...bounds });
+  if (!plain(bounds)) incomplete();
+  const canonicalFields = ['min_x', 'min_y', 'min_z', 'max_x', 'max_y', 'max_z'];
+  const legacyFields = ['minX', 'minY', 'minZ', 'maxX', 'maxY', 'maxZ'];
+  let projected;
+  if (sameKeySet(Object.keys(bounds), canonicalFields)) projected = { ...bounds };
+  else if (blueprint?.workflow === 'construction_method_v1'
+    && sameKeySet(Object.keys(bounds), legacyFields)) {
+    projected = {
+      min_x: bounds.minX, min_y: bounds.minY, min_z: bounds.minZ,
+      max_x: bounds.maxX, max_y: bounds.maxY, max_z: bounds.maxZ
+    };
+  } else incomplete();
+  for (const key of canonicalFields) if (!Number.isInteger(projected[key])) incomplete();
+  if (projected.min_x > projected.max_x || projected.min_y > projected.max_y
+    || projected.min_z > projected.max_z) incomplete();
+  return deepFreeze(projected);
+}
+
+function resolveLegacySouthEntry({ blueprint, operations, bounds }) {
+  const semantic = blueprint?.opening?.main_entry;
+  const door = blueprint?.paths?.mainDoor;
+  if (!plain(semantic) || !plain(door) || semantic.side !== 'south' || door.side !== 'south') incomplete();
+  const x = integer(door.x); const z = integer(door.z);
+  const width = integer(door.width); const height = integer(door.height);
+  if ([x, z, width, height].some(value => value === null) || width < 1 || height < 2
+    || semantic.width !== width || semantic.height !== height) incomplete();
+  const doorOps = Array.isArray(operations) ? operations.filter(operation => (
+    plain(operation) && operation.kind === 'fill' && stableJson(operation.from) === stableJson(operation.to)
+      && typeof operation.block === 'string' && /^minecraft:[a-z0-9_]+_door\[/u.test(operation.block)
+      && !/_trapdoor\[/u.test(operation.block)
+  )) : [];
+  const relevant = doorOps.filter(operation => operation.from.z === z
+    && operation.from.x >= x && operation.from.x < x + width);
+  const baseYs = [...new Set(relevant.filter(operation => /(?:^|,)half=lower(?:,|\])/u.test(operation.block))
+    .map(operation => operation.from.y))];
+  if (baseYs.length !== 1) incomplete();
+  const baseY = baseYs[0];
+  const expectedCells = new Set();
+  for (let dx = 0; dx < width; dx += 1) {
+    for (let dy = 0; dy < height; dy += 1) expectedCells.add(`${x + dx},${baseY + dy},${z}`);
+  }
+  if (relevant.length !== expectedCells.size) incomplete();
+  for (const operation of relevant) {
+    const cell = `${operation.from.x},${operation.from.y},${operation.from.z}`;
+    const expectedHalf = operation.from.y === baseY ? 'lower' : 'upper';
+    if (!expectedCells.delete(cell) || !operation.block.includes('facing=south')
+      || !operation.block.includes(`half=${expectedHalf}`)) incomplete();
+  }
+  if (expectedCells.size !== 0) incomplete();
+  const center_x = x + (width - 1) / 2;
+  const center_y = baseY + (height - 1) / 2;
+  const center_z = z;
+  if (!plain(bounds) || center_x < bounds.min_x || center_x > bounds.max_x
+    || center_y < bounds.min_y || center_y > bounds.max_y
+    || center_z < bounds.min_z || center_z > bounds.max_z) incomplete();
+  return deepFreeze({ center_x, center_y, center_z, facing: 'south' });
 }
 
 export function hashCohortInputs({
@@ -394,14 +451,10 @@ async function snapshotCurrentSelection({ executeAuthority, slots }) {
     ));
     if (!row || !currentChainName) authority();
   }
-  const ranking = selection.ranker_result?.ranking;
-  if (!Array.isArray(ranking) || ranking.length !== 3) authority();
-  const rank = ranking.map(row => ({
-    candidate_id: row?.candidate_id,
-    rank: row?.rank
-  }));
-  if (new Set(rank.map(row => row.candidate_id)).size !== 3
-    || new Set(rank.map(row => row.rank)).size !== 3) authority();
+  const rank = normalizeP6SelectionRank({
+    candidates: selection.candidates,
+    ranking: selection.ranker_result?.ranking
+  });
   return {
     rank,
     authority_sha256: sha256(stableJson({
@@ -412,6 +465,23 @@ async function snapshotCurrentSelection({ executeAuthority, slots }) {
       ]))
     }))
   };
+}
+
+export function normalizeP6SelectionRank({ candidates, ranking } = {}) {
+  if (!Array.isArray(candidates) || candidates.length !== 3 || !Array.isArray(ranking)
+    || ranking.length < 1 || ranking.length > 3) authority();
+  const candidateIds = candidates.map(row => row?.candidate_id);
+  if (new Set(candidateIds).size !== 3
+    || candidateIds.some(id => !/^candidate-0[1-3]$/u.test(id))) authority();
+  const rankedIds = ranking.map(row => row?.candidate_id);
+  const rankedValues = ranking.map(row => row?.rank);
+  if (new Set(rankedIds).size !== ranking.length
+    || rankedIds.some(id => !candidateIds.includes(id))
+    || rankedValues.some((rank, index) => rank !== index + 1)) authority();
+  const byId = new Map(ranking.map(row => [row.candidate_id, row.rank]));
+  return deepFreeze(candidateIds.map(candidate_id => ({
+    candidate_id, rank: byId.get(candidate_id) ?? null
+  })));
 }
 
 async function snapshotBaseline({ p6Authority, baselineRunDir, fixedRequest }) {
@@ -571,10 +641,14 @@ function validateSelectionRank(value) {
   if (!Array.isArray(value) || value.length !== 3) incomplete();
   const seen = new Set();
   const rows = value.map(row => {
-    if (!plain(row) || !/^candidate-0[1-3]$/u.test(row.candidate_id) || !Number.isInteger(row.rank) || ![1, 2, 3].includes(row.rank) || seen.has(row.candidate_id)) incomplete();
+    if (!plain(row) || !/^candidate-0[1-3]$/u.test(row.candidate_id)
+      || !(row.rank === null || (Number.isInteger(row.rank) && [1, 2, 3].includes(row.rank)))
+      || seen.has(row.candidate_id)) incomplete();
     seen.add(row.candidate_id); return { candidate_id: row.candidate_id, rank: row.rank };
   });
-  if (new Set(rows.map(row => row.rank)).size !== 3) incomplete();
+  const actualRanks = rows.map(row => row.rank).filter(rank => rank !== null).sort((a, b) => a - b);
+  if (actualRanks.length < 1 || new Set(actualRanks).size !== actualRanks.length
+    || actualRanks.some((rank, index) => rank !== index + 1)) incomplete();
   return deepFreeze(rows);
 }
 
@@ -605,6 +679,7 @@ function assertFile(value, code) {
 
 function json(bytes) { try { return JSON.parse(bytes.toString('utf8')); } catch { incomplete(); } }
 function numeric(value) { return Number.isFinite(value) ? value : null; }
+function integer(value) { return Number.isInteger(value) ? value : null; }
 function plain(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype; }
 function sameJson(left, right) { return stableJson(left) === stableJson(right); }
 function omitPlaybook(options) { const { playbook, ...rest } = options; return rest; }

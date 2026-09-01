@@ -625,7 +625,7 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shad
   };
 }
 
-function operationToCommand(operation, mcVersion) {
+export function operationToCommand(operation, mcVersion) {
   const block = blockForVersion(operation.block, mcVersion);
   if (operation.kind === 'fill') {
     return `fill ${rel(operation.from.x)} ${rel(operation.from.y)} ${rel(operation.from.z)} ${rel(operation.to.x)} ${rel(operation.to.y)} ${rel(operation.to.z)} ${block}`;

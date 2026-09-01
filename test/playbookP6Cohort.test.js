@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
 
-import { compileP6Cohort, resolveSouthEntry } from '../src/playbook/p6/cohort.js';
+import { compileP6Cohort, normalizeP6SelectionRank, resolveP6Bounds, resolveSouthEntry } from '../src/playbook/p6/cohort.js';
 import { auditExecuteDependencyBoundary } from '../src/playbook/execute/executeDependencyBoundary.js';
 import { auditShadowDependencyBoundary } from '../src/playbook/shadow/shadowDependencyBoundary.js';
 import { createP6CohortFixture } from './fixtures/playbookP6.js';
@@ -53,6 +53,60 @@ test('selection rank remains informational and resolved entry is explicitly sout
   assert.equal(cohort.solutions[0].main_entry.facing, 'south');
   assert.throws(() => resolveSouthEntry({ blueprint: {}, operations: [] }), { code: 'P6_COHORT_INCOMPLETE' });
 });
+
+test('real-shaped P5 and off blueprints project legacy camelCase bounds without changing source data', () => {
+  for (const source of ['p5', 'off']) {
+    const blueprint = {
+      workflow: 'construction_method_v1',
+      bounds: { minX: -11, maxX: 30, minY: 0, maxY: 10, minZ: -5, maxZ: 28 },
+      paths: { mainDoor: { side: 'south', x: 14, z: 12, width: 2, height: 2, doorBlock: 'minecraft:spruce_door[facing=south,half=lower,hinge=left]' } },
+      opening: { main_entry: { side: 'south', width: 2, height: 2, target_room: 'entry', strategy: 'direct-entry' } }
+    };
+    const operations = exactSouthDoor(14, 1, 12, 'minecraft:spruce_door');
+    const before = structuredClone(blueprint);
+    const bounds = resolveP6Bounds(blueprint);
+    assert.deepEqual(bounds, { min_x: -11, min_y: 0, min_z: -5, max_x: 30, max_y: 10, max_z: 28 }, source);
+    assert.deepEqual(resolveSouthEntry({ blueprint, operations, bounds }), {
+      center_x: 14.5, center_y: 1.5, center_z: 12, facing: 'south'
+    }, source);
+    assert.deepEqual(blueprint, before, `${source} source authority must remain byte-equivalent`);
+  }
+});
+
+test('legacy entry derivation fails closed for missing, ambiguous, or semantically wrong doors', () => {
+  const blueprint = {
+    workflow: 'construction_method_v1',
+    bounds: { minX: 0, maxX: 20, minY: 0, maxY: 10, minZ: 0, maxZ: 30 },
+    paths: { mainDoor: { side: 'south', x: 4, z: 12, width: 2, height: 2 } },
+    opening: { main_entry: { side: 'south', width: 2, height: 2 } }
+  };
+  const bounds = { min_x: 0, max_x: 20, min_y: 0, max_y: 10, min_z: 0, max_z: 30 };
+  const exact = exactSouthDoor(4, 1, 12, 'minecraft:oak_door');
+  assert.throws(() => resolveSouthEntry({ blueprint, operations: [], bounds }), { code: 'P6_COHORT_INCOMPLETE' });
+  assert.throws(() => resolveSouthEntry({ blueprint, operations: [...exact, { ...exact[0], block: exact[0].block.replace('oak_door', 'spruce_door') }], bounds }), { code: 'P6_COHORT_INCOMPLETE' });
+  const north = exact.map(row => ({ ...row, block: row.block.replace('facing=south', 'facing=north') }));
+  assert.throws(() => resolveSouthEntry({ blueprint, operations: north, bounds }), { code: 'P6_COHORT_INCOMPLETE' });
+});
+
+test('sparse P5 eligibility ranking preserves all three frozen slots without substituting a solution', () => {
+  assert.deepEqual(normalizeP6SelectionRank({
+    candidates: ['candidate-01', 'candidate-02', 'candidate-03'].map(candidate_id => ({ candidate_id })),
+    ranking: [{ candidate_id: 'candidate-03', rank: 1 }]
+  }), [
+    { candidate_id: 'candidate-01', rank: null },
+    { candidate_id: 'candidate-02', rank: null },
+    { candidate_id: 'candidate-03', rank: 1 }
+  ]);
+});
+
+function exactSouthDoor(x, y, z, block) {
+  return [
+    { kind: 'fill', from: { x, y, z }, to: { x, y, z }, block: `${block}[facing=south,half=lower,hinge=left]` },
+    { kind: 'fill', from: { x: x + 1, y, z }, to: { x: x + 1, y, z }, block: `${block}[facing=south,half=lower,hinge=right]` },
+    { kind: 'fill', from: { x, y: y + 1, z }, to: { x, y: y + 1, z }, block: `${block}[facing=south,half=upper,hinge=left]` },
+    { kind: 'fill', from: { x: x + 1, y: y + 1, z }, to: { x: x + 1, y: y + 1, z }, block: `${block}[facing=south,half=upper,hinge=right]` }
+  ];
+}
 
 test('cohort bytes are stable and post-compile authority mutation cannot alter the frozen result', async t => {
   const fixture = await createP6CohortFixture(t);

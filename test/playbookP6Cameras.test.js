@@ -59,6 +59,17 @@ test('decimal6 rejects non-finite camera coordinates', () => {
   }
 });
 
+test('entry camera accepts a proven south door inside site-expanded scene bounds', () => {
+  const manifest = deriveFixedViewManifest({
+    solutionId: 'baseline-current', blueprintSha256: HASH_A, buildFunctionSha256: HASH_B,
+    bounds: ASYMMETRIC_BOUNDS,
+    mainEntry: { x: 10.5, y: 5.5, z: 18, facing: 'south' },
+    sharedFraming: null
+  });
+  assert.equal(manifest.main_entry.center_z, '18.000000');
+  assert.equal(manifest.views.at(-1).position.z, '26.000000');
+});
+
 test('shared perspective framing applies one multiplier per view to every solution', () => {
   const solutions = [
     solution('playbook-candidate-01', ASYMMETRIC_BOUNDS),

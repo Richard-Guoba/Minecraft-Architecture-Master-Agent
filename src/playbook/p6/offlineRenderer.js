@@ -87,7 +87,8 @@ function renderReferenceViewsValidated({ solution, cameraManifest, settings }) {
     || solution.build_function_sha256 !== manifest.build_function_sha256) failed();
   const blueprint = solution.blueprint;
   const operations = solution.operations ?? blueprint?.operations;
-  if (!plain(blueprint) || solution.blueprint_sha256 !== sha256(stableJson(blueprint))) failed();
+  if (!plain(blueprint)
+    || (solution.blueprint_value_sha256 ?? solution.blueprint_sha256) !== sha256(stableJson(blueprint))) failed();
   if (!Array.isArray(operations) || !Array.isArray(blueprint.operations)
     || stableJson(operations) !== stableJson(blueprint.operations)) failed();
   const blueprintBounds = normalizeBounds(blueprint.bounds);
@@ -292,7 +293,8 @@ function normalizeSolutionEntry(entry, bounds) {
   };
   if (![result.x, result.y, result.z].every(Number.isFinite) || result.facing !== 'south'
     || result.x < bounds.minX || result.x > bounds.maxX
-    || result.y < bounds.minY || result.y > bounds.maxY || result.z !== bounds.maxZ) failed();
+    || result.y < bounds.minY || result.y > bounds.maxY
+    || result.z < bounds.minZ || result.z > bounds.maxZ) failed();
   return result;
 }
 

@@ -30,6 +30,7 @@ const CUBE = [{
 }];
 const BLUEPRINT = { bounds: BOUNDS, operations: CUBE };
 const BLUEPRINT_SHA256 = sha256(Buffer.from(stableJsonIndependent(BLUEPRINT)));
+const NONCANONICAL_BLUEPRINT_SHA256 = sha256(Buffer.from(`${JSON.stringify(BLUEPRINT, null, 2)}\n`));
 
 test('PNG encoder writes valid deterministic chunks and rejects corrupt bytes', () => {
   const rgba = Buffer.from([10, 20, 30, 255]);
@@ -139,19 +140,20 @@ test('operation order is final-write-wins and air removes prior geometry', () =>
 test('renders exactly six ordered files without retaining decoded pixels', () => {
   const cameraManifest = deriveFixedViewManifest({
     solutionId: 'playbook-candidate-01',
-    blueprintSha256: BLUEPRINT_SHA256,
+    blueprintSha256: NONCANONICAL_BLUEPRINT_SHA256,
     buildFunctionSha256: HASH_B,
     bounds: BOUNDS,
-    mainEntry: { center_x: 1, center_y: 1, center_z: 2, facing: 'south' },
+    mainEntry: { center_x: 1, center_y: 1, center_z: 1, facing: 'south' },
     sharedFraming: null
   });
   const images = renderReferenceViews({
     solution: {
       solution_id: 'playbook-candidate-01',
-      blueprint_sha256: BLUEPRINT_SHA256,
+      blueprint_sha256: NONCANONICAL_BLUEPRINT_SHA256,
+      blueprint_value_sha256: BLUEPRINT_SHA256,
       build_function_sha256: HASH_B,
       bounds: BOUNDS,
-      main_entry: { center_x: 1, center_y: 1, center_z: 2, facing: 'south' },
+      main_entry: { center_x: 1, center_y: 1, center_z: 1, facing: 'south' },
       blueprint: BLUEPRINT,
       operations: CUBE
     },

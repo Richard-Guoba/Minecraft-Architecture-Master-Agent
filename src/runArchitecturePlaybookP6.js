@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { deriveFixedViewManifest, deriveSharedFraming } from './playbook/p6/cameras.js';
+import { prepareP6BaselineAuthority } from './playbook/p6/baselineAuthority.js';
 import {
   createCaptureSession,
   renderCaptureChecklist as renderFormalCaptureChecklist,
@@ -42,10 +43,11 @@ import { P6_VIEW_IDS, P6_VISUAL_SETTINGS } from './playbook/p6/constants.js';
 import { sha256, stableJson } from './playbook/shadow/canonical.js';
 
 const ACTIONS = new Set([
-  'prepare', 'prepare-capture-session', 'capture', 'import-captures', 'import-observations',
+  'prepare', 'prepare-baseline-authority', 'prepare-capture-session', 'capture', 'import-captures', 'import-observations',
   'prepare-comparisons', 'import-preferences', 'verify-regressions', 'report'
 ]);
 const PREPARE_FLAGS = new Set(['--playbook-run', '--baseline-run', '--run-dir']);
+const BASELINE_FLAGS = new Set(['--source-run', '--baseline-run']);
 const CAPTURE_VALUE_FLAGS = new Set(['--world', '--expected-world-identity']);
 const CAPTURE_BOOLEAN_FLAGS = new Set(['--authorize-disposable-world']);
 const IMPORT_FLAGS = new Set(['--run-dir', '--capture-root']);
@@ -67,6 +69,7 @@ export function parseP6Args(argv) {
   for (let index = 1; index < argv.length; index += 1) {
     const flag = argv[index];
     const allowed = action === 'prepare' ? PREPARE_FLAGS
+      : action === 'prepare-baseline-authority' ? BASELINE_FLAGS
       : action === 'import-captures' ? IMPORT_FLAGS
         : action === 'prepare-capture-session' ? SESSION_FLAGS
           : action === 'import-observations' ? OBSERVATION_FLAGS
@@ -95,6 +98,12 @@ export function parseP6Args(argv) {
       world: world ?? null,
       expected_world_identity: identity ?? null
     });
+  }
+  if (action === 'prepare-baseline-authority') {
+    const sourceRun = values.get('--source-run');
+    const baselineRun = values.get('--baseline-run');
+    if (!safeAbsolutePath(sourceRun) || !safeAbsolutePath(baselineRun)) invalid();
+    return Object.freeze({ action, sourceRun, baselineRun });
   }
   if (action === 'import-captures') {
     const runDir = values.get('--run-dir');
@@ -149,6 +158,20 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
     // Capture is intentionally unimplemented: the flags are parsed only so a
     // future reviewed action has an explicit authorization shape.
     if (options.action === 'capture') throw p6Error('P6_CAPTURE_AUTHORIZATION_REQUIRED');
+    if (options.action === 'prepare-baseline-authority') {
+      const result = await deps.prepareP6BaselineAuthority({
+        projectRoot: path.resolve(import.meta.dirname, '..'),
+        sourceRun: options.sourceRun,
+        baselineRun: options.baselineRun
+      });
+      return Object.freeze({
+        status: 'baseline-authority-prepared',
+        run_id: result.run_id,
+        authority_sha256: result.authority_sha256,
+        output: result.output,
+        next_action: 'prepare'
+      });
+    }
     if (options.action === 'verify-regressions') {
       const authority = await deps.admitP6Run({ p6Dir: path.join(options.runDir, 'playbook-p6') });
       created = { authority };
@@ -645,6 +668,7 @@ const defaultDependencies = Object.freeze({
   admitP6Run,
   createCaptureSession,
   createP6Run,
+  prepareP6BaselineAuthority,
   admitP6CohortInputs,
   deriveSharedFraming,
   deriveFixedViewManifest,
@@ -835,7 +859,7 @@ function sameExactKeys(value, fields) {
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
-const HELP = `Usage:\n  npm run playbook:p6 -- prepare --playbook-run <absolute-p5-run> --baseline-run <absolute-baseline-run> --run-dir <absolute-run>\n  npm run playbook:p6 -- prepare-capture-session --run-dir <absolute-run> --expected-world-identity <sha256> --plot-origin <x,y,z>\n  npm run playbook:p6 -- import-captures --run-dir <absolute-run> --capture-root <absolute-capture-root>\n  npm run playbook:p6 -- import-observations --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- prepare-comparisons --run-dir <absolute-run>\n  npm run playbook:p6 -- import-preferences --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- verify-regressions --run-dir <absolute-run>\n  npm run playbook:p6 -- report --run-dir <absolute-run>\n  npm run playbook:p6 -- capture [--authorize-disposable-world --world <absolute-path> --expected-world-identity <sha256>]\n\nprepare creates offline reference-render outputs only. prepare-capture-session publishes commands and a checklist for one exact world identity without opening or changing it. import-captures validates one complete current-session-bound batch without changing its source. import-observations publishes complete or explicitly partial image-grounded records; partial records keep the gate blocked. prepare-comparisons publishes six anonymous public pair files while retaining the identity map privately. import-preferences validates and seals exactly six user-supplied choices. verify-regressions runs the frozen required suites sequentially through the bounded npm test entry point and publishes their commit-bound receipt; it never opens Minecraft. report reads the current immutable evidence generations and publishes a hash inventory; missing formal or regression evidence stays blocked. No action launches Minecraft or changes a world; capture remains deliberately unavailable.\n`;
+const HELP = `Usage:\n  npm run playbook:p6 -- prepare-baseline-authority --source-run <absolute-off-top-run> --baseline-run <new-absolute-authority-dir>\n  npm run playbook:p6 -- prepare --playbook-run <absolute-p5-run> --baseline-run <absolute-baseline-run> --run-dir <absolute-run>\n  npm run playbook:p6 -- prepare-capture-session --run-dir <absolute-run> --expected-world-identity <sha256> --plot-origin <x,y,z>\n  npm run playbook:p6 -- import-captures --run-dir <absolute-run> --capture-root <absolute-capture-root>\n  npm run playbook:p6 -- import-observations --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- prepare-comparisons --run-dir <absolute-run>\n  npm run playbook:p6 -- import-preferences --run-dir <absolute-run> --file <absolute-json>\n  npm run playbook:p6 -- verify-regressions --run-dir <absolute-run>\n  npm run playbook:p6 -- report --run-dir <absolute-run>\n  npm run playbook:p6 -- capture [--authorize-disposable-world --world <absolute-path> --expected-world-identity <sha256>]\n\nprepare-baseline-authority is offline-only: it admits one exact three-candidate playbook-off top run, verifies its selected blueprint/build authority, recomputes QA/review evidence, and creates a new immutable baseline authority directory without changing the source. prepare creates offline reference-render outputs only. prepare-capture-session publishes commands and a checklist for one exact world identity without opening or changing it. import-captures validates one complete current-session-bound batch without changing its source. import-observations publishes complete or explicitly partial image-grounded records; partial records keep the gate blocked. prepare-comparisons publishes six anonymous public pair files while retaining the identity map privately. import-preferences validates and seals exactly six user-supplied choices. verify-regressions runs the frozen required suites sequentially through the bounded npm test entry point and publishes their commit-bound receipt; it never opens Minecraft. report reads the current immutable evidence generations and publishes a hash inventory; missing formal or regression evidence stays blocked. No action launches Minecraft or changes a world; capture remains deliberately unavailable.\n`;
 
 async function main(argv = process.argv.slice(2)) {
   try {
