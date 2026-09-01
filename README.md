@@ -31,7 +31,7 @@ The LLM does not need to emit exact block coordinates. The Node.js runtime turns
 - The checkpoint remains experimental and is not part of primary generation. The LLM still describes the house; deterministic Node.js code still turns that intent into exact geometry and datapack commands.
 - Training artifacts remain local by default. A separate license and distribution review happens only before a concrete artifact is shared externally.
 - Architecture Playbook P5 is available as an opt-in, default-off deterministic design loop. It creates three candidates, validates five design layers, permits at most one reviewed repair per candidate, and filters eligibility before the existing ranker. Replay is rebuilt from persisted hash-bound authority. Candidate and selection publication use immutable bodies plus one recoverable current pointer. Directory creation records the exact new inode synchronously before the first asynchronous boundary, then requires the retained no-follow handle, boundary-returned handle, and named entry to match before no-replace promotion. Candidate and selection pointer stages retain their exclusive-open handles through first named read and publication. Cleanup moves exact owned entries into capability-private retirement journals; after the last injectable removal boundary it revalidates authority and inode immediately beside a non-yielding unlink/rmdir. The final datapack installer creates each stage file through a trusted synchronous exclusive open, immediately binds the returned descriptor and inode before any injected or asynchronous callback, and reconciles post-effect open, partial/full write, sync, and close failures before cleaning exact created topology, so foreign replacements are neither installed nor deleted. These guarantees cover every documented JavaScript asynchronous and fault-injection interval. They trust Node's native bindings and assume no hostile same-UID writer races adjacent synchronous syscalls; standard Node/POSIX offers neither a `mkdir` that returns a retained directory descriptor nor inode-conditional `unlink`/`rmdir`. A failed pre-install run retains no candidate workspace; cleanup after an externally committed disposable install cannot relabel that install as failed. P5 creates no playbook score and does not prove quality or aesthetic improvement. P6 visual evaluation and blind comparison remain closed.
-- P6 preparation is an opt-in, offline-only prerequisite. It admits the frozen P5 and baseline authorities, publishes hash-bound cohort/camera data, and generates 24 deterministic `reference-render` PNGs. These are not formal Minecraft evidence and do not prove that Minecraft displayed the builds correctly.
+- P6 preparation is optional, offline-only evaluation infrastructure. It admits the frozen P5 and baseline authorities, publishes hash-bound cohort/camera data, and generates 24 deterministic `reference-render` PNGs. These are not formal Minecraft evidence and do not prove that Minecraft displayed the builds correctly. Formal P6 capture and blind comparison remain incomplete, but their absence does not block P7 chapter work.
 
 ## Residential learned renderer
 
@@ -112,7 +112,7 @@ npm run playbook:p6 -- prepare \
 
 `--run-dir` must already exist as an empty disposable run parent, and its `playbook-p6/` child must not exist. The command never launches, installs, opens, or changes Minecraft or any world. It writes only the owned `playbook-p6/` output beneath `--run-dir` (normally `out/<run>/playbook-p6/`); `out/`, `.local/architecture-playbook/`, worlds, datapacks, screenshots, reference images, and private comparison material are ignored and must remain untracked. Its `reference-render` images are deterministic offline checks, not the required formal Minecraft captures.
 
-Formal screenshots are a later, separate checkpoint: they require explicit authorization for one exact disposable world, its expected identity hash, and a human-run capture/import step. The blind-comparison step then waits for human A/B/tie choices; no command invents a preference or opens P7 without those records. In this release, `capture` always stops with `P6_CAPTURE_AUTHORIZATION_REQUIRED`, even if authorization-looking flags are supplied.
+Formal screenshots are a later, separate optional checkpoint: they require explicit authorization for one exact disposable world, its expected identity hash, and a human-run capture/import step. The blind-comparison step then waits for human A/B/tie choices; no command invents a preference. In this release, `capture` always stops with `P6_CAPTURE_AUTHORIZATION_REQUIRED`, even if authorization-looking flags are supplied.
 
 After the current immutable evidence generations exist, publish the deterministic gate report with:
 
@@ -123,7 +123,7 @@ npm run playbook:p6 -- report --run-dir /absolute/path/to/p6-run
 
 `verify-regressions` runs the frozen P6, P4, P5, off/pipeline, six-episode, manual-drift, and diff checks sequentially. Node tests always use the repository's hard-capped `npm test -- ...` entry point through the admitted absolute Node executable and pinned system npm CLI; Git is pinned for both the diff check and current-commit lookup. Children receive a minimal fixed environment rather than caller variables: a controlled executable path, locale/temp/home, the current user's fixed systemd bus paths, and disabled user/project/global npm configuration. Caller loader hooks, `NODE_OPTIONS`, npm lifecycle/config overrides, test bypasses, and arbitrary variables cannot cross this boundary, so an unavailable hard memory backend fails the receipt. The verifier records exact commands, the current commit and protocol, exit statuses, timestamps, bounded output hashes, and a canonical receipt hash; a failed or missing suite cannot become a passing receipt.
 
-The report is compare-and-swap bound to the exact current cohort, references, capture session, formal captures, observations, sealed blind-comparison package, private reveal, and gate regression receipt. Missing formal evidence, human choices, private reveal, or required regression results produces `blocked`; the command never invents a choice or a passing suite. Preference outcomes affect the operating advice, while only evidence completeness controls `p7_allowed`. A baseline-supported or inconclusive complete package directs the correction loop before starting P7. The checked-in [P6 report shell](docs/architecture-playbook/reports/p6-fixed-view-blind-comparison.md) remains explicitly blocked until the authorized evidence workflow is completed.
+The report is compare-and-swap bound to the exact current cohort, references, capture session, formal captures, observations, sealed blind-comparison package, private reveal, and gate regression receipt. Missing formal evidence, human choices, private reveal, or required regression results produces `blocked` inside this optional P6 protocol; the command never invents a choice or a passing suite. Preference outcomes affect P6 operating advice. The legacy `p7_allowed` field records completeness only within that formal comparison protocol and is not authorization for P7 chapter processing. A baseline-supported or inconclusive complete package directs review of the P6 evidence before relying on visual-quality conclusions. The checked-in [P6 report shell](docs/architecture-playbook/reports/p6-fixed-view-blind-comparison.md) remains incomplete until the authorized evidence workflow is completed.
 
 ## Generate a datapack
 
@@ -138,14 +138,16 @@ run_report.md
 architecture_scorecard.json
 ```
 
-Copy `architect_datapack/` into a world's `datapacks` directory, then run:
+`architect_datapack/` is a portable datapack whose build, clear, and run functions use relative-coordinate commands. Generation therefore needs neither a Minecraft world path nor a plot origin.
+
+Copy `architect_datapack/` into the chosen world's `datapacks` directory. Enter that world and stand at the chosen build origin, then run these commands in order:
 
 ```text
 /reload
 /function architect:run
 ```
 
-`/reload` refreshes datapacks. `architect:run` clears the previous generated build and executes the new one.
+`/reload` refreshes datapacks without building. `architect:run` clears the generated footprint relative to the player and builds at that same chosen origin.
 
 ## Local training
 

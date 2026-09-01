@@ -18,8 +18,31 @@
 - P3 自动门禁已通过；它验证受管字节快照、Git 跟踪、基于 AST 与 Node 解析语义的实际依赖图，以及 `not-covered` 双重声明。P3 本身没有生成住宅、没有视觉改善住宅，也没有接入生产建造流水线。
 - P4 影子指导门禁已通过：`npm run playbook:shadow -- --run <out/run-directory> --mode mock` 对已有 `blueprint.json` 进行只读、确定性、可解释的审查，且不改变建筑或主生成流水线。
 - P5 可执行设计层已经实现，但保持 opt-in / 默认关闭（default-off）。它只证明最小、确定性的控制循环：固定生成三个候选、保存五层 checkpoint、最多执行一次白名单修复、先做硬 QA 与秘籍资格过滤，再调用原有排序器。它没有秘籍评分，不证明质量或审美改善。
-- P6 仍未开放；固定多视角渲染、视觉模型、人工盲选、审美评价与改进证据仍属于 P6。
-- 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[P4 影子指导报告](reports/p4-shadow-guidance.md)和 [P5 可执行设计层报告](reports/p5-executable-design-layer.md)。
+- P6 正式捕获与盲选仍未开放、也尚未完成；固定多视角渲染、视觉模型、人工盲选、审美评价与改进证据仍属于可选的 P6 评价工作，不是扩展课程知识的前置条件。
+- P7 基础已经把 50 集分配到 8 个固定章节，增加可恢复的章节账本、全课程证据命令解析，以及只读的章节 `status` / `next` 命令；这只建立处理基础，不代表剩余 44 集已学习或新规则已晋级。
+- 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[P4 影子指导报告](reports/p4-shadow-guidance.md)、[P5 可执行设计层报告](reports/p5-executable-design-layer.md)和 [P7 知识扩展基础报告](reports/p7-knowledge-expansion-foundation.md)。
+
+## P7 轻量章节工作流
+
+**Lightweight P7 chapter gate:** Formal P6 capture/comparison is optional and does not block P7. 每章仍须通过来源、原创笔记、证据分类、规则谱系、确定性编译、六集黄金语料、受影响的 P4/P5 回归、固定提示 mock 生成、便携数据包和 `playbook=off` 兼容检查；没有证据的规则不能晋级。
+
+初始化章节账本后，可以读取全课程或单章状态，并取得一个确定性的下一步；这两个命令都不会创建或推进账本：
+
+```bash
+npm run playbook:chapter -- status
+npm run playbook:chapter -- status --chapter foundations-tools-blocks-modularity-color
+npm run playbook:chapter -- next --chapter foundations-tools-blocks-modularity-color
+```
+
+首章是 `foundations-tools-blocks-modularity-color`。新账本给出的首个动作是：
+
+```bash
+npm run playbook:evidence -- media --bvid BV1guoPYkExk
+```
+
+证据命令当前不会猜测或自动登记章节阶段；只有相应产物被重新打开、哈希校验并完成人工要求的复核后，才能通过账本接口推进相邻阶段。完整的基础事实和限制见 [P7 知识扩展基础报告](reports/p7-knowledge-expansion-foundation.md)。
+
+生成产品本身保持简单：普通请求产生使用相对坐标的便携 `architect_datapack/`。用户把它复制到自己选择的世界，进入游戏并站在所选建造原点，依次运行 `/reload` 和 `/function architect:run`；知识扩展不选择世界或坐标。
 
 ## P5 手动测试
 
