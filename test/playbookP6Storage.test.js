@@ -27,6 +27,26 @@ const KINDS = [
   'observations', 'blind-comparison', 'gate'
 ];
 
+test('P6 crash worker skips execution when test discovery supplies no job', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-crash-discovery-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+
+  const result = await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [
+      path.join(import.meta.dirname, 'fixtures', 'playbookP6StorageCrashWorker.js')
+    ], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', chunk => { stdout += chunk; });
+    child.stderr.on('data', chunk => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('close', (code, signal) => resolve({ code, signal, stdout, stderr }));
+  });
+
+  assert.deepEqual(result, { code: 0, signal: null, stdout: '', stderr: '' });
+  assert.deepEqual(await fs.readdir(root), []);
+});
+
 test('createP6Run binds playbook-p6 beneath the exact caller run and publishes exact managed paths', async t => {
   const fixture = await createStorageFixture(t);
   assert.equal(fixture.publicP6Dir, 'playbook-p6');

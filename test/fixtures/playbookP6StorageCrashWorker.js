@@ -5,18 +5,22 @@ import {
   publishP6Generation
 } from '../../src/playbook/p6/storage.js';
 
-const job = JSON.parse(await fs.readFile(process.argv[2], 'utf8'));
-const authority = await admitP6Run({ p6Dir: job.p6Dir });
-await publishP6Generation({
-  authority,
-  kind: job.kind,
-  files: Object.fromEntries(Object.entries(job.files).map(([name, bytes]) => [
-    name, Buffer.from(bytes, 'base64')
-  ])),
-  fsImpl: crashFs(job.phase)
-});
-await authority.close();
-process.exitCode = 70;
+if (process.argv[2]) await runCrashJob(process.argv[2]);
+
+async function runCrashJob(jobPath) {
+  const job = JSON.parse(await fs.readFile(jobPath, 'utf8'));
+  const authority = await admitP6Run({ p6Dir: job.p6Dir });
+  await publishP6Generation({
+    authority,
+    kind: job.kind,
+    files: Object.fromEntries(Object.entries(job.files).map(([name, bytes]) => [
+      name, Buffer.from(bytes, 'base64')
+    ])),
+    fsImpl: crashFs(job.phase)
+  });
+  await authority.close();
+  process.exitCode = 70;
+}
 
 function crashFs(phase) {
   let pointerSyncs = 0;
