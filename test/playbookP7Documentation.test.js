@@ -24,11 +24,11 @@ test('architecture playbook README exposes the lightweight chapter gate and stat
   const text = await read('docs/architecture-playbook/README.md');
 
   assert.match(text, /lightweight P7 chapter gate/iu);
-  assert.match(text, /npm run playbook:chapter -- status/u);
   assert.match(
     text,
-    /npm run playbook:chapter -- next --chapter foundations-tools-blocks-modularity-color/u
+    /npm run playbook:chapter -- init[\s\S]*npm run playbook:chapter -- status[\s\S]*npm run playbook:chapter -- next --chapter foundations-tools-blocks-modularity-color/u
   );
+  assert.match(text, /status[\s\S]*next[\s\S]*(?:read-only|只读)/iu);
   assert.match(text, /formal P6.*optional.*does not block P7/isu);
   assert.doesNotMatch(text, /P7 is not allowed|P6.*prerequisite before.*P7/isu);
 });
@@ -62,11 +62,11 @@ test('P7 foundation report records exact public authority, verification, and nex
   );
   assert.match(text, /remaining non-pilot (?:episode )?count[^\n]*44/iu);
   assert.match(text, /foundations-tools-blocks-modularity-color/u);
-  assert.match(text, /npm run playbook:chapter -- status/u);
   assert.match(
     text,
-    /npm run playbook:chapter -- next --chapter foundations-tools-blocks-modularity-color/u
+    /npm run playbook:chapter -- init[\s\S]*npm run playbook:chapter -- status[\s\S]*npm run playbook:chapter -- next --chapter foundations-tools-blocks-modularity-color/u
   );
+  assert.match(text, /status[\s\S]*next[\s\S]*(?:read-only|只读)/iu);
   assert.match(text, /12\/12[\s\S]*19\/19[\s\S]*17\/17[\s\S]*25\/25/u);
   assert.match(text, /foundation only|does not (?:complete|claim|promote)/iu);
   assert.match(

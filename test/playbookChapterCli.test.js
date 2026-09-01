@@ -87,6 +87,140 @@ test('global status is deterministic in checked-in chapter order', async (t) => 
   });
 });
 
+test('init creates a missing ledger and exposes only the public global summary', async (t) => {
+  const fixture = await chapterFixture(t, { create: false });
+
+  const result = await runChapterCli(['init'], fixture.deps);
+
+  assert.deepEqual(result, {
+    status: 'created',
+    chapter_count: 8,
+    episode_count: 50,
+    completed_count: 0,
+    remaining_count: 50,
+    next_chapter_id: FIRST_CHAPTER,
+    next_bvid: FIRST_BVID,
+    next_stage: 'media-verified'
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), result);
+  assert.doesNotMatch(
+    JSON.stringify(result),
+    /ledger_sha256|chapter_plan_sha256|\.local|transcript|https?:|\/tmp\//u
+  );
+  assert.deepEqual(await runChapterCli(['status'], fixture.deps), {
+    chapter_count: 8,
+    episode_count: 50,
+    completed_count: 0,
+    remaining_count: 50,
+    next_chapter_id: FIRST_CHAPTER,
+    next_bvid: FIRST_BVID,
+    next_stage: 'media-verified'
+  });
+});
+
+test('init preserves an existing progressed ledger without resetting or advancing it', async (t) => {
+  const fixture = await chapterFixture(t);
+  await advanceEpisodeStage({
+    projectRoot: fixture.projectRoot,
+    bvid: FIRST_BVID,
+    expectedLedgerSha256: fixture.created.ledger_sha256,
+    expectedStage: 'pending',
+    nextStage: 'media-verified',
+    evidence: EVIDENCE_BY_STAGE['media-verified']
+  });
+  const before = await fileIdentity(fixture.ledgerPath);
+
+  const result = await runChapterCli(['init'], fixture.deps);
+
+  assert.deepEqual(result, {
+    status: 'unchanged',
+    chapter_count: 8,
+    episode_count: 50,
+    completed_count: 0,
+    remaining_count: 50,
+    next_chapter_id: FIRST_CHAPTER,
+    next_bvid: FIRST_BVID,
+    next_stage: 'asr-complete'
+  });
+  assert.deepEqual(await fileIdentity(fixture.ledgerPath), before);
+  assert.deepEqual(await runChapterCli([
+    'next',
+    '--chapter',
+    FIRST_CHAPTER
+  ], fixture.deps), {
+    chapter_id: FIRST_CHAPTER,
+    bvid: FIRST_BVID,
+    current_stage: 'media-verified',
+    next_stage: 'asr-complete',
+    command: `npm run playbook:evidence -- transcribe --bvid ${FIRST_BVID}`
+  });
+});
+
+test('concurrent init calls safely publish one ledger without exposing internals', async (t) => {
+  const fixture = await chapterFixture(t, { create: false });
+
+  const results = await Promise.all([
+    runChapterCli(['init'], fixture.deps),
+    runChapterCli(['init'], fixture.deps)
+  ]);
+
+  assert.deepEqual(results.map((result) => result.status).sort(), [
+    'created',
+    'unchanged'
+  ]);
+  for (const result of results) {
+    assert.deepEqual(Object.keys(result).sort(), [
+      'chapter_count',
+      'completed_count',
+      'episode_count',
+      'next_bvid',
+      'next_chapter_id',
+      'next_stage',
+      'remaining_count',
+      'status'
+    ]);
+    assert.doesNotMatch(
+      JSON.stringify(result),
+      /ledger_sha256|chapter_plan_sha256|\.local|transcript|https?:|\/tmp\//u
+    );
+  }
+  assert.deepEqual(await runChapterCli(['status'], fixture.deps), {
+    chapter_count: 8,
+    episode_count: 50,
+    completed_count: 0,
+    remaining_count: 50,
+    next_chapter_id: FIRST_CHAPTER,
+    next_bvid: FIRST_BVID,
+    next_stage: 'media-verified'
+  });
+});
+
+test('init fails closed on corrupt and source-drifted existing ledgers', async (t) => {
+  const corrupt = await chapterFixture(t);
+  const corruptBytes = Buffer.from(
+    '{"transcript_text":"secret","source_path":"/tmp/private-source"}\n'
+  );
+  await fs.writeFile(corrupt.ledgerPath, corruptBytes);
+  await assertSafeRejection(
+    runChapterCli(['init'], corrupt.deps),
+    'PLAYBOOK_CHAPTER_LEDGER_INVALID',
+    corrupt.projectRoot
+  );
+  assert.deepEqual(await fs.readFile(corrupt.ledgerPath), corruptBytes);
+
+  const drifted = await chapterFixture(t);
+  const driftedLedger = await readJson(drifted.ledgerPath);
+  driftedLedger.chapter_plan_sha256 = '0'.repeat(64);
+  await fs.writeFile(drifted.ledgerPath, stableJson(driftedLedger));
+  const before = await fileIdentity(drifted.ledgerPath);
+  await assertSafeRejection(
+    runChapterCli(['init'], drifted.deps),
+    'PLAYBOOK_CHAPTER_SOURCE_DRIFT',
+    drifted.projectRoot
+  );
+  assert.deepEqual(await fileIdentity(drifted.ledgerPath), before);
+});
+
 test('next returns the exact existing evidence command without advancing state', async (t) => {
   const fixture = await chapterFixture(t);
   const before = await fileIdentity(fixture.ledgerPath);
@@ -199,6 +333,8 @@ test('argument parsing rejects unknown, duplicate, missing, and command-specific
     [['status', '--chapter'], 'PLAYBOOK_CHAPTER_ARGUMENT_VALUE_MISSING'],
     [['next'], 'PLAYBOOK_CHAPTER_ARGUMENT_REQUIRED'],
     [['next', '--chapter', FIRST_CHAPTER, 'extra'], 'PLAYBOOK_CHAPTER_ARGUMENT_UNKNOWN'],
+    [['init', '--chapter', FIRST_CHAPTER], 'PLAYBOOK_CHAPTER_ARGUMENT_UNKNOWN'],
+    [['init', 'extra'], 'PLAYBOOK_CHAPTER_ARGUMENT_UNKNOWN'],
     [['status', '--chapter', 'unknown-chapter'], 'PLAYBOOK_CHAPTER_ID_INVALID']
   ];
 
@@ -285,6 +421,52 @@ test('package CLI prints one canonical JSON document from fixed checked-in autho
     next_stage: 'media-verified'
   }));
   assert.deepEqual(await fileIdentity(fixture.ledgerPath), before);
+});
+
+test('package CLI exposes init as the fixed-authority clean-checkout entry point', async (t) => {
+  const fixture = await chapterFixture(t, { create: false });
+  const npmCli = process.env.npm_execpath;
+  assert.equal(typeof npmCli, 'string');
+
+  const childEnvironment = { ...process.env };
+  delete childEnvironment.NODE_TEST_CONTEXT;
+  delete childEnvironment.NODE_TEST_WORKER_ID;
+  const result = await execFileAsync(process.execPath, [
+    npmCli,
+    'run',
+    '--silent',
+    'playbook:chapter',
+    '--',
+    'init'
+  ], {
+    cwd: ROOT,
+    env: {
+      ...childEnvironment,
+      PLAYBOOK_PROJECT_ROOT: fixture.projectRoot
+    },
+    encoding: 'utf8'
+  });
+
+  assert.equal(result.stderr, '');
+  assert.equal(result.stdout, stableJson({
+    status: 'created',
+    chapter_count: 8,
+    episode_count: 50,
+    completed_count: 0,
+    remaining_count: 50,
+    next_chapter_id: FIRST_CHAPTER,
+    next_bvid: FIRST_BVID,
+    next_stage: 'media-verified'
+  }));
+  assert.deepEqual(await runChapterCli(['status'], fixture.deps), {
+    chapter_count: 8,
+    episode_count: 50,
+    completed_count: 0,
+    remaining_count: 50,
+    next_chapter_id: FIRST_CHAPTER,
+    next_bvid: FIRST_BVID,
+    next_stage: 'media-verified'
+  });
 });
 
 async function chapterFixture(t, { create = true } = {}) {

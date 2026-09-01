@@ -26,13 +26,21 @@
 
 **Lightweight P7 chapter gate:** Formal P6 capture/comparison is optional and does not block P7. 每章仍须通过来源、原创笔记、证据分类、规则谱系、确定性编译、六集黄金语料、受影响的 P4/P5 回归、固定提示 mock 生成、便携数据包和 `playbook=off` 兼容检查；没有证据的规则不能晋级。
 
-初始化章节账本后，可以读取全课程或单章状态，并取得一个确定性的下一步；这两个命令都不会创建或推进账本：
+先用唯一可创建缺失账本的公开命令初始化章节状态：
+
+```bash
+npm run playbook:chapter -- init
+```
+
+如果账本已经存在（包括已经推进的账本），`init` 只返回 `unchanged` 摘要，不会重置或推进任何课次。随后可以读取全课程或单章状态，并取得一个确定性的下一步：
 
 ```bash
 npm run playbook:chapter -- status
 npm run playbook:chapter -- status --chapter foundations-tools-blocks-modularity-color
 npm run playbook:chapter -- next --chapter foundations-tools-blocks-modularity-color
 ```
+
+`status` 和 `next` 保持只读；它们不会创建或推进账本。
 
 首章是 `foundations-tools-blocks-modularity-color`。新账本给出的首个动作是：
 

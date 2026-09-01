@@ -42,7 +42,15 @@ location or source-derived content.
 
 ## Commands
 
-After initialization, read the global or first-chapter status with:
+Initialize a missing ledger with the sole public absent-to-created command:
+
+```bash
+npm run playbook:chapter -- init
+```
+
+If a valid ledger already exists, including one with recorded progress, this
+returns an `unchanged` public summary and does not reset or advance any episode.
+Then read the global or first-chapter status with:
 
 ```bash
 npm run playbook:chapter -- status
@@ -54,6 +62,8 @@ Ask for the deterministic next action with:
 ```bash
 npm run playbook:chapter -- next --chapter foundations-tools-blocks-modularity-color
 ```
+
+`status` and `next` remain read-only; neither creates nor advances the ledger.
 
 For a newly initialized ledger, the next exact evidence command is:
 

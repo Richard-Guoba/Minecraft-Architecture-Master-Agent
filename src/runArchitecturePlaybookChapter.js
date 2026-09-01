@@ -2,7 +2,10 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { readChapterLedger } from './playbook/course/chapterLedger.js';
+import {
+  createChapterLedger,
+  readChapterLedger
+} from './playbook/course/chapterLedger.js';
 import { validateChapterPlan } from './playbook/course/chapterPlan.js';
 import { validateCourseManifest } from './playbook/contracts/courseManifest.js';
 import { failPlaybookContract } from './playbook/contracts/playbookContractError.js';
@@ -43,6 +46,7 @@ export async function runChapterCli(argv, {
   chapterPlan
 } = {}) {
   const options = parseChapterArgs(argv);
+  const resolvedProjectRoot = path.resolve(projectRoot);
   const manifest = validateCourseManifest(
     courseManifest ?? await readFixedJson(COURSE_MANIFEST_PATH)
   );
@@ -50,6 +54,22 @@ export async function runChapterCli(argv, {
     chapterPlan ?? await readFixedJson(CHAPTER_PLAN_PATH),
     manifest
   );
+  if (options.command === 'init') {
+    let current;
+    try {
+      current = await readChapterLedger({ projectRoot: resolvedProjectRoot });
+      assertLedgerPlanBinding(current.ledger, plan);
+      return deepFreeze({ status: 'unchanged', ...globalStatus(plan, current.ledger) });
+    } catch (error) {
+      if (error?.code !== 'PLAYBOOK_CHAPTER_LEDGER_MISSING') throw error;
+    }
+    const created = await createChapterLedger({
+      projectRoot: resolvedProjectRoot,
+      chapterPlan: plan
+    });
+    assertLedgerPlanBinding(created.ledger, plan);
+    return deepFreeze({ status: created.status, ...globalStatus(plan, created.ledger) });
+  }
   const chapter = options.chapterId === undefined
     ? undefined
     : plan.chapters.find((candidate) => candidate.chapter_id === options.chapterId);
@@ -61,7 +81,7 @@ export async function runChapterCli(argv, {
     );
   }
 
-  const { ledger } = await readChapterLedger({ projectRoot: path.resolve(projectRoot) });
+  const { ledger } = await readChapterLedger({ projectRoot: resolvedProjectRoot });
   assertLedgerPlanBinding(ledger, plan);
 
   if (options.command === 'status') {
@@ -81,12 +101,22 @@ export async function main(argv = process.argv.slice(2)) {
 
 function parseChapterArgs(argv) {
   const command = Array.isArray(argv) ? argv[0] : undefined;
-  if (!['status', 'next'].includes(command)) {
+  if (!['init', 'status', 'next'].includes(command)) {
     failPlaybookContract(
       'PLAYBOOK_CHAPTER_COMMAND_INVALID',
       'argv[0]',
-      'expected status or next'
+      'expected init, status, or next'
     );
+  }
+  if (command === 'init') {
+    if (argv.length !== 1) {
+      failPlaybookContract(
+        'PLAYBOOK_CHAPTER_ARGUMENT_UNKNOWN',
+        'argv[1]',
+        'unsupported argument'
+      );
+    }
+    return Object.freeze({ command, chapterId: undefined });
   }
   let chapterId;
   for (let index = 1; index < argv.length; index += 1) {
