@@ -204,6 +204,50 @@ export function validateCaptureSession(session, { cohort, cameraManifests, setti
   }
 }
 
+export function validateCaptureManifestAgainstSession(captureManifest, session) {
+  try {
+    assertSession(session);
+    const manifest = validateCaptureManifest(captureManifest);
+    if (manifest.cohort_sha256 !== session.cohort_sha256
+      || manifest.camera_manifest_sha256 !== session.camera_manifest_sha256
+      || manifest.request_sha256 !== session.request_sha256
+      || manifest.visual_settings_sha256 !== session.visual_settings_sha256) invalid();
+    const expectedEnvironment = {
+      minecraft_version: session.environment.minecraft_version,
+      client_options_sha256: session.environment.client_options_sha256,
+      resource_pack_ids: [...session.environment.resource_pack_ids],
+      viewport: {
+        width_px: session.environment.width_px,
+        height_px: session.environment.height_px,
+        aspect_ratio: session.environment.aspect_ratio
+      },
+      horizontal_fov_degrees: session.environment.horizontal_fov_degrees,
+      time_of_day: session.environment.time_of_day,
+      weather: session.environment.weather,
+      world_identifier_sha256: session.environment.world_identifier_sha256
+    };
+    if (stableJson(manifest.environment) !== stableJson(expectedEnvironment)) invalid();
+    for (const [index, image] of manifest.images.entries()) {
+      const capture = session.captures[index];
+      const expected = {
+        screenshot_id: capture.screenshot_id,
+        solution_id: capture.opaque_solution_id,
+        camera: {
+          view_id: capture.view_id,
+          position: capture.camera.position,
+          orientation: capture.camera.orientation
+        },
+        build_function_sha256: capture.build_function_sha256
+      };
+      const { image_sha256: _captureResult, ...determined } = image;
+      if (stableJson(determined) !== stableJson(expected)) invalid();
+    }
+    return captureManifest;
+  } catch (error) {
+    throw sanitizeP6Error(error, 'P6_CAPTURE_INVALID');
+  }
+}
+
 export async function validateImportedCaptures({ authority, session, captureRoot, fsImpl } = {}) {
   let captureAuthority;
   try {
@@ -280,7 +324,7 @@ export async function validateImportedCaptures({ authority, session, captureRoot
       },
       images
     };
-    validateCaptureManifest(captureManifest);
+    validateCaptureManifestAgainstSession(captureManifest, session);
     const captureManifestBytes = Buffer.from(stableJson(captureManifest));
     files['capture-manifest.json'] = captureManifestBytes;
     const currentSession = await assertCurrentSession(authority, session);

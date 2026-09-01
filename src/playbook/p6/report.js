@@ -16,7 +16,10 @@ import {
 } from './contracts.js';
 import { compileObservationSet } from './observations.js';
 import { revealPreferenceResults } from './comparisons.js';
-import { validateCaptureSession } from './captures.js';
+import {
+  validateCaptureManifestAgainstSession,
+  validateCaptureSession
+} from './captures.js';
 import { validateP6RegressionReceipt } from './regressions.js';
 
 const HASH = /^[a-f0-9]{64}$/u;
@@ -87,6 +90,7 @@ export function evaluateP6Gate(evidence) {
       cameraManifests: value.cameraManifests,
       settings: P6_VISUAL_SETTINGS
     });
+    validateCaptureManifestAgainstSession(captureManifest, value.captureSession);
     if (!captureManifest
       || value.captureSession.cohort_sha256 !== captureManifest.cohort_sha256
       || value.captureSession.camera_manifest_sha256 !== captureManifest.camera_manifest_sha256

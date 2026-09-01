@@ -27,6 +27,8 @@ import {
 } from './playbook/p6/observations.js';
 import { evaluateP6Gate, renderP6Report } from './playbook/p6/report.js';
 import {
+  createRegressionChildEnvironment,
+  P6_GIT_PATH,
   runRegressionCommand,
   verifyP6Regressions
 } from './playbook/p6/regressions.js';
@@ -801,9 +803,11 @@ function evidenceHash(deps, kind, value) {
     : deps.sha256(deps.stableJson({ kind, status: 'missing' }));
 }
 
-async function resolveGitCommit() {
+export async function resolveGitCommit({ env = process.env } = {}) {
   return await new Promise((resolve, reject) => {
-    const child = spawn('git', ['rev-parse', 'HEAD'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const child = spawn(P6_GIT_PATH, ['rev-parse', 'HEAD'], {
+      env: createRegressionChildEnvironment(env), stdio: ['ignore', 'pipe', 'ignore']
+    });
     const chunks = [];
     let size = 0;
     child.stdout.on('data', chunk => {

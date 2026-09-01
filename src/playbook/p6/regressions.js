@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import path from 'node:path';
 
 import { deepFreeze, sha256, stableJson } from '../shadow/canonical.js';
 import { P6_PROTOCOL_VERSION, P6_SCHEMA_VERSION } from './constants.js';
@@ -8,6 +9,8 @@ const HASH = /^[a-f0-9]{64}$/u;
 const GIT_COMMIT = /^[a-f0-9]{40}$/u;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const MAX_STREAM_BYTES = 16 * 1024 * 1024;
+export const P6_NPM_CLI_PATH = '/usr/share/nodejs/npm/bin/npm-cli.js';
+export const P6_GIT_PATH = '/usr/bin/git';
 const RECEIPT_FIELDS = Object.freeze([
   'schema_version', 'protocol_version', 'kind', 'status', 'git_commit',
   'started_at', 'completed_at', 'suites', 'receipt_sha256'
@@ -43,13 +46,13 @@ const P5_TESTS = [
 ];
 
 export const P6_REGRESSION_SUITES = deepFreeze([
-  { suite_id: 'p6-focused', command: ['npm', 'test', '--', ...P6_TESTS] },
-  { suite_id: 'p4-focused', command: ['npm', 'test', '--', ...P4_TESTS] },
-  { suite_id: 'p5-focused', command: ['npm', 'test', '--', ...P5_TESTS] },
-  { suite_id: 'playbook-off-pipeline', command: ['npm', 'test', '--', 'test/playbookExecuteOffCompatibility.test.js', 'test/pipeline.test.js'] },
-  { suite_id: 'six-episode-golden', command: ['npm', 'test', '--', 'test/playbookPilotEpisodeSet.test.js', 'test/playbookP2EvidenceAudit.test.js'] },
-  { suite_id: 'manual-drift', command: ['npm', 'run', 'playbook:manual', '--', 'check'] },
-  { suite_id: 'git-diff-check', command: ['git', 'diff', '--check'] }
+  { suite_id: 'p6-focused', command: npmCommand('test', '--', ...P6_TESTS) },
+  { suite_id: 'p4-focused', command: npmCommand('test', '--', ...P4_TESTS) },
+  { suite_id: 'p5-focused', command: npmCommand('test', '--', ...P5_TESTS) },
+  { suite_id: 'playbook-off-pipeline', command: npmCommand('test', '--', 'test/playbookExecuteOffCompatibility.test.js', 'test/pipeline.test.js') },
+  { suite_id: 'six-episode-golden', command: npmCommand('test', '--', 'test/playbookPilotEpisodeSet.test.js', 'test/playbookP2EvidenceAudit.test.js') },
+  { suite_id: 'manual-drift', command: npmCommand('run', 'playbook:manual', '--', 'check') },
+  { suite_id: 'git-diff-check', command: [P6_GIT_PATH, 'diff', '--check'] }
 ]);
 
 export async function verifyP6Regressions({ runner = runRegressionCommand, gitCommit, now = () => new Date() } = {}) {
@@ -121,7 +124,9 @@ export function validateP6RegressionReceipt(value, { gitCommit, requirePass = fa
   }
 }
 
-export async function runRegressionCommand(definition, { cwd = process.cwd() } = {}) {
+export async function runRegressionCommand(
+  definition, { cwd = process.cwd(), env = process.env } = {}
+) {
   if (!P6_REGRESSION_SUITES.includes(definition)) invalid();
   const [executable, ...args] = definition.command;
   return await new Promise((resolve, reject) => {
@@ -129,7 +134,9 @@ export async function runRegressionCommand(definition, { cwd = process.cwd() } =
     const stderr = [];
     let stdoutBytes = 0;
     let stderrBytes = 0;
-    const child = spawn(executable, args, { cwd, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(executable, args, {
+      cwd, env: createRegressionChildEnvironment(env), stdio: ['ignore', 'pipe', 'pipe']
+    });
     const collect = (chunks, key) => chunk => {
       const size = key === 'stdout' ? stdoutBytes += chunk.length : stderrBytes += chunk.length;
       if (size > MAX_STREAM_BYTES) {
@@ -148,6 +155,16 @@ export async function runRegressionCommand(definition, { cwd = process.cwd() } =
   });
 }
 
+export function createRegressionChildEnvironment(source = process.env) {
+  if (!plain(source)) invalid();
+  const environment = { ...source };
+  for (const key of Object.keys(environment)) {
+    if (key.startsWith('MC_TEST_')) delete environment[key];
+  }
+  environment.PATH = [...new Set([path.dirname(process.execPath), '/usr/bin', '/bin'])].join(':');
+  return environment;
+}
+
 function normalizeRunnerResult(value) {
   if (!plain(value) || !sameExactKeys(value, ['exit_code', 'stdout', 'stderr'])
     || !Number.isSafeInteger(value.exit_code) || value.exit_code < 0 || value.exit_code > 255
@@ -161,6 +178,7 @@ function timestamp(now) {
   if (!(value instanceof Date) || !Number.isFinite(value.valueOf())) invalid();
   return value.toISOString();
 }
+function npmCommand(...args) { return [process.execPath, P6_NPM_CLI_PATH, ...args]; }
 function plain(value) { return value !== null && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype; }
 function sameExactKeys(value, fields) { return stableJson(Object.keys(value).sort()) === stableJson([...fields].sort()); }
 function invalid() { throw p6Error('P6_GATE_FAILED'); }

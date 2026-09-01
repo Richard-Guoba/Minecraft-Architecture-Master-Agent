@@ -1,13 +1,20 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 import {
+  createRegressionChildEnvironment,
+  P6_NPM_CLI_PATH,
   P6_REGRESSION_SUITES,
+  runRegressionCommand,
   validateP6RegressionReceipt,
   verifyP6Regressions
 } from '../src/playbook/p6/regressions.js';
 import { sha256, stableJson } from '../src/playbook/shadow/canonical.js';
-import { parseP6Args, runP6Cli } from '../src/runArchitecturePlaybookP6.js';
+import { parseP6Args, resolveGitCommit, runP6Cli } from '../src/runArchitecturePlaybookP6.js';
+import { runNodeTests } from '../scripts/runNodeTests.js';
 import { p6CaptureHash } from './fixtures/playbookP6Captures.js';
 
 const COMMIT = 'a'.repeat(40);
@@ -20,9 +27,12 @@ test('verifier runs every exact required suite sequentially and seals canonical 
     ['p5-focused', P6_REGRESSION_SUITES[2].command],
     ['playbook-off-pipeline', P6_REGRESSION_SUITES[3].command],
     ['six-episode-golden', P6_REGRESSION_SUITES[4].command],
-    ['manual-drift', ['npm', 'run', 'playbook:manual', '--', 'check']],
-    ['git-diff-check', ['git', 'diff', '--check']]
+    ['manual-drift', [process.execPath, P6_NPM_CLI_PATH, 'run', 'playbook:manual', '--', 'check']],
+    ['git-diff-check', ['/usr/bin/git', 'diff', '--check']]
   ]);
+  for (const row of P6_REGRESSION_SUITES.slice(0, -1)) {
+    assert.deepEqual(row.command.slice(0, 2), [process.execPath, P6_NPM_CLI_PATH]);
+  }
   const active = [];
   const seen = [];
   const receipt = await verifyP6Regressions({
@@ -42,6 +52,50 @@ test('verifier runs every exact required suite sequentially and seals canonical 
   assert.equal(validateP6RegressionReceipt(receipt, { gitCommit: COMMIT }), receipt);
   assert.match(receipt.receipt_sha256, /^[a-f0-9]{64}$/u);
   assert.equal(JSON.stringify(receipt).includes(':pass'), false);
+});
+
+test('pinned regression and commit executables ignore poisoned PATH and strip every MC test bypass', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-regression-path-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const npmMarker = path.join(root, 'fake-npm-ran');
+  const gitMarker = path.join(root, 'fake-git-ran');
+  await fs.writeFile(path.join(root, 'npm'), `#!/bin/sh\ntouch '${npmMarker}'\nexit 0\n`, { mode: 0o700 });
+  await fs.writeFile(path.join(root, 'git'), `#!/bin/sh\ntouch '${gitMarker}'\nprintf '%040d\\n' 0\n`, { mode: 0o700 });
+  const poisoned = {
+    ...process.env,
+    PATH: `${root}:${process.env.PATH}`,
+    MC_TEST_ALLOW_SOFT_FALLBACK: '1',
+    MC_TEST_BYPASS_HARD_SCOPE: '1'
+  };
+  const childEnv = createRegressionChildEnvironment(poisoned);
+  assert.equal(Object.keys(childEnv).some(key => key.startsWith('MC_TEST_')), false);
+  assert.equal(childEnv.PATH.split(':').includes(root), false);
+
+  const manual = P6_REGRESSION_SUITES.find(row => row.suite_id === 'manual-drift');
+  assert.equal((await runRegressionCommand(manual, { env: poisoned })).exit_code, 0);
+  assert.match(await resolveGitCommit({ env: poisoned }), /^[a-f0-9]{40}$/u);
+  await assert.rejects(fs.lstat(npmMarker), { code: 'ENOENT' });
+  await assert.rejects(fs.lstat(gitMarker), { code: 'ENOENT' });
+
+  const hardBackendExit = runNodeTests({
+    env: childEnv,
+    platform: 'linux',
+    spawnSyncImpl: () => ({ status: 1 }),
+    writeStderr: () => {}
+  });
+  assert.equal(hardBackendExit, 78);
+  const missingHardBackend = await verifyP6Regressions({
+    gitCommit: COMMIT,
+    now: () => new Date(NOW),
+    runner: async suite => ({
+      exit_code: suite.suite_id === 'p6-focused' ? hardBackendExit : 0,
+      stdout: Buffer.alloc(0), stderr: Buffer.from('hard scope unavailable')
+    })
+  });
+  assert.equal(missingHardBackend.status, 'failed');
+  assert.throws(() => validateP6RegressionReceipt(
+    missingHardBackend, { gitCommit: COMMIT, requirePass: true }
+  ), { code: 'P6_GATE_FAILED' });
 });
 
 test('failed, missing, reordered, hand-authored, or cross-commit receipts never validate as passing', async () => {

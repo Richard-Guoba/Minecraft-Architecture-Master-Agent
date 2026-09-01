@@ -8,6 +8,7 @@ import {
   createCaptureSession,
   P6_MAX_CAPTURE_BYTES,
   renderCaptureChecklist,
+  validateCaptureManifestAgainstSession,
   validateImportedCaptures
 } from '../src/playbook/p6/captures.js';
 import { P6_PROTOCOL_FILE_HASHES, P6_VIEW_IDS, P6_VISUAL_SETTINGS } from '../src/playbook/p6/constants.js';
@@ -65,6 +66,26 @@ test('capture session fixes four equal plots, exact environment, build/camera co
   assert.equal(checklist.includes('/execute positioned'), true);
   assert.equal(checklist.includes('/tp @s'), true);
   assert.equal(checklist.includes('capture-24-opaque.png'), true);
+});
+
+test('capture manifest projection is exactly bound to every session-determined field', () => {
+  const session = captureSession();
+  const manifest = captureManifestForSession(session);
+  assert.equal(validateCaptureManifestAgainstSession(manifest, session), manifest);
+  for (const mutate of [
+    value => { value.environment.client_options_sha256 = hashFor('forged-options'); },
+    value => { value.images[0].camera.position.x = '999.000000'; },
+    value => { value.images[0].camera.orientation.yaw_degrees = '1.000000'; },
+    value => { value.images[0].build_function_sha256 = hashFor('forged-build'); },
+    value => { value.images[0].screenshot_id = 'capture-24-opaque'; },
+    value => { value.camera_manifest_sha256 = hashFor('forged-cameras'); }
+  ]) {
+    const forged = structuredClone(manifest);
+    mutate(forged);
+    assert.throws(() => validateCaptureManifestAgainstSession(forged, session), {
+      code: 'P6_CAPTURE_INVALID'
+    });
+  }
 });
 
 test('formal import accepts one complete identity-bound batch and publishes opaque managed captures only', async t => {
@@ -370,6 +391,42 @@ function captureSession({ worldIdentityHash = hashFor('world') } = {}) {
     worldIdentityHash,
     plotOrigin: { x: 100, y: 64, z: 200 }
   });
+}
+
+function captureManifestForSession(session) {
+  return {
+    schema_version: 1,
+    protocol_version: '0.1.0',
+    cohort_sha256: session.cohort_sha256,
+    camera_manifest_sha256: session.camera_manifest_sha256,
+    request_sha256: P6_PROTOCOL_FILE_HASHES['fixed-request.json'],
+    visual_settings_sha256: P6_PROTOCOL_FILE_HASHES['visual-settings.json'],
+    environment: {
+      minecraft_version: session.environment.minecraft_version,
+      client_options_sha256: session.environment.client_options_sha256,
+      resource_pack_ids: [...session.environment.resource_pack_ids],
+      viewport: {
+        width_px: session.environment.width_px,
+        height_px: session.environment.height_px,
+        aspect_ratio: session.environment.aspect_ratio
+      },
+      horizontal_fov_degrees: session.environment.horizontal_fov_degrees,
+      time_of_day: session.environment.time_of_day,
+      weather: session.environment.weather,
+      world_identifier_sha256: session.environment.world_identifier_sha256
+    },
+    images: session.captures.map((capture, index) => ({
+      screenshot_id: capture.screenshot_id,
+      solution_id: capture.opaque_solution_id,
+      camera: {
+        view_id: capture.view_id,
+        position: { ...capture.camera.position },
+        orientation: { ...capture.camera.orientation }
+      },
+      build_function_sha256: capture.build_function_sha256,
+      image_sha256: hashFor(`image-${index}`)
+    }))
+  };
 }
 
 function pngHeader(width = 1920, height = 1080) {

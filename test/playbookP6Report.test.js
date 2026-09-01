@@ -143,6 +143,17 @@ test('gate rederives the private reveal and fully replays the formal capture ses
   assert.ok(evaluateP6Gate(selfConsistentCameraForgery).failures.some(row => row.stage === 'formal-captures'));
 });
 
+test('gate rejects downstream-rehashed client options and camera coordinates that drift from its session', () => {
+  const evidence = completeEvidence(captureManifest => {
+    captureManifest.environment.client_options_sha256 = p6CaptureHash('forged-client-options');
+    captureManifest.images[0].camera.position.x = '999.000000';
+  });
+  const gate = evaluateP6Gate(evidence);
+  assert.equal(gate.status, 'blocked');
+  assert.equal(gate.outcome, 'capture-invalid');
+  assert.ok(gate.failures.some(row => row.stage === 'formal-captures'));
+});
+
 test('renders a deterministic hash inventory without scalar or statistical claims', () => {
   const gate = evaluateP6Gate(completeEvidence());
   const evidenceHashes = {
@@ -372,7 +383,7 @@ test('report publishes blocked when formal generations are absent and never inve
   assert.ok(report.gate.failures.some(row => row.stage === 'regressions'));
 });
 
-function completeEvidence() {
+function completeEvidence(mutateCaptureManifest = () => {}) {
   const captureInputs = createP6CaptureInputs();
   const cohort = captureInputs.cohort.manifest;
   const cohortHash = sha256(stableJson(cohort));
@@ -389,30 +400,49 @@ function completeEvidence() {
     request_sha256: P6_PROTOCOL_FILE_HASHES['fixed-request.json'],
     visual_settings_sha256: P6_PROTOCOL_FILE_HASHES['visual-settings.json'],
     environment: {
-      minecraft_version: '1.21.9', client_options_sha256: p6CaptureHash('options'),
-      resource_pack_ids: ['vanilla'], viewport: { width_px: 1920, height_px: 1080, aspect_ratio: '16:9' },
-      horizontal_fov_degrees: 70, time_of_day: 6000, weather: 'clear',
-      world_identifier_sha256: p6CaptureHash('world')
+      minecraft_version: captureSession.environment.minecraft_version,
+      client_options_sha256: captureSession.environment.client_options_sha256,
+      resource_pack_ids: [...captureSession.environment.resource_pack_ids],
+      viewport: {
+        width_px: captureSession.environment.width_px,
+        height_px: captureSession.environment.height_px,
+        aspect_ratio: captureSession.environment.aspect_ratio
+      },
+      horizontal_fov_degrees: captureSession.environment.horizontal_fov_degrees,
+      time_of_day: captureSession.environment.time_of_day,
+      weather: captureSession.environment.weather,
+      world_identifier_sha256: captureSession.environment.world_identifier_sha256
     },
-    images: OPAQUE_IDS.flatMap((solution_id, solutionIndex) => P6_VIEW_IDS.map((view_id, viewIndex) => ({
-      screenshot_id: `capture-${String(solutionIndex * 6 + viewIndex + 1).padStart(2, '0')}-opaque`,
-      solution_id,
-      camera: { view_id, position: { x: '1.000000', y: '2.000000', z: '3.000000' }, orientation: { pitch_degrees: '0.000000', yaw_degrees: '0.000000' } },
-      build_function_sha256: cohort.solutions[solutionIndex].build_function_sha256,
-      image_sha256: p6CaptureHash(`image-${solutionIndex}-${viewIndex}`)
-    })))
+    images: captureSession.captures.map((capture, index) => ({
+      screenshot_id: capture.screenshot_id,
+      solution_id: capture.opaque_solution_id,
+      camera: {
+        view_id: capture.view_id,
+        position: { ...capture.camera.position },
+        orientation: { ...capture.camera.orientation }
+      },
+      build_function_sha256: capture.build_function_sha256,
+      image_sha256: p6CaptureHash(`image-${index}`)
+    }))
   };
-  const observations = OPAQUE_IDS.flatMap((_, solutionIndex) => P6_OBSERVATION_CRITERIA.map((criterion, criterionIndex) => ({
+  mutateCaptureManifest(captureManifest);
+  const observations = cohort.solutions.flatMap((solution, solutionIndex) => {
+    const citedCapture = captureManifest.images.find(image => (
+      image.build_function_sha256 === solution.build_function_sha256
+      && image.camera.view_id === 'front-south'
+    ));
+    return P6_OBSERVATION_CRITERIA.map((criterion, criterionIndex) => ({
     schema_version: 1, protocol_version: '0.1.0',
     observation_id: `observation-${String(solutionIndex * 9 + criterionIndex + 1).padStart(2, '0')}`,
-    solution_authority_hash: sha256(stableJson(cohort.solutions[solutionIndex])),
+    solution_authority_hash: sha256(stableJson(solution)),
     capture_manifest_hash: sha256(stableJson(captureManifest)), view_ids: ['front-south'],
     design_layer: LAYERS[criterion], criterion, rating: 'usable',
     observable_paraphrase: 'The cited exterior view visibly shows the evaluated building form.',
-    evidence_regions: [{ screenshot_id: `capture-${String(solutionIndex * 6 + 1).padStart(2, '0')}-opaque`, region_kind: 'whole-frame', region: null }],
+    evidence_regions: [{ screenshot_id: citedCapture.screenshot_id, region_kind: 'whole-frame', region: null }],
     rule_ids: ['rule:massing.primary-secondary-tertiary'], limitations: ['Only the cited frame was reviewed.'],
     reviewer_kind: 'human', reviewed_at: GENERATED_AT
-  })));
+    }));
+  });
   const observationSet = compileObservationSet({ cohort, captureManifest, observations });
   const bundle = compileBlindComparison({ cohort, captureManifest, randomBytes: deterministicBytes(), generatedAt: GENERATED_AT });
   const comparisonHash = sha256(stableJson(bundle.publicManifest));
