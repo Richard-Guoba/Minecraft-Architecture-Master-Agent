@@ -1,9 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import {
+  closeSync,
   constants,
   fstatSync,
   lstatSync,
+  mkdirSync,
+  openSync,
   rmdirSync
 } from 'node:fs';
 import fs from 'node:fs/promises';
@@ -511,35 +514,23 @@ async function openRetainedDirectory(
   basename,
   { createMissing = false, createdDirectories } = {}
 ) {
-  let handle;
-  let createdByInvocation = false;
-  let createdDirectory;
-  let postEffectMkdirError;
   const target = entry(parentHandle, basename);
-  try {
-    if (createMissing) {
-      let existing = null;
-      try {
-        existing = await ops.lstat(target);
-      } catch (error) {
-        if (error?.code !== 'ENOENT') throw error;
-      }
-      if (!existing) {
-        try {
-          await ops.mkdir(target, { mode: 0o700 });
-          createdByInvocation = true;
-        } catch (error) {
-          if (error?.code !== 'EEXIST') {
-            // Supported injected post-effect failures leave the directory made
-            // by this mkdir at the previously absent descriptor-relative name.
-            // Retain and identity-check that exact entry before treating it as
-            // owned; injectors that replace the effect are outside this
-            // ownership signal and must use the normal identity-drift boundary.
-            postEffectMkdirError = error;
-          }
-        }
-      }
+  if (createMissing) {
+    try {
+      mkdirSync(target, { mode: 0o700 });
+      return bindCreatedDirectory(
+        parentHandle,
+        basename,
+        target,
+        createdDirectories
+      );
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
     }
+  }
+
+  let handle;
+  try {
     const before = await ops.lstat(target);
     if (before.isSymbolicLink() || !before.isDirectory()) privateAuthorityInvalid();
     handle = await ops.open(target, DIRECTORY_FLAGS);
@@ -547,29 +538,67 @@ async function openRetainedDirectory(
     if (!opened.isDirectory() || !sameIdentity(before, opened)) {
       privateAuthorityInvalid();
     }
-    if (createdByInvocation || postEffectMkdirError) {
-      createdDirectory = {
-        parentHandle,
-        basename,
-        handle,
-        identity: opened
-      };
-      createdDirectories?.push(createdDirectory);
-    }
     const after = await ops.lstat(target);
     if (!opened.isDirectory() || after.isSymbolicLink() || !after.isDirectory()
       || !sameIdentity(before, opened) || !sameIdentity(opened, after)) {
       privateAuthorityInvalid();
     }
-    if (postEffectMkdirError) throw postEffectMkdirError;
     return { handle, identity: opened };
   } catch (error) {
-    if (!createdDirectory) {
-      try { await handle?.close(); } catch {}
+    try { await handle?.close(); } catch {}
+    if (error?.code === 'ELOOP' || error?.code === 'ENOTDIR') privateAuthorityInvalid();
+    throw error;
+  }
+}
+
+function bindCreatedDirectory(
+  parentHandle,
+  basename,
+  target,
+  createdDirectories
+) {
+  let fd;
+  try {
+    const before = lstatSync(target);
+    if (before.isSymbolicLink() || !before.isDirectory()) privateAuthorityInvalid();
+    fd = openSync(target, DIRECTORY_FLAGS);
+    const opened = fstatSync(fd);
+    const after = lstatSync(target);
+    if (!opened.isDirectory() || after.isSymbolicLink() || !after.isDirectory()
+      || !sameIdentity(before, opened) || !sameIdentity(opened, after)) {
+      privateAuthorityInvalid();
+    }
+    const handle = retainedDirectoryHandle(fd);
+    fd = undefined;
+    createdDirectories?.push({
+      parentHandle,
+      basename,
+      handle,
+      identity: opened
+    });
+    return { handle, identity: opened };
+  } catch (error) {
+    if (fd !== undefined) {
+      try { closeSync(fd); } catch {}
     }
     if (error?.code === 'ELOOP' || error?.code === 'ENOTDIR') privateAuthorityInvalid();
     throw error;
   }
+}
+
+function retainedDirectoryHandle(fd) {
+  let closed = false;
+  return {
+    fd,
+    async stat() {
+      return fstatSync(fd);
+    },
+    async close() {
+      if (closed) return;
+      closed = true;
+      closeSync(fd);
+    }
+  };
 }
 
 async function assertLedgerAuthority(authority, ops) {

@@ -338,7 +338,7 @@ test('ledger rejects symlinked private ancestors without writing outside private
   assert.deepEqual(await fs.readdir(outsideRoot), []);
 });
 
-test('missing-component creation stays descriptor-relative during an ancestor swap', async (t) => {
+test('post-bind authority validation rejects an ancestor swap without outside writes', async (t) => {
   const fixture = await ledgerFixture(t, { create: false });
   const namedLocal = path.join(fixture.projectRoot, '.local');
   const parkedLocal = path.join(fixture.projectRoot, '.local-parked');
@@ -363,7 +363,7 @@ test('missing-component creation stays descriptor-relative during an ancestor sw
     rejection = error;
   }
 
-  assert.equal(race.mkdirIntercepted(), true);
+  assert.equal(race.authoritySwapIntercepted(), true);
   assert.equal(rejection?.code, 'PLAYBOOK_PRIVATE_PATH_ESCAPE');
   assert.equal(String(rejection).includes(fixture.projectRoot), false);
   assert.equal(String(rejection).includes(outsideRoot), false);
@@ -380,7 +380,7 @@ test('missing-component creation stays descriptor-relative during an ancestor sw
   assert.deepEqual(await fs.readdir(parkedLocal), []);
 });
 
-test('failed creation cleans its owned child after the retained ancestor moves outside', async (t) => {
+test('post-bind failure cleans its owned child after the retained ancestor moves outside', async (t) => {
   const fixture = await ledgerFixture(t, { create: false });
   const namedLocal = path.join(fixture.projectRoot, '.local');
   const outsideContainer = await fs.mkdtemp(
@@ -407,7 +407,7 @@ test('failed creation cleans its owned child after the retained ancestor moves o
     rejection = error;
   }
 
-  assert.equal(race.mkdirIntercepted(), true);
+  assert.equal(race.authoritySwapIntercepted(), true);
   assert.equal(rejection?.code, 'PLAYBOOK_PRIVATE_PATH_ESCAPE');
   assert.equal(String(rejection).includes(fixture.projectRoot), false);
   assert.equal(String(rejection).includes(outsideContainer), false);
@@ -446,27 +446,58 @@ test('failed creation cleanup preserves a foreign replacement at an owned basena
   assert.deepEqual(await fs.readdir(parkedArchitecture), []);
 });
 
-test('mkdir post-effect failure cleans the exact directory chain created before rejection', async (t) => {
+test('async mkdir create-move-replace hook is never trusted with private component creation', async (t) => {
+  const fixture = await ledgerFixture(t, { create: false });
+  const namedArchitecture = path.join(
+    fixture.projectRoot,
+    '.local/architecture-playbook'
+  );
+  const parkedArchitecture = path.join(
+    fixture.projectRoot,
+    '.local/architecture-playbook-owned-parked'
+  );
+  const race = mkdirCreateMoveForeignReplaceFs({
+    namedArchitecture,
+    parkedArchitecture
+  });
+
+  const created = await createChapterLedger({
+    projectRoot: fixture.projectRoot,
+    chapterPlan: fixture.chapterPlan,
+    fsImpl: race.fsImpl
+  });
+
+  assert.deepEqual({
+    async_mkdir_invoked: race.invoked(),
+    foreign_inode_mutated: await race.foreignMutated()
+  }, {
+    async_mkdir_invoked: false,
+    foreign_inode_mutated: false
+  });
+  assert.equal(created.status, 'created');
+  assert.deepEqual(await fs.readFile(fixture.ledgerPath), Buffer.from(
+    stableJson(created.ledger)
+  ));
+  await assert.rejects(fs.access(parkedArchitecture));
+});
+
+test('async mkdir post-effect hook is bypassed while initialization succeeds', async (t) => {
   const fixture = await ledgerFixture(t, { create: false });
   const namedLocal = path.join(fixture.projectRoot, '.local');
   const fault = mkdirPostEffectFailureFs();
 
-  let rejection;
-  try {
-    await createChapterLedger({
-      projectRoot: fixture.projectRoot,
-      chapterPlan: fixture.chapterPlan,
-      fsImpl: fault.fsImpl
-    });
-  } catch (error) {
-    rejection = error;
-  }
+  const created = await createChapterLedger({
+    projectRoot: fixture.projectRoot,
+    chapterPlan: fixture.chapterPlan,
+    fsImpl: fault.fsImpl
+  });
 
-  assert.equal(fault.triggered(), true);
-  assert.equal(rejection?.code, 'PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED');
-  assert.equal(String(rejection).includes(fixture.projectRoot), false);
-  assert.equal(String(rejection).includes('PRIVATE_POST_MKDIR'), false);
-  await assert.rejects(fs.access(namedLocal));
+  assert.equal(fault.triggered(), false);
+  assert.equal(created.status, 'created');
+  assert.equal((await fs.lstat(namedLocal)).isDirectory(), true);
+  assert.deepEqual(await fs.readFile(fixture.ledgerPath), Buffer.from(
+    stableJson(created.ledger)
+  ));
 });
 
 test('ledger rejects source paths and transcript or media text in evidence', async (t) => {
@@ -931,19 +962,21 @@ function missingComponentCreationSwapFs({
   outsideRoot
 }) {
   let intercepted = false;
+  const isArchitectureEntry = (targetPath) =>
+    path.basename(String(targetPath)) === 'architecture-playbook';
   const fsImpl = new Proxy(fs, {
     get(target, property, receiver) {
-      if (property === 'mkdir') {
+      if (property === 'lstat') {
         return async (targetPath, ...args) => {
           if (
             !intercepted
-            && path.basename(String(targetPath)) === 'architecture-playbook'
+            && isArchitectureEntry(targetPath)
           ) {
             intercepted = true;
             await fs.rename(namedLocal, parkedLocal);
             await fs.symlink(outsideRoot, namedLocal, 'dir');
           }
-          return fs.mkdir(targetPath, ...args);
+          return fs.lstat(targetPath, ...args);
         };
       }
       return Reflect.get(target, property, receiver);
@@ -951,7 +984,7 @@ function missingComponentCreationSwapFs({
   });
   return {
     fsImpl,
-    mkdirIntercepted: () => intercepted
+    authoritySwapIntercepted: () => intercepted
   };
 }
 
@@ -959,28 +992,21 @@ function missingComponentReplacementFs({
   namedArchitecture,
   parkedArchitecture
 }) {
-  let architectureCreated = false;
-  let postCreateLstatCount = 0;
   let replacementInstalled = false;
   const isArchitectureEntry = (targetPath) =>
     path.basename(String(targetPath)) === 'architecture-playbook';
   const fsImpl = new Proxy(fs, {
     get(target, property, receiver) {
-      if (property === 'mkdir') {
-        return async (targetPath, ...args) => {
-          const result = await fs.mkdir(targetPath, ...args);
-          if (isArchitectureEntry(targetPath)) architectureCreated = true;
-          return result;
-        };
-      }
       if (property === 'lstat') {
         return async (targetPath, ...args) => {
-          if (architectureCreated && isArchitectureEntry(targetPath)) {
-            postCreateLstatCount += 1;
-            if (postCreateLstatCount === 2) {
+          if (!replacementInstalled && isArchitectureEntry(targetPath)) {
+            try {
+              await fs.lstat(targetPath);
               await fs.rename(namedArchitecture, parkedArchitecture);
               await fs.mkdir(namedArchitecture, { mode: 0o700 });
               replacementInstalled = true;
+            } catch (error) {
+              if (error?.code !== 'ENOENT') throw error;
             }
           }
           return fs.lstat(targetPath, ...args);
@@ -992,6 +1018,53 @@ function missingComponentReplacementFs({
   return {
     fsImpl,
     replaced: () => replacementInstalled
+  };
+}
+
+function mkdirCreateMoveForeignReplaceFs({
+  namedArchitecture,
+  parkedArchitecture
+}) {
+  let injected = false;
+  let replacementIdentity;
+  const isArchitectureEntry = (targetPath) =>
+    path.basename(String(targetPath)) === 'architecture-playbook';
+  const fsImpl = new Proxy(fs, {
+    get(target, property, receiver) {
+      if (property === 'mkdir') {
+        return async (targetPath, ...args) => {
+          const result = await fs.mkdir(targetPath, ...args);
+          if (!injected && isArchitectureEntry(targetPath)) {
+            injected = true;
+            await fs.rename(namedArchitecture, parkedArchitecture);
+            await fs.mkdir(namedArchitecture, { mode: 0o700 });
+            replacementIdentity = await fs.lstat(namedArchitecture);
+          }
+          return result;
+        };
+      }
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  return {
+    fsImpl,
+    invoked: () => injected,
+    async foreignMutated() {
+      if (!replacementIdentity) return false;
+      const named = await fs.lstat(namedArchitecture);
+      if (named.dev !== replacementIdentity.dev || named.ino !== replacementIdentity.ino) {
+        return false;
+      }
+      try {
+        await fs.access(path.join(
+          namedArchitecture,
+          'work/p7/chapter-ledger.json'
+        ));
+        return true;
+      } catch {
+        return false;
+      }
+    }
   };
 }
 
