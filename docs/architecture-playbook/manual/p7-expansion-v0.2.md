@@ -34,6 +34,24 @@
 - 动作：复制、替换、删除、移动、堆叠、地形塑形等批量操作前保存检查点；验证后再进入下一层。
 - Agent 对应：沿用既有分层 checkpoint 和一次修复预算，不把模组的交互式 undo 变成玩家运行时依赖。
 
+### 在外壳完成后切换到内部施工
+
+- 来源：`BV1SG6GY9ETe`，约 12–47 秒
+- 建筑语言：`construction_stage: exterior_shell → interior_pass`
+- 动作：外部壳体通过结构检查后再进入内部施工；内饰细节不反向污染体块和主结构阶段。
+
+### 复用带语义和状态的施工组件
+
+- 来源：`BV1SG6GY9ETe`，约 47–167 秒及 236–299 秒
+- 建筑语言：`semantic_material_kit`、`stateful_component_template`
+- 动作：从已批准区域采样材料并按外墙、屋顶、内饰或景观角色归档；复用组件时同时保存其方块 ID、朝向、连接和允许的数据字段。
+
+### 把不可见功能放在独立 utility 层
+
+- 来源：`BV1SG6GY9ETe`，约 326–447 秒
+- 建筑语言：`utility_layer`
+- 动作：隐藏照明、挡水和其他辅助方块与可见建筑层分开编译；最终检查碰撞、可见泄漏和目标版本支持。
+
 ## 材料与评估语言
 
 ### 把相近材料组织成有序色阶
@@ -58,3 +76,4 @@
 
 - [0.1 建筑工具：选择、变换、复用与地形塑形](../course/notes/heihui-jileniao/BV1aBV1zwELe.md)
 - [0.1.1 高版本建筑包：远景、渐变与评估视角](../course/notes/heihui-jileniao/BV1SwdfBHEx5.md)
+- [0.2 快捷键：阶段切换、组件复用与隐藏功能层](../course/notes/heihui-jileniao/BV1SG6GY9ETe.md)
