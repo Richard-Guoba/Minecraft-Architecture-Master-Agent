@@ -15,6 +15,23 @@ import { parseP6Args, runP6Cli } from '../src/runArchitecturePlaybookP6.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 
+test('baseline crash worker skips execution when test discovery supplies no job', async t => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-baseline-crash-discovery-'));
+  t.after(() => fs.rm(temp, { recursive: true, force: true }));
+
+  const result = spawnSync(process.execPath, [
+    path.join(ROOT, 'test', 'fixtures', 'crashP6BaselinePublication.js')
+  ], { cwd: temp, encoding: 'utf8', timeout: 30_000 });
+
+  assert.deepEqual({
+    status: result.status,
+    signal: result.signal,
+    stdout: result.stdout,
+    stderr: result.stderr
+  }, { status: 0, signal: null, stdout: '', stderr: '' });
+  assert.deepEqual(await fs.readdir(temp), []);
+});
+
 test('offline baseline authority snapshots the exact selected off run and recomputes bound evidence', async t => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-baseline-authority-'));
   t.after(() => fs.rm(temp, { recursive: true, force: true }));
