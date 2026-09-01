@@ -52,6 +52,20 @@
 - 建筑语言：`utility_layer`
 - 动作：隐藏照明、挡水和其他辅助方块与可见建筑层分开编译；最终检查碰撞、可见泄漏和目标版本支持。
 
+### 从已验证设计提取母模块
+
+- 来源：`BV1cLJtz1ELx`，约 33–169 秒及 431–917 秒
+- 建筑语言：`source_module`、`connection_face`、`variation_budget`
+- 动作：先让体块、入口、空间和主结构成立，再把重复开间、窗、阳台或屋顶段保存为母模块；同时记录边界、相对锚点、连接面和允许的变换。
+- 约束：模块复用不能代替整体设计；如果移除附加小装饰后主体没有层次，应返回体块或立面阶段。
+
+### 实例化后执行连接修补
+
+- 来源：`BV1cLJtz1ELx`，约 313–413 秒及 538–917 秒
+- 建筑语言：`module_instance`、`seam_repair`、`detail_dependency_check`
+- 动作：移动、旋转、镜像或复制模块后，检查尺寸差、空洞、重叠、转角、出檐和支撑连续性；在 `variation_budget` 内改变高度、宽度、开口、材料或细节密度。
+- 失败：把完全相同的实例铺满四面，再用随机小构件和噪声掩盖机械重复。
+
 ## 材料与评估语言
 
 ### 按视觉属性分配材料角色
@@ -93,3 +107,4 @@
 - [0.1.1 高版本建筑包：远景、渐变与评估视角](../course/notes/heihui-jileniao/BV1SwdfBHEx5.md)
 - [0.2 快捷键：阶段切换、组件复用与隐藏功能层](../course/notes/heihui-jileniao/BV1SG6GY9ETe.md)
 - [0.3 认识方块：从名称转向视觉属性](../course/notes/heihui-jileniao/BV1iVLbzcEfG.md)
+- [0.4 模块化建筑：复用效率与整体设计](../course/notes/heihui-jileniao/BV1cLJtz1ELx.md)
