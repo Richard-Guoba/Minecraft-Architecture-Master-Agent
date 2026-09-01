@@ -199,7 +199,7 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
       created = { authority };
       const cohortCurrent = await deps.readCurrentP6Generation({ authority, kind: 'cohort' });
       const capturesCurrent = await deps.readCurrentP6Generation({
-        authority, kind: 'minecraft-captures'
+        authority, kind: 'minecraft-captures', fileNames: ['capture-manifest.json']
       });
       const cohortDocument = parseJsonBytes(cohortCurrent?.files?.['cohort.json']);
       const cohort = cohortDocument?.cohort;
@@ -243,7 +243,9 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
     if (options.action === 'prepare-comparisons') {
       const authority = await deps.admitP6Run({ p6Dir: path.join(options.runDir, 'playbook-p6') });
       created = { authority };
-      const cohortCurrent = await deps.readCurrentP6Generation({ authority, kind: 'cohort' });
+      const cohortCurrent = await deps.readCurrentP6Generation({
+        authority, kind: 'cohort', fileNames: ['cohort.json']
+      });
       const capturesCurrent = await deps.readCurrentP6Generation({ authority, kind: 'minecraft-captures' });
       const cohort = parseJsonBytes(cohortCurrent?.files?.['cohort.json'])?.cohort;
       const captureManifest = parseJsonBytes(capturesCurrent?.files?.['capture-manifest.json']);
@@ -266,7 +268,9 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         const source = capturesCurrent.files[mapping.source_filename];
         if (!Buffer.isBuffer(source) || deps.sha256(source) !== mapping.source_image_sha256
           || files[mapping.presentation_filename]) throw p6Error('P6_COMPARISON_INVALID');
-        files[mapping.presentation_filename] = Buffer.from(source);
+        // Storage takes the single mutation-safety copy at its capability
+        // boundary; do not multiply image buffers in CLI orchestration.
+        files[mapping.presentation_filename] = source;
       }
       const publication = await deps.publishP6Generation({
         authority,
@@ -293,9 +297,11 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         authority, kind: 'blind-comparison', includePrivate: true
       });
       if (current?.files?.['preference-seal.json']) throw p6Error('P6_COMPARISON_INVALID');
-      const cohortCurrent = await deps.readCurrentP6Generation({ authority, kind: 'cohort' });
+      const cohortCurrent = await deps.readCurrentP6Generation({
+        authority, kind: 'cohort', fileNames: ['cohort.json']
+      });
       const capturesCurrent = await deps.readCurrentP6Generation({
-        authority, kind: 'minecraft-captures'
+        authority, kind: 'minecraft-captures', fileNames: ['capture-manifest.json']
       });
       const cohort = parseJsonBytes(cohortCurrent?.files?.['cohort.json'])?.cohort;
       const publicManifest = parseJsonBytes(current?.files?.['comparison-manifest.json']);
@@ -329,7 +335,7 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         ...publicComparisons.flatMap(row => [row.left, row.right]
           .flatMap(side => side.screenshots.map(screenshot => screenshot.filename)))
       ]);
-      if (expectedPublicNames.size !== 80
+      if (expectedPublicNames.size !== 32
         || Object.keys(current.files).length !== expectedPublicNames.size
         || Object.keys(current.files).some(name => !expectedPublicNames.has(name))
         || Object.keys(current.privateFiles).sort().join(',') !== 'identity-map.json,randomization.json') {
@@ -340,7 +346,7 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         privateIdentityMap: identityMap, privateRandomization, cohort, captureManifest
       });
       const expectedPublicImages = new Set(identityMap.screenshot_mappings?.map(row => row.presentation_filename));
-      if (expectedPublicImages.size !== 72) throw p6Error('P6_COMPARISON_INVALID');
+      if (expectedPublicImages.size !== 24) throw p6Error('P6_COMPARISON_INVALID');
       for (const mapping of identityMap.screenshot_mappings) {
         const image = current.files[mapping.presentation_filename];
         if (!Buffer.isBuffer(image) || deps.sha256(image) !== mapping.source_image_sha256) {
@@ -353,7 +359,9 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         records: submitted.records,
         reviewerPseudonym: submitted.reviewer_pseudonym
       });
-      const files = Object.fromEntries(Object.entries(current.files).map(([name, value]) => [name, Buffer.from(value)]));
+      // The storage capability takes the sole mutation-safety copy. Reuse the
+      // admitted snapshot buffers here to avoid doubling the 24-image set.
+      const files = { ...current.files };
       files['preference-seal.json'] = bytes(deps.stableJson({
         schema_version: sealed.schema_version,
         protocol_version: sealed.protocol_version,
@@ -363,7 +371,7 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         sealed_preference_hashes: sealed.sealed_preference_hashes
       }));
       for (const [name, value] of Object.entries(current.privateFiles)) {
-        files[`private/${name}`] = Buffer.from(value);
+        files[`private/${name}`] = value;
       }
       files['private/sealed-preferences.json'] = bytes(deps.stableJson(sealed));
       const publication = await deps.publishP6Generation({

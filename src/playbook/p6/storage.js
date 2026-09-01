@@ -346,10 +346,13 @@ async function assertExpectedCurrents(internal, ops, expected) {
   for (const item of expected) await assertExpectedCurrent(internal, ops, item);
 }
 
-export async function readCurrentP6Generation({ authority, kind, includePrivate = false, fsImpl } = {}) {
+export async function readCurrentP6Generation({
+  authority, kind, includePrivate = false, fileNames = null, fsImpl
+} = {}) {
   const internal = authorityInternal(authority);
   if (!KINDS.includes(kind) || typeof includePrivate !== 'boolean'
     || (includePrivate && kind !== 'blind-comparison')) throw p6Error('P6_AUTHORITY_INVALID');
+  const retainedFileNames = normalizeReadFileNames(fileNames);
   const ops = fsOperations(fsImpl ?? internal.ops.source);
   let tree;
   try {
@@ -363,7 +366,12 @@ export async function readCurrentP6Generation({ authority, kind, includePrivate 
         if (!parsed) fail();
         const generation = await verifyGeneration(
           internal, ops, tree, kind, parsed.generation,
-          { expectedManifestSha256: parsed.manifest_sha256, includePrivate }
+          {
+            expectedManifestSha256: parsed.manifest_sha256,
+            includePrivate,
+            includeFiles: true,
+            retainedFileNames
+          }
         );
         await assertP6Internal(internal, ops);
         const result = {
@@ -846,7 +854,10 @@ function retirementAuthorityBasename(retirementBasename) {
   return `${RETIREMENT_AUTHORITY_PREFIX}${retirementBasename.slice('.p5-retirement-'.length)}`;
 }
 
-async function verifyGeneration(internal, ops, tree, kind, generationName, { expectedManifestSha256, includePrivate = false }) {
+async function verifyGeneration(internal, ops, tree, kind, generationName, {
+  expectedManifestSha256, includePrivate = false, includeFiles = false,
+  retainedFileNames = null
+}) {
   if (!GENERATION.test(generationName)) fail();
   const stat = await ops.lstat(entry(tree.generationsHandle, generationName));
   if (stat.isSymbolicLink() || !stat.isDirectory()) fail();
@@ -862,6 +873,7 @@ async function verifyGeneration(internal, ops, tree, kind, generationName, { exp
     const manifestFile = await readRegularFile(ops, handle, MANIFEST_BASENAME);
     if (expectedManifestSha256 && manifestFile.sha256 !== expectedManifestSha256) fail();
     const manifest = parseManifest(manifestFile.bytes, kind, generationName);
+    if (retainedFileNames && [...retainedFileNames].some(name => !manifest.managed_paths.includes(name))) fail();
     const expectedEntries = [OWNERSHIP_BASENAME, MANIFEST_BASENAME, ...manifest.managed_paths];
     const names = (await ops.readdir(descriptor(handle))).sort();
     const hasPrivate = names.includes(PRIVATE_BASENAME);
@@ -870,7 +882,7 @@ async function verifyGeneration(internal, ops, tree, kind, generationName, { exp
     for (const name of manifest.managed_paths) {
       const file = await readRegularFile(ops, handle, name);
       if (file.sha256 !== manifest.artifact_hashes[name]) fail();
-      files[name] = Buffer.from(file.bytes);
+      if (includeFiles && (!retainedFileNames || retainedFileNames.has(name))) files[name] = file.bytes;
     }
     let privateFileCount = 0;
     const privateFiles = {};
@@ -890,7 +902,7 @@ async function verifyGeneration(internal, ops, tree, kind, generationName, { exp
       for (const name of privateManifest.managed_paths) {
         const file = await readRegularFile(ops, privateHandle, name);
         if (file.sha256 !== privateManifest.artifact_hashes[name]) fail();
-        if (includePrivate) privateFiles[name] = Buffer.from(file.bytes);
+        if (includePrivate) privateFiles[name] = file.bytes;
       }
       privateFileCount = privateManifest.managed_paths.length;
     }
@@ -1342,6 +1354,14 @@ function normalizeFiles(kind, files) {
   }
   if (Object.keys(publicFiles).length === 0) fail();
   return { publicFiles, privateFiles };
+}
+
+function normalizeReadFileNames(value) {
+  if (value === null || value === undefined) return null;
+  if (!Array.isArray(value) || value.length === 0
+    || value.some(name => !isManagedBasename(name))
+    || new Set(value).size !== value.length) fail();
+  return new Set(value);
 }
 
 function normalizeExpectedCurrent(publishingKind, value) {

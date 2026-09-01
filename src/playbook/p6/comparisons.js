@@ -67,13 +67,19 @@ export function compileBlindComparison({
     shuffle(presentationPairs, random.index);
     const screenshotMappings = [];
     const allocatedScreenshotIds = new Set();
+    const publicScreenshotsByCode = new Map(mappings.map(mapping => [
+      mapping.solution_code,
+      P6_VIEW_IDS.map(viewId => createPublicScreenshot(
+        mapping, viewId, captureManifest, random, allocatedScreenshotIds, screenshotMappings
+      ))
+    ]));
     const publicComparisons = presentationPairs.map(pair => deepFreeze({
       schema_version: P6_SCHEMA_VERSION,
       protocol_version: P6_PROTOCOL_VERSION,
       filename: `${pair.pair_id}.json`,
       pair_id: pair.pair_id,
-      left: publicSide(pair, 'left', mappings, captureManifest, random, allocatedScreenshotIds, screenshotMappings),
-      right: publicSide(pair, 'right', mappings, captureManifest, random, allocatedScreenshotIds, screenshotMappings)
+      left: publicSide(pair.left_code, publicScreenshotsByCode),
+      right: publicSide(pair.right_code, publicScreenshotsByCode)
     }));
     const publicPresentation = deepFreeze({
       schema_version: P6_SCHEMA_VERSION,
@@ -137,7 +143,7 @@ export function validateBlindComparisonPackage(value) {
       || value.publicPresentation.pair_ids.length !== 6) invalid();
     const pairById = new Map(value.publicManifest.pairs.map(row => [row.pair_id, row]));
     const seenPairs = new Set();
-    const seenScreenshots = new Set();
+    const seenScreenshots = new Map();
     for (const artifact of value.publicComparisons) {
       if (!plain(artifact) || !sameExactKeys(artifact, [
         'schema_version', 'protocol_version', 'filename', 'pair_id', 'left', 'right'
@@ -152,7 +158,7 @@ export function validateBlindComparisonPackage(value) {
       validatePublicSide(artifact.left, pair.left_code, seenScreenshots);
       validatePublicSide(artifact.right, pair.right_code, seenScreenshots);
     }
-    if (seenPairs.size !== 6 || seenScreenshots.size !== 72
+    if (seenPairs.size !== 6 || seenScreenshots.size !== 24
       || stableJson(value.publicPresentation.pair_ids)
         !== stableJson(value.publicComparisons.map(row => row.pair_id))
       || new Set(value.publicPresentation.pair_ids).size !== 6
@@ -197,20 +203,23 @@ export function validatePrivateComparisonAuthority({
     for (const artifact of publicComparisons) {
       for (const side of ['left', 'right']) {
         for (const screenshot of artifact[side].screenshots) {
-          publicScreenshots.set(screenshot.screenshot_id, {
-            pair_id: artifact.pair_id, side, view_id: screenshot.view_id,
+          const authority = {
+            view_id: screenshot.view_id,
             presentation_filename: screenshot.filename,
             solution_code: artifact[side].solution_code
-          });
+          };
+          const prior = publicScreenshots.get(screenshot.screenshot_id);
+          if (prior && stableJson(prior) !== stableJson(authority)) invalid();
+          publicScreenshots.set(screenshot.screenshot_id, authority);
         }
       }
     }
     const seenPresentation = new Set();
     for (const mapping of privateIdentityMap.screenshot_mappings) {
       if (!plain(mapping) || !sameExactKeys(mapping, [
-        'pair_id', 'side', 'view_id', 'presentation_screenshot_id', 'presentation_filename',
+        'solution_code', 'view_id', 'presentation_screenshot_id', 'presentation_filename',
         'source_screenshot_id', 'source_filename', 'source_image_sha256'
-      ]) || !['left', 'right'].includes(mapping.side)
+      ]) || !P6_COMPARISON_ALIASES.includes(mapping.solution_code)
         || !P6_VIEW_IDS.includes(mapping.view_id)
         || !BLIND_SCREENSHOT_ID.test(mapping.presentation_screenshot_id)
         || mapping.presentation_filename !== `${mapping.presentation_screenshot_id}.png`
@@ -218,18 +227,17 @@ export function validatePrivateComparisonAuthority({
         || seenPresentation.has(mapping.presentation_screenshot_id)) invalid();
       seenPresentation.add(mapping.presentation_screenshot_id);
       const publicRow = publicScreenshots.get(mapping.presentation_screenshot_id);
-      const alias = publicRow && aliasMap.get(publicRow.solution_code);
+      const alias = aliasMap.get(mapping.solution_code);
       const source = captureManifest.images.find(row => row.screenshot_id === mapping.source_screenshot_id);
       if (!publicRow || !alias || !source
-        || publicRow.pair_id !== mapping.pair_id || publicRow.side !== mapping.side
-        || publicRow.view_id !== mapping.view_id
+        || publicRow.solution_code !== mapping.solution_code || publicRow.view_id !== mapping.view_id
         || publicRow.presentation_filename !== mapping.presentation_filename
         || source.solution_id !== alias.capture_solution_id
         || source.camera.view_id !== mapping.view_id
         || source.image_sha256 !== mapping.source_image_sha256
         || mapping.source_filename !== `${source.screenshot_id}.png`) invalid();
     }
-    if (seenPresentation.size !== 72) invalid();
+    if (seenPresentation.size !== 24 || publicScreenshots.size !== 24) invalid();
     return true;
   } catch (error) {
     throw p6Error('P6_COMPARISON_INVALID');
@@ -314,7 +322,7 @@ export function revealPreferenceResults({ sealedPreferences, privateIdentityMap 
       || sha256(stableJson(privateIdentityMap)) !== sealedPreferences.identity_map_sha256
       || !Array.isArray(privateIdentityMap.mappings) || privateIdentityMap.mappings.length !== 4
       || !Array.isArray(privateIdentityMap.screenshot_mappings)
-      || privateIdentityMap.screenshot_mappings.length !== 72) invalid();
+      || privateIdentityMap.screenshot_mappings.length !== 24) invalid();
     for (const [index, row] of privateIdentityMap.mappings.entries()) {
       if (!plain(row) || !sameExactKeys(row, ['solution_code', 'solution_id', 'capture_solution_id'])
         || row.solution_code !== P6_COMPARISON_ALIASES[index]
@@ -357,30 +365,29 @@ export function revealPreferenceResults({ sealedPreferences, privateIdentityMap 
   }
 }
 
-function publicSide(pair, side, mappings, captureManifest, random, allocated, screenshotMappings) {
-  const solutionCode = pair[`${side}_code`];
-  const mapping = mappings.find(row => row.solution_code === solutionCode);
-  if (!mapping) invalid();
-  const screenshots = P6_VIEW_IDS.map(viewId => {
-    const image = captureManifest.images.find(row => (
-      row.solution_id === mapping.capture_solution_id && row.camera.view_id === viewId
-    ));
-    if (!image) invalid();
-    const screenshotId = uniqueScreenshotId(random, allocated, screenshotMappings.length);
-    const filename = `${screenshotId}.png`;
-    screenshotMappings.push({
-      pair_id: pair.pair_id,
-      side,
-      view_id: viewId,
-      presentation_screenshot_id: screenshotId,
-      presentation_filename: filename,
-      source_screenshot_id: image.screenshot_id,
-      source_filename: `${image.screenshot_id}.png`,
-      source_image_sha256: image.image_sha256
-    });
-    return { screenshot_id: screenshotId, filename, view_id: viewId };
-  });
+function publicSide(solutionCode, publicScreenshotsByCode) {
+  const screenshots = publicScreenshotsByCode.get(solutionCode);
+  if (!screenshots) invalid();
   return { solution_code: solutionCode, screenshots };
+}
+
+function createPublicScreenshot(mapping, viewId, captureManifest, random, allocated, screenshotMappings) {
+  const image = captureManifest.images.find(row => (
+    row.solution_id === mapping.capture_solution_id && row.camera.view_id === viewId
+  ));
+  if (!image) invalid();
+  const screenshotId = uniqueScreenshotId(random, allocated, screenshotMappings.length);
+  const filename = `${screenshotId}.png`;
+  screenshotMappings.push({
+    solution_code: mapping.solution_code,
+    view_id: viewId,
+    presentation_screenshot_id: screenshotId,
+    presentation_filename: filename,
+    source_screenshot_id: image.screenshot_id,
+    source_filename: `${image.screenshot_id}.png`,
+    source_image_sha256: image.image_sha256
+  });
+  return { screenshot_id: screenshotId, filename, view_id: viewId };
 }
 
 function validatePublicSide(value, expectedCode, seenScreenshots) {
@@ -391,9 +398,10 @@ function validatePublicSide(value, expectedCode, seenScreenshots) {
     if (!plain(screenshot) || !sameExactKeys(screenshot, ['screenshot_id', 'filename', 'view_id'])
       || !BLIND_SCREENSHOT_ID.test(screenshot.screenshot_id)
       || screenshot.filename !== `${screenshot.screenshot_id}.png`
-      || screenshot.view_id !== P6_VIEW_IDS[index]
-      || seenScreenshots.has(screenshot.screenshot_id)) invalid();
-    seenScreenshots.add(screenshot.screenshot_id);
+      || screenshot.view_id !== P6_VIEW_IDS[index]) invalid();
+    const prior = seenScreenshots.get(screenshot.screenshot_id);
+    if (prior && stableJson(prior) !== stableJson(screenshot)) invalid();
+    seenScreenshots.set(screenshot.screenshot_id, screenshot);
   }
 }
 
@@ -406,7 +414,7 @@ function validatePrivateMapShape(value) {
     || !/^[a-f0-9]{64}$/u.test(value.identity_nonce_hex)
     || !HASH.test(value.cohort_sha256) || !HASH.test(value.capture_manifest_hash)
     || !Array.isArray(value.mappings) || value.mappings.length !== 4
-    || !Array.isArray(value.screenshot_mappings) || value.screenshot_mappings.length !== 72) invalid();
+    || !Array.isArray(value.screenshot_mappings) || value.screenshot_mappings.length !== 24) invalid();
   for (const [index, row] of value.mappings.entries()) {
     if (!plain(row) || !sameExactKeys(row, ['solution_code', 'solution_id', 'capture_solution_id'])
       || row.solution_code !== P6_COMPARISON_ALIASES[index]

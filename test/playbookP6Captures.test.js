@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import {
   createCaptureSession,
+  P6_MAX_CAPTURE_BYTES,
   renderCaptureChecklist,
   validateImportedCaptures
 } from '../src/playbook/p6/captures.js';
@@ -20,6 +21,21 @@ const SOLUTION_IDS = [
   'playbook-candidate-03',
   'baseline-current'
 ];
+
+test('capture byte cap admits fixed-view RGBA payload scale and rejects ancillary bloat', async t => {
+  const fixedRgbaBytes = 1920 * 1080 * 4 + 1080;
+  assert.ok(P6_MAX_CAPTURE_BYTES >= fixedRgbaBytes);
+  assert.equal(P6_MAX_CAPTURE_BYTES, 12 * 1024 * 1024);
+  const fixture = await importFixture(t);
+  const oversized = path.join(fixture.captureRoot, 'capture-01-opaque.png');
+  await fs.truncate(oversized, P6_MAX_CAPTURE_BYTES + 1);
+  await assert.rejects(
+    validateImportedCaptures({
+      authority: fixture.authority, session: fixture.session, captureRoot: fixture.captureRoot
+    }),
+    { code: 'P6_CAPTURE_INVALID' }
+  );
+});
 
 test('capture session fixes four equal plots, exact environment, build/camera commands, and 24 anonymous files', () => {
   const session = captureSession();

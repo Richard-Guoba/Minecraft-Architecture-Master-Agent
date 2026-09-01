@@ -26,7 +26,7 @@ const CAPTURE_NAME = /^capture-(0[1-9]|1\d|2[0-4])-opaque\.png$/u;
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const DIRECTORY_FLAGS = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW;
 const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
-const MAX_CAPTURE_BYTES = 64 * 1024 * 1024;
+export const P6_MAX_CAPTURE_BYTES = 12 * 1024 * 1024;
 const MAX_PROVENANCE_BYTES = 1024 * 1024;
 const PLOT_SPACING = 256;
 const SOLUTION_IDS = Object.freeze([
@@ -219,7 +219,7 @@ export async function validateImportedCaptures({ authority, session, captureRoot
     const images = [];
     for (const [index, row] of session.captures.entries()) {
       if (!CAPTURE_NAME.test(row.filename)) invalid();
-      const imageRead = await readBoundFile(ops, captureAuthority, row.filename, MAX_CAPTURE_BYTES);
+      const imageRead = await readBoundFile(ops, captureAuthority, row.filename, P6_MAX_CAPTURE_BYTES);
       const imageBytes = imageRead.bytes;
       fileIdentities.set(row.filename, imageRead.identity);
       const header = inspectCapturePng(imageBytes);

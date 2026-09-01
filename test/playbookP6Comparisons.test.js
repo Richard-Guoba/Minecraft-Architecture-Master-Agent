@@ -53,7 +53,7 @@ test('uses rejection sampling instead of modulo bias for non-power-of-two draws'
     randomBytes: length => Buffer.alloc(length, draws[calls++] ?? 0),
     generatedAt: GENERATED_AT
   });
-  assert.equal(calls, 88);
+  assert.equal(calls, 40);
 });
 
 test('bounds rejected or faulty entropy and fails with the stable comparison code', () => {
@@ -93,6 +93,19 @@ test('keeps identity private while public files bind exact aligned screenshots w
       assert.equal(Object.hasOwn(screenshot, 'image_sha256'), false);
     }
   }
+  const presented = bundle.publicComparisons.flatMap(row => [row.left, row.right])
+    .flatMap(side => side.screenshots);
+  assert.equal(presented.length, 72);
+  assert.equal(new Set(presented.map(row => row.screenshot_id)).size, 24);
+  for (const code of P6_COMPARISON_ALIASES) {
+    for (const viewId of P6_VIEW_IDS) {
+      const references = bundle.publicComparisons.flatMap(row => [row.left, row.right])
+        .filter(side => side.solution_code === code)
+        .flatMap(side => side.screenshots.filter(row => row.view_id === viewId));
+      assert.equal(references.length, 3);
+      assert.equal(new Set(references.map(row => row.screenshot_id)).size, 1);
+    }
+  }
   const publicJson = stableJson({ comparisons: bundle.publicComparisons, presentation: bundle.publicPresentation });
   for (const forbidden of [...REAL_IDS, 'candidate', 'baseline', 'rank', '/tmp/', 'provider', 'prompt']) {
     assert.equal(publicJson.includes(forbidden), false, forbidden);
@@ -103,7 +116,7 @@ test('keeps identity private while public files bind exact aligned screenshots w
     assert.equal(publicJson.includes(image.build_function_sha256), false, image.build_function_sha256);
   }
   assert.equal(bundle.privateIdentityMap.identity_nonce_hex.length, 64);
-  assert.equal(bundle.privateIdentityMap.screenshot_mappings.length, 72);
+  assert.equal(bundle.privateIdentityMap.screenshot_mappings.length, 24);
   assert.equal(stableJson(bundle.privateIdentityMap).includes('playbook-candidate-01'), true);
   assert.equal(bundle.publicManifest.identity_map_sha256, sha256(stableJson(bundle.privateIdentityMap)));
   assert.equal(bundle.publicManifest.randomization_sha256, sha256(stableJson(bundle.privateRandomization)));
@@ -281,7 +294,12 @@ test('CLI parses exact comparison actions and publishes no private identity in r
     publishP6Generation: async options => {
       calls.push(options);
       assert.equal(Object.keys(options.files).some(name => name.startsWith('private/')), true);
-      assert.equal(Object.keys(options.files).filter(name => /^blind-shot-.*\.png$/u.test(name)).length, 72);
+      const imageEntries = Object.entries(options.files).filter(([name]) => /^blind-shot-.*\.png$/u.test(name));
+      assert.equal(imageEntries.length, 24);
+      assert.equal(new Set(imageEntries.map(([, value]) => value)).size, 24);
+      const sourceBuffers = new Set(Object.entries(reads['minecraft-captures'].files)
+        .filter(([name]) => /^capture-.*\.png$/u.test(name)).map(([, value]) => value));
+      assert.equal(imageEntries.every(([, value]) => sourceBuffers.has(value)), true);
       assert.equal(Object.keys(options.files).some(name => /^capture-.*\.png$/u.test(name)), false);
       return { generation: 'generation-000001', manifest_sha256: p6CaptureHash('publication') };
     },
@@ -304,6 +322,7 @@ test('CLI imports all six user records atomically without returning private map 
   const bundle = compileBlindComparison({ ...context, randomBytes: deterministicBytes([3]), generatedAt: GENERATED_AT });
   const manifestHash = sha256(stableJson(bundle.publicManifest));
   const records = bundle.publicManifest.pairs.map(row => preference(row.pair_id, manifestHash));
+  const currentBlindFiles = comparisonPublicFiles(bundle);
   const importFile = path.join(root, 'preferences.json');
   await fs.writeFile(importFile, stableJson({ reviewer_pseudonym: 'reviewer-owl-17', records }));
   const calls = [];
@@ -322,7 +341,7 @@ test('CLI imports all six user records atomically without returning private map 
       assert.equal(includePrivate, true);
       return {
         generation: 'generation-000001', manifest_sha256: p6CaptureHash('blind-generation'),
-        files: comparisonPublicFiles(bundle),
+        files: currentBlindFiles,
         privateFiles: {
           'identity-map.json': Buffer.from(stableJson(bundle.privateIdentityMap)),
           'randomization.json': Buffer.from(stableJson(bundle.privateRandomization))
@@ -334,6 +353,9 @@ test('CLI imports all six user records atomically without returning private map 
     validatePrivateComparisonAuthority,
     publishP6Generation: async options => {
       calls.push(options);
+      for (const [name, value] of Object.entries(options.files)) {
+        if (/^blind-shot-.*\.png$/u.test(name)) assert.equal(value, currentBlindFiles[name]);
+      }
       return { generation: 'generation-000002', manifest_sha256: p6CaptureHash('sealed-generation') };
     },
     stableJson, sha256
@@ -408,10 +430,16 @@ test('comparison publication is immutable and sealing is compare-and-swap across
     }),
     { code: 'P6_AUTHORITY_INVALID' }
   );
-  const comparison = await publishP6Generation({
-    authority: created.authority, kind: 'blind-comparison', files: { 'comparison-manifest.json': Buffer.from('first') },
+  const callerOwned = Buffer.from('first');
+  const comparisonPromise = publishP6Generation({
+    authority: created.authority, kind: 'blind-comparison', files: { 'comparison-manifest.json': callerOwned },
     expectedCurrent: dependencies
   });
+  callerOwned.fill('x');
+  const comparison = await comparisonPromise;
+  assert.equal((await readCurrentP6Generation({
+    authority: created.authority, kind: 'blind-comparison'
+  })).files['comparison-manifest.json'].toString(), 'first');
   await assert.rejects(
     publishP6Generation({
       authority: created.authority, kind: 'blind-comparison', files: { 'comparison-manifest.json': Buffer.from('changed') },

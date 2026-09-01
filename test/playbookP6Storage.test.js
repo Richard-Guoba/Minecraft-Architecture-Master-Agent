@@ -65,6 +65,33 @@ test('createP6Run binds playbook-p6 beneath the exact caller run and publishes e
   assert.deepEqual((await fs.readdir(fixture.p6Dir)).sort(), ['.p6-owned.json', 'cohort']);
 });
 
+test('selective reads retain only requested files while validating the owned generation', async t => {
+  const fixture = await createStorageFixture(t);
+  await publishP6Generation({
+    authority: fixture.authority,
+    kind: 'gate',
+    files: { 'large.png': Buffer.alloc(1024), 'selected.json': Buffer.from('{}') }
+  });
+  const selected = await readCurrentP6Generation({
+    authority: fixture.authority, kind: 'gate', fileNames: ['selected.json']
+  });
+  assert.deepEqual(Object.keys(selected.files), ['selected.json']);
+  assert.equal(selected.files['selected.json'].toString(), '{}');
+  assert.deepEqual(selected.manifest.managed_paths, ['large.png', 'selected.json']);
+  const unretained = path.join(
+    fixture.p6Dir, 'gate', 'generations', 'generation-000001', 'large.png'
+  );
+  await fs.chmod(unretained, 0o600);
+  await fs.writeFile(unretained, Buffer.from('tampered'));
+  await fs.chmod(unretained, 0o400);
+  await assert.rejects(
+    readCurrentP6Generation({
+      authority: fixture.authority, kind: 'gate', fileNames: ['selected.json']
+    }),
+    publicCode('P6_AUTHORITY_INVALID')
+  );
+});
+
 test('all and only approved P6 output kinds can publish immutable generations', async t => {
   const fixture = await createStorageFixture(t);
   let captureSessionCurrent;
