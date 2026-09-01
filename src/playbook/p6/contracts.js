@@ -156,6 +156,8 @@ const COMPARISON_MANIFEST_FIELDS = Object.freeze([
   'capture_manifest_hash',
   'identity_map_sha256',
   'randomization_sha256',
+  'pair_artifact_hashes',
+  'presentation_order_sha256',
   'solution_codes',
   'pairs',
   'generated_at'
@@ -442,6 +444,9 @@ export function validateComparisonManifest(value) {
   assertHash(data.capture_manifest_hash, 'P6_COMPARISON_INVALID');
   assertHash(data.identity_map_sha256, 'P6_COMPARISON_INVALID');
   assertHash(data.randomization_sha256, 'P6_COMPARISON_INVALID');
+  assertExactObject(data.pair_artifact_hashes, EXPECTED_COMPARISON_PAIRS.map(row => row[0]), 'P6_COMPARISON_INVALID');
+  for (const hash of Object.values(data.pair_artifact_hashes)) assertHash(hash, 'P6_COMPARISON_INVALID');
+  assertHash(data.presentation_order_sha256, 'P6_COMPARISON_INVALID');
   assertExactArray(data.solution_codes, P6_COMPARISON_ALIASES, 'P6_COMPARISON_INVALID');
   if (!Array.isArray(data.pairs) || data.pairs.length !== EXPECTED_COMPARISON_PAIRS.length) fail('P6_COMPARISON_INVALID');
   for (const [index, pair] of data.pairs.entries()) {

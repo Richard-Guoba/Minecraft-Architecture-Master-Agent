@@ -538,6 +538,10 @@ function validComparisonManifest() {
     capture_manifest_hash: hashFor('comparison-capture'),
     identity_map_sha256: hashFor('comparison-identity'),
     randomization_sha256: hashFor('comparison-randomization'),
+    pair_artifact_hashes: Object.fromEntries(Array.from({ length: 6 }, (_, index) => [
+      `pair-${String(index + 1).padStart(2, '0')}`, hashFor(`comparison-pair-${index + 1}`)
+    ])),
+    presentation_order_sha256: hashFor('comparison-presentation-order'),
     solution_codes: [...P6_COMPARISON_ALIASES],
     pairs: [
       pair('pair-01', P6_COMPARISON_ALIASES[0], P6_COMPARISON_ALIASES[1]),

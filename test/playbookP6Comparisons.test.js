@@ -8,6 +8,8 @@ import {
   compileBlindComparison,
   revealPreferenceResults,
   sealPreferences,
+  validateBlindComparisonPackage,
+  validatePrivateComparisonAuthority,
   validatePreferenceAgainstManifest
 } from '../src/playbook/p6/comparisons.js';
 import { P6_COMPARISON_ALIASES, P6_PROTOCOL_FILE_HASHES, P6_REASON_TAGS, P6_VIEW_IDS } from '../src/playbook/p6/constants.js';
@@ -44,14 +46,34 @@ test('compiles all six unordered pairs once with deterministic unbiased injected
 });
 
 test('uses rejection sampling instead of modulo bias for non-power-of-two draws', () => {
-  const draws = [0, 255, 1, 0, 0, 0, 0, 0, 0, 0];
+  const draws = [0, 0, 255, 1];
   let calls = 0;
   compileBlindComparison({
     ...fixture(),
-    randomBytes: () => Buffer.from([draws[calls++]]),
+    randomBytes: length => Buffer.alloc(length, draws[calls++] ?? 0),
     generatedAt: GENERATED_AT
   });
-  assert.equal(calls, 15);
+  assert.equal(calls, 88);
+});
+
+test('bounds rejected or faulty entropy and fails with the stable comparison code', () => {
+  let calls = 0;
+  assert.throws(
+    () => compileBlindComparison({
+      ...fixture(), randomBytes: length => {
+        calls += 1;
+        return Buffer.alloc(length, 255);
+      }, generatedAt: GENERATED_AT
+    }),
+    { code: 'P6_COMPARISON_INVALID' }
+  );
+  assert.ok(calls <= 130, `unbounded entropy calls: ${calls}`);
+  assert.throws(
+    () => compileBlindComparison({
+      ...fixture(), randomBytes: () => Buffer.alloc(0), generatedAt: GENERATED_AT
+    }),
+    { code: 'P6_COMPARISON_INVALID' }
+  );
 });
 
 test('keeps identity private while public files bind exact aligned screenshots without identity leaks', () => {
@@ -65,16 +87,71 @@ test('keeps identity private while public files bind exact aligned screenshots w
     assert.equal(comparison.right.screenshots.length, 6);
     assert.deepEqual(comparison.left.screenshots.map(row => row.view_id), P6_VIEW_IDS);
     assert.deepEqual(comparison.right.screenshots.map(row => row.view_id), P6_VIEW_IDS);
+    for (const screenshot of [...comparison.left.screenshots, ...comparison.right.screenshots]) {
+      assert.match(screenshot.screenshot_id, /^blind-shot-[a-f0-9]{32}$/u);
+      assert.equal(screenshot.filename, `${screenshot.screenshot_id}.png`);
+      assert.equal(Object.hasOwn(screenshot, 'image_sha256'), false);
+    }
   }
-  const publicJson = stableJson({ manifest: bundle.publicManifest, comparisons: bundle.publicComparisons });
+  const publicJson = stableJson({ comparisons: bundle.publicComparisons, presentation: bundle.publicPresentation });
   for (const forbidden of [...REAL_IDS, 'candidate', 'baseline', 'rank', '/tmp/', 'provider', 'prompt']) {
     assert.equal(publicJson.includes(forbidden), false, forbidden);
   }
+  for (const image of context.captureManifest.images) {
+    assert.equal(publicJson.includes(image.screenshot_id), false, image.screenshot_id);
+    assert.equal(publicJson.includes(image.image_sha256), false, image.image_sha256);
+    assert.equal(publicJson.includes(image.build_function_sha256), false, image.build_function_sha256);
+  }
+  assert.equal(bundle.privateIdentityMap.identity_nonce_hex.length, 64);
+  assert.equal(bundle.privateIdentityMap.screenshot_mappings.length, 72);
   assert.equal(stableJson(bundle.privateIdentityMap).includes('playbook-candidate-01'), true);
   assert.equal(bundle.publicManifest.identity_map_sha256, sha256(stableJson(bundle.privateIdentityMap)));
   assert.equal(bundle.publicManifest.randomization_sha256, sha256(stableJson(bundle.privateRandomization)));
   assert.equal(bundle.publicManifest.cohort_sha256, sha256(stableJson(context.cohort)));
   assert.equal(bundle.publicManifest.capture_manifest_hash, sha256(stableJson(context.captureManifest)));
+
+  const enumerable = permutations(REAL_IDS).map(solutionIds => ({
+    schema_version: 1,
+    protocol_version: '0.1.0',
+    cohort_sha256: bundle.privateIdentityMap.cohort_sha256,
+    capture_manifest_hash: bundle.privateIdentityMap.capture_manifest_hash,
+    mappings: P6_COMPARISON_ALIASES.map((solution_code, index) => ({
+      solution_code,
+      solution_id: solutionIds[index],
+      capture_solution_id: OPAQUE_IDS[REAL_IDS.indexOf(solutionIds[index])]
+    }))
+  }));
+  assert.equal(enumerable.length, 24);
+  assert.equal(enumerable.some(value => sha256(stableJson(value)) === bundle.publicManifest.identity_map_sha256), false);
+});
+
+test('manifest binds the exact six pair artifacts and presentation order', () => {
+  const context = fixture();
+  const bundle = compileBlindComparison({ ...context, randomBytes: deterministicBytes([7, 3, 1]), generatedAt: GENERATED_AT });
+  assert.deepEqual(validateBlindComparisonPackage(bundle), bundle);
+  assert.equal(validatePrivateComparisonAuthority({
+    ...bundle, cohort: context.cohort, captureManifest: context.captureManifest
+  }), true);
+  for (const mutate of [
+    value => { value.publicComparisons[0].left.screenshots[0].screenshot_id = 'blind-shot-' + 'f'.repeat(32); },
+    value => { [value.publicComparisons[0], value.publicComparisons[1]] = [value.publicComparisons[1], value.publicComparisons[0]]; },
+    value => { [value.publicPresentation.pair_ids[0], value.publicPresentation.pair_ids[1]] = [value.publicPresentation.pair_ids[1], value.publicPresentation.pair_ids[0]]; }
+  ]) {
+    const changed = structuredClone(bundle);
+    mutate(changed);
+    assert.throws(() => validateBlindComparisonPackage(changed), { code: 'P6_COMPARISON_INVALID' });
+  }
+
+  const swappedSources = structuredClone(bundle);
+  const first = swappedSources.privateIdentityMap.screenshot_mappings[0];
+  const other = swappedSources.privateIdentityMap.screenshot_mappings.find(row => row.source_screenshot_id !== first.source_screenshot_id);
+  [first.source_screenshot_id, other.source_screenshot_id] = [other.source_screenshot_id, first.source_screenshot_id];
+  [first.source_filename, other.source_filename] = [other.source_filename, first.source_filename];
+  [first.source_image_sha256, other.source_image_sha256] = [other.source_image_sha256, first.source_image_sha256];
+  swappedSources.publicManifest.identity_map_sha256 = sha256(stableJson(swappedSources.privateIdentityMap));
+  assert.throws(() => validatePrivateComparisonAuthority({
+    ...swappedSources, cohort: context.cohort, captureManifest: context.captureManifest
+  }), { code: 'P6_COMPARISON_INVALID' });
 });
 
 test('rejects drifted, incomplete, or ambiguously bound cohort and capture authorities', () => {
@@ -204,6 +281,8 @@ test('CLI parses exact comparison actions and publishes no private identity in r
     publishP6Generation: async options => {
       calls.push(options);
       assert.equal(Object.keys(options.files).some(name => name.startsWith('private/')), true);
+      assert.equal(Object.keys(options.files).filter(name => /^blind-shot-.*\.png$/u.test(name)).length, 72);
+      assert.equal(Object.keys(options.files).some(name => /^capture-.*\.png$/u.test(name)), false);
       return { generation: 'generation-000001', manifest_sha256: p6CaptureHash('publication') };
     },
     stableJson, sha256
@@ -231,6 +310,10 @@ test('CLI imports all six user records atomically without returning private map 
   const result = await runP6Cli(['import-preferences', '--run-dir', root, '--file', importFile], {
     admitP6Run: async () => ({ close: async () => calls.push(['close']) }),
     readCurrentP6Generation: async ({ kind, includePrivate }) => {
+      if (kind === 'cohort') return {
+        generation: 'generation-000003', manifest_sha256: p6CaptureHash('cohort-generation'),
+        files: { 'cohort.json': Buffer.from(stableJson({ schema_version: 1, cohort: context.cohort })) }
+      };
       if (kind === 'minecraft-captures') return {
         generation: 'generation-000004', manifest_sha256: p6CaptureHash('capture-generation'),
         files: { 'capture-manifest.json': Buffer.from(stableJson(context.captureManifest)) }
@@ -239,7 +322,7 @@ test('CLI imports all six user records atomically without returning private map 
       assert.equal(includePrivate, true);
       return {
         generation: 'generation-000001', manifest_sha256: p6CaptureHash('blind-generation'),
-        files: { 'comparison-manifest.json': Buffer.from(stableJson(bundle.publicManifest)) },
+        files: comparisonPublicFiles(bundle),
         privateFiles: {
           'identity-map.json': Buffer.from(stableJson(bundle.privateIdentityMap)),
           'randomization.json': Buffer.from(stableJson(bundle.privateRandomization))
@@ -247,6 +330,8 @@ test('CLI imports all six user records atomically without returning private map 
       };
     },
     sealPreferences,
+    validateBlindComparisonPackage,
+    validatePrivateComparisonAuthority,
     publishP6Generation: async options => {
       calls.push(options);
       return { generation: 'generation-000002', manifest_sha256: p6CaptureHash('sealed-generation') };
@@ -260,6 +345,7 @@ test('CLI imports all six user records atomically without returning private map 
   assert.equal(JSON.stringify(result).includes('reviewer-owl'), false);
   assert.equal(JSON.stringify(result).includes('rationale'), false);
   assert.deepEqual(calls[0].expectedCurrent, [
+    { kind: 'cohort', generation: 'generation-000003', manifest_sha256: p6CaptureHash('cohort-generation') },
     { kind: 'minecraft-captures', generation: 'generation-000004', manifest_sha256: p6CaptureHash('capture-generation') },
     { kind: 'blind-comparison', generation: 'generation-000001', manifest_sha256: p6CaptureHash('blind-generation') }
   ]);
@@ -272,12 +358,23 @@ test('owned storage permits explicit private sealing reads but keeps default rea
   await fs.mkdir(runDir);
   const created = await createP6Run({ runDir });
   t.after(() => created.authority.close());
+  const cohort = await publishP6Generation({ authority: created.authority, kind: 'cohort', files: { 'cohort.json': Buffer.from('cohort') } });
+  const session = await publishP6Generation({ authority: created.authority, kind: 'capture-session', files: { 'session.json': Buffer.from('session') } });
+  const captures = await publishP6Generation({
+    authority: created.authority, kind: 'minecraft-captures', files: { 'captures.json': Buffer.from('captures') },
+    expectedCurrent: { kind: 'capture-session', generation: session.generation, manifest_sha256: session.manifest_sha256 }
+  });
   await publishP6Generation({
     authority: created.authority, kind: 'blind-comparison',
     files: {
       'comparison-manifest.json': Buffer.from('{}'),
       'private/identity-map.json': Buffer.from('{"secret":true}')
-    }
+    },
+    expectedCurrent: [
+      { kind: 'cohort', generation: cohort.generation, manifest_sha256: cohort.manifest_sha256 },
+      { kind: 'minecraft-captures', generation: captures.generation, manifest_sha256: captures.manifest_sha256 },
+      { kind: 'blind-comparison', generation: null, manifest_sha256: null }
+    ]
   });
   const publicRead = await readCurrentP6Generation({ authority: created.authority, kind: 'blind-comparison' });
   assert.equal(Object.hasOwn(publicRead, 'privateFiles'), false);
@@ -305,6 +402,12 @@ test('comparison publication is immutable and sealing is compare-and-swap across
     { kind: 'cohort', generation: cohort.generation, manifest_sha256: cohort.manifest_sha256 },
     { kind: 'minecraft-captures', generation: captures.generation, manifest_sha256: captures.manifest_sha256 }, absent
   ];
+  await assert.rejects(
+    publishP6Generation({
+      authority: created.authority, kind: 'blind-comparison', files: { 'comparison-manifest.json': Buffer.from('bypass') }
+    }),
+    { code: 'P6_AUTHORITY_INVALID' }
+  );
   const comparison = await publishP6Generation({
     authority: created.authority, kind: 'blind-comparison', files: { 'comparison-manifest.json': Buffer.from('first') },
     expectedCurrent: dependencies
@@ -319,6 +422,7 @@ test('comparison publication is immutable and sealing is compare-and-swap across
   const sealed = await publishP6Generation({
     authority: created.authority, kind: 'blind-comparison', files: { 'comparison-manifest.json': Buffer.from('sealed') },
     expectedCurrent: [
+      { kind: 'cohort', generation: cohort.generation, manifest_sha256: cohort.manifest_sha256 },
       { kind: 'minecraft-captures', generation: captures.generation, manifest_sha256: captures.manifest_sha256 },
       { kind: 'blind-comparison', generation: comparison.generation, manifest_sha256: comparison.manifest_sha256 }
     ]
@@ -327,6 +431,7 @@ test('comparison publication is immutable and sealing is compare-and-swap across
     publishP6Generation({
       authority: created.authority, kind: 'blind-comparison', files: { 'comparison-manifest.json': Buffer.from('stale-seal') },
       expectedCurrent: [
+        { kind: 'cohort', generation: cohort.generation, manifest_sha256: cohort.manifest_sha256 },
         { kind: 'minecraft-captures', generation: captures.generation, manifest_sha256: captures.manifest_sha256 },
         { kind: 'blind-comparison', generation: comparison.generation, manifest_sha256: comparison.manifest_sha256 }
       ]
@@ -334,6 +439,48 @@ test('comparison publication is immutable and sealing is compare-and-swap across
     { code: 'P6_AUTHORITY_INVALID' }
   );
   assert.equal((await readCurrentP6Generation({ authority: created.authority, kind: 'blind-comparison' })).generation, sealed.generation);
+});
+
+test('an owned empty comparison tree after a pre-generation fault remains retryable', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p6-comparison-empty-retry-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const runDir = path.join(root, 'run');
+  await fs.mkdir(runDir);
+  const created = await createP6Run({ runDir });
+  t.after(() => created.authority.close());
+  const cohort = await publishP6Generation({ authority: created.authority, kind: 'cohort', files: { 'cohort.json': Buffer.from('cohort') } });
+  const session = await publishP6Generation({ authority: created.authority, kind: 'capture-session', files: { 'capture-session.json': Buffer.from('session') } });
+  const captures = await publishP6Generation({
+    authority: created.authority, kind: 'minecraft-captures', files: { 'capture-manifest.json': Buffer.from('captures') },
+    expectedCurrent: { kind: 'capture-session', generation: session.generation, manifest_sha256: session.manifest_sha256 }
+  });
+  const dependencies = [
+    { kind: 'cohort', generation: cohort.generation, manifest_sha256: cohort.manifest_sha256 },
+    { kind: 'minecraft-captures', generation: captures.generation, manifest_sha256: captures.manifest_sha256 },
+    { kind: 'blind-comparison', generation: null, manifest_sha256: null }
+  ];
+  let faulted = false;
+  const fsImpl = new Proxy(fs, {
+    get(target, property) {
+      if (property === 'afterKindTreeCreation') return async () => {
+        if (!faulted) { faulted = true; throw new Error('deterministic pre-generation fault'); }
+      };
+      const value = target[property];
+      return typeof value === 'function' ? value.bind(target) : value;
+    }
+  });
+  await assert.rejects(
+    publishP6Generation({
+      authority: created.authority, kind: 'blind-comparison', files: { 'comparison-manifest.json': Buffer.from('first') },
+      expectedCurrent: dependencies, fsImpl
+    }),
+    { code: 'P6_AUTHORITY_INVALID' }
+  );
+  const retry = await publishP6Generation({
+    authority: created.authority, kind: 'blind-comparison', files: { 'comparison-manifest.json': Buffer.from('retry') },
+    expectedCurrent: dependencies
+  });
+  assert.equal(retry.status, 'created');
 });
 
 function fixture() {
@@ -383,7 +530,34 @@ function authorities(context) {
     },
     'minecraft-captures': {
       generation: 'generation-000001', manifest_sha256: p6CaptureHash('capture-generation'),
-      files: { 'capture-manifest.json': Buffer.from(stableJson(context.captureManifest)) }
+      files: {
+        'capture-manifest.json': Buffer.from(stableJson(context.captureManifest)),
+        ...Object.fromEntries(context.captureManifest.images.map((image, index) => [
+          `${image.screenshot_id}.png`, Buffer.from(`image-${Math.floor(index / 6)}-${index % 6}`)
+        ]))
+      }
     }
   };
+}
+
+function comparisonPublicFiles(bundle) {
+  return {
+    'comparison-manifest.json': Buffer.from(stableJson(bundle.publicManifest)),
+    'presentation-order.json': Buffer.from(stableJson(bundle.publicPresentation)),
+    ...Object.fromEntries(bundle.publicComparisons.map(row => [row.filename, Buffer.from(stableJson(row))])),
+    ...Object.fromEntries(bundle.privateIdentityMap.screenshot_mappings.map(row => [
+      row.presentation_filename, sourceImageBytes(row.source_screenshot_id)
+    ]))
+  };
+}
+
+function sourceImageBytes(sourceScreenshotId) {
+  const index = Number(sourceScreenshotId.match(/capture-(\d{2})-opaque/u)?.[1]) - 1;
+  return Buffer.from(`image-${Math.floor(index / 6)}-${index % 6}`);
+}
+
+function permutations(values) {
+  if (values.length === 0) return [[]];
+  return values.flatMap((value, index) => permutations(values.filter((_, other) => other !== index))
+    .map(rest => [value, ...rest]));
 }

@@ -68,12 +68,18 @@ test('createP6Run binds playbook-p6 beneath the exact caller run and publishes e
 test('all and only approved P6 output kinds can publish immutable generations', async t => {
   const fixture = await createStorageFixture(t);
   let captureSessionCurrent;
+  let cohortCurrent;
+  let capturesCurrent;
   for (const kind of KINDS) {
     const expectedCurrent = kind === 'minecraft-captures' ? {
       kind: 'capture-session',
       generation: captureSessionCurrent.generation,
       manifest_sha256: captureSessionCurrent.manifest_sha256
-    } : undefined;
+    } : kind === 'blind-comparison' ? [
+      { kind: 'cohort', generation: cohortCurrent.generation, manifest_sha256: cohortCurrent.manifest_sha256 },
+      { kind: 'minecraft-captures', generation: capturesCurrent.generation, manifest_sha256: capturesCurrent.manifest_sha256 },
+      { kind: 'blind-comparison', generation: null, manifest_sha256: null }
+    ] : undefined;
     const result = await publishP6Generation({
       authority: fixture.authority,
       kind,
@@ -84,6 +90,8 @@ test('all and only approved P6 output kinds can publish immutable generations', 
     if (kind === 'capture-session') {
       captureSessionCurrent = await readCurrentP6Generation({ authority: fixture.authority, kind });
     }
+    if (kind === 'cohort') cohortCurrent = await readCurrentP6Generation({ authority: fixture.authority, kind });
+    if (kind === 'minecraft-captures') capturesCurrent = await readCurrentP6Generation({ authority: fixture.authority, kind });
   }
   await assert.rejects(
     publishP6Generation({ authority: fixture.authority, kind: 'worlds', files: { 'body.json': Buffer.from('{}') } }),
@@ -832,6 +840,12 @@ test('readP6InputAuthority snapshots exact regular single-link bytes and redacts
 
 test('blind-comparison private files are owned but excluded from the public manifest and read result', async t => {
   const fixture = await createStorageFixture(t);
+  const cohort = await publishP6Generation({ authority: fixture.authority, kind: 'cohort', files: { 'cohort.json': Buffer.from('cohort') } });
+  const session = await publishP6Generation({ authority: fixture.authority, kind: 'capture-session', files: { 'session.json': Buffer.from('session') } });
+  const captures = await publishP6Generation({
+    authority: fixture.authority, kind: 'minecraft-captures', files: { 'captures.json': Buffer.from('captures') },
+    expectedCurrent: { kind: 'capture-session', generation: session.generation, manifest_sha256: session.manifest_sha256 }
+  });
   await publishP6Generation({
     authority: fixture.authority,
     kind: 'blind-comparison',
@@ -839,7 +853,12 @@ test('blind-comparison private files are owned but excluded from the public mani
       'comparison.json': Buffer.from('{"public":true}'),
       'private/identity-map.json': Buffer.from('{"secret":true}'),
       'private/preference-drafts.json': Buffer.from('[]')
-    }
+    },
+    expectedCurrent: [
+      { kind: 'cohort', generation: cohort.generation, manifest_sha256: cohort.manifest_sha256 },
+      { kind: 'minecraft-captures', generation: captures.generation, manifest_sha256: captures.manifest_sha256 },
+      { kind: 'blind-comparison', generation: null, manifest_sha256: null }
+    ]
   });
   const current = await readCurrentP6Generation({ authority: fixture.authority, kind: 'blind-comparison' });
   assert.deepEqual(current.manifest.managed_paths, ['comparison.json']);

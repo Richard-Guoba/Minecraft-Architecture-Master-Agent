@@ -14,7 +14,9 @@ import { admitP6CohortInputs } from './playbook/p6/cohort.js';
 import { p6Error, sanitizeP6Error } from './playbook/p6/contracts.js';
 import {
   compileBlindComparison,
-  sealPreferences
+  sealPreferences,
+  validateBlindComparisonPackage,
+  validatePrivateComparisonAuthority
 } from './playbook/p6/comparisons.js';
 import { renderReferenceViews } from './playbook/p6/offlineRenderer.js';
 import {
@@ -260,6 +262,12 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
       for (const comparison of bundle.publicComparisons) {
         files[comparison.filename] = bytes(deps.stableJson(comparison));
       }
+      for (const mapping of bundle.privateIdentityMap.screenshot_mappings) {
+        const source = capturesCurrent.files[mapping.source_filename];
+        if (!Buffer.isBuffer(source) || deps.sha256(source) !== mapping.source_image_sha256
+          || files[mapping.presentation_filename]) throw p6Error('P6_COMPARISON_INVALID');
+        files[mapping.presentation_filename] = Buffer.from(source);
+      }
       const publication = await deps.publishP6Generation({
         authority,
         kind: 'blind-comparison',
@@ -285,21 +293,59 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         authority, kind: 'blind-comparison', includePrivate: true
       });
       if (current?.files?.['preference-seal.json']) throw p6Error('P6_COMPARISON_INVALID');
+      const cohortCurrent = await deps.readCurrentP6Generation({ authority, kind: 'cohort' });
       const capturesCurrent = await deps.readCurrentP6Generation({
         authority, kind: 'minecraft-captures'
       });
+      const cohort = parseJsonBytes(cohortCurrent?.files?.['cohort.json'])?.cohort;
       const publicManifest = parseJsonBytes(current?.files?.['comparison-manifest.json']);
+      const publicPresentation = parseJsonBytes(current?.files?.['presentation-order.json']);
+      const publicComparisons = publicPresentation.pair_ids?.map(pairId => (
+        parseJsonBytes(current?.files?.[`${pairId}.json`])
+      ));
+      deps.validateBlindComparisonPackage({ publicManifest, publicPresentation, publicComparisons });
+      if (deps.sha256(current.files['presentation-order.json']) !== publicManifest.presentation_order_sha256
+        || publicComparisons.some(row => (
+          deps.sha256(current.files[row.filename]) !== publicManifest.pair_artifact_hashes[row.pair_id]
+        ))) throw p6Error('P6_COMPARISON_INVALID');
       const captureManifestBytes = capturesCurrent?.files?.['capture-manifest.json'];
       if (!Buffer.isBuffer(captureManifestBytes)
         || deps.sha256(captureManifestBytes) !== publicManifest.capture_manifest_hash) {
         throw p6Error('P6_COMPARISON_INVALID');
       }
+      const captureManifest = parseJsonBytes(captureManifestBytes);
       const identityMapBytes = current?.privateFiles?.['identity-map.json'];
       const randomizationBytes = current?.privateFiles?.['randomization.json'];
       if (!Buffer.isBuffer(identityMapBytes) || !Buffer.isBuffer(randomizationBytes)
         || deps.sha256(identityMapBytes) !== publicManifest.identity_map_sha256
         || deps.sha256(randomizationBytes) !== publicManifest.randomization_sha256) {
         throw p6Error('P6_COMPARISON_INVALID');
+      }
+      const identityMap = parseJsonBytes(identityMapBytes);
+      const privateRandomization = parseJsonBytes(randomizationBytes);
+      const expectedPublicNames = new Set([
+        'comparison-manifest.json', 'presentation-order.json',
+        ...publicComparisons.map(row => row.filename),
+        ...publicComparisons.flatMap(row => [row.left, row.right]
+          .flatMap(side => side.screenshots.map(screenshot => screenshot.filename)))
+      ]);
+      if (expectedPublicNames.size !== 80
+        || Object.keys(current.files).length !== expectedPublicNames.size
+        || Object.keys(current.files).some(name => !expectedPublicNames.has(name))
+        || Object.keys(current.privateFiles).sort().join(',') !== 'identity-map.json,randomization.json') {
+        throw p6Error('P6_COMPARISON_INVALID');
+      }
+      deps.validatePrivateComparisonAuthority({
+        publicManifest, publicComparisons, publicPresentation,
+        privateIdentityMap: identityMap, privateRandomization, cohort, captureManifest
+      });
+      const expectedPublicImages = new Set(identityMap.screenshot_mappings?.map(row => row.presentation_filename));
+      if (expectedPublicImages.size !== 72) throw p6Error('P6_COMPARISON_INVALID');
+      for (const mapping of identityMap.screenshot_mappings) {
+        const image = current.files[mapping.presentation_filename];
+        if (!Buffer.isBuffer(image) || deps.sha256(image) !== mapping.source_image_sha256) {
+          throw p6Error('P6_COMPARISON_INVALID');
+        }
       }
       const submitted = await readPreferenceImport(options.file);
       const sealed = deps.sealPreferences({
@@ -325,6 +371,7 @@ export async function runP6Cli(argv, deps = defaultDependencies) {
         kind: 'blind-comparison',
         files,
         expectedCurrent: [
+          currentReference('cohort', cohortCurrent),
           currentReference('minecraft-captures', capturesCurrent),
           currentReference('blind-comparison', current)
         ]
@@ -458,6 +505,8 @@ const defaultDependencies = Object.freeze({
   validateImportedCaptures,
   compileBlindComparison,
   sealPreferences,
+  validateBlindComparisonPackage,
+  validatePrivateComparisonAuthority,
   randomBytes,
   now: () => new Date(),
   sha256,

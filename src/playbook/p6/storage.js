@@ -189,6 +189,7 @@ export async function publishP6Generation({ authority, kind, files, expectedCurr
       }
       await validateExistingP6Tree(internal, ops);
       tree = await openOrCreateKindTree(internal, ops, kind);
+      await ops.afterKindTreeCreation?.();
       await assertKindTree(internal, ops, tree, { allowedGenerationStages: [] });
       generationName = nextGenerationName(await ops.readdir(descriptor(tree.generationsHandle)));
       stage = await createGenerationStage(internal, ops, tree, kind, generationName, normalized);
@@ -309,7 +310,19 @@ async function assertExpectedCurrent(internal, ops, expected) {
   if (expected.generation === null) {
     await assertP6Internal(internal, ops);
     const names = await ops.readdir(descriptor(internal.p6Handle));
-    if (names.includes(expected.kind)) fail();
+    if (!names.includes(expected.kind)) return;
+    let tree;
+    try {
+      tree = await openKindTree(internal, ops, expected.kind);
+      const current = await validateKindHistory(internal, ops, tree, {
+        allowPointerJournals: true
+      });
+      if (current) fail();
+      await assertKindTree(internal, ops, tree, { allowedGenerationStages: [] });
+      await assertP6Internal(internal, ops);
+    } finally {
+      await closeKindTree(tree);
+    }
     return;
   }
   let tree;
@@ -1336,7 +1349,7 @@ function normalizeExpectedCurrent(publishingKind, value) {
     : publishingKind === 'observations' ? 'minecraft-captures'
       : null;
   if (value === undefined) {
-    if (publishingKind === 'minecraft-captures') fail();
+    if (publishingKind === 'minecraft-captures' || publishingKind === 'blind-comparison') fail();
     return null;
   }
   if (publishingKind === 'blind-comparison' && Array.isArray(value)) {
@@ -1346,9 +1359,7 @@ function normalizeExpectedCurrent(publishingKind, value) {
     if (new Set(kinds).size !== kinds.length) fail();
     const prepare = kinds.join(',') === 'cohort,minecraft-captures,blind-comparison'
       && normalized[2].generation === null;
-    const seal = (kinds.join(',') === 'blind-comparison'
-      && normalized[0].generation !== null)
-      || (kinds.join(',') === 'minecraft-captures,blind-comparison'
+    const seal = (kinds.join(',') === 'cohort,minecraft-captures,blind-comparison'
         && normalized.every(item => item.generation !== null));
     if (!prepare && !seal) fail();
     return Object.freeze(normalized);
@@ -1510,6 +1521,8 @@ function fsOperations(source) {
     removeBound: provided && typeof provided.removeBound === 'function' ? provided.removeBound.bind(provided) : undefined,
     afterExpectedCurrentValidation: provided && typeof provided.afterExpectedCurrentValidation === 'function'
       ? provided.afterExpectedCurrentValidation.bind(provided) : undefined,
+    afterKindTreeCreation: provided && typeof provided.afterKindTreeCreation === 'function'
+      ? provided.afterKindTreeCreation.bind(provided) : undefined,
     renameNoReplace: customRename
       ? (directoryHandle, sourceName, destinationName) => customRename(
         directoryHandle, sourceName, directoryHandle, destinationName,

@@ -6,6 +6,19 @@
     "cohort_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
     "generated_at": { "format": "date-time", "type": "string" },
     "identity_map_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+    "pair_artifact_hashes": {
+      "additionalProperties": false,
+      "properties": {
+        "pair-01": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "pair-02": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "pair-03": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "pair-04": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "pair-05": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
+        "pair-06": { "pattern": "^[a-f0-9]{64}$", "type": "string" }
+      },
+      "required": ["pair-01", "pair-02", "pair-03", "pair-04", "pair-05", "pair-06"],
+      "type": "object"
+    },
     "pairs": {
       "items": false,
       "maxItems": 6,
@@ -21,6 +34,7 @@
       "type": "array"
     },
     "protocol_version": { "const": "0.1.0" },
+    "presentation_order_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
     "randomization_sha256": { "pattern": "^[a-f0-9]{64}$", "type": "string" },
     "schema_version": { "const": 1 },
     "solution_codes": {
@@ -43,6 +57,8 @@
     "capture_manifest_hash",
     "identity_map_sha256",
     "randomization_sha256",
+    "pair_artifact_hashes",
+    "presentation_order_sha256",
     "solution_codes",
     "pairs",
     "generated_at"

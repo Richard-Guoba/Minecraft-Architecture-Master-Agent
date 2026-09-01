@@ -20,6 +20,8 @@ const HASH = /^[a-f0-9]{64}$/u;
 const REAL_SOLUTION_IDS = Object.freeze([
   'playbook-candidate-01', 'playbook-candidate-02', 'playbook-candidate-03', 'baseline-current'
 ]);
+const MAX_RANDOM_ATTEMPTS = 128;
+const BLIND_SCREENSHOT_ID = /^blind-shot-[a-f0-9]{32}$/u;
 
 export function compileBlindComparison({
   cohort, captureManifest, randomBytes, generatedAt = new Date().toISOString()
@@ -45,20 +47,13 @@ export function compileBlindComparison({
     if (new Set(identities.map(row => row.capture_solution_id)).size !== 4) invalid();
 
     const random = randomSampler(randomBytes);
+    const identityNonceHex = random.bytes(32).toString('hex');
     shuffle(identities, random.index);
     const mappings = P6_COMPARISON_ALIASES.map((solution_code, index) => ({
       solution_code,
       solution_id: identities[index].solution_id,
       capture_solution_id: identities[index].capture_solution_id
     }));
-    const privateIdentityMap = deepFreeze({
-      schema_version: P6_SCHEMA_VERSION,
-      protocol_version: P6_PROTOCOL_VERSION,
-      cohort_sha256: captureManifest.cohort_sha256,
-      capture_manifest_hash: sha256(stableJson(captureManifest)),
-      mappings
-    });
-
     const pairs = PAIRS.map(([leftIndex, rightIndex], index) => {
       const swapped = random.index(2) === 1;
       return {
@@ -70,6 +65,30 @@ export function compileBlindComparison({
     });
     const presentationPairs = [...pairs];
     shuffle(presentationPairs, random.index);
+    const screenshotMappings = [];
+    const allocatedScreenshotIds = new Set();
+    const publicComparisons = presentationPairs.map(pair => deepFreeze({
+      schema_version: P6_SCHEMA_VERSION,
+      protocol_version: P6_PROTOCOL_VERSION,
+      filename: `${pair.pair_id}.json`,
+      pair_id: pair.pair_id,
+      left: publicSide(pair, 'left', mappings, captureManifest, random, allocatedScreenshotIds, screenshotMappings),
+      right: publicSide(pair, 'right', mappings, captureManifest, random, allocatedScreenshotIds, screenshotMappings)
+    }));
+    const publicPresentation = deepFreeze({
+      schema_version: P6_SCHEMA_VERSION,
+      protocol_version: P6_PROTOCOL_VERSION,
+      pair_ids: publicComparisons.map(row => row.pair_id)
+    });
+    const privateIdentityMap = deepFreeze({
+      schema_version: P6_SCHEMA_VERSION,
+      protocol_version: P6_PROTOCOL_VERSION,
+      identity_nonce_hex: identityNonceHex,
+      cohort_sha256: captureManifest.cohort_sha256,
+      capture_manifest_hash: sha256(stableJson(captureManifest)),
+      mappings,
+      screenshot_mappings: screenshotMappings
+    });
     const privateRandomization = deepFreeze({
       schema_version: P6_SCHEMA_VERSION,
       protocol_version: P6_PROTOCOL_VERSION,
@@ -82,31 +101,136 @@ export function compileBlindComparison({
       capture_manifest_hash: privateIdentityMap.capture_manifest_hash,
       identity_map_sha256: sha256(stableJson(privateIdentityMap)),
       randomization_sha256: sha256(stableJson(privateRandomization)),
+      pair_artifact_hashes: Object.fromEntries(
+        [...publicComparisons]
+          .sort((left, right) => left.pair_id.localeCompare(right.pair_id))
+          .map(row => [row.pair_id, sha256(stableJson(row))])
+      ),
+      presentation_order_sha256: sha256(stableJson(publicPresentation)),
       solution_codes: [...P6_COMPARISON_ALIASES],
       pairs,
       generated_at: generatedAt
     });
     validateComparisonManifest(publicManifest);
 
-    const comparisonManifestHash = sha256(stableJson(publicManifest));
-    const publicComparisons = presentationPairs.map(pair => deepFreeze({
-      schema_version: P6_SCHEMA_VERSION,
-      protocol_version: P6_PROTOCOL_VERSION,
-      filename: `${pair.pair_id}.json`,
-      pair_id: pair.pair_id,
-      comparison_manifest_hash: comparisonManifestHash,
-      left: publicSide(pair.left_code, mappings, captureManifest),
-      right: publicSide(pair.right_code, mappings, captureManifest)
-    }));
-    const publicPresentation = deepFreeze({
-      schema_version: P6_SCHEMA_VERSION,
-      protocol_version: P6_PROTOCOL_VERSION,
-      comparison_manifest_hash: comparisonManifestHash,
-      pair_ids: publicComparisons.map(row => row.pair_id)
-    });
-    return deepFreeze({
+    const bundle = deepFreeze({
       publicManifest, publicComparisons, publicPresentation, privateIdentityMap, privateRandomization
     });
+    validateBlindComparisonPackage(bundle);
+    return bundle;
+  } catch (error) {
+    throw p6Error('P6_COMPARISON_INVALID');
+  }
+}
+
+export function validateBlindComparisonPackage(value) {
+  try {
+    if (!plain(value) || !plain(value.publicManifest)
+      || !Array.isArray(value.publicComparisons) || value.publicComparisons.length !== 6
+      || !plain(value.publicPresentation)) invalid();
+    validateComparisonManifest(value.publicManifest);
+    if (!sameExactKeys(value.publicPresentation, ['schema_version', 'protocol_version', 'pair_ids'])
+      || value.publicPresentation.schema_version !== P6_SCHEMA_VERSION
+      || value.publicPresentation.protocol_version !== P6_PROTOCOL_VERSION
+      || sha256(stableJson(value.publicPresentation)) !== value.publicManifest.presentation_order_sha256
+      || !Array.isArray(value.publicPresentation.pair_ids)
+      || value.publicPresentation.pair_ids.length !== 6) invalid();
+    const pairById = new Map(value.publicManifest.pairs.map(row => [row.pair_id, row]));
+    const seenPairs = new Set();
+    const seenScreenshots = new Set();
+    for (const artifact of value.publicComparisons) {
+      if (!plain(artifact) || !sameExactKeys(artifact, [
+        'schema_version', 'protocol_version', 'filename', 'pair_id', 'left', 'right'
+      ]) || artifact.schema_version !== P6_SCHEMA_VERSION
+        || artifact.protocol_version !== P6_PROTOCOL_VERSION
+        || artifact.filename !== `${artifact.pair_id}.json`
+        || seenPairs.has(artifact.pair_id)
+        || sha256(stableJson(artifact)) !== value.publicManifest.pair_artifact_hashes[artifact.pair_id]) invalid();
+      const pair = pairById.get(artifact.pair_id);
+      if (!pair) invalid();
+      seenPairs.add(artifact.pair_id);
+      validatePublicSide(artifact.left, pair.left_code, seenScreenshots);
+      validatePublicSide(artifact.right, pair.right_code, seenScreenshots);
+    }
+    if (seenPairs.size !== 6 || seenScreenshots.size !== 72
+      || stableJson(value.publicPresentation.pair_ids)
+        !== stableJson(value.publicComparisons.map(row => row.pair_id))
+      || new Set(value.publicPresentation.pair_ids).size !== 6
+      || value.publicPresentation.pair_ids.some(pairId => !pairById.has(pairId))) invalid();
+    return value;
+  } catch (error) {
+    throw p6Error('P6_COMPARISON_INVALID');
+  }
+}
+
+export function validatePrivateComparisonAuthority({
+  publicManifest, publicComparisons, publicPresentation,
+  privateIdentityMap, privateRandomization, cohort, captureManifest
+} = {}) {
+  try {
+    validateBlindComparisonPackage({ publicManifest, publicComparisons, publicPresentation });
+    validateCohortManifest(cohort);
+    validateCaptureManifest(captureManifest);
+    if (sha256(stableJson(cohort)) !== publicManifest.cohort_sha256
+      || sha256(stableJson(captureManifest)) !== publicManifest.capture_manifest_hash
+      || captureManifest.cohort_sha256 !== publicManifest.cohort_sha256
+      || sha256(stableJson(privateIdentityMap)) !== publicManifest.identity_map_sha256
+      || sha256(stableJson(privateRandomization)) !== publicManifest.randomization_sha256) invalid();
+    validatePrivateMapShape(privateIdentityMap);
+    if (!plain(privateRandomization)
+      || !sameExactKeys(privateRandomization, ['schema_version', 'protocol_version', 'random_bytes_hex'])
+      || privateRandomization.schema_version !== P6_SCHEMA_VERSION
+      || privateRandomization.protocol_version !== P6_PROTOCOL_VERSION
+      || typeof privateRandomization.random_bytes_hex !== 'string'
+      || !/^[a-f0-9]+$/u.test(privateRandomization.random_bytes_hex)
+      || privateRandomization.random_bytes_hex.length < 64
+      || privateRandomization.random_bytes_hex.length % 2 !== 0) invalid();
+
+    const aliasMap = new Map(privateIdentityMap.mappings.map(row => [row.solution_code, row]));
+    for (const mapping of privateIdentityMap.mappings) {
+      const solution = cohort.solutions.find(row => row.solution_id === mapping.solution_id);
+      const captures = captureManifest.images.filter(row => row.solution_id === mapping.capture_solution_id);
+      if (!solution || captures.length !== 6
+        || captures.some(row => row.build_function_sha256 !== solution.build_function_sha256)) invalid();
+    }
+    const publicScreenshots = new Map();
+    for (const artifact of publicComparisons) {
+      for (const side of ['left', 'right']) {
+        for (const screenshot of artifact[side].screenshots) {
+          publicScreenshots.set(screenshot.screenshot_id, {
+            pair_id: artifact.pair_id, side, view_id: screenshot.view_id,
+            presentation_filename: screenshot.filename,
+            solution_code: artifact[side].solution_code
+          });
+        }
+      }
+    }
+    const seenPresentation = new Set();
+    for (const mapping of privateIdentityMap.screenshot_mappings) {
+      if (!plain(mapping) || !sameExactKeys(mapping, [
+        'pair_id', 'side', 'view_id', 'presentation_screenshot_id', 'presentation_filename',
+        'source_screenshot_id', 'source_filename', 'source_image_sha256'
+      ]) || !['left', 'right'].includes(mapping.side)
+        || !P6_VIEW_IDS.includes(mapping.view_id)
+        || !BLIND_SCREENSHOT_ID.test(mapping.presentation_screenshot_id)
+        || mapping.presentation_filename !== `${mapping.presentation_screenshot_id}.png`
+        || !HASH.test(mapping.source_image_sha256)
+        || seenPresentation.has(mapping.presentation_screenshot_id)) invalid();
+      seenPresentation.add(mapping.presentation_screenshot_id);
+      const publicRow = publicScreenshots.get(mapping.presentation_screenshot_id);
+      const alias = publicRow && aliasMap.get(publicRow.solution_code);
+      const source = captureManifest.images.find(row => row.screenshot_id === mapping.source_screenshot_id);
+      if (!publicRow || !alias || !source
+        || publicRow.pair_id !== mapping.pair_id || publicRow.side !== mapping.side
+        || publicRow.view_id !== mapping.view_id
+        || publicRow.presentation_filename !== mapping.presentation_filename
+        || source.solution_id !== alias.capture_solution_id
+        || source.camera.view_id !== mapping.view_id
+        || source.image_sha256 !== mapping.source_image_sha256
+        || mapping.source_filename !== `${source.screenshot_id}.png`) invalid();
+    }
+    if (seenPresentation.size !== 72) invalid();
+    return true;
   } catch (error) {
     throw p6Error('P6_COMPARISON_INVALID');
   }
@@ -179,14 +303,18 @@ export function revealPreferenceResults({ sealedPreferences, privateIdentityMap 
     }
     if (!plain(privateIdentityMap)
       || !sameExactKeys(privateIdentityMap, [
-        'schema_version', 'protocol_version', 'cohort_sha256', 'capture_manifest_hash', 'mappings'
+        'schema_version', 'protocol_version', 'identity_nonce_hex', 'cohort_sha256',
+        'capture_manifest_hash', 'mappings', 'screenshot_mappings'
       ])
       || privateIdentityMap.schema_version !== P6_SCHEMA_VERSION
       || privateIdentityMap.protocol_version !== P6_PROTOCOL_VERSION
       || !HASH.test(privateIdentityMap.cohort_sha256)
       || !HASH.test(privateIdentityMap.capture_manifest_hash)
+      || !/^[a-f0-9]{64}$/u.test(privateIdentityMap.identity_nonce_hex)
       || sha256(stableJson(privateIdentityMap)) !== sealedPreferences.identity_map_sha256
-      || !Array.isArray(privateIdentityMap.mappings) || privateIdentityMap.mappings.length !== 4) invalid();
+      || !Array.isArray(privateIdentityMap.mappings) || privateIdentityMap.mappings.length !== 4
+      || !Array.isArray(privateIdentityMap.screenshot_mappings)
+      || privateIdentityMap.screenshot_mappings.length !== 72) invalid();
     for (const [index, row] of privateIdentityMap.mappings.entries()) {
       if (!plain(row) || !sameExactKeys(row, ['solution_code', 'solution_id', 'capture_solution_id'])
         || row.solution_code !== P6_COMPARISON_ALIASES[index]
@@ -229,7 +357,8 @@ export function revealPreferenceResults({ sealedPreferences, privateIdentityMap 
   }
 }
 
-function publicSide(solutionCode, mappings, captureManifest) {
+function publicSide(pair, side, mappings, captureManifest, random, allocated, screenshotMappings) {
+  const solutionCode = pair[`${side}_code`];
   const mapping = mappings.find(row => row.solution_code === solutionCode);
   if (!mapping) invalid();
   const screenshots = P6_VIEW_IDS.map(viewId => {
@@ -237,24 +366,92 @@ function publicSide(solutionCode, mappings, captureManifest) {
       row.solution_id === mapping.capture_solution_id && row.camera.view_id === viewId
     ));
     if (!image) invalid();
-    return { screenshot_id: image.screenshot_id, view_id: viewId, image_sha256: image.image_sha256 };
+    const screenshotId = uniqueScreenshotId(random, allocated, screenshotMappings.length);
+    const filename = `${screenshotId}.png`;
+    screenshotMappings.push({
+      pair_id: pair.pair_id,
+      side,
+      view_id: viewId,
+      presentation_screenshot_id: screenshotId,
+      presentation_filename: filename,
+      source_screenshot_id: image.screenshot_id,
+      source_filename: `${image.screenshot_id}.png`,
+      source_image_sha256: image.image_sha256
+    });
+    return { screenshot_id: screenshotId, filename, view_id: viewId };
   });
   return { solution_code: solutionCode, screenshots };
 }
 
+function validatePublicSide(value, expectedCode, seenScreenshots) {
+  if (!plain(value) || !sameExactKeys(value, ['solution_code', 'screenshots'])
+    || value.solution_code !== expectedCode
+    || !Array.isArray(value.screenshots) || value.screenshots.length !== P6_VIEW_IDS.length) invalid();
+  for (const [index, screenshot] of value.screenshots.entries()) {
+    if (!plain(screenshot) || !sameExactKeys(screenshot, ['screenshot_id', 'filename', 'view_id'])
+      || !BLIND_SCREENSHOT_ID.test(screenshot.screenshot_id)
+      || screenshot.filename !== `${screenshot.screenshot_id}.png`
+      || screenshot.view_id !== P6_VIEW_IDS[index]
+      || seenScreenshots.has(screenshot.screenshot_id)) invalid();
+    seenScreenshots.add(screenshot.screenshot_id);
+  }
+}
+
+function validatePrivateMapShape(value) {
+  if (!plain(value) || !sameExactKeys(value, [
+    'schema_version', 'protocol_version', 'identity_nonce_hex', 'cohort_sha256',
+    'capture_manifest_hash', 'mappings', 'screenshot_mappings'
+  ]) || value.schema_version !== P6_SCHEMA_VERSION
+    || value.protocol_version !== P6_PROTOCOL_VERSION
+    || !/^[a-f0-9]{64}$/u.test(value.identity_nonce_hex)
+    || !HASH.test(value.cohort_sha256) || !HASH.test(value.capture_manifest_hash)
+    || !Array.isArray(value.mappings) || value.mappings.length !== 4
+    || !Array.isArray(value.screenshot_mappings) || value.screenshot_mappings.length !== 72) invalid();
+  for (const [index, row] of value.mappings.entries()) {
+    if (!plain(row) || !sameExactKeys(row, ['solution_code', 'solution_id', 'capture_solution_id'])
+      || row.solution_code !== P6_COMPARISON_ALIASES[index]
+      || !REAL_SOLUTION_IDS.includes(row.solution_id)
+      || !/^opaque-solution-[a-z0-9]+$/u.test(row.capture_solution_id)) invalid();
+  }
+  if (new Set(value.mappings.map(row => row.solution_id)).size !== 4
+    || new Set(value.mappings.map(row => row.capture_solution_id)).size !== 4) invalid();
+}
+
+function uniqueScreenshotId(random, allocated, sequence) {
+  for (let attempt = 0; attempt < MAX_RANDOM_ATTEMPTS; attempt += 1) {
+    const sequenceBytes = Buffer.alloc(8);
+    sequenceBytes.writeBigUInt64BE(BigInt(sequence));
+    const value = `blind-shot-${sha256(Buffer.concat([
+      random.bytes(16), sequenceBytes, Buffer.from([attempt])
+    ])).slice(0, 32)}`;
+    if (!allocated.has(value)) {
+      allocated.add(value);
+      return value;
+    }
+  }
+  invalid();
+}
+
 function randomSampler(randomBytes) {
   const transcript = [];
+  const readBytes = length => {
+    if (!Number.isSafeInteger(length) || length < 1 || length > 64) invalid();
+    const bytes = randomBytes(length);
+    if (!Buffer.isBuffer(bytes) || bytes.length !== length) invalid();
+    transcript.push(...bytes);
+    return Buffer.from(bytes);
+  };
   return {
     transcript,
+    bytes: readBytes,
     index(maxExclusive) {
       if (!Number.isSafeInteger(maxExclusive) || maxExclusive < 1 || maxExclusive > 256) invalid();
       const ceiling = 256 - (256 % maxExclusive);
-      for (;;) {
-        const bytes = randomBytes(1);
-        if (!Buffer.isBuffer(bytes) || bytes.length !== 1) invalid();
-        transcript.push(bytes[0]);
+      for (let attempt = 0; attempt < MAX_RANDOM_ATTEMPTS; attempt += 1) {
+        const bytes = readBytes(1);
         if (bytes[0] < ceiling) return bytes[0] % maxExclusive;
       }
+      invalid();
     }
   };
 }
