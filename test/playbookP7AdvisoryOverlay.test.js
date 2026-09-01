@@ -29,9 +29,9 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     'foundations-tools-blocks-modularity-color',
     'complete-structure'
   ]);
-  assert.equal(overlay.source_bvids.length, 8);
-  assert.equal(overlay.source_bvids.at(-1), 'BV1Mp7UzyE3P');
-  assert.equal(overlay.entries.length, 18);
+  assert.equal(overlay.source_bvids.length, 9);
+  assert.equal(overlay.source_bvids.at(-1), 'BV1MA7Bz2EE1');
+  assert.equal(overlay.entries.length, 21);
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
@@ -41,19 +41,30 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
   assert.deepEqual(
     overlay.entries.slice(-3).map(({ knowledge_id }) => knowledge_id),
     [
-      'knowledge:p7:purposeful-volume-subtraction',
-      'knowledge:p7:void-fragmentation-control',
-      'knowledge:p7:supported-cut-recomposition'
+      'knowledge:p7:scaled-column-beam-grid',
+      'knowledge:p7:roof-bearing-space-tradeoff',
+      'knowledge:p7:scale-matched-lateral-support'
     ]
   );
   assert.deepEqual(
-    overlay.entries.at(-3).evidence_refs,
+    overlay.entries.find(({ knowledge_id }) =>
+      knowledge_id === 'knowledge:p7:purposeful-volume-subtraction').evidence_refs,
     [
       'BV1Mp7UzyE3P@19-100',
       'BV1Mp7UzyE3P@174-329',
       'BV1Mp7UzyE3P@330-538',
       'BV1Mp7UzyE3P@559-650'
     ]
+  );
+  assert.deepEqual(
+    overlay.entries.at(-1).evidence_refs,
+    ['BV1MA7Bz2EE1@431-599', 'BV1MA7Bz2EE1@605-966']
+  );
+  assert.match(overlay.entries.at(-1).intent, /column-beam frames/iu);
+  assert.match(overlay.entries.at(-1).intent, /arches/iu);
+  assert.doesNotMatch(
+    overlay.entries.at(-1).intent,
+    /wide spans|projections|tall walls/iu
   );
   assert.ok(Object.isFrozen(overlay));
   assert.ok(Object.isFrozen(overlay.entries));

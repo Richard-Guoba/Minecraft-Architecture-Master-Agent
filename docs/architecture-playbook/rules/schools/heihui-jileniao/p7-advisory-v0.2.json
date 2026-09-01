@@ -15,7 +15,8 @@
     "BV1cLJtz1ELx",
     "BV14XMtzFEzb",
     "BV1ecj4zsE27",
-    "BV1Mp7UzyE3P"
+    "BV1Mp7UzyE3P",
+    "BV1MA7Bz2EE1"
   ],
   "entries": [
     {
@@ -161,6 +162,30 @@
       "source_bvids": ["BV1Mp7UzyE3P"],
       "classification": "inference",
       "evidence_refs": ["BV1Mp7UzyE3P@103-172", "BV1Mp7UzyE3P@371-409", "BV1Mp7UzyE3P@559-785"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:scaled-column-beam-grid",
+      "design_layers": ["massing", "structure", "roof"],
+      "intent": "When a building grows in width, height or span, divide it into repeated column-beam bays with a continuous visible path from roof and floors through supports; do not uniformly stretch an unsegmented shell.",
+      "source_bvids": ["BV1MA7Bz2EE1"],
+      "classification": "inference",
+      "evidence_refs": ["BV1MA7Bz2EE1@0-158", "BV1MA7Bz2EE1@160-305"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:roof-bearing-space-tradeoff",
+      "design_layers": ["structure", "roof"],
+      "intent": "Align roof edges, feet or internal framing with beams, walls or columns; if the column grid blocks entrances, circulation or interior space, choose a span strategy suited to the design scale instead of simply deleting support.",
+      "source_bvids": ["BV1MA7Bz2EE1"],
+      "classification": "inference",
+      "evidence_refs": ["BV1MA7Bz2EE1@239-430"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:scale-matched-lateral-support",
+      "design_layers": ["structure", "roof", "facade"],
+      "intent": "Use connected diagonal braces where column-beam frames need lateral stability. Where arches imply horizontal thrust, use terrain abutment, thickened sides or buttresses. Match brace slope and thickness to scale and connect both ends.",
+      "source_bvids": ["BV1MA7Bz2EE1"],
+      "classification": "inference",
+      "evidence_refs": ["BV1MA7Bz2EE1@431-599", "BV1MA7Bz2EE1@605-966"]
     }
   ]
 }
