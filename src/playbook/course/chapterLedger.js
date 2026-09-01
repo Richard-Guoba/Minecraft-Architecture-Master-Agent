@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -13,6 +14,9 @@ const LEDGER_PATH = '.local/architecture-playbook/work/p7/chapter-ledger.json';
 const HASH = /^[a-f0-9]{64}$/u;
 const BVID = /^BV[0-9A-Za-z]{10}$/u;
 const EVIDENCE_FIELD = /^[a-z][a-z0-9_]*(?:_sha256|_count)$/u;
+const READ_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW;
+const LOCK_ATTEMPTS = 100;
+const LOCK_RETRY_MS = 10;
 const STAGES = Object.freeze([
   'pending',
   'media-verified',
@@ -38,47 +42,65 @@ const EPISODE_FIELDS = Object.freeze([
   'evidence'
 ]);
 const ACTION_FIELDS = Object.freeze(['bvid', 'from_stage', 'to_stage']);
+const TRANSITION_EVIDENCE_FIELDS = Object.freeze({
+  'media-verified': Object.freeze(['media_sha256', 'byte_size']),
+  'asr-complete': Object.freeze(['segment_index_sha256', 'segment_count']),
+  'events-indexed': Object.freeze(['event_index_sha256', 'event_count']),
+  'visual-reviewed': Object.freeze(['visual_review_sha256', 'reviewed_frame_count']),
+  'evidence-packed': Object.freeze(['evidence_pack_sha256', 'evidence_count']),
+  'notes-reviewed': Object.freeze(['notes_sha256', 'note_count']),
+  'rules-reviewed': Object.freeze(['rules_sha256', 'rule_count'])
+});
 
 export async function createChapterLedger({ projectRoot, chapterPlan, fsImpl } = {}) {
   const ops = fsOperations(fsImpl);
   const ledger = initialLedger(chapterPlan);
   const bytes = Buffer.from(stableJson(ledger));
   const ledgerPath = await privateLedgerPath(projectRoot, { createParent: true });
-
-  const existing = await readLedgerFile(ledgerPath, ops, { allowMissing: true });
-  if (existing) {
-    if (existing.bytes.equals(bytes)) return envelope('unchanged', existing);
-    fail('PLAYBOOK_CHAPTER_LEDGER_EXISTS', 'ledger', 'ledger already initialized');
-  }
-
-  let stagePath;
   try {
-    stagePath = await writeExclusiveStage(ledgerPath, bytes, ops);
-    const collision = await readLedgerFile(ledgerPath, ops, { allowMissing: true });
-    if (collision) {
-      if (collision.bytes.equals(bytes)) return envelope('unchanged', collision);
-      fail('PLAYBOOK_CHAPTER_LEDGER_EXISTS', 'ledger', 'ledger already initialized');
-    }
-    await ops.rename(stagePath, ledgerPath);
-    stagePath = undefined;
-    await syncDirectory(path.dirname(ledgerPath), ops);
-    const published = await readLedgerFile(ledgerPath, ops);
-    if (!published.bytes.equals(bytes)) {
-      fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'publication mismatch');
-    }
-    return envelope('created', published);
+    return await withLedgerLock(ledgerPath, ops, async () => {
+      const existing = await readLedgerFile(ledgerPath, ops, { allowMissing: true });
+      if (existing) {
+        if (existing.bytes.equals(bytes)) return envelope('unchanged', existing);
+        fail('PLAYBOOK_CHAPTER_LEDGER_EXISTS', 'ledger', 'ledger already initialized');
+      }
+
+      let stagePath;
+      try {
+        stagePath = await writeExclusiveStage(ledgerPath, bytes, ops);
+        const collision = await readLedgerFile(ledgerPath, ops, { allowMissing: true });
+        if (collision) {
+          if (collision.bytes.equals(bytes)) return envelope('unchanged', collision);
+          fail('PLAYBOOK_CHAPTER_LEDGER_EXISTS', 'ledger', 'ledger already initialized');
+        }
+        await ops.rename(stagePath, ledgerPath);
+        stagePath = undefined;
+        await syncDirectory(path.dirname(ledgerPath), ops);
+        const published = await readLedgerFile(ledgerPath, ops);
+        if (!published.bytes.equals(bytes)) {
+          fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'publication mismatch');
+        }
+        return envelope('created', published);
+      } finally {
+        if (stagePath) await removeStage(stagePath, ops);
+      }
+    });
   } catch (error) {
     throw publicWriteError(error);
-  } finally {
-    if (stagePath) await removeStage(stagePath, ops);
   }
 }
 
 export async function readChapterLedger({ projectRoot, fsImpl } = {}) {
   const ops = fsOperations(fsImpl);
   const ledgerPath = await privateLedgerPath(projectRoot, { missingIsLedger: true });
-  const current = await readLedgerFile(ledgerPath, ops);
-  return readEnvelope(current);
+  try {
+    return await withLedgerLock(ledgerPath, ops, async () => {
+      const current = await readLedgerFile(ledgerPath, ops);
+      return readEnvelope(current);
+    });
+  } catch (error) {
+    throw sanitizeReadError(error);
+  }
 }
 
 export async function advanceEpisodeStage({
@@ -93,68 +115,76 @@ export async function advanceEpisodeStage({
   assertExpectedHash(expectedLedgerSha256);
   const ops = fsOperations(fsImpl);
   const ledgerPath = await privateLedgerPath(projectRoot, { missingIsLedger: true });
-  const current = await readLedgerFile(ledgerPath, ops);
-  if (current.sha256 !== expectedLedgerSha256) {
-    fail('PLAYBOOK_CHAPTER_LEDGER_STALE', 'expectedLedgerSha256', 'stale ledger');
-  }
-
-  const episode = current.ledger.episodes[bvid];
-  if (!episode || !BVID.test(bvid || '')) {
-    fail('PLAYBOOK_CHAPTER_EPISODE_INVALID', 'bvid', 'unknown episode');
-  }
-  const expectedIndex = STAGES.indexOf(expectedStage);
-  const nextIndex = STAGES.indexOf(nextStage);
-  if (expectedIndex < 0 || nextIndex !== expectedIndex + 1) {
-    fail('PLAYBOOK_CHAPTER_STAGE_INVALID', 'nextStage', 'expected adjacent stage');
-  }
-  const checkedEvidence = validateEvidence(evidence, { allowEmpty: false });
-
-  if (episode.stage === nextStage && evidenceMatches(episode.evidence, checkedEvidence)) {
-    return envelope('unchanged', current);
-  }
-  if (episode.stage !== expectedStage) {
-    fail('PLAYBOOK_CHAPTER_STAGE_INVALID', 'expectedStage', 'stage no longer current');
-  }
-
-  const nextLedger = structuredClone(current.ledger);
-  nextLedger.episodes[bvid] = {
-    ...nextLedger.episodes[bvid],
-    stage: nextStage,
-    evidence: {
-      ...nextLedger.episodes[bvid].evidence,
-      ...checkedEvidence
-    }
-  };
-  nextLedger.unresolved_count = Object.values(nextLedger.episodes).filter(
-    (candidate) => candidate.stage !== STAGES.at(-1)
-  ).length;
-  nextLedger.last_completed_action = {
-    bvid,
-    from_stage: expectedStage,
-    to_stage: nextStage
-  };
-  validateLedger(nextLedger);
-  const nextBytes = Buffer.from(stableJson(nextLedger));
-
-  let stagePath;
   try {
-    stagePath = await writeExclusiveStage(ledgerPath, nextBytes, ops);
-    const latest = await readLedgerFile(ledgerPath, ops);
-    if (latest.sha256 !== expectedLedgerSha256) {
-      fail('PLAYBOOK_CHAPTER_LEDGER_STALE', 'expectedLedgerSha256', 'stale ledger');
-    }
-    await ops.rename(stagePath, ledgerPath);
-    stagePath = undefined;
-    await syncDirectory(path.dirname(ledgerPath), ops);
-    const published = await readLedgerFile(ledgerPath, ops);
-    if (!published.bytes.equals(nextBytes)) {
-      fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'publication mismatch');
-    }
-    return envelope('updated', published);
+    return await withLedgerLock(ledgerPath, ops, async () => {
+      const current = await readLedgerFile(ledgerPath, ops);
+      if (current.sha256 !== expectedLedgerSha256) {
+        fail('PLAYBOOK_CHAPTER_LEDGER_STALE', 'expectedLedgerSha256', 'stale ledger');
+      }
+
+      const episode = current.ledger.episodes[bvid];
+      if (!episode || !BVID.test(bvid || '')) {
+        fail('PLAYBOOK_CHAPTER_EPISODE_INVALID', 'bvid', 'unknown episode');
+      }
+      const expectedIndex = STAGES.indexOf(expectedStage);
+      const nextIndex = STAGES.indexOf(nextStage);
+      if (expectedIndex < 0 || nextIndex !== expectedIndex + 1) {
+        fail('PLAYBOOK_CHAPTER_STAGE_INVALID', 'nextStage', 'expected adjacent stage');
+      }
+      const checkedEvidence = validateEvidence(evidence, { allowEmpty: false });
+      assertTransitionEvidence(checkedEvidence, nextStage);
+
+      if (
+        episode.stage === nextStage
+        && transitionEvidenceMatches(episode.evidence, checkedEvidence, nextStage)
+      ) {
+        return envelope('unchanged', current);
+      }
+      if (episode.stage !== expectedStage) {
+        fail('PLAYBOOK_CHAPTER_STAGE_INVALID', 'expectedStage', 'stage no longer current');
+      }
+
+      const nextLedger = structuredClone(current.ledger);
+      nextLedger.episodes[bvid] = {
+        ...nextLedger.episodes[bvid],
+        stage: nextStage,
+        evidence: {
+          ...nextLedger.episodes[bvid].evidence,
+          ...checkedEvidence
+        }
+      };
+      nextLedger.unresolved_count = Object.values(nextLedger.episodes).filter(
+        (candidate) => candidate.stage !== STAGES.at(-1)
+      ).length;
+      nextLedger.last_completed_action = {
+        bvid,
+        from_stage: expectedStage,
+        to_stage: nextStage
+      };
+      validateLedger(nextLedger);
+      const nextBytes = Buffer.from(stableJson(nextLedger));
+
+      let stagePath;
+      try {
+        stagePath = await writeExclusiveStage(ledgerPath, nextBytes, ops);
+        const latest = await readLedgerFile(ledgerPath, ops);
+        if (latest.sha256 !== expectedLedgerSha256) {
+          fail('PLAYBOOK_CHAPTER_LEDGER_STALE', 'expectedLedgerSha256', 'stale ledger');
+        }
+        await ops.rename(stagePath, ledgerPath);
+        stagePath = undefined;
+        await syncDirectory(path.dirname(ledgerPath), ops);
+        const published = await readLedgerFile(ledgerPath, ops);
+        if (!published.bytes.equals(nextBytes)) {
+          fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'publication mismatch');
+        }
+        return envelope('updated', published);
+      } finally {
+        if (stagePath) await removeStage(stagePath, ops);
+      }
+    });
   } catch (error) {
     throw publicWriteError(error);
-  } finally {
-    if (stagePath) await removeStage(stagePath, ops);
   }
 }
 
@@ -222,16 +252,23 @@ async function privateLedgerPath(projectRoot, {
 }
 
 async function readLedgerFile(ledgerPath, ops, { allowMissing = false } = {}) {
+  const before = await assertRegularLedger(ledgerPath, ops, { allowMissing });
+  if (!before) return null;
+  let handle;
   let bytes;
   try {
-    bytes = await ops.readFile(ledgerPath);
+    handle = await ops.open(ledgerPath, READ_FLAGS);
+    const opened = await handle.stat();
+    if (!opened.isFile() || !sameIdentity(before, opened)) privateAuthorityInvalid();
+    bytes = await handle.readFile();
   } catch (error) {
-    if (error?.code === 'ENOENT') {
-      if (allowMissing) return null;
-      fail('PLAYBOOK_CHAPTER_LEDGER_MISSING', 'ledger', 'ledger not initialized');
-    }
+    if (error?.code === 'ELOOP') privateAuthorityInvalid();
     throw sanitizeReadError(error);
+  } finally {
+    try { await handle?.close(); } catch {}
   }
+  const after = await assertRegularLedger(ledgerPath, ops);
+  if (!sameIdentity(before, after)) privateAuthorityInvalid();
   let ledger;
   try {
     ledger = JSON.parse(bytes.toString('utf8'));
@@ -324,8 +361,115 @@ function validateEvidence(value, { allowEmpty }) {
   return checked;
 }
 
-function evidenceMatches(current, requested) {
-  return Object.entries(requested).every(([field, value]) => current[field] === value);
+function assertTransitionEvidence(evidence, nextStage) {
+  const fields = TRANSITION_EVIDENCE_FIELDS[nextStage];
+  const names = Object.keys(evidence).sort();
+  if (
+    !fields
+    || names.length !== fields.length
+    || names.some((field) => !fields.includes(field))
+  ) {
+    evidenceInvalid();
+  }
+}
+
+function transitionEvidenceMatches(current, requested, nextStage) {
+  const fields = TRANSITION_EVIDENCE_FIELDS[nextStage];
+  return fields.every((field) => current[field] === requested[field]);
+}
+
+async function withLedgerLock(ledgerPath, ops, operation) {
+  const lock = await acquireLedgerLock(ledgerPath, ops);
+  let operationError;
+  try {
+    return await operation();
+  } catch (error) {
+    operationError = error;
+    throw error;
+  } finally {
+    try {
+      await releaseLedgerLock(lock, ops);
+    } catch (error) {
+      if (!operationError) throw error;
+    }
+  }
+}
+
+async function acquireLedgerLock(ledgerPath, ops) {
+  const lockPath = path.join(path.dirname(ledgerPath), '.chapter-ledger.lock');
+  for (let attempt = 0; attempt < LOCK_ATTEMPTS; attempt += 1) {
+    let handle;
+    let identity;
+    try {
+      handle = await ops.open(lockPath, 'wx+', 0o600);
+      identity = await handle.stat();
+      if (!identity.isFile()) privateAuthorityInvalid();
+      await handle.writeFile(randomBytes(16).toString('hex'));
+      await handle.sync();
+      await syncDirectory(path.dirname(ledgerPath), ops);
+      return { path: lockPath, handle, identity };
+    } catch (error) {
+      if (handle) {
+        try { await handle.close(); } catch {}
+        await removeOwnedLock(lockPath, identity, ops);
+      }
+      if (error?.code !== 'EEXIST') throw error;
+      if (attempt === LOCK_ATTEMPTS - 1) {
+        fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'ledger lock unavailable');
+      }
+      await delay(LOCK_RETRY_MS);
+    }
+  }
+  fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'ledger lock unavailable');
+}
+
+async function releaseLedgerLock(lock, ops) {
+  try {
+    await lock.handle.close();
+  } catch {
+    fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'ledger lock close failed');
+  }
+  const current = await lstatOrNull(lock.path, ops);
+  if (!current || !current.isFile() || !sameIdentity(current, lock.identity)) {
+    fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'ledger lock authority changed');
+  }
+  await ops.unlink(lock.path);
+  await syncDirectory(path.dirname(lock.path), ops);
+}
+
+async function removeOwnedLock(lockPath, identity, ops) {
+  if (!identity) return;
+  try {
+    const current = await ops.lstat(lockPath);
+    if (current.isFile() && sameIdentity(current, identity)) await ops.unlink(lockPath);
+  } catch {}
+}
+
+async function assertRegularLedger(ledgerPath, ops, { allowMissing = false } = {}) {
+  const authority = await lstatOrNull(ledgerPath, ops);
+  if (!authority) {
+    if (allowMissing) return null;
+    fail('PLAYBOOK_CHAPTER_LEDGER_MISSING', 'ledger', 'ledger not initialized');
+  }
+  if (!authority.isFile() || authority.isSymbolicLink()) privateAuthorityInvalid();
+  return authority;
+}
+
+async function lstatOrNull(target, ops) {
+  try {
+    return await ops.lstat(target);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw sanitizeReadError(error);
+  }
+}
+
+function sameIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function writeExclusiveStage(ledgerPath, bytes, ops) {
@@ -398,11 +542,7 @@ function assertExactObject(value, fields, valuePath) {
 }
 
 function publicWriteError(error) {
-  if (
-    error?.code === 'PLAYBOOK_CHAPTER_LEDGER_STALE'
-    || error?.code === 'PLAYBOOK_CHAPTER_LEDGER_EXISTS'
-    || error?.code === 'PLAYBOOK_CHAPTER_LEDGER_INVALID'
-  ) return error;
+  if (error?.code?.startsWith?.('PLAYBOOK_')) return error;
   try {
     fail('PLAYBOOK_CHAPTER_LEDGER_WRITE_FAILED', 'ledger', 'publication failed');
   } catch (publicError) {
@@ -425,6 +565,10 @@ function invalidLedger() {
 
 function evidenceInvalid() {
   fail('PLAYBOOK_CHAPTER_EVIDENCE_INVALID', 'evidence', 'expected hashes and counts only');
+}
+
+function privateAuthorityInvalid() {
+  fail('PLAYBOOK_PRIVATE_PATH_ESCAPE', 'privatePath', 'private storage rejected');
 }
 
 function fail(code, valuePath, detail) {

@@ -330,6 +330,165 @@ test('create refuses to reset an advanced ledger to pending', async (t) => {
   );
 });
 
+test('competing same-hash advances serialize so one update wins and one is stale', async (t) => {
+  const fixture = await ledgerFixture(t);
+  const secondBvid = fixture.chapterPlan.chapters[0].episodes[1].bvid;
+  const race = publicationRace(fixture.ledgerPath);
+  const firstFs = race.fsFor('first');
+  const secondFs = race.fsFor('second');
+
+  const first = advanceEpisodeStage({
+    projectRoot: fixture.projectRoot,
+    bvid: FIRST_BVID,
+    expectedLedgerSha256: fixture.created.ledger_sha256,
+    expectedStage: 'pending',
+    nextStage: 'media-verified',
+    evidence: EVIDENCE_BY_STAGE['media-verified'],
+    fsImpl: firstFs
+  });
+  await race.firstInitialRead;
+  const second = advanceEpisodeStage({
+    projectRoot: fixture.projectRoot,
+    bvid: secondBvid,
+    expectedLedgerSha256: fixture.created.ledger_sha256,
+    expectedStage: 'pending',
+    nextStage: 'media-verified',
+    evidence: {
+      media_sha256: '2'.repeat(64),
+      byte_size: 4321
+    },
+    fsImpl: secondFs
+  });
+  await oneTurn();
+  race.releaseFirstInitialRead();
+
+  const settled = await Promise.allSettled([first, second]);
+  assert.equal(settled.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal(settled.filter((result) => result.status === 'rejected').length, 1);
+  assert.equal(
+    settled.find((result) => result.status === 'rejected').reason.code,
+    'PLAYBOOK_CHAPTER_LEDGER_STALE'
+  );
+  const winner = settled.find((result) => result.status === 'fulfilled').value;
+  assert.equal(winner.status, 'updated');
+
+  const reopened = await readChapterLedger({ projectRoot: fixture.projectRoot });
+  assert.equal(reopened.ledger_sha256, winner.ledger_sha256);
+  assert.equal(
+    [FIRST_BVID, secondBvid].filter(
+      (bvid) => reopened.ledger.episodes[bvid].stage === 'media-verified'
+    ).length,
+    1
+  );
+});
+
+test('competing creates serialize absent initialization so only one plan is published', async (t) => {
+  const fixture = await ledgerFixture(t, { create: false });
+  const secondPlan = structuredClone(fixture.chapterPlan);
+  secondPlan.created_at = '2026-09-01T00:00:01.000Z';
+  const race = publicationRace(fixture.ledgerPath);
+
+  const first = createChapterLedger({
+    projectRoot: fixture.projectRoot,
+    chapterPlan: fixture.chapterPlan,
+    fsImpl: race.fsFor('first')
+  });
+  await race.firstInitialRead;
+  const second = createChapterLedger({
+    projectRoot: fixture.projectRoot,
+    chapterPlan: secondPlan,
+    fsImpl: race.fsFor('second')
+  });
+  await oneTurn();
+  race.releaseFirstInitialRead();
+
+  const settled = await Promise.allSettled([first, second]);
+  assert.equal(settled.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal(settled.filter((result) => result.status === 'rejected').length, 1);
+  assert.equal(
+    settled.find((result) => result.status === 'rejected').reason.code,
+    'PLAYBOOK_CHAPTER_LEDGER_EXISTS'
+  );
+  const winner = settled.find((result) => result.status === 'fulfilled').value;
+  assert.equal(winner.status, 'created');
+  assert.equal(
+    (await readChapterLedger({ projectRoot: fixture.projectRoot })).ledger_sha256,
+    winner.ledger_sha256
+  );
+});
+
+test('final ledger symlinks are rejected by create, read, and advance without outside writes', async (t) => {
+  for (const operation of ['create', 'read', 'advance']) {
+    await t.test(operation, async (t) => {
+      const fixture = await ledgerFixture(t);
+      const outsideRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), 'playbook-final-ledger-outside-')
+      );
+      t.after(() => fs.rm(outsideRoot, { recursive: true, force: true }));
+      const outsideLedger = path.join(outsideRoot, 'outside-ledger.json');
+      const original = await fs.readFile(fixture.ledgerPath);
+      await fs.writeFile(outsideLedger, original);
+      await fs.rm(fixture.ledgerPath);
+      await fs.symlink(outsideLedger, fixture.ledgerPath);
+
+      const invoke = operation === 'create'
+        ? () => createChapterLedger({
+          projectRoot: fixture.projectRoot,
+          chapterPlan: fixture.chapterPlan
+        })
+        : operation === 'read'
+          ? () => readChapterLedger({ projectRoot: fixture.projectRoot })
+          : () => advanceEpisodeStage({
+            projectRoot: fixture.projectRoot,
+            bvid: FIRST_BVID,
+            expectedLedgerSha256: fixture.created.ledger_sha256,
+            expectedStage: 'pending',
+            nextStage: 'media-verified',
+            evidence: EVIDENCE_BY_STAGE['media-verified']
+          });
+
+      let rejection;
+      try { await invoke(); } catch (error) { rejection = error; }
+      assert.equal(rejection?.code, 'PLAYBOOK_PRIVATE_PATH_ESCAPE');
+      assert.equal(String(rejection).includes(fixture.projectRoot), false);
+      assert.equal(String(rejection).includes(outsideRoot), false);
+      assert.equal((await fs.lstat(fixture.ledgerPath)).isSymbolicLink(), true);
+      assert.deepEqual(await fs.readFile(outsideLedger), original);
+    });
+  }
+});
+
+test('unchanged replay requires the exact prior transition evidence', async (t) => {
+  const fixture = await ledgerFixture(t);
+  const updated = await advanceEpisodeStage({
+    projectRoot: fixture.projectRoot,
+    bvid: FIRST_BVID,
+    expectedLedgerSha256: fixture.created.ledger_sha256,
+    expectedStage: 'pending',
+    nextStage: 'media-verified',
+    evidence: EVIDENCE_BY_STAGE['media-verified']
+  });
+  const before = await fs.readFile(fixture.ledgerPath);
+
+  for (const evidence of [
+    { byte_size: EVIDENCE_BY_STAGE['media-verified'].byte_size },
+    {
+      ...EVIDENCE_BY_STAGE['media-verified'],
+      media_copy_sha256: '2'.repeat(64)
+    }
+  ]) {
+    await assert.rejects(advanceEpisodeStage({
+      projectRoot: fixture.projectRoot,
+      bvid: FIRST_BVID,
+      expectedLedgerSha256: updated.ledger_sha256,
+      expectedStage: 'pending',
+      nextStage: 'media-verified',
+      evidence
+    }), { code: 'PLAYBOOK_CHAPTER_EVIDENCE_INVALID' });
+  }
+  assert.deepEqual(await fs.readFile(fixture.ledgerPath), before);
+});
+
 async function ledgerFixture(t, { create = true } = {}) {
   const projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'playbook-ledger-'));
   t.after(() => fs.rm(projectRoot, { recursive: true, force: true }));
@@ -368,4 +527,100 @@ function sortValue(value) {
     key,
     sortValue(value[key])
   ]));
+}
+
+function publicationRace(ledgerPath) {
+  const initialRead = deferred();
+  const releaseInitial = deferred();
+  const bothRenames = deferred();
+  const firstPublishedRead = deferred();
+  let renameArrivals = 0;
+  let renameTimer;
+
+  function fsFor(role) {
+    let initialObserved = false;
+    let renamed = false;
+    return new Proxy(fs, {
+      get(target, property, receiver) {
+        if (property === 'lstat') {
+          return async (targetPath, ...args) => {
+            try {
+              const value = await fs.lstat(targetPath, ...args);
+              if (String(targetPath) === ledgerPath && role === 'first' && !initialObserved) {
+                initialObserved = true;
+                initialRead.resolve();
+                await releaseInitial.promise;
+              }
+              if (String(targetPath) === ledgerPath && role === 'first' && renamed) {
+                firstPublishedRead.resolve();
+              }
+              return value;
+            } catch (error) {
+              if (String(targetPath) === ledgerPath && role === 'first' && !initialObserved) {
+                initialObserved = true;
+                initialRead.resolve();
+                await releaseInitial.promise;
+              }
+              throw error;
+            }
+          };
+        }
+        if (property === 'readFile') {
+          return async (targetPath, ...args) => {
+            try {
+              const value = await fs.readFile(targetPath, ...args);
+              if (String(targetPath) === ledgerPath && role === 'first' && !initialObserved) {
+                initialObserved = true;
+                initialRead.resolve();
+                await releaseInitial.promise;
+              }
+              if (String(targetPath) === ledgerPath && role === 'first' && renamed) {
+                firstPublishedRead.resolve();
+              }
+              return value;
+            } catch (error) {
+              if (String(targetPath) === ledgerPath && role === 'first' && !initialObserved) {
+                initialObserved = true;
+                initialRead.resolve();
+                await releaseInitial.promise;
+              }
+              throw error;
+            }
+          };
+        }
+        if (property === 'rename') {
+          return async (source, destination) => {
+            renameArrivals += 1;
+            if (renameArrivals === 1) {
+              renameTimer = setTimeout(() => bothRenames.resolve(), 50);
+            } else {
+              clearTimeout(renameTimer);
+              bothRenames.resolve();
+            }
+            await bothRenames.promise;
+            if (role === 'second') await firstPublishedRead.promise;
+            await fs.rename(source, destination);
+            renamed = true;
+          };
+        }
+        return Reflect.get(target, property, receiver);
+      }
+    });
+  }
+
+  return {
+    fsFor,
+    firstInitialRead: initialRead.promise,
+    releaseFirstInitialRead: releaseInitial.resolve
+  };
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((promiseResolve) => { resolve = promiseResolve; });
+  return { promise, resolve };
+}
+
+function oneTurn() {
+  return new Promise((resolve) => setImmediate(resolve));
 }
