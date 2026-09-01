@@ -25,9 +25,9 @@
 
 ## 接入建造工作流
 
-[`p7-advisory-v0.2.json`](../rules/schools/heihui-jileniao/p7-advisory-v0.2.json) 把第一章整理为 12 条有界的 `subtitle-derived-advisory` 建造意图。加载器固定学派、章节、6 个有效来源、条目数量、字段、设计层、长度和内容哈希；任何漂移都以 `P7_ADVISORY_INVALID` 失败。
+[`p7-advisory-v0.2.json`](../rules/schools/heihui-jileniao/p7-advisory-v0.2.json) 把第一章整理为 12 条有界的 `subtitle-derived-advisory` 建造意图。每条意图都保留 `author_claim`、`inference` 或 `contrast` 分类以及 BVID 时间范围。加载器固定学派、章节、6 个有效来源、条目数量、字段、设计层、长度和规范内容 SHA-256；用 `O_NOFOLLOW` 打开并复核 descriptor 身份，内容、来源、分类或引用漂移均以 `P7_ADVISORY_INVALID` 失败。
 
-`playbook=execute` 在创建三个候选的冻结设计前加载该 overlay，并把它作为 `intent-guidance-only-not-reviewed-rules` 传入 LLM 设计提示。它只能帮助形成 brief、massing、structure、roof 和 facade 意图：
+LLM `playbook=execute` 在创建三个候选的冻结设计前加载该 overlay，并把它作为 `intent-guidance-only-not-reviewed-rules` 传入设计 envelope。模型必须把精确 overlay SHA-256 回写到冻结设计；该文件的哈希随后进入 chain authority。经验证的 brief、massing、structure、roof 和 facade 意图会追加到 Architect、Planner 和 CreativeDesign 的实际输入，因此能够影响生成语义。Mock 不加载 overlay，也不改变原冻结输入。
 
 - 不能进入可选择或拒绝的 `rule:` ID 列表；
 - 不能改写冻结的 21 条 v0.1 审阅规则或其 corpus hash；
@@ -38,9 +38,10 @@
 
 所有 Node 测试均通过 `npm test -- ... --test-reporter=spec` 的 Linux hard-memory scope 运行；没有直接执行 `node --test`，没有使用 soft fallback。
 
-- P7 overlay 加载、漂移拒绝、规则权限隔离和 execute 传递：9/9 通过。
-- 冻结设计 envelope 合同：19/19 通过；与上述测试合并为 28/28。
+- P7 overlay 加载、no-follow、漂移拒绝、规则权限隔离、冻结哈希和 execute/mock 边界：13/13 通过。
+- 冻结设计 envelope 与 construction-stage 合同合并验证：38/38 通过。
 - 完整 execute orchestrator 回归：30/30 通过，包括 disposable root 的便携 datapack 生成/安装路径；未访问真实 Minecraft 世界。
+- `playbook=off` 冻结字节和 provider/install 向量兼容：4/4 通过。
 - P7 文档门禁：4/4 通过。
 
 ## ledger 与下一步

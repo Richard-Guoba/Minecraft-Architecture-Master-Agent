@@ -44,6 +44,7 @@ export async function prepareConstructionDesign({
   llmClient: injectedLlmClient
 } = {}) {
   if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
+  const designPrompt = buildPlaybookGuidedPrompt({ prompt, mode, frozenDesign });
 
   await ensureDir(outputDir);
   const llmClient = injectedLlmClient || createLlmClient({
@@ -52,9 +53,9 @@ export async function prepareConstructionDesign({
   });
   const llmProvider = mode === 'mock' ? 'disabled-by-mock-mode' : llmClient.name;
 
-  let architecture = await new ConstructionArchitectAgent({ llmClient, mode }).run(prompt);
-  const stylePreset = new StylePresetMemoryAgent().run(prompt, architecture);
-  const materialPalette = new MaterialPaletteAgent().run(prompt, architecture, stylePreset);
+  let architecture = await new ConstructionArchitectAgent({ llmClient, mode }).run(designPrompt);
+  const stylePreset = new StylePresetMemoryAgent().run(designPrompt, architecture);
+  const materialPalette = new MaterialPaletteAgent().run(designPrompt, architecture, stylePreset);
   architecture = {
     ...architecture,
     materials: materialPalette.materials,
@@ -64,8 +65,8 @@ export async function prepareConstructionDesign({
       material_palette: materialPalette.palette
     }
   };
-  let buildSpec = deriveBuildSpec(prompt, architecture, seed);
-  const templateKnowledge = new TemplateKnowledgeAgent({ cwd, neuralRetrieval }).run(prompt, architecture, buildSpec);
+  let buildSpec = deriveBuildSpec(designPrompt, architecture, seed);
+  const templateKnowledge = new TemplateKnowledgeAgent({ cwd, neuralRetrieval }).run(designPrompt, architecture, buildSpec);
   architecture = applyTemplateKnowledgeToArchitecture(architecture, templateKnowledge);
   if (architecture.generation_hints?.template_material_patch) {
     materialPalette.materials = architecture.materials;
@@ -74,9 +75,9 @@ export async function prepareConstructionDesign({
     materialPalette.roles = Object.keys(materialPalette.materials || {}).sort();
   }
   buildSpec = applyTemplateKnowledgeToBuildSpec(buildSpec, templateKnowledge);
-  let topology = await new ConstructionPlannerAgent({ llmClient, mode }).run(prompt, architecture, buildSpec);
+  let topology = await new ConstructionPlannerAgent({ llmClient, mode }).run(designPrompt, architecture, buildSpec);
   const conceptStudio = await runConceptStudio({
-    prompt,
+    prompt: designPrompt,
     mode,
     llmClient,
     architecture,
@@ -88,18 +89,20 @@ export async function prepareConstructionDesign({
     seed
   });
   let creativeDesign = await new CreativeDesignAgent({ llmClient, mode }).run(
-    prompt,
+    designPrompt,
     architecture,
     buildSpec,
     topology,
     { conceptStudio }
   );
-  ({ architecture, buildSpec, topology, creativeDesign } = applyCreativeDesign({ architecture, buildSpec, topology, creativeDesign, prompt }));
+  ({ architecture, buildSpec, topology, creativeDesign } = applyCreativeDesign({
+    architecture, buildSpec, topology, creativeDesign, prompt: designPrompt
+  }));
   const stage7Shadow = await runCoarseSemanticVoxelShadow({
     mode: coarseVoxelMode,
     provider: coarseVoxelProvider,
     artifactPath: coarseVoxelPlan,
-    prompt,
+    prompt: designPrompt,
     seed,
     architecture,
     buildSpec,
@@ -174,6 +177,20 @@ export async function prepareConstructionDesign({
   }
 
   return prepared;
+}
+
+export function buildPlaybookGuidedPrompt({ prompt, mode, frozenDesign } = {}) {
+  if (typeof prompt !== 'string' || mode === 'mock' || !frozenDesign) return prompt;
+  const authority = frozenDesign.advisory_overlay_sha256;
+  if (typeof authority !== 'string' || !Array.isArray(frozenDesign.layer_intents)) return prompt;
+  return [
+    prompt,
+    '',
+    'Architecture playbook design intent guidance (advisory; preserve the user request):',
+    `advisory_overlay_sha256=${authority}`,
+    `brief_intent=${frozenDesign.brief_intent}`,
+    ...frozenDesign.layer_intents.map((row) => `${row.layer}_intent=${row.intent}`)
+  ].join('\n');
 }
 
 export function buildFrozenGeneratorContext(value) {

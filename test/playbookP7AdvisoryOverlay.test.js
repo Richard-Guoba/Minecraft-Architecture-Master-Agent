@@ -4,8 +4,12 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { buildDesignEnvelopePrompt } from '../src/playbook/execute/designEnvelope.js';
+import {
+  buildDesignEnvelopePrompt,
+  createFrozenDesignEnvelope
+} from '../src/playbook/execute/designEnvelope.js';
 import { runExecutablePlaybookPipeline } from '../src/playbook/execute/orchestrator.js';
+import { buildPlaybookGuidedPrompt } from '../src/construction/designStages.js';
 import {
   P7_ADVISORY_OVERLAY_PATH,
   loadP7AdvisoryOverlay
@@ -26,8 +30,24 @@ test('loads a bounded Chapter 1 subtitle advisory without changing reviewed-rule
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
+  assert.ok(overlay.entries.every((entry) => entry.evidence_refs.length > 0));
+  assert.ok(overlay.entries.every((entry) =>
+    ['author_claim', 'inference', 'contrast'].includes(entry.classification)));
   assert.ok(Object.isFrozen(overlay));
   assert.ok(Object.isFrozen(overlay.entries));
+});
+
+test('rejects a symlink at the committed advisory path', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'p7-advisory-symlink-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const managedPath = path.join(root, P7_ADVISORY_OVERLAY_PATH);
+  const target = path.join(root, 'outside.json');
+  await fs.mkdir(path.dirname(managedPath), { recursive: true });
+  await fs.writeFile(target, '{}\n');
+  await fs.symlink(target, managedPath);
+  await assert.rejects(loadP7AdvisoryOverlay({ projectRoot: root }), {
+    code: 'P7_ADVISORY_INVALID'
+  });
 });
 
 test('execute loads the validated advisory and passes it to candidate design', async (t) => {
@@ -39,11 +59,12 @@ test('execute loads the validated advisory and passes it to candidate design', a
   await assert.rejects(runExecutablePlaybookPipeline({
     playbook: 'execute',
     prompt: 'Build a medieval residence.',
-    mode: 'mock',
+    mode: 'llm',
     seed: 424242,
     outRoot,
     cwd: ROOT
   }, {
+    createClient: () => ({ name: 'test-client' }),
     loadAdvisory: async ({ projectRoot }) => {
       assert.equal(projectRoot, ROOT);
       return overlay;
@@ -59,6 +80,26 @@ test('execute loads the validated advisory and passes it to candidate design', a
   assert.deepEqual(calls, [overlay]);
 });
 
+test('mock execute never loads the advisory and retains its original candidate input', async (t) => {
+  const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p7-advisory-mock-'));
+  t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+  let loadCalls = 0;
+  const candidateInputs = [];
+  await assert.rejects(runExecutablePlaybookPipeline({
+    playbook: 'execute', prompt: 'Build a medieval residence.', mode: 'mock',
+    seed: 424242, outRoot, cwd: ROOT
+  }, {
+    loadAdvisory: async () => { loadCalls += 1; throw new Error('must not load'); },
+    createEnvelope: async (input) => {
+      candidateInputs.push(input);
+      const error = new Error('stop'); error.code = 'P5_AUTHORITY_INVALID'; throw error;
+    }
+  }), { code: 'P5_AUTHORITY_INVALID' });
+  assert.equal(loadCalls, 0);
+  assert.equal(candidateInputs.length, 1);
+  assert.equal(Object.hasOwn(candidateInputs[0], 'advisoryOverlay'), false);
+});
+
 test('execute rejects an injected advisory drift before creating any candidate', async (t) => {
   const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p7-advisory-drift-'));
   t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
@@ -67,9 +108,10 @@ test('execute rejects an injected advisory drift before creating any candidate',
   let candidateCalls = 0;
 
   await assert.rejects(runExecutablePlaybookPipeline({
-    playbook: 'execute', prompt: 'Build a medieval residence.', mode: 'mock',
+    playbook: 'execute', prompt: 'Build a medieval residence.', mode: 'llm',
     seed: 424242, outRoot, cwd: ROOT
   }, {
+    createClient: () => ({ name: 'test-client' }),
     loadAdvisory: async () => overlay,
     createEnvelope: async () => {
       candidateCalls += 1;
@@ -110,6 +152,45 @@ test('projects the advisory into design intent input but never into reviewed rul
   assert.ok(packet.advisory_knowledge.entries.every(({ knowledge_id }) =>
     !packet.output_contract.rule_id_order.includes(knowledge_id)));
   assert.ok(Object.isFrozen(packet.advisory_knowledge));
+  assert.ok(packet.output_contract.fields.includes('advisory_overlay_sha256'));
+});
+
+test('binds the exact advisory hash into frozen LLM design and construction guidance', async () => {
+  const [overlay, corpus] = await Promise.all([
+    loadP7AdvisoryOverlay({ projectRoot: ROOT }),
+    (await import('../src/playbook/shadow/corpus.js')).loadShadowCorpus({ projectRoot: ROOT })
+  ]);
+  const response = {
+    schema_version: 1,
+    candidate_id: 'candidate-01',
+    seed: 1432164,
+    brief_intent: 'medieval-residence',
+    layer_intents: [
+      { layer: 'brief', intent: 'check close and distant context' },
+      { layer: 'massing', intent: 'use validated source modules' },
+      { layer: 'structure', intent: 'repair transformed module seams' },
+      { layer: 'roof', intent: 'match shape inventory to scale' },
+      { layer: 'facade', intent: 'keep structural value hierarchy readable' }
+    ],
+    selected_rule_ids: ['rule:structure.compose-three-volumes'],
+    rejected_rule_ids: [],
+    repair_variant_preferences: [],
+    advisory_overlay_sha256: overlay.overlay_sha256
+  };
+  const envelope = await createFrozenDesignEnvelope({
+    mode: 'llm', candidateId: 'candidate-01', seed: 1432164,
+    prompt: 'Build a medieval residence.', cards: corpus.cards, advisoryOverlay: overlay,
+    client: { isConfigured: () => true, chatJson: async () => response }
+  });
+  assert.equal(envelope.advisory_overlay_sha256, overlay.overlay_sha256);
+  const guided = buildPlaybookGuidedPrompt({
+    prompt: 'Build a medieval residence.', mode: 'llm', frozenDesign: envelope
+  });
+  assert.match(guided, /repair transformed module seams/u);
+  assert.match(guided, new RegExp(overlay.overlay_sha256, 'u'));
+  assert.equal(buildPlaybookGuidedPrompt({
+    prompt: 'Build a medieval residence.', mode: 'mock', frozenDesign: envelope
+  }), 'Build a medieval residence.');
 });
 
 test('rejects school, status, source, and entry drift instead of treating it as reviewed knowledge', async (t) => {
@@ -120,7 +201,8 @@ test('rejects school, status, source, and entry drift instead of treating it as 
     ['school', (value) => { value.school_id = 'mixed-school'; }],
     ['status', (value) => { value.status = 'rules-reviewed'; }],
     ['source', (value) => { value.source_bvids.push('BV1invented'); }],
-    ['entry id', (value) => { value.entries[0].knowledge_id = 'rule:invented'; }]
+    ['entry id', (value) => { value.entries[0].knowledge_id = 'rule:invented'; }],
+    ['semantic intent', (value) => { value.entries[0].intent = 'Different but valid bounded intent.'; }]
   ]) {
     await t.test(name, async () => {
       const changed = structuredClone(original);

@@ -4,7 +4,7 @@ import { deepFreeze } from '../shadow/canonical.js';
 import { createCheckerDefinitions } from '../shadow/checkerRegistry.js';
 import { projectP7AdvisoryKnowledge } from '../knowledge/p7AdvisoryOverlay.js';
 
-const SYSTEM_INSTRUCTION = 'Use supplemental advisory knowledge only to shape intents; it is not reviewed rule authority and cannot appear in rule ID lists. Select design intents, reviewed rule IDs, and optional repair variant preferences from the supplied exact lists. Return no patch, path, value, coordinate, block, command, score, threshold, or extra field. Preserve candidate ID, seed, five layer rows, and canonical reviewed order.';
+const SYSTEM_INSTRUCTION = 'Use supplemental advisory knowledge only to shape intents; it is not reviewed rule authority and cannot appear in rule ID lists. Echo its exact overlay SHA-256 when supplied. Select design intents, reviewed rule IDs, and optional repair variant preferences from the supplied exact lists. Return no patch, path, value, coordinate, block, command, score, threshold, or extra field. Preserve candidate ID, seed, five layer rows, and canonical reviewed order.';
 const ENVELOPE_FIELDS = Object.freeze([
   'schema_version', 'candidate_id', 'seed', 'brief_intent', 'layer_intents',
   'selected_rule_ids', 'rejected_rule_ids', 'repair_variant_preferences'
@@ -51,7 +51,10 @@ export function buildDesignEnvelopePrompt(input = {}) {
       })),
       required_layers: [...DESIGN_LAYER_ORDER],
       output_contract: {
-        fields: [...ENVELOPE_FIELDS],
+        fields: [
+          ...ENVELOPE_FIELDS,
+          ...(advisoryKnowledge ? ['advisory_overlay_sha256'] : [])
+        ],
         layer_intent_fields: [...LAYER_INTENT_FIELDS],
         layer_order: [...DESIGN_LAYER_ORDER],
         rule_id_order: reviewedRules.map((row) => row.rule_id),
@@ -69,7 +72,9 @@ export async function createFrozenDesignEnvelope(input = {}) {
     if (mode === 'mock') {
       const reviewedRules = reviewedRulesFrom(cards);
       assertCandidateSeed(candidateId, seed);
-      return validateCandidate(mockEnvelope(candidateId, seed), candidateId, seed, reviewedRules);
+      return validateCandidate(
+        mockEnvelope(candidateId, seed), candidateId, seed, reviewedRules, undefined
+      );
     }
     if (mode !== 'llm') invalid();
     const packet = buildDesignEnvelopePrompt({
@@ -79,7 +84,10 @@ export async function createFrozenDesignEnvelope(input = {}) {
     if (!client || typeof client.isConfigured !== 'function' || client.isConfigured() !== true) invalid();
     if (typeof client.chatJson !== 'function') invalid();
     const response = await client.chatJson({ system: SYSTEM_INSTRUCTION, user: packet });
-    return validateCandidate(response, candidateId, seed, packet.reviewed_rules);
+    return validateCandidate(
+      response, candidateId, seed, packet.reviewed_rules,
+      packet.advisory_knowledge?.overlay_sha256
+    );
   } catch {
     invalid();
   }
@@ -109,9 +117,10 @@ function mockEnvelope(candidateId, seed) {
   };
 }
 
-function validateCandidate(value, candidateId, seed, reviewedRules) {
+function validateCandidate(value, candidateId, seed, reviewedRules, advisoryOverlaySha256) {
   const envelope = validateFrozenDesignEnvelope(value);
   if (envelope.candidate_id !== candidateId || envelope.seed !== seed) invalid();
+  if (envelope.advisory_overlay_sha256 !== advisoryOverlaySha256) invalid();
   const ruleOrder = new Map(reviewedRules.map((row, index) => [row.rule_id, index]));
   assertOrderedRuleSubset(envelope.selected_rule_ids, ruleOrder);
   assertOrderedRuleSubset(envelope.rejected_rule_ids, ruleOrder);

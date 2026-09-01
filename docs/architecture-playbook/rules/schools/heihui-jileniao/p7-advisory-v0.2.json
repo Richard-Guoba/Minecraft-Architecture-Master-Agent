@@ -17,73 +17,97 @@
       "knowledge_id": "knowledge:p7:relative-module-transform",
       "design_layers": ["massing", "structure", "roof", "facade"],
       "intent": "Define reusable parts from a relative anchor; instantiate them with explicit translation, discrete rotation or mirroring, and preserve occupied target structure with a non-air placement mask.",
-      "source_bvids": ["BV1aBV1zwELe"]
+      "source_bvids": ["BV1aBV1zwELe"],
+      "classification": "inference",
+      "evidence_refs": ["BV1aBV1zwELe@484-695"]
     },
     {
       "knowledge_id": "knowledge:p7:ordered-terrain-passes",
       "design_layers": ["brief", "massing"],
       "intent": "Establish large terrain form first, smooth and connect it second, and add bounded deterministic texture last; checkpoint before every bulk pass.",
-      "source_bvids": ["BV1aBV1zwELe", "BV1cLJtz1ELx"]
+      "source_bvids": ["BV1aBV1zwELe", "BV1cLJtz1ELx"],
+      "classification": "inference",
+      "evidence_refs": ["BV1aBV1zwELe@697-766", "BV1aBV1zwELe@1396-1575", "BV1cLJtz1ELx@1411-1621"]
     },
     {
       "knowledge_id": "knowledge:p7:close-distant-evaluation",
       "design_layers": ["brief", "massing", "facade"],
       "intent": "Use close evaluation for entrances and joins and distant compressed evaluation for silhouette, proportion, palette blocks and context; do not rely on showcase lighting alone.",
-      "source_bvids": ["BV1SwdfBHEx5"]
+      "source_bvids": ["BV1SwdfBHEx5"],
+      "classification": "author_claim",
+      "evidence_refs": ["BV1SwdfBHEx5@51-94", "BV1SwdfBHEx5@202-250"]
     },
     {
       "knowledge_id": "knowledge:p7:palette-ramp",
       "design_layers": ["roof", "facade"],
       "intent": "Organize related materials as an ordered hue, value or temperature ramp with a deliberate direction instead of sampling an unordered random pool.",
-      "source_bvids": ["BV1SwdfBHEx5", "BV14XMtzFEzb"]
+      "source_bvids": ["BV1SwdfBHEx5", "BV14XMtzFEzb"],
+      "classification": "inference",
+      "evidence_refs": ["BV1SwdfBHEx5@130-170", "BV14XMtzFEzb@668-773"]
     },
     {
       "knowledge_id": "knowledge:p7:exterior-before-interior",
       "design_layers": ["structure", "facade"],
       "intent": "Validate the exterior shell before the interior pass; keep hidden lighting and other utility blocks on a separate layer that cannot leak into visible surfaces.",
-      "source_bvids": ["BV1SG6GY9ETe"]
+      "source_bvids": ["BV1SG6GY9ETe"],
+      "classification": "inference",
+      "evidence_refs": ["BV1SG6GY9ETe@12-47", "BV1SG6GY9ETe@326-447"]
     },
     {
       "knowledge_id": "knowledge:p7:stateful-component",
       "design_layers": ["structure", "facade"],
       "intent": "Reuse semantic components with their allowed orientation, connection and state fields, not only a block ID, and bind each component to its architectural role.",
-      "source_bvids": ["BV1SG6GY9ETe"]
+      "source_bvids": ["BV1SG6GY9ETe"],
+      "classification": "inference",
+      "evidence_refs": ["BV1SG6GY9ETe@47-167", "BV1SG6GY9ETe@236-299"]
     },
     {
       "knowledge_id": "knowledge:p7:visual-material-role",
       "design_layers": ["structure", "roof", "facade"],
       "intent": "Assign frame, support, infill, surface and accent materials by per-face texture direction, continuity, border strength and visual weight rather than rarity or game name.",
-      "source_bvids": ["BV1iVLbzcEfG"]
+      "source_bvids": ["BV1iVLbzcEfG"],
+      "classification": "inference",
+      "evidence_refs": ["BV1iVLbzcEfG@17-53", "BV1iVLbzcEfG@321-540"]
     },
     {
       "knowledge_id": "knowledge:p7:scale-sensitive-material",
       "design_layers": ["massing", "roof", "facade"],
       "intent": "At small scale prioritize individual texture joins and available stair, slab and wall shapes; at large scale and distance prioritize the composition of major color fields.",
-      "source_bvids": ["BV1iVLbzcEfG", "BV14XMtzFEzb"]
+      "source_bvids": ["BV1iVLbzcEfG", "BV14XMtzFEzb"],
+      "classification": "inference",
+      "evidence_refs": ["BV1iVLbzcEfG@597-629", "BV14XMtzFEzb@390-464", "BV14XMtzFEzb@917-974"]
     },
     {
       "knowledge_id": "knowledge:p7:validated-source-module",
       "design_layers": ["massing", "structure", "roof", "facade"],
       "intent": "Extract a source module only after its mass, opening and structural role work in the whole; record connection faces and repair gaps, overlaps, corners and support lines after transformation.",
-      "source_bvids": ["BV1cLJtz1ELx"]
+      "source_bvids": ["BV1cLJtz1ELx"],
+      "classification": "inference",
+      "evidence_refs": ["BV1cLJtz1ELx@313-413", "BV1cLJtz1ELx@431-917"]
     },
     {
       "knowledge_id": "knowledge:p7:controlled-module-variation",
       "design_layers": ["massing", "roof", "facade"],
       "intent": "Keep repeated instances visibly related while varying selected width, height, opening, material or detail-density parameters; decoration must not conceal a weak repeated shell.",
-      "source_bvids": ["BV1cLJtz1ELx"]
+      "source_bvids": ["BV1cLJtz1ELx"],
+      "classification": "contrast",
+      "evidence_refs": ["BV1cLJtz1ELx@97-270", "BV1cLJtz1ELx@538-917"]
     },
     {
       "knowledge_id": "knowledge:p7:structural-value-hierarchy",
       "design_layers": ["structure", "roof", "facade"],
       "intent": "Give roof, frame, infill, base and accent explicit palette roles; use coordinated value contrast so structural lines remain readable without unrelated high-contrast noise.",
-      "source_bvids": ["BV14XMtzFEzb"]
+      "source_bvids": ["BV14XMtzFEzb"],
+      "classification": "author_claim",
+      "evidence_refs": ["BV14XMtzFEzb@79-124", "BV14XMtzFEzb@127-179"]
     },
     {
       "knowledge_id": "knowledge:p7:context-and-accent-echo",
       "design_layers": ["brief", "facade"],
       "intent": "Separate the building from ground and neighboring masses through value, hue, saturation or edge contrast; repeat a focal accent more quietly in subordinate locations so it reads as intentional.",
-      "source_bvids": ["BV14XMtzFEzb"]
+      "source_bvids": ["BV14XMtzFEzb"],
+      "classification": "inference",
+      "evidence_refs": ["BV14XMtzFEzb@302-371", "BV14XMtzFEzb@668-773", "BV14XMtzFEzb@974-1015"]
     }
   ]
 }

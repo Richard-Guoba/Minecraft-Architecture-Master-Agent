@@ -23,16 +23,18 @@ test('workflow re-exports the dependency-neutral build-spec implementation', () 
 test('prepareConstructionDesign preserves architect, planner, creative provider order and freezes only canonical context', async () => {
   const root = path.resolve('.tmp', `construction-design-stages-${Date.now()}-${Math.random()}`);
   const calls = [];
+  const users = [];
   const originalProvider = process.env.LLM_PROVIDER;
   process.env.LLM_PROVIDER = 'must-not-create-a-second-client';
   const llmClient = {
     name: 'configured-test-client',
     isConfigured: () => true,
-    async chatJson({ system }) {
+    async chatJson({ system, user }) {
       const label = system.includes('建筑架构师') ? 'architect'
         : system.includes('平面规划') ? 'planner'
           : 'creative';
       calls.push(label);
+      users.push(JSON.stringify(user));
       throw new Error(`force-${label}-fallback`);
     }
   };
@@ -45,10 +47,23 @@ test('prepareConstructionDesign preserves architect, planner, creative provider 
       seed: 424242,
       candidateId: 'candidate-01',
       frozenDesignSha256: HASH,
+      frozenDesign: {
+        advisory_overlay_sha256: HASH,
+        brief_intent: 'use-course-knowledge',
+        layer_intents: [
+          { layer: 'brief', intent: 'check distant context' },
+          { layer: 'massing', intent: 'validate source modules' },
+          { layer: 'structure', intent: 'repair module seams' },
+          { layer: 'roof', intent: 'match shapes to scale' },
+          { layer: 'facade', intent: 'preserve value hierarchy' }
+        ]
+      },
       llmClient
     });
 
     assert.deepEqual(calls, ['architect', 'planner', 'creative']);
+    assert.ok(users.every((user) => user.includes('repair module seams')));
+    assert.ok(users.every((user) => user.includes(HASH)));
     assert.deepEqual(Object.keys(prepared.frozen_generator_context), [
       'schema_version', 'candidate_id', 'seed', 'frozen_design_sha256', 'architecture',
       'topology', 'creative_design', 'concept_studio', 'stage7_shadow', 'build_spec',

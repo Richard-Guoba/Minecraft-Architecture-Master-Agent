@@ -1,4 +1,5 @@
-import fs from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { lstat, open } from 'node:fs/promises';
 import path from 'node:path';
 
 import { deepFreeze, sha256, stableJson } from '../shadow/canonical.js';
@@ -11,7 +12,8 @@ const TOP_FIELDS = Object.freeze([
   'source_bvids', 'entries'
 ]);
 const ENTRY_FIELDS = Object.freeze([
-  'knowledge_id', 'design_layers', 'intent', 'source_bvids'
+  'knowledge_id', 'design_layers', 'intent', 'source_bvids', 'classification',
+  'evidence_refs'
 ]);
 const EXPECTED_SOURCES = Object.freeze([
   'BV1aBV1zwELe', 'BV1SwdfBHEx5', 'BV1SG6GY9ETe',
@@ -19,20 +21,43 @@ const EXPECTED_SOURCES = Object.freeze([
 ]);
 const LAYERS = new Set(['brief', 'massing', 'structure', 'roof', 'facade']);
 const ID = /^knowledge:p7:[a-z0-9][a-z0-9-]*$/u;
+const EVIDENCE_REF = /^(BV[0-9A-Za-z]+)@[0-9]+-[0-9]+$/u;
+const CLASSIFICATIONS = new Set(['author_claim', 'inference', 'contrast']);
+const EXPECTED_OVERLAY_SHA256 = 'd21f94d3727fe69de0827b674a3d9fa93e67ffc0b374f66bc22d1de46603e9f1';
 
-export async function loadP7AdvisoryOverlay({ projectRoot, readFile = fs.readFile } = {}) {
+export async function loadP7AdvisoryOverlay({ projectRoot, readFile } = {}) {
   try {
     const root = path.resolve(projectRoot || process.cwd());
-    const raw = await readFile(path.join(root, P7_ADVISORY_OVERLAY_PATH), 'utf8');
+    const raw = readFile
+      ? await readFile(P7_ADVISORY_OVERLAY_PATH)
+      : await readDescriptorSafely(root, P7_ADVISORY_OVERLAY_PATH);
     const value = JSON.parse(String(raw));
     validateOverlay(value);
+    const overlaySha256 = sha256(stableJson(value));
+    if (overlaySha256 !== EXPECTED_OVERLAY_SHA256) throw invalid();
     return deepFreeze({
       ...value,
-      overlay_sha256: sha256(stableJson(value))
+      overlay_sha256: overlaySha256
     });
   } catch (error) {
     if (error?.code === 'P7_ADVISORY_INVALID') throw error;
     throw invalid();
+  }
+}
+
+async function readDescriptorSafely(projectRoot, relativePath) {
+  const filePath = path.resolve(projectRoot, relativePath);
+  const before = await lstat(filePath);
+  if (!before.isFile() || before.isSymbolicLink()) throw invalid();
+  const descriptor = await open(filePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  try {
+    const opened = await descriptor.stat();
+    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino) {
+      throw invalid();
+    }
+    return await descriptor.readFile();
+  } finally {
+    await descriptor.close();
   }
 }
 
@@ -78,7 +103,15 @@ function validateOverlay(value) {
       || entry.intent.includes('.local/architecture-playbook')
       || !Array.isArray(entry.source_bvids) || entry.source_bvids.length === 0
       || entry.source_bvids.some((bvid, index) => !EXPECTED_SOURCES.includes(bvid)
-        || entry.source_bvids.indexOf(bvid) !== index)) throw invalid();
+        || entry.source_bvids.indexOf(bvid) !== index)
+      || !CLASSIFICATIONS.has(entry.classification)
+      || !Array.isArray(entry.evidence_refs) || entry.evidence_refs.length === 0
+      || entry.evidence_refs.some((reference) => {
+        const match = EVIDENCE_REF.exec(reference);
+        return !match || !entry.source_bvids.includes(match[1]);
+      })
+      || entry.source_bvids.some((bvid) =>
+        !entry.evidence_refs.some((reference) => reference.startsWith(`${bvid}@`)))) throw invalid();
     ids.add(entry.knowledge_id);
   }
 }

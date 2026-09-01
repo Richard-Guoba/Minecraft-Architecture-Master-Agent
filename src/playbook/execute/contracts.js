@@ -152,7 +152,11 @@ export function validateExecuteOptions(options = {}) {
 }
 
 export function validateFrozenDesignEnvelope(value) {
-  const data = canonicalObject(value, FROZEN_DESIGN_FIELDS, 'P5_DESIGN_INVALID');
+  const hasAdvisory = value && Object.hasOwn(value, 'advisory_overlay_sha256');
+  const data = canonicalObject(value, [
+    ...FROZEN_DESIGN_FIELDS,
+    ...(hasAdvisory ? ['advisory_overlay_sha256'] : [])
+  ], 'P5_DESIGN_INVALID');
   assertSchemaVersion(data, 'P5_DESIGN_INVALID');
   assertCandidateId(data.candidate_id, 'P5_DESIGN_INVALID');
   assertSeed(data.seed, 'P5_DESIGN_INVALID');
@@ -161,6 +165,7 @@ export function validateFrozenDesignEnvelope(value) {
   assertUniqueIds(data.selected_rule_ids, RULE_ID, 'P5_DESIGN_INVALID');
   assertUniqueIds(data.rejected_rule_ids, RULE_ID, 'P5_DESIGN_INVALID');
   assertDistinct(data.selected_rule_ids, data.rejected_rule_ids, 'P5_DESIGN_INVALID');
+  if (hasAdvisory) assertHash(data.advisory_overlay_sha256, 'P5_DESIGN_INVALID');
   assertArray(data.repair_variant_preferences, 'P5_DESIGN_INVALID');
   const seen = new Set();
   for (const preference of data.repair_variant_preferences) {

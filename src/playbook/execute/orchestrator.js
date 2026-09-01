@@ -71,9 +71,12 @@ export async function runExecutablePlaybookPipeline(options = {}, dependencies =
     const { runDir } = created;
     stage = 'corpus';
     const cards = (await deps.loadCorpus({ projectRoot })).cards;
-    stage = 'advisory';
-    const advisoryOverlay = await deps.loadAdvisory({ projectRoot });
-    projectP7AdvisoryKnowledge(advisoryOverlay);
+    let advisoryOverlay;
+    if (normalized.mode === 'llm') {
+      stage = 'advisory';
+      advisoryOverlay = await deps.loadAdvisory({ projectRoot });
+      projectP7AdvisoryKnowledge(advisoryOverlay);
+    }
     stage = 'candidates';
     const records = [];
     for (let index = 1; index <= 3; index += 1) records.push(await executeCandidate({
@@ -151,7 +154,7 @@ async function executeCandidate({
       : deps.createClient({ cwd: projectRoot, provider: normalized.llmProvider });
     frozenDesign = await deps.createEnvelope({
       mode: normalized.mode, candidateId, seed, prompt: normalized.prompt, cards,
-      advisoryOverlay, client
+      ...(advisoryOverlay ? { advisoryOverlay } : {}), client
     });
     frozenDesignSha256 = sha256(stableJson(frozenDesign));
     prepared = await deps.prepareDesign({ prompt: normalized.prompt, mode: normalized.mode, mcVersion: normalized.mcVersion,
