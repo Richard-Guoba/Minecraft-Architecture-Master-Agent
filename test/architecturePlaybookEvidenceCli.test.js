@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -12,34 +13,102 @@ import {
   resolveEpisodePlayback
 } from '../src/playbook/course/episodeMedia.js';
 
-const EPISODE = Object.freeze({
-  bvid: 'BV1fNkgYBEyy',
-  cid: 27418560409,
-  duration_seconds: 587,
-  metadata_fingerprint_sha256: 'ce0e4cc091e393333317e882c614569e5fdc0283f7e170a0d14b9055304e2c6a'
+const ROOT = path.resolve(import.meta.dirname, '..');
+const CLI_CONTEXT = Object.freeze({
+  projectRoot: '/tmp/playbook-cli-fixture',
+  courseManifest: readJson(path.join(
+    ROOT,
+    'docs/architecture-playbook/course/course-manifest.json'
+  )),
+  chapterPlan: readJson(path.join(
+    ROOT,
+    'docs/architecture-playbook/course/chapter-plan-v1.json'
+  ))
 });
+const PILOT_EPISODE_IDENTITIES = Object.freeze([
+  Object.freeze({
+    course_order: 8,
+    bvid: 'BV1fNkgYBEyy',
+    cid: 27418560409,
+    duration_seconds: 587,
+    metadata_fingerprint_sha256:
+      'ce0e4cc091e393333317e882c614569e5fdc0283f7e170a0d14b9055304e2c6a'
+  }),
+  Object.freeze({
+    course_order: 9,
+    bvid: 'BV1HhEuzZEyZ',
+    cid: 29903029909,
+    duration_seconds: 781,
+    metadata_fingerprint_sha256:
+      '7b5c63d1b2ab64f4a61782ed9c24565302ea6c26242ed9c34e381e121b85b42e'
+  }),
+  Object.freeze({
+    course_order: 13,
+    bvid: 'BV1WhkbYeE5k',
+    cid: 27454801403,
+    duration_seconds: 1239,
+    metadata_fingerprint_sha256:
+      '1e8e082b7f627bc9d925d3b0f8b1d47192675ecc5767d5af637822fabfe5022f'
+  }),
+  Object.freeze({
+    course_order: 16,
+    bvid: 'BV1HTCaY6EDt',
+    cid: 27575124287,
+    duration_seconds: 1067,
+    metadata_fingerprint_sha256:
+      'df381dd8db5478abe93fc52984dc80d8411e9f02a5765cdbd427292883e59c49'
+  }),
+  Object.freeze({
+    course_order: 44,
+    bvid: 'BV1WsZcYZEMQ',
+    cid: 29129180211,
+    duration_seconds: 1073,
+    metadata_fingerprint_sha256:
+      '0bb5faf8eb4974e1afebd1eae27b2b69be24af8a3e005f406ee60dd48cbb8a0e'
+  }),
+  Object.freeze({
+    course_order: 45,
+    bvid: 'BV1jbdUYCEjG',
+    cid: 29354033993,
+    duration_seconds: 2634,
+    metadata_fingerprint_sha256:
+      '76af2f78176f1fae1c79bc73039ba02b4671cf92f38b3bc2121a4e32254ab95e'
+  })
+]);
+const EPISODE = PILOT_EPISODE_IDENTITIES[0];
 const MEDIA_BYTES = Buffer.from('fixture-mp4-bytes');
 const OBSERVED_AT = '2026-08-25T13:00:00.000Z';
 
-test('evidence CLI accepts media only for the approved pilot set', () => {
-  const parsed = parseArchitecturePlaybookEvidenceArgs([
+test('evidence CLI preserves all six pilot media identities', () => {
+  for (const expected of PILOT_EPISODE_IDENTITIES) {
+    const parsed = parseArchitecturePlaybookEvidenceArgs([
+      'media',
+      '--bvid',
+      expected.bvid
+    ], CLI_CONTEXT);
+
+    assert.equal(parsed.command, 'media');
+    assert.equal(parsed.bvid, expected.bvid);
+    assert.equal(parsed.replace, false);
+    assert.deepEqual(pickAcquisitionIdentity(parsed.episode), expected);
+  }
+});
+
+test('evidence CLI rejects a chapter-plan BVID redirect', () => {
+  const redirected = structuredClone(CLI_CONTEXT.chapterPlan);
+  redirected.chapters[1].episodes[0].bvid =
+    redirected.chapters[1].episodes[1].bvid;
+
+  assert.throws(() => parseArchitecturePlaybookEvidenceArgs([
     'media',
     '--bvid',
     EPISODE.bvid
-  ], { projectRoot: '/tmp/playbook-cli-fixture' });
-
-  assert.equal(parsed.command, 'media');
-  assert.equal(parsed.bvid, EPISODE.bvid);
-  assert.equal(parsed.replace, false);
-
-  assert.throws(
-    () => parseArchitecturePlaybookEvidenceArgs([
-      'media',
-      '--bvid',
-      'BV1SN9xBWEmF'
-    ], { projectRoot: '/tmp/playbook-cli-fixture' }),
-    /PLAYBOOK_PILOT_BVID_INVALID/u
-  );
+  ], {
+    ...CLI_CONTEXT,
+    chapterPlan: redirected
+  }), {
+    code: 'PLAYBOOK_CHAPTER_SOURCE_DRIFT'
+  });
 });
 
 test('evidence CLI routes local processor commands without media replacement', () => {
@@ -47,17 +116,17 @@ test('evidence CLI routes local processor commands without media replacement', (
     'transcribe',
     '--bvid',
     EPISODE.bvid
-  ], { projectRoot: '/tmp/playbook-cli-fixture' });
+  ], CLI_CONTEXT);
   const frames = parseArchitecturePlaybookEvidenceArgs([
     'frames',
     '--bvid',
     EPISODE.bvid
-  ], { projectRoot: '/tmp/playbook-cli-fixture' });
+  ], CLI_CONTEXT);
   const pack = parseArchitecturePlaybookEvidenceArgs([
     'pack',
     '--bvid',
     EPISODE.bvid
-  ], { projectRoot: '/tmp/playbook-cli-fixture' });
+  ], CLI_CONTEXT);
 
   assert.equal(transcribe.command, 'transcribe');
   assert.equal(frames.command, 'frames');
@@ -68,7 +137,7 @@ test('evidence CLI routes local processor commands without media replacement', (
       '--bvid',
       EPISODE.bvid,
       '--replace'
-    ], { projectRoot: '/tmp/playbook-cli-fixture' }),
+    ], CLI_CONTEXT),
     /PLAYBOOK_EVIDENCE_ARGUMENT_INVALID_FOR_COMMAND/u
   );
 });
@@ -196,4 +265,18 @@ function playbackFetch({ directBvid = EPISODE.bvid } = {}) {
     }
     return new Response('not found', { status: 404 });
   };
+}
+
+function pickAcquisitionIdentity(episode) {
+  return {
+    course_order: episode.course_order,
+    bvid: episode.bvid,
+    cid: episode.cid,
+    duration_seconds: episode.duration_seconds,
+    metadata_fingerprint_sha256: episode.metadata_fingerprint_sha256
+  };
+}
+
+function readJson(filePath) {
+  return JSON.parse(readFileSync(filePath, 'utf8'));
 }

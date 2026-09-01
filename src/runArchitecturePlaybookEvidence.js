@@ -1,11 +1,12 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { acquireEpisodeMedia } from './playbook/course/episodeMedia.js';
+import { getChapterEpisodeIdentity } from './playbook/course/chapterPlan.js';
 import {
   runFrameExtraction,
   runTranscription
 } from './playbook/course/localEvidenceProcessor.js';
-import { getPilotEpisodeIdentity } from './playbook/course/pilotEpisodeSet.js';
 import { failPlaybookContract } from './playbook/contracts/playbookContractError.js';
 import {
   compileLocalEvidencePack
@@ -13,10 +14,18 @@ import {
 
 const VALUE_OPTIONS = new Set(['--bvid']);
 const BOOLEAN_OPTIONS = new Set(['--replace']);
+const COURSE_MANIFEST_PATH =
+  'docs/architecture-playbook/course/course-manifest.json';
+const CHAPTER_PLAN_PATH =
+  'docs/architecture-playbook/course/chapter-plan-v1.json';
 
 export function parseArchitecturePlaybookEvidenceArgs(
   argv,
-  { projectRoot = path.resolve(import.meta.dirname, '..') } = {}
+  {
+    projectRoot = path.resolve(import.meta.dirname, '..'),
+    courseManifest,
+    chapterPlan
+  } = {}
 ) {
   const command = argv[0];
   if (!['media', 'transcribe', 'frames', 'pack'].includes(command)) {
@@ -65,7 +74,11 @@ export function parseArchitecturePlaybookEvidenceArgs(
       'missing option'
     );
   }
-  const episode = getPilotEpisodeIdentity(values.get('--bvid'));
+  const episode = getChapterEpisodeIdentity({
+    chapterPlan,
+    courseManifest,
+    bvid: values.get('--bvid')
+  });
   if (command !== 'media' && values.has('--replace')) {
     failPlaybookContract(
       'PLAYBOOK_EVIDENCE_ARGUMENT_INVALID_FOR_COMMAND',
@@ -86,7 +99,15 @@ export async function main(argv = process.argv.slice(2)) {
   const projectRoot = process.env.PLAYBOOK_PROJECT_ROOT
     ? path.resolve(process.env.PLAYBOOK_PROJECT_ROOT)
     : path.resolve(import.meta.dirname, '..');
-  const options = parseArchitecturePlaybookEvidenceArgs(argv, { projectRoot });
+  const [courseManifest, chapterPlan] = await Promise.all([
+    readJson(path.join(projectRoot, COURSE_MANIFEST_PATH)),
+    readJson(path.join(projectRoot, CHAPTER_PLAN_PATH))
+  ]);
+  const options = parseArchitecturePlaybookEvidenceArgs(argv, {
+    projectRoot,
+    courseManifest,
+    chapterPlan
+  });
   if (options.command === 'media') {
     const result = await acquireEpisodeMedia(options);
     process.stdout.write([
@@ -126,6 +147,10 @@ export async function main(argv = process.argv.slice(2)) {
     `frame_count=${result.frame_count}`,
     `frame_index_sha256=${result.frame_index_sha256}`
   ].join('\n') + '\n');
+}
+
+async function readJson(filePath) {
+  return JSON.parse(await fs.readFile(filePath, 'utf8'));
 }
 
 const isMain = process.argv[1]
