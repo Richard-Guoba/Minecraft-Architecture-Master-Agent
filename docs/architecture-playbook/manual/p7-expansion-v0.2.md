@@ -54,6 +54,21 @@
 
 ## 材料与评估语言
 
+### 按视觉属性分配材料角色
+
+- 来源：`BV1iVLbzcEfG`，约 17–53 秒及 321–540 秒
+- 建筑语言：`block_visual_profile`、`texture_direction`、`texture_continuity`、`border_strength`、`material_role`
+- 动作：忽略方块稀有度和名称先验，先观察每个面的颜色、纹理方向、连续性和边框；再分配 frame、support、infill、surface、accent 或 utility 角色。
+- 观察：柱梁纹理沿构件轴向连续；墙芯能形成稳定表面；支撑层的视觉重量不弱于被支撑区域。
+- 失败：柱被读成逐格堆叠；带强边框材料铺成碎裂墙面；浅弱支撑承托厚重填充。
+
+### 根据建筑尺度改变颜色与纹理权重
+
+- 来源：`BV1iVLbzcEfG`，约 597–629 秒
+- 建筑语言：`scale_sensitivity`
+- 动作：小尺度、近距离方案优先检查单块纹理和接缝；大尺度、远距离方案提高整体色块与明度关系的权重。
+- 约束：本集没有给出尺度切换的固定格数。
+
 ### 把相近材料组织成有序色阶
 
 - 来源：`BV1SwdfBHEx5`，约 130–170 秒
@@ -77,3 +92,4 @@
 - [0.1 建筑工具：选择、变换、复用与地形塑形](../course/notes/heihui-jileniao/BV1aBV1zwELe.md)
 - [0.1.1 高版本建筑包：远景、渐变与评估视角](../course/notes/heihui-jileniao/BV1SwdfBHEx5.md)
 - [0.2 快捷键：阶段切换、组件复用与隐藏功能层](../course/notes/heihui-jileniao/BV1SG6GY9ETe.md)
+- [0.3 认识方块：从名称转向视觉属性](../course/notes/heihui-jileniao/BV1iVLbzcEfG.md)
