@@ -18,7 +18,8 @@
     "BV1ecj4zsE27",
     "BV1Mp7UzyE3P",
     "BV1MA7Bz2EE1",
-    "BV1h1keYbEMd"
+    "BV1h1keYbEMd",
+    "BV1unj9z4EnW"
   ],
   "entries": [
     {
@@ -209,9 +210,9 @@
       "knowledge_id": "knowledge:p7:adaptive-roof-profile",
       "design_layers": ["roof"],
       "intent": "Budget border, ridge and stacked decoration into final roof height; express curved variants with slope phases that may steepen or flatten, choose block forms for scale, and avoid treating one demonstrated curve as a fixed template.",
-      "source_bvids": ["BV1h1keYbEMd"],
+      "source_bvids": ["BV1h1keYbEMd", "BV1unj9z4EnW"],
       "classification": "inference",
-      "evidence_refs": ["BV1h1keYbEMd@78-221", "BV1h1keYbEMd@575-830"]
+      "evidence_refs": ["BV1h1keYbEMd@78-221", "BV1h1keYbEMd@575-830", "BV1unj9z4EnW@675-779"]
     },
     {
       "knowledge_id": "knowledge:p7:even-span-roof-closure",
@@ -220,6 +221,30 @@
       "source_bvids": ["BV1h1keYbEMd"],
       "classification": "inference",
       "evidence_refs": ["BV1h1keYbEMd@852-970"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:large-roof-full-block-surface",
+      "design_layers": ["roof"],
+      "intent": "For large or changing roof profiles, allow full blocks to form the primary surface when stair courses create striping or jagged transitions; use the wider full-block palette by color at distance, but recheck unusual textures close up.",
+      "source_bvids": ["BV1unj9z4EnW"],
+      "classification": "inference",
+      "evidence_refs": ["BV1unj9z4EnW@91-228", "BV1unj9z4EnW@262-410"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:roof-detail-density-contrast",
+      "design_layers": ["roof", "facade"],
+      "intent": "Allocate roof detail selectively: combine ornate focal regions with clean roof areas or simpler roofs across a group, and reject decoration that overwhelms overall proportion or makes the surface uniformly busy.",
+      "source_bvids": ["BV1unj9z4EnW"],
+      "classification": "inference",
+      "evidence_refs": ["BV1unj9z4EnW@233-260", "BV1unj9z4EnW@589-652"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:modern-flat-roof-option",
+      "design_layers": ["brief", "massing", "roof"],
+      "intent": "When the brief calls for a modern flat or terrace roof, permit a bounded flat roof with a parapet instead of forcing a pitched profile; leave waterproofing and drainage unresolved rather than inventing them.",
+      "source_bvids": ["BV1unj9z4EnW"],
+      "classification": "inference",
+      "evidence_refs": ["BV1unj9z4EnW@1200-1334"]
     }
   ]
 }

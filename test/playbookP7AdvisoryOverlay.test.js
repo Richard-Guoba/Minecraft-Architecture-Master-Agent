@@ -30,9 +30,9 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     'complete-structure',
     'complete-roofs'
   ]);
-  assert.equal(overlay.source_bvids.length, 10);
-  assert.equal(overlay.source_bvids.at(-1), 'BV1h1keYbEMd');
-  assert.equal(overlay.entries.length, 25);
+  assert.equal(overlay.source_bvids.length, 11);
+  assert.equal(overlay.source_bvids.at(-1), 'BV1unj9z4EnW');
+  assert.equal(overlay.entries.length, 28);
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
@@ -40,12 +40,11 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
   assert.ok(overlay.entries.every((entry) =>
     ['author_claim', 'inference', 'contrast'].includes(entry.classification)));
   assert.deepEqual(
-    overlay.entries.slice(-4).map(({ knowledge_id }) => knowledge_id),
+    overlay.entries.slice(-3).map(({ knowledge_id }) => knowledge_id),
     [
-      'knowledge:p7:roof-orientation-massing-fit',
-      'knowledge:p7:compound-roof-seam-cleanup',
-      'knowledge:p7:adaptive-roof-profile',
-      'knowledge:p7:even-span-roof-closure'
+      'knowledge:p7:large-roof-full-block-surface',
+      'knowledge:p7:roof-detail-density-contrast',
+      'knowledge:p7:modern-flat-roof-option'
     ]
   );
   assert.deepEqual(
@@ -68,10 +67,11 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
       'BV1h1keYbEMd@1159-1189'
     ]
   );
-  assert.deepEqual(overlay.entries.at(-1).evidence_refs,
-    ['BV1h1keYbEMd@852-970']);
-  assert.match(overlay.entries.at(-1).intent, /even-width spans/iu);
-  assert.match(overlay.entries.at(-1).intent, /offsetting the ridge/iu);
+  const evenSpanRoof = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:even-span-roof-closure');
+  assert.deepEqual(evenSpanRoof.evidence_refs, ['BV1h1keYbEMd@852-970']);
+  assert.match(evenSpanRoof.intent, /even-width spans/iu);
+  assert.match(evenSpanRoof.intent, /offsetting the ridge/iu);
   assert.deepEqual(
     overlay.entries.find(({ knowledge_id }) =>
       knowledge_id === 'knowledge:p7:compound-roof-seam-cleanup').evidence_refs,
@@ -84,8 +84,22 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
   assert.deepEqual(
     overlay.entries.find(({ knowledge_id }) =>
       knowledge_id === 'knowledge:p7:adaptive-roof-profile').evidence_refs,
-    ['BV1h1keYbEMd@78-221', 'BV1h1keYbEMd@575-830']
+    [
+      'BV1h1keYbEMd@78-221',
+      'BV1h1keYbEMd@575-830',
+      'BV1unj9z4EnW@675-779'
+    ]
   );
+  const largeRoofSurface = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:large-roof-full-block-surface');
+  assert.deepEqual(largeRoofSurface.evidence_refs,
+    ['BV1unj9z4EnW@91-228', 'BV1unj9z4EnW@262-410']);
+  assert.match(largeRoofSurface.intent, /full blocks/iu);
+  assert.match(largeRoofSurface.intent, /distance/iu);
+  assert.deepEqual(overlay.entries.at(-1).evidence_refs,
+    ['BV1unj9z4EnW@1200-1334']);
+  assert.match(overlay.entries.at(-1).intent, /flat or terrace roof/iu);
+  assert.match(overlay.entries.at(-1).intent, /instead of forcing a pitched profile/iu);
   assert.ok(Object.isFrozen(overlay));
   assert.ok(Object.isFrozen(overlay.entries));
 });
