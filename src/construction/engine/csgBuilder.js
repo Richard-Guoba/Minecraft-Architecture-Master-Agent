@@ -56,7 +56,9 @@ export class CSGBuilder {
     const facadeSummary = summarizeFacadePlan(this.facadePlan);
     const roofSummary = {
       ...summarizeRoofPlan(this.roofPlan),
-      componentAxes: this.roofComponentAxes || []
+      ...(this.architecture?.roof_rules?.axis_strategy === 'volume-proportion'
+        ? { componentAxes: this.roofComponentAxes || [] }
+        : {})
     };
     const siteSummary = summarizeSitePlan(this.sitePlan);
 

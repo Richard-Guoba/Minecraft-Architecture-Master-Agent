@@ -13,31 +13,31 @@
 
 ### Task 1: Language capabilities and semantic handoffs
 
-- [ ] Write failing selector/application tests for medieval and compact slices and explicit negations.
-- [ ] Promote only capabilities backed by existing deterministic agents.
-- [ ] Feed structure, roof, facade, BSP, decorator, and site through existing semantic fields.
-- [ ] Run focused tests and commit.
+- [x] Write failing selector/application tests for medieval and compact slices and explicit negations.
+- [x] Promote only capabilities backed by existing deterministic agents.
+- [x] Feed structure, roof, facade, BSP, decorator, and site through existing semantic fields.
+- [x] Run focused tests and commit.
 
 ### Task 2: Geometry and ordering
 
-- [ ] Write failing tests for derived structural bays, per-volume roof evidence, facade assemblies, function-first/porous partitions, furniture-first ordering, and route grounding.
-- [ ] Implement the smallest changes in existing agents/builders.
-- [ ] Prove same seed/prompt yields identical operations and evidence.
-- [ ] Run focused tests and commit.
+- [x] Write failing tests for derived structural bays, per-volume roof evidence, facade assemblies, function-first/porous partitions, furniture-first ordering, and route grounding.
+- [x] Implement the smallest changes in existing agents/builders.
+- [x] Prove same seed/prompt yields identical operations and evidence.
+- [x] Run focused tests and commit.
 
 ### Task 3: Construction trace, QA, and bounded repair
 
-- [ ] Write failing tests that detect a broken selected-operation handoff and a missing route threshold.
-- [ ] Derive authoritative result rows from runtime plans and actual modules.
-- [ ] Add the hard workflow QA check and one idempotent threshold repair.
-- [ ] Render result trace in the existing report and commit.
+- [x] Write failing tests that detect a broken selected-operation handoff and a missing route threshold.
+- [x] Derive authoritative result rows from runtime plans and actual modules.
+- [x] Add the hard workflow QA check and one idempotent threshold repair.
+- [x] Render result trace in the existing report and commit.
 
 ### Task 4: Three-scenario evidence and compatibility
 
-- [ ] Generate modern lakeside, medieval multi-volume, and compact residential mock scenarios twice each.
-- [ ] Compare operations, module counts, workflow rows, QA, scorecards, and artifact hashes.
-- [ ] Run focused P5, off-mode, golden, format-48, relative-command, and no-world-write regressions.
-- [ ] Write the v0.3 implementation report and commit.
+- [x] Generate modern lakeside, medieval multi-volume, and compact residential mock scenarios twice each.
+- [x] Compare operations, module counts, workflow rows, QA, scorecards, and artifact hashes.
+- [x] Run focused P5, off-mode, golden, format-48, relative-command, and no-world-write regressions.
+- [x] Write the v0.3 implementation report and commit.
 
 ### Task 5: Review and final verification
 

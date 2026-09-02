@@ -52,8 +52,12 @@ export class BSPPartitioner {
         openPlanSoftBoundaries: interiorDoors.filter((door) => door.kind === 'open-plan-threshold').length,
         unassignedPlannerNodes,
         splitStrategy: plannerJson.bsp_hints?.split_strategy || 'weighted',
-        semanticSpacePlanning: plannerJson.bsp_hints?.semantic_space_planning || 'default',
-        semanticPartitionStrategy: plannerJson.bsp_hints?.semantic_partition_strategy || 'default',
+        ...(plannerJson.bsp_hints?.semantic_space_planning
+          ? { semanticSpacePlanning: plannerJson.bsp_hints.semantic_space_planning }
+          : {}),
+        ...(plannerJson.bsp_hints?.semantic_partition_strategy
+          ? { semanticPartitionStrategy: plannerJson.bsp_hints.semantic_partition_strategy }
+          : {}),
         templateSpacePlanning: plannerJson.bsp_hints?.template_space_planning_active ? {
           active: true,
           viewSide: plannerJson.bsp_hints.template_view_side,

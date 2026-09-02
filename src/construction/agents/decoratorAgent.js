@@ -98,10 +98,10 @@ export class ConstructionDecoratorAgent {
         : 'DecoratorAgent generated room-scale furnishing suggestions without mutating a grid.',
       style_family: styleFamily,
       interior_source: interior.source || 'none',
-      furnishing_sequence: furnishingSequence,
-      placement_passes: furnishingSequence === 'large-to-small'
-        ? ['function-bearing-large', 'secondary-storage-and-work', 'lighting-and-small-accents']
-        : ['standard-room-plan'],
+      ...(furnishingSequence === 'large-to-small' ? {
+        furnishing_sequence: furnishingSequence,
+        placement_passes: ['function-bearing-large', 'secondary-storage-and-work', 'lighting-and-small-accents']
+      } : {}),
       specialist_agents: specialistAgents,
       activeSpecialists,
       placementCount: placements.length,

@@ -31,7 +31,9 @@ export class RoofAgent {
       preset: stylePreset.id || 'none',
       style,
       profile: design.profile || templateProfile || rules.profile || stylePreset.roof || 'style-default',
-      axis_strategy: design.axis_strategy || rules.axis_strategy || 'default',
+      ...((design.axis_strategy || rules.axis_strategy)
+        ? { axis_strategy: design.axis_strategy || rules.axis_strategy }
+        : {}),
       roof_height: Number(buildSpec.roof_height || 3),
       overhang: Number(design.overhang ?? rules.overhang ?? (compositionDirectives.use_layered_roof_edges ? 2 : undefined) ?? buildSpec.roof_overhang ?? 1),
       creative_signature: architecture.design_directives?.signature || buildSpec.creative_design_signature || 'none',

@@ -227,12 +227,15 @@ function moduleCounts(grid) {
 const WORKFLOW_SCENARIOS = [
   {
     id: 'modern-lakeside',
-    prompt: 'Build a private modern lakeside villa with three interlocking volumes, a flat parapet roof, large daylight glass, a sheltered readable entrance and path, functional interior zoning, porous public partitions, and a large-to-small furnishing pass.',
-    required: ['knowledge:p7:modern-interlocking-volume', 'knowledge:p7:landscape-route-and-grounding', 'knowledge:p7:function-led-interior-zoning'],
+    prompt: 'Build a private modern lakeside villa with three interlocking volumes, a flat roof with parapet, large glass daylight openings, a sheltered entry and path, functional interior zoning, porous public partitions, and a large-to-small furnishing pass.',
+    required: ['knowledge:p7:modern-flat-roof-option', 'knowledge:p7:weather-sheltered-entrance-transition', 'knowledge:p7:landscape-route-and-grounding', 'knowledge:p7:function-led-interior-zoning', 'knowledge:p7:daylit-window-wall-integration', 'knowledge:p7:modern-interlocking-volume'],
     verify(blueprint) {
       assert.deepEqual(blueprint.shell.volumeBoxes.map((box) => box.id), ['main', 'glass-wing', 'view-terrace']);
       assert.ok(blueprint.modules.windows > 0);
       assert.equal(blueprint.roof.style, 'flat');
+    },
+    verifyDifference(after, before) {
+      assert.notDeepEqual(after.shell.volumeBoxes.map((box) => box.id), before.shell.volumeBoxes.map((box) => box.id));
     }
   },
   {
@@ -244,6 +247,11 @@ const WORKFLOW_SCENARIOS = [
       assert.ok(blueprint.modules.structural_frame > 0);
       assert.ok(blueprint.geometry.roof.componentAxes.length > 0);
       assert.ok((blueprint.modules.facade_detail || 0) + (blueprint.modules.facade_relief || 0) > 0);
+    },
+    verifyDifference(after, before) {
+      assert.ok(after.modules.structural_frame > before.modules.structural_frame);
+      assert.ok(after.geometry.roof.componentAxes.length > 0);
+      assert.equal(before.geometry.roof.componentAxes, undefined);
     }
   },
   {
@@ -254,6 +262,10 @@ const WORKFLOW_SCENARIOS = [
       assert.equal(blueprint.shell.volumeBoxes.length, 1);
       assert.equal(blueprint.facade.relief_density, 'low');
       assert.equal(blueprint.geometry.pathfinder.failedEdgeCount, 0);
+    },
+    verifyDifference(after, before) {
+      assert.ok(after.shell.volumeBoxes.length < before.shell.volumeBoxes.length);
+      assert.equal(after.facade.relief_density, 'low');
     }
   }
 ];
@@ -261,7 +273,8 @@ const WORKFLOW_SCENARIOS = [
 for (const scenario of WORKFLOW_SCENARIOS) {
   test(`${scenario.id} is byte-deterministic, traceable, QA-checked, and portable`, async (t) => {
     const roots = await Promise.all([0, 1].map(() => fs.mkdtemp(path.join(os.tmpdir(), `workflow-v03-${scenario.id}-`))));
-    t.after(() => Promise.all(roots.map((root) => fs.rm(root, { recursive: true, force: true }))));
+    const baselineRoot = await fs.mkdtemp(path.join(os.tmpdir(), `workflow-v02-${scenario.id}-`));
+    t.after(() => Promise.all([...roots, baselineRoot].map((root) => fs.rm(root, { recursive: true, force: true }))));
     const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
     const language = compileArchitectureLanguageV02({ prompt: scenario.prompt, overlay });
     const results = [];
@@ -272,6 +285,9 @@ for (const scenario of WORKFLOW_SCENARIOS) {
       }));
     }
     const [first, second] = results;
+    const baseline = await runConstructionWorkflow({
+      prompt: scenario.prompt, mode: 'mock', outputDir: baselineRoot, cwd: ROOT, seed: 7101, critics: false
+    });
     assert.equal(first.validation.ok, true);
     assert.deepEqual(first.blueprint.operations, second.blueprint.operations);
     assert.deepEqual(first.blueprint.constructionWorkflow, second.blueprint.constructionWorkflow);
@@ -280,6 +296,8 @@ for (const scenario of WORKFLOW_SCENARIOS) {
     for (const id of scenario.required) assert.ok(first.blueprint.architectureLanguage.plan.selected_knowledge_ids.includes(id), id);
     assert.ok(first.blueprint.modules.entry_threshold > 0);
     scenario.verify(first.blueprint);
+    scenario.verifyDifference(first.blueprint, baseline.blueprint);
+    assert.notDeepEqual(first.blueprint.operations, baseline.blueprint.operations);
 
     const blueprintBytes = await Promise.all(results.map((result) => fs.readFile(result.artifacts.blueprint)));
     assert.equal(sha256(blueprintBytes[0]), sha256(blueprintBytes[1]));

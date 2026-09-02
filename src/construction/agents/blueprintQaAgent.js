@@ -31,7 +31,9 @@ export class BlueprintQAAgent {
     const circulationStats = validateCirculation(blueprint, errors, warnings, checks);
     const semanticStats = validateSemanticCompleteness(blueprint, errors, warnings, checks);
     const agentContractStats = validateAgentContracts(blueprint, errors, warnings, checks);
-    const constructionWorkflowStats = validateConstructionWorkflow(blueprint, errors, checks);
+    const constructionWorkflowStats = blueprint.constructionWorkflow
+      ? validateConstructionWorkflow(blueprint, errors, checks)
+      : undefined;
 
     if ((blueprint.operations || []).length > 8000) warnings.push('函数命令数量接近 Minecraft 单次执行压力上限。');
 
@@ -55,7 +57,7 @@ export class BlueprintQAAgent {
         circulation: circulationStats,
         semantic: semanticStats,
         agentContracts: agentContractStats,
-        constructionWorkflow: constructionWorkflowStats
+        ...(constructionWorkflowStats ? { constructionWorkflow: constructionWorkflowStats } : {})
       }
     };
   }
@@ -63,10 +65,6 @@ export class BlueprintQAAgent {
 
 function validateConstructionWorkflow(blueprint, errors, checks) {
   const workflow = blueprint.constructionWorkflow;
-  if (!workflow) {
-    checks.push(check('construction-workflow', true, { active: false }));
-    return { active: false, checked: 0, failed: [] };
-  }
   const rows = Array.isArray(workflow.rows) ? workflow.rows : [];
   const failed = rows.filter((row) => !isConstructionOperationSatisfied(blueprint, row))
     .map((row) => row.operation_id);

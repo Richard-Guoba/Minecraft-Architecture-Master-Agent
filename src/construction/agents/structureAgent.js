@@ -55,7 +55,9 @@ export function buildFallbackStructure(architecture = {}, buildSpec = {}, topolo
   if (visibleBayGrid || signals.long_span || floors > 1 || ['classical', 'industrial', 'modern', 'cyberpunk', 'greenhouse-house'].includes(family)) {
     supportElements.push(support('main-column-grid', 'column-grid', 'main', {
       module: 'structural_frame',
-      spacing: chooseColumnSpacing(width, depth, family),
+      spacing: visibleBayGrid
+        ? chooseVisibleBaySpacing(width, depth)
+        : chooseColumnSpacing(width, depth, family),
       priority: visibleBayGrid || signals.long_span ? 'primary' : 'secondary'
     }));
   }
@@ -230,6 +232,10 @@ function chooseColumnSpacing(width, depth, family) {
   if (family === 'industrial' || family === 'cyberpunk') return 6;
   if (family === 'greenhouse-house') return 4;
   return Math.max(4, Math.min(6, Math.round(Math.min(width, depth) / 3)));
+}
+
+function chooseVisibleBaySpacing(width, depth) {
+  return Math.max(3, Math.min(5, Math.round(Math.min(width, depth) / 5)));
 }
 
 function foundationNotes(signals) {

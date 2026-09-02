@@ -549,3 +549,9 @@
 首个住宅执行切片只使用有现成确定性落点的语义：三体块现代交错组合、平顶女儿墙/露台屋顶、受庇护入口、采光窗墙、私宅偏移入口、路线优先场地、功能优先分区和由大到小的家具次序。它们先修改既有 architecture/build-spec 语义，再继续运行 Planner、CreativeDesign、Structure、Roof、Facade、Site、BSP、A*、Interior、QA、有限修复和数据包编译。用户明确要求坡屋顶时，平顶映射不被选择。
 
 圆形/斜向外壳、斜向单位墙、圆锥或旋转尖顶等当前没有安全编译器的概念保持 `unsupported`；其余未绑定概念保持 `advisory-only` 或显式 `qa-check-only`。完整分类、操作 ID 和验证证据见 [Architecture Language v0.2 实施报告](../reports/architecture-language-v0.2.md)。
+
+## Construction Workflow v0.3 几何落地
+
+v0.3 不改变上述证据权限，而是补齐现有生成链的下游执行。路线优先会生成与入口和路径宽度派生的阈值；功能优先与通透隔断会改变 BSP 分区；由大到小会改变家具占位顺序；柱梁开间、屋顶轴向、立面开间和门窗组件由现有 Structure、Roof、Facade 与 CSG 构建器生成真实方块。每个选中操作在 `blueprint.constructionWorkflow` 中与实际模块证据绑定，并由硬 QA 重新核验。
+
+唯一新增的局部修复只补齐已选择路线策略却缺失的入口阈值，尺寸来自当前门、路径和建筑边界；它不进入 P5 repair registry。完整能力矩阵、三场景数据和兼容证据见 [Construction Workflow v0.3 实施报告](../reports/construction-workflow-v0.3.md)。

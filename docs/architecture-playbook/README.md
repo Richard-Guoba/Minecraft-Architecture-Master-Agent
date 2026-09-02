@@ -167,3 +167,4 @@ P3 的秘籍、规则、覆盖、门禁和规范入口见：
 - [建筑秘籍 v0.1 正式设计](../superpowers/specs/2026-08-25-architecture-playbook-v0-1-design.md)
 - [建筑秘籍 v0.1 实施计划](../superpowers/plans/2026-08-25-architecture-playbook-v0-1.md)
 - [Architecture Language v0.2 实施报告](reports/architecture-language-v0.2.md)
+- [Construction Workflow v0.3 实施报告](reports/construction-workflow-v0.3.md)

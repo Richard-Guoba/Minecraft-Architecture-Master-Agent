@@ -82,7 +82,7 @@ export class SiteLandscapeAgent {
       mood: design.mood || rules.template_site_mood || compositionDirectives.preferred_site_mood || rules.landscape_mood || buildSpec.site?.landscape_mood || stylePreset.site || 'simple',
       creative_signature: architecture.design_directives?.signature || buildSpec.creative_design_signature || 'none',
       entry_sequence: {
-        strategy: routeStrategy,
+        ...(routeStrategy !== 'direct-entry-path' ? { strategy: routeStrategy } : {}),
         side: buildSpec.door_side || architecture.facade_rules?.front_side || 'south',
         path_width: accessible ? Math.max(3, buildSpec.scale === 'large' ? 3 : 2) : buildSpec.scale === 'large' ? 3 : 2,
         lighting: family === 'cyberpunk' || /灯|霓虹|夜景/i.test(prompt) ? 'lit' : 'subtle',
@@ -133,7 +133,7 @@ export class SiteLandscapeAgent {
       },
       engine_hints: {
         render_entry_path: true,
-        render_entry_threshold: routeStrategy === 'route-first-grounding',
+        ...(routeStrategy === 'route-first-grounding' ? { render_entry_threshold: true } : {}),
         render_path_lights: family === 'cyberpunk' || /灯|夜景|霓虹/i.test(prompt),
         render_boundary: enclosed || ['classical', 'gothic', 'japanese', 'chinese-courtyard'].includes(family),
         render_tree_clusters: templateTrees || ['treehouse', 'rustic', 'alpine', 'japanese', 'chinese-courtyard'].includes(family),
