@@ -82,9 +82,15 @@ function repairRouteFirstThreshold(context, modules, repairs) {
 }
 
 function thresholdIsAligned(grid, threshold = {}, door = {}, spec = {}, width = 1, block) {
-  const expected = deriveEntryThresholdGeometry(spec, { mainDoor: door, width, block }).evidence;
+  const geometry = deriveEntryThresholdGeometry(spec, { mainDoor: door, width, block });
+  const expected = geometry.evidence;
   return JSON.stringify(threshold) === JSON.stringify(expected) && expected.points.every((point) =>
-    grid.get(`${point.x},${point.y},${point.z}`)?.module === 'entry_threshold');
+    grid.get(`${point.x},${point.y},${point.z}`)?.module === 'entry_threshold') &&
+    [...grid].filter(([, cell]) => cell.module === 'entry_threshold').every(([key]) => {
+      const [x, y, z] = key.split(',').map(Number);
+      return y === 0 && x >= geometry.fill.minX && x <= geometry.fill.maxX &&
+        z >= geometry.fill.minZ && z <= geometry.fill.maxZ;
+    });
 }
 
 function moduleCounts(grid) {

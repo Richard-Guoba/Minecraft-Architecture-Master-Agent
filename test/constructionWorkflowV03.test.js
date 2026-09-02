@@ -269,6 +269,20 @@ test('construction workflow QA binds plan, trace, and sidecar as one contract', 
   assert.ok(check.details.contractIssues.includes('language-plan-trace-mismatch'));
 });
 
+test('construction workflow QA cannot be disabled by clearing every language row', () => {
+  const blueprint = {
+    prompt: 'Build a house with functional room zoning.',
+    operations: [], bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: 1 },
+    modules: {}, shell: { volumeBoxes: [], interiorSpaces: [] }, layout: { rooms: [] }, paths: {},
+    architectureLanguage: {
+      plan: { selected_knowledge_ids: [], instructions: [] },
+      trace: { selected_knowledge_ids: [], applied_operations: [] }
+    }
+  };
+  const qa = new BlueprintQAAgent().run(blueprint);
+  assert.equal(qa.checks.find((item) => item.name === 'construction-workflow')?.ok, false);
+});
+
 test('constraint repair merge preserves first-pass before/after evidence', () => {
   const pre = {
     source: 'local-constraint-repair-agent', ok: true, checks: [], suggestions: [], stats: { gridCellCount: 8 },
@@ -382,6 +396,24 @@ test('route-first repair rejects a threshold record containing only one correctl
   const result = new ConstraintRepairAgent().run(context);
   assert.equal(result.repairs[0].operation, 'relocated-entry-threshold');
   assert.ok(result.repairs[0].placement_count >= 0);
+  assert.equal(grid.has('20,0,20'), false);
+});
+
+test('route-first repair removes stale threshold cells outside the derived rectangle', () => {
+  const spec = { width: 11, depth: 9, constraints: {} };
+  const materials = { foundation: 'minecraft:cobblestone' };
+  const door = { side: 'south', x: 2, z: 8, width: 2 };
+  const grid = new Map();
+  const entryThreshold = new CSGBuilder(spec, materials).addEntryThreshold(grid, {
+    mainDoor: door, width: 2, block: materials.foundation
+  });
+  grid.set('20,0,20', { block: materials.foundation, module: 'entry_threshold' });
+  const result = new ConstraintRepairAgent().run({
+    grid, buildSpec: spec, architecture: { materials },
+    site: { entry_sequence: { strategy: 'route-first-grounding', path_width: 2 } },
+    paths: { mainDoor: door, entryThreshold, pathfinder: { failedEdgeCount: 0 } }
+  });
+  assert.equal(result.repairs[0].operation, 'relocated-entry-threshold');
   assert.equal(grid.has('20,0,20'), false);
 });
 

@@ -32,8 +32,7 @@ export class BlueprintQAAgent {
     const circulationStats = validateCirculation(blueprint, errors, warnings, checks);
     const semanticStats = validateSemanticCompleteness(blueprint, errors, warnings, checks);
     const agentContractStats = validateAgentContracts(blueprint, errors, warnings, checks);
-    const expectsConstructionWorkflow = (blueprint.architectureLanguage?.plan?.selected_knowledge_ids || []).length > 0 ||
-      (blueprint.architectureLanguage?.trace?.applied_operations || []).length > 0;
+    const expectsConstructionWorkflow = blueprint.architectureLanguage !== undefined;
     const constructionWorkflowStats = blueprint.constructionWorkflow || expectsConstructionWorkflow
       ? validateConstructionWorkflow(blueprint, errors, checks)
       : undefined;
@@ -123,8 +122,11 @@ function languagePlanMatchesTrace(language = {}, prompt = '') {
 
 function hasExactObjectKeys(value, expected) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const keys = Object.keys(value);
-  return keys.length === expected.length && expected.every((key) => keys.includes(key));
+  const keys = Reflect.ownKeys(value);
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  return keys.length === expected.length && expected.every((key) => keys.includes(key)) &&
+    keys.every((key) => typeof key === 'string' && descriptors[key]?.enumerable &&
+      descriptors[key]?.get === undefined && descriptors[key]?.set === undefined);
 }
 
 function validateOperations(operations, errors, checks) {
