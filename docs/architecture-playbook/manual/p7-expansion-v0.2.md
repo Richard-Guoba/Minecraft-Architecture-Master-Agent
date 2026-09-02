@@ -290,6 +290,42 @@
 - 建筑语言：`scale_matched_outdoor_fixture`、`beach_functional_zoning`、`contrasting_surface_patch`
 - 动作：先划分通行、遮阳、休息、游戏、垂钓或服务区；小构件使用薄层，大构件补骨架和纵深，并用有限石路、土壤或绿地反差区分功能。
 
+## 第六章：内饰
+
+### 先组织功能、可达性和通透边界
+
+- 来源：`BV1DkPVexESz`，约 32–240 秒、540–720 秒；`BV1ux2sBvECk`，约 90–180 秒、270–480 秒
+- 建筑语言：`function_led_interior_zoning`、`circulation_route`、`porous_partition`、`daylit_room_edge`
+- 动作：从入口按可达性安排公共、私密和服务区，先保证主要通路；只有隐私或封闭用途需要完整隔墙，其余边界可用半高屏风、框架或地面纹样维持通透。需要日光的房间优先接触外墙。
+- 失败：家具先行导致动线绕行；厕所等服务门正对公共焦点；每个区域都封死；中心房间被误当成有自然采光。
+
+### 让楼梯和挑高属于建筑框架
+
+- 来源：`BV1DkPVexESz`，约 300–540 秒、750–1,020 秒；`BV1ux2sBvECk`，约 480–900 秒
+- 建筑语言：`frame_planned_stair`、`vertical_shared_volume`、`landing_and_circulation_check`
+- 动作：在框架阶段为楼梯、平台和到达层留位；受限平面采用折返、螺旋或适当梯子，较大公共区可以用有界挑高连接上下层，并利用共享空间获得采光或悬挂焦点。
+- 约束：字幕没有提供统一楼梯宽度、坡度、净高或挑高比例。
+
+### 从大到小完成家具与室内表面
+
+- 来源：`BV1DkPVexESz`，约 540–720 秒、1,020–1,501 秒；`BV1VULRzAE3x`，约 31–150 秒、212–540 秒
+- 建筑语言：`large_to_small_furnishing_pass`、`interior_surface_field`、`bounded_small_block_assembly`
+- 动作：先放主家具，再放储物与工作物，最后放植物和桌面小物；地板、天花板与窗墙采用有方向的有限纹样。小构件必须有主轮廓和支撑、连接、表面或功能角色。
+- 失败：只把功能方块排满墙边；小物遮挡使用面；纹样压过空间分区；技巧性构件破坏碰撞或版本兼容。
+
+### 用构件语法生成灯、椅和桌
+
+- 来源：`BV1Rf7nz5Eic`，约 420–720 秒、842–1,261 秒、1,410–1,591 秒；`BV1tepJz3EuZ`，约 60–180 秒、420–960 秒；`BV1TUHHz1ECZ`，约 30–120 秒、240–541 秒
+- 建筑语言：`luminaire_base_shaft_head`、`supported_lamp_arm`、`seat_surface_and_back`、`seat_group`、`context_readable_table`、`table_floor_separation`
+- 动作：灯按底座/挂点、杆身/链条、灯头组合，外伸臂回接支撑并保持配重；椅子先有坐面和靠背，尺度允许时才加扶手或软包；桌子先有可用桌板，再由座位或活动语境说明功能，并与地板保持有限材质分离。
+
+### 按路线、支撑、表面、光完成洞穴住宅
+
+- 来源：`BV1YNLnzeEx3`，约 60–480 秒、515–797 秒、813–1,378 秒、1,411–1,611 秒及 1,891–2,130 秒
+- 建筑语言：`cave_route_room_sequence`、`cave_support_frame`、`cave_ceiling_zone`、`room_scaled_light_distribution`
+- 动作：先挖入口、主路线、私密房与共享房，再完成错层和一致支撑；随后处理天然/人工表面和冷暖呼应。底部视觉较重，天花板按区域变化，大空间分配多点补光，小空间使用受控主灯。
+- 失败：先雕墙再发现路线无效；平台与跨距没有支撑；所有天花板同高；单盏灯让大空间留下不可用暗区或把洞穴纵深全部抹平。
+
 ### 复用带语义和状态的施工组件
 
 - 来源：`BV1SG6GY9ETe`，约 47–167 秒及 236–299 秒

@@ -30,25 +30,69 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     'complete-structure',
     'complete-roofs',
     'complete-walls-facades',
-    'landscaping-terrain'
+    'landscaping-terrain',
+    'interiors'
   ]);
-  assert.equal(overlay.source_bvids.length, 24);
-  assert.equal(overlay.source_bvids.at(-1), 'BV1a5TDzhE9M');
-  assert.equal(overlay.entries.length, 69);
+  assert.equal(overlay.source_bvids.length, 31);
+  for (const bvid of [
+    'BV1DkPVexESz', 'BV1ux2sBvECk', 'BV1VULRzAE3x', 'BV1Rf7nz5Eic',
+    'BV1tepJz3EuZ', 'BV1TUHHz1ECZ', 'BV1YNLnzeEx3'
+  ]) assert.ok(overlay.source_bvids.includes(bvid));
+  assert.equal(overlay.entries.length, 87);
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
   assert.ok(overlay.entries.every((entry) => entry.evidence_refs.length > 0));
   assert.ok(overlay.entries.every((entry) =>
     ['author_claim', 'inference', 'contrast'].includes(entry.classification)));
-  assert.deepEqual(
-    overlay.entries.slice(-3).map(({ knowledge_id }) => knowledge_id),
-    [
-      'knowledge:p7:scale-matched-outdoor-fixtures',
-      'knowledge:p7:beach-functional-zoning',
-      'knowledge:p7:contrasting-beach-surface-patches'
-    ]
-  );
+  for (const knowledgeId of [
+    'knowledge:p7:cave-route-room-sequence',
+    'knowledge:p7:cave-support-before-finish',
+    'knowledge:p7:cave-ceiling-and-light-strategy'
+  ]) assert.ok(overlay.entries.some(({ knowledge_id }) => knowledge_id === knowledgeId));
+  const zoning = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:function-led-interior-zoning');
+  assert.deepEqual(zoning.source_bvids, ['BV1DkPVexESz', 'BV1ux2sBvECk']);
+  assert.deepEqual(zoning.evidence_refs,
+    ['BV1DkPVexESz@32-181', 'BV1DkPVexESz@571-720',
+      'BV1ux2sBvECk@270-451']);
+  assert.match(zoning.intent, /function/iu);
+  assert.match(zoning.intent, /circulation/iu);
+  const stairs = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:frame-planned-interior-stairs');
+  assert.deepEqual(stairs.evidence_refs,
+    ['BV1DkPVexESz@750-1020', 'BV1ux2sBvECk@480-780']);
+  assert.match(stairs.intent, /framework/iu);
+  assert.doesNotMatch(stairs.intent, /headroom/iu);
+  const verticalVolume = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:vertically-connected-interior-volume');
+  assert.doesNotMatch(verticalVolume.intent, /orientation/iu);
+  const lights = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:proportioned-luminaire-assembly');
+  assert.deepEqual(lights.evidence_refs, ['BV1Rf7nz5Eic@420-720']);
+  assert.match(lights.intent, /base, shaft and head/iu);
+  const lampArm = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:supported-luminaire-arm');
+  assert.deepEqual(lampArm.evidence_refs,
+    ['BV1Rf7nz5Eic@870-1085', 'BV1Rf7nz5Eic@1170-1261']);
+  const seating = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:seat-component-grammar');
+  assert.deepEqual(seating.evidence_refs,
+    ['BV1tepJz3EuZ@60-180', 'BV1tepJz3EuZ@420-480']);
+  assert.match(seating.intent, /seat surface/iu);
+  const table = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:context-readable-table');
+  assert.deepEqual(table.evidence_refs,
+    ['BV1TUHHz1ECZ@30-120', 'BV1TUHHz1ECZ@240-390']);
+  assert.match(table.intent, /tabletop/iu);
+  const cave = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:cave-support-before-finish');
+  assert.deepEqual(cave.evidence_refs, ['BV1YNLnzeEx3@515-797']);
+  assert.match(cave.intent, /support/iu);
+  const caveSequence = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:cave-route-room-sequence');
+  assert.deepEqual(caveSequence.evidence_refs,
+    ['BV1YNLnzeEx3@60-216', 'BV1YNLnzeEx3@216-480']);
   assert.deepEqual(
     overlay.entries.find(({ knowledge_id }) =>
       knowledge_id === 'knowledge:p7:purposeful-volume-subtraction').evidence_refs,
@@ -247,9 +291,10 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     knowledge_id === 'knowledge:p7:beach-functional-zoning');
   assert.deepEqual(beachZoning.evidence_refs,
     ['BV1a5TDzhE9M@541-600', 'BV1a5TDzhE9M@691-812']);
-  assert.deepEqual(overlay.entries.at(-1).evidence_refs,
-    ['BV1a5TDzhE9M@662-750']);
-  assert.match(overlay.entries.at(-1).intent, /contrast/iu);
+  const beachSurface = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:contrasting-beach-surface-patches');
+  assert.deepEqual(beachSurface.evidence_refs, ['BV1a5TDzhE9M@662-750']);
+  assert.match(beachSurface.intent, /contrast/iu);
   assert.ok(Object.isFrozen(overlay));
   assert.ok(Object.isFrozen(overlay.entries));
 });

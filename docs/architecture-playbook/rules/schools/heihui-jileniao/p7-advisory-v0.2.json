@@ -8,7 +8,8 @@
     "complete-structure",
     "complete-roofs",
     "complete-walls-facades",
-    "landscaping-terrain"
+    "landscaping-terrain",
+    "interiors"
   ],
   "source_bvids": [
     "BV1aBV1zwELe",
@@ -34,7 +35,14 @@
     "BV1oFJPzqE9k",
     "BV1i2JBzPE8m",
     "BV1Cm7VzzEXd",
-    "BV1a5TDzhE9M"
+    "BV1a5TDzhE9M",
+    "BV1DkPVexESz",
+    "BV1ux2sBvECk",
+    "BV1VULRzAE3x",
+    "BV1Rf7nz5Eic",
+    "BV1tepJz3EuZ",
+    "BV1TUHHz1ECZ",
+    "BV1YNLnzeEx3"
   ],
   "entries": [
     {
@@ -588,6 +596,150 @@
       "source_bvids": ["BV1a5TDzhE9M"],
       "classification": "inference",
       "evidence_refs": ["BV1a5TDzhE9M@662-750"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:function-led-interior-zoning",
+      "design_layers": ["brief", "massing", "structure"],
+      "intent": "Assign interior functions and circulation before furniture: place public, private and service zones by reachability, then size rooms and routes so each use remains legible and directly accessible.",
+      "source_bvids": ["BV1DkPVexESz", "BV1ux2sBvECk"],
+      "classification": "inference",
+      "evidence_refs": ["BV1DkPVexESz@32-181", "BV1DkPVexESz@571-720", "BV1ux2sBvECk@270-451"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:porous-interior-partition",
+      "design_layers": ["brief", "massing", "structure", "facade"],
+      "intent": "Use a full partition only when privacy or enclosure requires it; otherwise divide zones with a partial-height screen, floor pattern or open frame that preserves sight lines and avoids a compressed room.",
+      "source_bvids": ["BV1DkPVexESz", "BV1ux2sBvECk"],
+      "classification": "inference",
+      "evidence_refs": ["BV1DkPVexESz@150-240", "BV1ux2sBvECk@90-180"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:vertically-connected-interior-volume",
+      "design_layers": ["brief", "massing", "structure"],
+      "intent": "When the program and shell permit, connect floors with a bounded double-height void, gallery or overlook; use the shared volume for daylight or a suspended focal element.",
+      "source_bvids": ["BV1DkPVexESz", "BV1ux2sBvECk"],
+      "classification": "inference",
+      "evidence_refs": ["BV1DkPVexESz@300-540", "BV1ux2sBvECk@780-900"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:frame-planned-interior-stairs",
+      "design_layers": ["brief", "massing", "structure"],
+      "intent": "Plan large stairs with the building framework and destination landings; in constrained rooms fold the run, use a spiral or ladder only where appropriate, and preserve circulation around it.",
+      "source_bvids": ["BV1DkPVexESz", "BV1ux2sBvECk"],
+      "classification": "inference",
+      "evidence_refs": ["BV1DkPVexESz@750-1020", "BV1ux2sBvECk@480-780"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:large-to-small-furnishing-pass",
+      "design_layers": ["brief", "massing", "facade"],
+      "intent": "Place the room's largest function-bearing furniture first, attach secondary storage and work objects next, and reserve plants or tabletop items for the final pass; keep the circulation route clear.",
+      "source_bvids": ["BV1DkPVexESz"],
+      "classification": "inference",
+      "evidence_refs": ["BV1DkPVexESz@540-720"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:interior-surface-field",
+      "design_layers": ["structure", "facade"],
+      "intent": "Treat floor and ceiling as coordinated fields with bounded patterns, direction and material transitions; reuse block faces for their visual role while keeping the field subordinate to room zoning.",
+      "source_bvids": ["BV1DkPVexESz"],
+      "classification": "inference",
+      "evidence_refs": ["BV1DkPVexESz@1020-1320"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:daylit-window-wall-integration",
+      "design_layers": ["brief", "structure", "facade"],
+      "intent": "Reserve exterior wall access for rooms that need daylight, size windows to the available opening, and integrate frame, sill and optional screen with the wall palette instead of treating the window as an unrelated insert.",
+      "source_bvids": ["BV1DkPVexESz", "BV1ux2sBvECk"],
+      "classification": "inference",
+      "evidence_refs": ["BV1DkPVexESz@1320-1501", "BV1ux2sBvECk@421-480"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:bounded-small-block-assembly",
+      "design_layers": ["structure", "facade"],
+      "intent": "Build a small interior fixture from a readable primary object and a few role-bearing partial blocks; vary material or orientation to fit the room, but reject detail that obscures function or palette unity.",
+      "source_bvids": ["BV1VULRzAE3x"],
+      "classification": "inference",
+      "evidence_refs": ["BV1VULRzAE3x@31-150", "BV1VULRzAE3x@212-481"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:proportioned-luminaire-assembly",
+      "design_layers": ["structure", "facade"],
+      "intent": "Compose a freestanding light as base, shaft and head; keep the base visually stable, transition from thick to thin with partial blocks or material changes, and size ornament to the total height.",
+      "source_bvids": ["BV1Rf7nz5Eic"],
+      "classification": "inference",
+      "evidence_refs": ["BV1Rf7nz5Eic@420-720"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:supported-luminaire-arm",
+      "design_layers": ["structure", "facade"],
+      "intent": "Give every projecting lamp arm a visible bracket, curve or connection path back to its post, wall or ceiling; use the same support logic when adapting the assembly to an entrance or facade.",
+      "source_bvids": ["BV1Rf7nz5Eic"],
+      "classification": "inference",
+      "evidence_refs": ["BV1Rf7nz5Eic@870-1085", "BV1Rf7nz5Eic@1170-1261"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:balanced-luminaire-head",
+      "design_layers": ["structure", "facade"],
+      "intent": "Arrange lamp heads symmetrically when repetition is intended, or balance unequal arms by opposing length and visual weight; reuse compatible post assemblies upside down for suspended lights.",
+      "source_bvids": ["BV1Rf7nz5Eic"],
+      "classification": "inference",
+      "evidence_refs": ["BV1Rf7nz5Eic@842-1021", "BV1Rf7nz5Eic@1410-1591"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:seat-component-grammar",
+      "design_layers": ["brief", "structure", "facade"],
+      "intent": "Compose a chair from a seat surface and back, then add arms, headrest or upholstery only when scale and use support them; select partial blocks by shape, connection and palette rather than item name.",
+      "source_bvids": ["BV1tepJz3EuZ"],
+      "classification": "inference",
+      "evidence_refs": ["BV1tepJz3EuZ@60-180", "BV1tepJz3EuZ@420-480"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:seat-scale-and-grouping",
+      "design_layers": ["brief", "massing", "facade"],
+      "intent": "Use compact chairs where only a small footprint is available; increase scale to carry arms and layered support, and combine related seats into benches or sofas around a shared activity instead of isolated clutter.",
+      "source_bvids": ["BV1tepJz3EuZ"],
+      "classification": "inference",
+      "evidence_refs": ["BV1tepJz3EuZ@450-509", "BV1tepJz3EuZ@660-960"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:context-readable-table",
+      "design_layers": ["brief", "structure", "facade"],
+      "intent": "Make a table legible through a usable tabletop plus its surrounding chairs, display or work context; choose a compact or full-block top according to footprint and whether objects must sit on it.",
+      "source_bvids": ["BV1TUHHz1ECZ"],
+      "classification": "inference",
+      "evidence_refs": ["BV1TUHHz1ECZ@30-120", "BV1TUHHz1ECZ@240-390"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:table-floor-material-separation",
+      "design_layers": ["structure", "facade"],
+      "intent": "Separate a table from the floor with controlled value, texture or edge contrast; prefer calmer tabletop texture when a noisy material hides the outline, and coordinate it with the room palette.",
+      "source_bvids": ["BV1TUHHz1ECZ"],
+      "classification": "inference",
+      "evidence_refs": ["BV1TUHHz1ECZ@390-541"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:cave-route-room-sequence",
+      "design_layers": ["brief", "massing", "structure"],
+      "intent": "For a carved dwelling, establish entrance, main route, smaller private rooms and a larger shared room before surface decoration; vary ceiling height to balance openness with the sheltering cave character.",
+      "source_bvids": ["BV1YNLnzeEx3"],
+      "classification": "inference",
+      "evidence_refs": ["BV1YNLnzeEx3@60-216", "BV1YNLnzeEx3@216-480"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:cave-support-before-finish",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "After carving major cave rooms and level changes, establish a consistent visible support frame and reinforce corners, spans and galleries before wall, floor, storage or furniture finish passes.",
+      "source_bvids": ["BV1YNLnzeEx3"],
+      "classification": "inference",
+      "evidence_refs": ["BV1YNLnzeEx3@515-797"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:cave-ceiling-and-light-strategy",
+      "design_layers": ["brief", "structure", "facade"],
+      "intent": "Keep the cave base visually heavier than its ceiling, vary ceiling height in bounded zones, and distribute supported or concealed light by room size so dark areas are corrected without flattening all depth.",
+      "source_bvids": ["BV1YNLnzeEx3"],
+      "classification": "inference",
+      "evidence_refs": ["BV1YNLnzeEx3@1411-1611", "BV1YNLnzeEx3@1891-2130"]
     }
   ]
 }
