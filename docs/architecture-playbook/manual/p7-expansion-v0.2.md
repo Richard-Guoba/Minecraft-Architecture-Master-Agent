@@ -404,12 +404,69 @@
 - 动作：近景检查入口、立面层次、屋顶接缝和细节；远景检查主体轮廓、比例、屋顶纹理密度以及建筑群与环境的关系。
 - 观察：候选在展示光影之外仍保持主体可读；近距离透视不会成为唯一的比例依据。
 
+## 第七章：进阶建筑
+
+### 把做旧限制在可解释区域
+
+- 来源：`BV1JcQ3YYEg5`，约 64–774 秒
+- 建筑语言：`weathering_zone`、`material_ramp`、`organic_cluster`
+- 动作：选择需要做旧的逻辑区域，以有限色阶改变材料，再在少数关键点加入结构增减和聚类生长。
+- 失败：每面墙平均撒入所有旧化材料，或让做旧覆盖全部主体区域。
+
+### 用主厅、附属体和单位墙组织大型建筑
+
+- 来源：`BV1j7QSYKEHA`，约 30–1,172 秒
+- 建筑语言：`dominant_hall`、`attached_volume`、`unit_bay`、`entry_sequence`
+- 动作：先建立主厅与从属体的多角度轮廓，同时规划入口、大厅、平台和楼梯；完成一个代表风格的单位墙后，沿显式连接面复用有界变体。
+- 约束：案例尺寸、对称形式和屋顶收口不是固定公式。
+
+### 以道路和地形层次规划建筑群
+
+- 来源：`BV1yHEtz2EJh`，约 32–811 秒
+- 建筑语言：`shared_route`、`residual_plot`、`terrain_step`、`landmark_clearance`
+- 动作：让每栋建筑接入主路或公共节点，合并浪费的平行小巷；按近低远高安排地形台阶，并为地标保留主要路径视线。
+- 失败：先孤立堆房再补不可达小路；铲平整片地形；用完全相同模板填满近景。
+
+### 由观察路径决定前景与投入
+
+- 来源：`BV1SNdSBtErf`，约 61–1,111 秒
+- 建筑语言：`primary_view_path`、`foreground_occlusion`、`depth_chain`
+- 动作：在体块排布前声明常走路径，采用前低后高、近精远简；植物、木构或地形只遮挡选定弱面，每层同时成为后一层的前景。
+- 失败：用前景掩盖所有立面问题，或把主体切成没有大面秩序的碎块。
+
+### 编排重复而不是消灭重复
+
+- 来源：`BV1LxjEzKEH7`，约 61–841 秒
+- 建筑语言：`ornament_zone`、`repeat_rhythm`、`quiet_bay`、`shape_vocabulary`
+- 动作：用大柱、横带和安静墙面划出一级分区；在有限模块内交替密实、留白、开口、屋顶与色彩变体。按方块形态和表面角色使用当前目标版本支持的构件。
+- 失败：满墙雕花、整面复制粘贴或无目的的小构件噪声。
+
+### 将斜向结构作为有限点缀
+
+- 来源：`BV17QjvzpEuA`，约 0–1,019 秒
+- 建筑语言：`diagonal_step_rhythm`、`local_orthogonal_envelope`、`diagonal_unit_wall`、`diagonal_budget`
+- 动作：以一致阶梯节奏画局部矩形，先做屋顶边框与屋脊再填面；使用足够宽的单位墙承载开口和支撑，并把斜向段嵌入稳定正向主体。
+- 约束：数格检查窄边奇偶；示例斜率和模组旋转不成为编译依赖。
+
 ## 当前进入构建 Agent 的含义
 
 这些条目扩展的是规划和编译词汇，不是新的审美评分。Agent 可以用模块、变换、mask、重复和 terrain pass 组织蓝图；固定编译器仍把结果输出为相对坐标 `architect_datapack/`。未进入现有白名单的操作保持建议状态，不能绕过硬 QA、方块白名单或一次修复预算。
 
 ## 来源讲义
 
+- [进阶 5 斜向建筑：局部坐标、屋顶框架与有限点缀](../course/notes/heihui-jileniao/BV17QjvzpEuA.md)
+- [进阶 4 降低重复感：分区、留白与编排](../course/notes/heihui-jileniao/BV1LxjEzKEH7.md)
+- [进阶 3.1 前景：观察路径与有限遮挡](../course/notes/heihui-jileniao/BV1SNdSBtErf.md)
+- [进阶 3 建筑群规划：道路、地形层次与地标](../course/notes/heihui-jileniao/BV1yHEtz2EJh.md)
+- [进阶 2 大型建筑：主厅、附属体与单位墙](../course/notes/heihui-jileniao/BV1j7QSYKEHA.md)
+- [进阶 1 做旧：有界材质、结构痕迹与局部生长](../course/notes/heihui-jileniao/BV1JcQ3YYEg5.md)
+- [5.3 山顶洞人：洞穴住宅的路线、支撑与光](../course/notes/heihui-jileniao/BV1YNLnzeEx3.md)
+- [5.2.3 桌子：桌面、支撑与使用场景](../course/notes/heihui-jileniao/BV1TUHHz1ECZ.md)
+- [5.2.2 椅子：座面、靠背与组合尺度](../course/notes/heihui-jileniao/BV1tepJz3EuZ.md)
+- [5.2.1 灯：比例、承托与照明构件](../course/notes/heihui-jileniao/BV1Rf7nz5Eic.md)
+- [5.2 小构件：角色、轮廓与有限细节](../course/notes/heihui-jileniao/BV1VULRzAE3x.md)
+- [5.1.1 室内进阶：分区、楼梯与挑高](../course/notes/heihui-jileniao/BV1ux2sBvECk.md)
+- [5.1 室内基础：功能、动线与采光](../course/notes/heihui-jileniao/BV1DkPVexESz.md)
 - [4.9 海滩设计：尺度构件、功能分区与表面反差](../course/notes/heihui-jileniao/BV1a5TDzhE9M.md)
 - [4.8 山谷设计：分层选址、尺度色块与道路地块](../course/notes/heihui-jileniao/BV1Cm7VzzEXd.md)
 - [4.7 房屋衔接：纵深分区、视线屏障与多层连接](../course/notes/heihui-jileniao/BV1i2JBzPE8m.md)

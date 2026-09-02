@@ -9,7 +9,8 @@
     "complete-roofs",
     "complete-walls-facades",
     "landscaping-terrain",
-    "interiors"
+    "interiors",
+    "advanced-architecture"
   ],
   "source_bvids": [
     "BV1aBV1zwELe",
@@ -42,7 +43,13 @@
     "BV1Rf7nz5Eic",
     "BV1tepJz3EuZ",
     "BV1TUHHz1ECZ",
-    "BV1YNLnzeEx3"
+    "BV1YNLnzeEx3",
+    "BV1JcQ3YYEg5",
+    "BV1j7QSYKEHA",
+    "BV1yHEtz2EJh",
+    "BV1SNdSBtErf",
+    "BV1LxjEzKEH7",
+    "BV17QjvzpEuA"
   ],
   "entries": [
     {
@@ -740,6 +747,150 @@
       "source_bvids": ["BV1YNLnzeEx3"],
       "classification": "inference",
       "evidence_refs": ["BV1YNLnzeEx3@1411-1611", "BV1YNLnzeEx3@1891-2130"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:bounded-material-weathering",
+      "design_layers": ["structure", "roof", "facade"],
+      "intent": "Use fewer transition levels for small color differences and more dense-to-sparse transition bands for large differences; keep the bounded material fields readable.",
+      "source_bvids": ["BV1JcQ3YYEg5"],
+      "classification": "inference",
+      "evidence_refs": ["BV1JcQ3YYEg5@64-252", "BV1JcQ3YYEg5@253-269", "BV1JcQ3YYEg5@348-480"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:structural-weathering-zones",
+      "design_layers": ["massing", "structure", "roof", "facade"],
+      "intent": "Apply structural subtraction, missing pieces and later additions to selected logical zones and key points; keep untreated structure readable instead of altering every surface.",
+      "source_bvids": ["BV1JcQ3YYEg5"],
+      "classification": "inference",
+      "evidence_refs": ["BV1JcQ3YYEg5@252-348", "BV1JcQ3YYEg5@480-650"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:localized-organic-weathering",
+      "design_layers": ["roof", "facade"],
+      "intent": "Cluster greenery and organic growth in selected logical zones and key points; keep its coverage localized so it remains a layer of weathering rather than the whole design.",
+      "source_bvids": ["BV1JcQ3YYEg5"],
+      "classification": "inference",
+      "evidence_refs": ["BV1JcQ3YYEg5@480-650", "BV1JcQ3YYEg5@650-774"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:large-building-unit-bay",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Resolve one representative structural facade bay as a unit wall, then repeat it with explicit connection faces and bounded variations so the large building retains one style without becoming mechanical.",
+      "source_bvids": ["BV1j7QSYKEHA"],
+      "classification": "inference",
+      "evidence_refs": ["BV1j7QSYKEHA@120-360", "BV1j7QSYKEHA@720-960"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:large-building-attached-volume-hierarchy",
+      "design_layers": ["brief", "massing", "structure", "roof"],
+      "intent": "Compose a large public building from a dominant hall and subordinate attached volumes, evaluating the silhouette from several approach angles before resolving repeated facade modules and roofs.",
+      "source_bvids": ["BV1j7QSYKEHA"],
+      "classification": "inference",
+      "evidence_refs": ["BV1j7QSYKEHA@30-240", "BV1j7QSYKEHA@480-720", "BV1j7QSYKEHA@1089-1097"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:large-entry-interior-sequence",
+      "design_layers": ["brief", "massing", "structure"],
+      "intent": "Plan the principal entrance, interior hall, platform and stairs as one circulation sequence; derive widths from use and structural rhythm rather than copying a fixed example dimension.",
+      "source_bvids": ["BV1j7QSYKEHA"],
+      "classification": "inference",
+      "evidence_refs": ["BV1j7QSYKEHA@360-600", "BV1j7QSYKEHA@960-1172"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:route-led-building-group",
+      "design_layers": ["brief", "massing"],
+      "intent": "Give every building a logical route to a shared road or public space, merge wasteful parallel alleys, and use bends, branches and residual plots to organize the group.",
+      "source_bvids": ["BV1yHEtz2EJh"],
+      "classification": "inference",
+      "evidence_refs": ["BV1yHEtz2EJh@32-181", "BV1yHEtz2EJh@181-332"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:terrain-stepped-landmark",
+      "design_layers": ["brief", "massing"],
+      "intent": "Use terrain steps to arrange near-low and far-high layers, keep a landmark visible from primary routes, and reserve foreground clearance so adjacent roofs do not erase its silhouette.",
+      "source_bvids": ["BV1yHEtz2EJh"],
+      "classification": "inference",
+      "evidence_refs": ["BV1yHEtz2EJh@332-540", "BV1yHEtz2EJh@574-661"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:group-template-variation",
+      "design_layers": ["massing", "structure", "roof", "facade"],
+      "intent": "Build a coherent family of house and tower templates, then vary height, width, diagonal form and placement; reduce exact reuse when the group requires greater refinement.",
+      "source_bvids": ["BV1yHEtz2EJh"],
+      "classification": "inference",
+      "evidence_refs": ["BV1yHEtz2EJh@390-480", "BV1yHEtz2EJh@661-811"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:viewpoint-led-massing",
+      "design_layers": ["brief", "massing"],
+      "intent": "Declare primary observation points or travel paths before arranging volumes; keep foreground masses lower so important rear volumes remain visible, and spend detail where players can inspect it.",
+      "source_bvids": ["BV1SNdSBtErf"],
+      "classification": "inference",
+      "evidence_refs": ["BV1SNdSBtErf@61-241", "BV1SNdSBtErf@241-301"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:bounded-foreground-occlusion",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Use vegetation, small timber structures or terrain as bounded foreground occlusion for selected weak or blank areas, but leave the subject readable and still resolve exposed major surfaces.",
+      "source_bvids": ["BV1SNdSBtErf"],
+      "classification": "inference",
+      "evidence_refs": ["BV1SNdSBtErf@301-603", "BV1SNdSBtErf@660-962"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:foreground-depth-chain",
+      "design_layers": ["brief", "massing", "facade"],
+      "intent": "Arrange successive low-to-high layers so each building is partly framed by the layer before it and becomes foreground for the layer behind, producing a continuous depth chain.",
+      "source_bvids": ["BV1SNdSBtErf"],
+      "classification": "inference",
+      "evidence_refs": ["BV1SNdSBtErf@1024-1111"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:purposeful-ornament-zoning",
+      "design_layers": ["structure", "facade"],
+      "intent": "Reserve dense ornament for structurally or compositionally important zones and separate it with calmer wall fields, major columns and horizontal bands; full-surface ornament counts as no hierarchy.",
+      "source_bvids": ["BV1LxjEzKEH7"],
+      "classification": "inference",
+      "evidence_refs": ["BV1LxjEzKEH7@61-181", "BV1LxjEzKEH7@781-841"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:partitioned-repeat-rhythm",
+      "design_layers": ["massing", "structure", "roof", "facade"],
+      "intent": "Partition a repeated facade vertically and horizontally, alternate filled and quieter bays, and introduce purposeful openings or roof variants so repeat rhythm remains legible without exact full-field copying.",
+      "source_bvids": ["BV1LxjEzKEH7"],
+      "classification": "inference",
+      "evidence_refs": ["BV1LxjEzKEH7@422-540", "BV1LxjEzKEH7@606-620", "BV1LxjEzKEH7@661-781"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:shape-vocabulary-refresh",
+      "design_layers": ["structure", "roof", "facade"],
+      "intent": "Choose current supported blocks by visual shape, face and material role, using partial-block assemblies only where they improve readable curves or transitions and not as automatic surface noise.",
+      "source_bvids": ["BV1LxjEzKEH7"],
+      "classification": "inference",
+      "evidence_refs": ["BV1LxjEzKEH7@181-421"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:diagonal-envelope-and-roof-frame",
+      "design_layers": ["massing", "structure", "roof"],
+      "intent": "Lay out a diagonal rectangular envelope with a consistent step rhythm, build roof perimeter and ridge frames before infill, and count narrow-span parity so the roof closes cleanly.",
+      "source_bvids": ["BV17QjvzpEuA"],
+      "classification": "inference",
+      "evidence_refs": ["BV17QjvzpEuA@0-180", "BV17QjvzpEuA@360-480"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:diagonal-unit-wall",
+      "design_layers": ["structure", "facade"],
+      "intent": "Create a diagonal unit wall wide enough for a readable opening and support, repeat it on the step rhythm, and keep the envelope orthogonal in its own local frame rather than collapsing into a parallelogram.",
+      "source_bvids": ["BV17QjvzpEuA"],
+      "classification": "inference",
+      "evidence_refs": ["BV17QjvzpEuA@300-421", "BV17QjvzpEuA@480-601"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:bounded-diagonal-accent",
+      "design_layers": ["brief", "massing", "structure", "roof", "facade"],
+      "intent": "Use a diagonal segment as a bounded accent within an otherwise stable building or group; prefer larger planar fields and simpler detail, and avoid making every volume diagonal.",
+      "source_bvids": ["BV17QjvzpEuA"],
+      "classification": "inference",
+      "evidence_refs": ["BV17QjvzpEuA@205-259", "BV17QjvzpEuA@333-348", "BV17QjvzpEuA@421-540", "BV17QjvzpEuA@900-1019"]
     }
   ]
 }

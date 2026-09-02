@@ -31,14 +31,19 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     'complete-roofs',
     'complete-walls-facades',
     'landscaping-terrain',
-    'interiors'
+    'interiors',
+    'advanced-architecture'
   ]);
-  assert.equal(overlay.source_bvids.length, 31);
+  assert.equal(overlay.source_bvids.length, 37);
   for (const bvid of [
     'BV1DkPVexESz', 'BV1ux2sBvECk', 'BV1VULRzAE3x', 'BV1Rf7nz5Eic',
     'BV1tepJz3EuZ', 'BV1TUHHz1ECZ', 'BV1YNLnzeEx3'
   ]) assert.ok(overlay.source_bvids.includes(bvid));
-  assert.equal(overlay.entries.length, 87);
+  for (const bvid of [
+    'BV1JcQ3YYEg5', 'BV1j7QSYKEHA', 'BV1yHEtz2EJh',
+    'BV1SNdSBtErf', 'BV1LxjEzKEH7', 'BV17QjvzpEuA'
+  ]) assert.ok(overlay.source_bvids.includes(bvid));
+  assert.equal(overlay.entries.length, 105);
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
@@ -93,6 +98,34 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     knowledge_id === 'knowledge:p7:cave-route-room-sequence');
   assert.deepEqual(caveSequence.evidence_refs,
     ['BV1YNLnzeEx3@60-216', 'BV1YNLnzeEx3@216-480']);
+  const weathering = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:bounded-material-weathering');
+  assert.deepEqual(weathering.evidence_refs,
+    ['BV1JcQ3YYEg5@64-252', 'BV1JcQ3YYEg5@253-269',
+      'BV1JcQ3YYEg5@348-480']);
+  assert.match(weathering.intent, /bounded/iu);
+  const groupRoute = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:route-led-building-group');
+  assert.deepEqual(groupRoute.evidence_refs,
+    ['BV1yHEtz2EJh@32-181', 'BV1yHEtz2EJh@181-332']);
+  assert.match(groupRoute.intent, /route/iu);
+  const foreground = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:bounded-foreground-occlusion');
+  assert.deepEqual(foreground.evidence_refs,
+    ['BV1SNdSBtErf@301-603', 'BV1SNdSBtErf@660-962']);
+  assert.match(foreground.intent, /occlusion/iu);
+  const repetition = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:partitioned-repeat-rhythm');
+  assert.deepEqual(repetition.evidence_refs,
+    ['BV1LxjEzKEH7@422-540', 'BV1LxjEzKEH7@606-620',
+      'BV1LxjEzKEH7@661-781']);
+  assert.match(repetition.intent, /repeat/iu);
+  const diagonal = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:bounded-diagonal-accent');
+  assert.deepEqual(diagonal.evidence_refs,
+    ['BV17QjvzpEuA@205-259', 'BV17QjvzpEuA@333-348',
+      'BV17QjvzpEuA@421-540', 'BV17QjvzpEuA@900-1019']);
+  assert.match(diagonal.intent, /diagonal/iu);
   assert.deepEqual(
     overlay.entries.find(({ knowledge_id }) =>
       knowledge_id === 'knowledge:p7:purposeful-volume-subtraction').evidence_refs,
