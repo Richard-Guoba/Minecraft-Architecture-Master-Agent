@@ -346,6 +346,9 @@ function buildBlueprint({ prompt, architecture, topology, creativeDesign, concep
     philosophy: architecture.philosophy,
     buildSpec,
     architecture,
+    ...(architecture.generation_hints?.architecture_language
+      ? { architectureLanguage: architecture.generation_hints.architecture_language }
+      : {}),
     topology,
     creativeDesign,
     ...(conceptStudio?.active ? { conceptStudio: compactConceptStudio(conceptStudio) } : {}),
@@ -547,6 +550,9 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shad
   const previewPath = path.join(outputDir, 'preview.html');
   const reportPath = path.join(outputDir, 'run_report.md');
   const architectureScorecardPath = path.join(outputDir, 'architecture_scorecard.json');
+  const architectureLanguagePath = blueprint.architectureLanguage
+    ? path.join(outputDir, 'architecture_language.json')
+    : undefined;
   const conceptStudioPath = conceptStudio?.active ? path.join(outputDir, 'concept_studio.json') : undefined;
   const conceptStudioReportPath = conceptStudio?.active ? path.join(outputDir, 'concept_studio_report.md') : undefined;
   const criticCouncilPath = criticCouncil?.active ? path.join(outputDir, 'critic_council.json') : undefined;
@@ -560,6 +566,7 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shad
 
   await writeJson(blueprintPath, blueprint);
   await writeJson(architectureScorecardPath, architectureScorecard);
+  if (architectureLanguagePath) await writeJson(architectureLanguagePath, blueprint.architectureLanguage);
   if (conceptStudioPath) await writeJson(conceptStudioPath, serializeConceptStudio(conceptStudio));
   if (conceptStudioReportPath) await fs.writeFile(conceptStudioReportPath, renderConceptStudioReport(conceptStudio), 'utf8');
   if (criticCouncilPath) await writeJson(criticCouncilPath, serializeCriticCouncil(criticCouncil));
@@ -606,6 +613,7 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shad
   return {
     blueprint: blueprintPath,
     architectureScorecard: architectureScorecardPath,
+    ...(architectureLanguagePath ? { architectureLanguage: architectureLanguagePath } : {}),
     datapackDir,
     buildFunction: buildPath,
     clearFunction: clearPath,
@@ -750,6 +758,7 @@ function renderReport({ prompt, blueprint, architectureScorecard, validation, mc
   const conceptStudioSection = renderConceptStudioSection(blueprint);
   const stage7ShadowSection = blueprint.stage7?.active ? `## Stage 7 Milestone 1 Shadow\n\n- Mode: ${blueprint.stage7.mode}\n- Provider: ${blueprint.stage7.provider}\n- Status: ${blueprint.stage7.status}\n- Condition hash: ${blueprint.stage7.condition_hash}\n- Primary geometry changed: no\n\n` : '';
   const criticCouncilSection = renderCriticCouncilSection(blueprint);
+  const architectureLanguageSection = renderArchitectureLanguageSection(blueprint.architectureLanguage);
 
   return `# Minecraft 建筑智能体运行报告
 
@@ -819,7 +828,7 @@ ${templateLawCoverageLine}
 ${templateLawRepairLine}
 ${templateAssimilationLine}
 
-${conceptStudioSection}${stage7ShadowSection}${criticCouncilSection}
+${architectureLanguageSection}${conceptStudioSection}${stage7ShadowSection}${criticCouncilSection}
 ## 结构框架 JSON
 
 - 来源：${blueprint.structure?.source || 'unknown'}
@@ -888,6 +897,28 @@ ${installLine}
 ${usage}
 
 说明：mcfunction 文件内部命令不带斜杠，这是 Minecraft 数据包函数的正常格式。
+`;
+}
+
+function renderArchitectureLanguageSection(value) {
+  const plan = value?.plan;
+  const trace = value?.trace;
+  if (!plan || !trace) return '';
+  const selected = plan.selected_knowledge_ids?.map((id) => `- ${id}`).join('\n') || '- none';
+  const applied = trace.applied_operations?.map((row) =>
+    `- ${row.knowledge_id} → ${row.workflow_stage} → ${row.operation_id} (${row.status})`).join('\n') || '- none';
+  return `## Architecture Language v0.2
+
+- School: ${plan.school_id}
+- Overlay SHA-256: ${plan.overlay_sha256}
+- Authority: ${plan.authority}
+
+Selected knowledge:
+${selected}
+
+Applied deterministic operations and planner preferences:
+${applied}
+
 `;
 }
 

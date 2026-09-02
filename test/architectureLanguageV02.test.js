@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import { loadP7AdvisoryOverlay } from '../src/playbook/knowledge/p7AdvisoryOverlay.js';
 import { prepareConstructionDesign } from '../src/construction/designStages.js';
+import { runConstructionWorkflow } from '../src/construction/workflow.js';
 import {
   applyArchitectureLanguageV02,
   classifyP7ArchitectureLanguage,
@@ -167,4 +168,44 @@ test('feeds Architecture Language preferences through the existing semantic agen
   assert.equal(prepared.creativeDesign.design_axes.massing_variant, 'waterfront-stepped-estate');
   assert.equal(prepared.architecture.generation_hints.architecture_language.plan.language_version, '0.2.0');
   assert.equal(prepared.architecture.generation_hints.architecture_language.trace.applied_operations.length, 8);
+});
+
+test('exports deterministic knowledge-to-operation traceability beside a portable relative datapack', async (t) => {
+  const roots = await Promise.all([0, 1].map(() =>
+    fs.mkdtemp(path.join(os.tmpdir(), 'architecture-language-output-'))));
+  t.after(() => Promise.all(roots.map((root) => fs.rm(root, { recursive: true, force: true }))));
+  const prompt = 'Build a modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, and functional interior.';
+  const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
+  const architectureLanguage = compileArchitectureLanguageV02({ prompt, overlay });
+
+  const results = [];
+  for (const outputDir of roots) {
+    results.push(await runConstructionWorkflow({
+      prompt,
+      mode: 'mock',
+      outputDir,
+      cwd: ROOT,
+      seed: 7101,
+      architectureLanguage,
+      critics: false
+    }));
+  }
+
+  assert.deepEqual(results[0].blueprint.architectureLanguage,
+    results[1].blueprint.architectureLanguage);
+  assert.deepEqual(results[0].blueprint.operations, results[1].blueprint.operations);
+  const artifact = JSON.parse(await fs.readFile(results[0].artifacts.architectureLanguage, 'utf8'));
+  assert.deepEqual(artifact, results[0].blueprint.architectureLanguage);
+  const report = await fs.readFile(results[0].artifacts.report, 'utf8');
+  assert.match(report, /Architecture Language v0\.2/u);
+  assert.match(report, /knowledge:p7:modern-interlocking-volume/u);
+  const pack = JSON.parse(await fs.readFile(path.join(results[0].artifacts.datapackDir, 'pack.mcmeta'), 'utf8'));
+  assert.equal(pack.pack.pack_format, 48);
+  for (const functionName of ['build.mcfunction', 'clear.mcfunction']) {
+    const body = await fs.readFile(path.join(results[0].artifacts.datapackDir,
+      'data/architect/function', functionName), 'utf8');
+    const commands = body.split('\n').filter((line) => line && !line.startsWith('#'));
+    assert.ok(commands.length > 0);
+    assert.ok(commands.every((line) => /(?:^| )~-?\d*(?: |$)/u.test(line)));
+  }
 });

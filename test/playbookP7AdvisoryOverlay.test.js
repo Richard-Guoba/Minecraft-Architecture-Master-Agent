@@ -405,24 +405,32 @@ test('execute loads the validated advisory and passes it to candidate design', a
   assert.deepEqual(calls, [overlay]);
 });
 
-test('mock execute never loads the advisory and retains its original candidate input', async (t) => {
+test('mock execute loads canonical advisory for Architecture Language without changing the frozen P5 envelope', async (t) => {
   const outRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'p7-advisory-mock-'));
   t.after(() => fs.rm(outRoot, { recursive: true, force: true }));
+  const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
   let loadCalls = 0;
   const candidateInputs = [];
   await assert.rejects(runExecutablePlaybookPipeline({
-    playbook: 'execute', prompt: 'Build a medieval residence.', mode: 'mock',
+    playbook: 'execute', prompt: 'Build a modern lakeside villa with a flat roof terrace and large glass.', mode: 'mock',
     seed: 424242, outRoot, cwd: ROOT
   }, {
-    loadAdvisory: async () => { loadCalls += 1; throw new Error('must not load'); },
+    loadAdvisory: async () => { loadCalls += 1; return overlay; },
     createEnvelope: async (input) => {
       candidateInputs.push(input);
-      const error = new Error('stop'); error.code = 'P5_AUTHORITY_INVALID'; throw error;
+      return createFrozenDesignEnvelope(input);
+    },
+    prepareDesign: async (input) => {
+      candidateInputs.push(input);
+      const error = new Error('stop after language input'); error.code = 'P5_AUTHORITY_INVALID'; throw error;
     }
   }), { code: 'P5_AUTHORITY_INVALID' });
-  assert.equal(loadCalls, 0);
-  assert.equal(candidateInputs.length, 1);
+  assert.equal(loadCalls, 1);
+  assert.equal(candidateInputs.length, 2);
   assert.equal(Object.hasOwn(candidateInputs[0], 'advisoryOverlay'), false);
+  assert.equal(candidateInputs[1].architectureLanguage.language_version, '0.2.0');
+  assert.ok(candidateInputs[1].architectureLanguage.selected_knowledge_ids.includes(
+    'knowledge:p7:modern-flat-roof-option'));
 });
 
 test('execute rejects an injected advisory drift before creating any candidate', async (t) => {

@@ -26,6 +26,7 @@ import {
   loadP7AdvisoryOverlay,
   projectP7AdvisoryKnowledge
 } from '../knowledge/p7AdvisoryOverlay.js';
+import { compileArchitectureLanguageV02 } from '../runtime/architectureLanguageV02.js';
 
 const MAX_RANDOM_SEED = 2147483647;
 const DEFAULT_TARGET_SCORE = 95;
@@ -71,17 +72,18 @@ export async function runExecutablePlaybookPipeline(options = {}, dependencies =
     const { runDir } = created;
     stage = 'corpus';
     const cards = (await deps.loadCorpus({ projectRoot })).cards;
-    let advisoryOverlay;
-    if (normalized.mode === 'llm') {
-      stage = 'advisory';
-      advisoryOverlay = await deps.loadAdvisory({ projectRoot });
-      projectP7AdvisoryKnowledge(advisoryOverlay);
-    }
+    stage = 'advisory';
+    const advisoryOverlay = await deps.loadAdvisory({ projectRoot });
+    projectP7AdvisoryKnowledge(advisoryOverlay);
+    const architectureLanguage = compileArchitectureLanguageV02({
+      prompt: normalized.prompt,
+      overlay: advisoryOverlay
+    });
     stage = 'candidates';
     const records = [];
     for (let index = 1; index <= 3; index += 1) records.push(await executeCandidate({
       index, normalized, seedPlan, runDir, projectRoot, authority, cards,
-      advisoryOverlay, deps
+      advisoryOverlay, architectureLanguage, deps
     }));
     const eligibleRecords = records.filter((record) => record.playbookEligibility.status === 'eligible');
     const targetScore = clampInt(normalized.candidateTargetScore, 0, 100, DEFAULT_TARGET_SCORE);
@@ -141,7 +143,7 @@ export async function runExecutablePlaybookPipeline(options = {}, dependencies =
 
 async function executeCandidate({
   index, normalized, seedPlan, runDir, projectRoot, authority, cards,
-  advisoryOverlay, deps
+  advisoryOverlay, architectureLanguage, deps
 }) {
   const candidateId = `candidate-${String(index).padStart(2, '0')}`;
   const seed = candidateSeedFor(seedPlan.seed, 1, index);
@@ -154,7 +156,7 @@ async function executeCandidate({
       : deps.createClient({ cwd: projectRoot, provider: normalized.llmProvider });
     frozenDesign = await deps.createEnvelope({
       mode: normalized.mode, candidateId, seed, prompt: normalized.prompt, cards,
-      ...(advisoryOverlay ? { advisoryOverlay } : {}), client
+      ...(normalized.mode === 'llm' ? { advisoryOverlay } : {}), client
     });
     frozenDesignSha256 = sha256(stableJson(frozenDesign));
     prepared = await deps.prepareDesign({ prompt: normalized.prompt, mode: normalized.mode, mcVersion: normalized.mcVersion,
@@ -162,7 +164,7 @@ async function executeCandidate({
       conceptCount: clampInt(normalized.concepts, 0, 5, 0), conceptStrategy: normalized.conceptStrategy || 'select',
       critics: normalized.critics, neuralRetrieval: normalized.neuralRetrieval, coarseVoxelMode: normalized.coarseVoxelMode,
       coarseVoxelProvider: normalized.coarseVoxelProvider, coarseVoxelPlan: normalized.coarseVoxelPlan,
-      candidateId, frozenDesignSha256, frozenDesign, llmClient: client });
+      candidateId, frozenDesignSha256, frozenDesign, architectureLanguage, llmClient: client });
     contextSha256 = sha256(stableJson(prepared.frozen_generator_context));
     compiled = deps.compileLayers({ prepared, layerPayloads: undefined, resolvedEffectsByLayer: {} });
     result = await deps.compilePrepared({ prepared, compiledLayers: compiled, outputDir: candidateDir,
