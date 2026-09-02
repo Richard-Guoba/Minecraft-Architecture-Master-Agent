@@ -27,11 +27,12 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
   assert.equal(overlay.status, 'subtitle-derived-advisory');
   assert.deepEqual(overlay.chapter_ids, [
     'foundations-tools-blocks-modularity-color',
-    'complete-structure'
+    'complete-structure',
+    'complete-roofs'
   ]);
-  assert.equal(overlay.source_bvids.length, 9);
-  assert.equal(overlay.source_bvids.at(-1), 'BV1MA7Bz2EE1');
-  assert.equal(overlay.entries.length, 21);
+  assert.equal(overlay.source_bvids.length, 10);
+  assert.equal(overlay.source_bvids.at(-1), 'BV1h1keYbEMd');
+  assert.equal(overlay.entries.length, 25);
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
@@ -39,11 +40,12 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
   assert.ok(overlay.entries.every((entry) =>
     ['author_claim', 'inference', 'contrast'].includes(entry.classification)));
   assert.deepEqual(
-    overlay.entries.slice(-3).map(({ knowledge_id }) => knowledge_id),
+    overlay.entries.slice(-4).map(({ knowledge_id }) => knowledge_id),
     [
-      'knowledge:p7:scaled-column-beam-grid',
-      'knowledge:p7:roof-bearing-space-tradeoff',
-      'knowledge:p7:scale-matched-lateral-support'
+      'knowledge:p7:roof-orientation-massing-fit',
+      'knowledge:p7:compound-roof-seam-cleanup',
+      'knowledge:p7:adaptive-roof-profile',
+      'knowledge:p7:even-span-roof-closure'
     ]
   );
   assert.deepEqual(
@@ -57,14 +59,32 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     ]
   );
   assert.deepEqual(
-    overlay.entries.at(-1).evidence_refs,
-    ['BV1MA7Bz2EE1@431-599', 'BV1MA7Bz2EE1@605-966']
+    overlay.entries.find(({ knowledge_id }) =>
+      knowledge_id === 'knowledge:p7:close-distant-evaluation').evidence_refs,
+    [
+      'BV1SwdfBHEx5@51-94',
+      'BV1SwdfBHEx5@202-250',
+      'BV1SwdfBHEx5@338-362',
+      'BV1h1keYbEMd@1159-1189'
+    ]
   );
-  assert.match(overlay.entries.at(-1).intent, /column-beam frames/iu);
-  assert.match(overlay.entries.at(-1).intent, /arches/iu);
-  assert.doesNotMatch(
-    overlay.entries.at(-1).intent,
-    /wide spans|projections|tall walls/iu
+  assert.deepEqual(overlay.entries.at(-1).evidence_refs,
+    ['BV1h1keYbEMd@852-970']);
+  assert.match(overlay.entries.at(-1).intent, /even-width spans/iu);
+  assert.match(overlay.entries.at(-1).intent, /offsetting the ridge/iu);
+  assert.deepEqual(
+    overlay.entries.find(({ knowledge_id }) =>
+      knowledge_id === 'knowledge:p7:compound-roof-seam-cleanup').evidence_refs,
+    [
+      'BV1h1keYbEMd@277-316',
+      'BV1h1keYbEMd@341-425',
+      'BV1h1keYbEMd@427-488'
+    ]
+  );
+  assert.deepEqual(
+    overlay.entries.find(({ knowledge_id }) =>
+      knowledge_id === 'knowledge:p7:adaptive-roof-profile').evidence_refs,
+    ['BV1h1keYbEMd@78-221', 'BV1h1keYbEMd@575-830']
   );
   assert.ok(Object.isFrozen(overlay));
   assert.ok(Object.isFrozen(overlay.entries));

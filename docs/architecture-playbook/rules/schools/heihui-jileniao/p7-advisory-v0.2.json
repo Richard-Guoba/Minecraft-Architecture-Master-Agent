@@ -5,7 +5,8 @@
   "status": "subtitle-derived-advisory",
   "chapter_ids": [
     "foundations-tools-blocks-modularity-color",
-    "complete-structure"
+    "complete-structure",
+    "complete-roofs"
   ],
   "source_bvids": [
     "BV1aBV1zwELe",
@@ -16,7 +17,8 @@
     "BV14XMtzFEzb",
     "BV1ecj4zsE27",
     "BV1Mp7UzyE3P",
-    "BV1MA7Bz2EE1"
+    "BV1MA7Bz2EE1",
+    "BV1h1keYbEMd"
   ],
   "entries": [
     {
@@ -39,9 +41,9 @@
       "knowledge_id": "knowledge:p7:close-distant-evaluation",
       "design_layers": ["brief", "massing", "facade"],
       "intent": "Use close evaluation for entrances and joins and distant compressed evaluation for silhouette, proportion, palette blocks and context; do not rely on showcase lighting alone.",
-      "source_bvids": ["BV1SwdfBHEx5"],
+      "source_bvids": ["BV1SwdfBHEx5", "BV1h1keYbEMd"],
       "classification": "inference",
-      "evidence_refs": ["BV1SwdfBHEx5@51-94", "BV1SwdfBHEx5@202-250", "BV1SwdfBHEx5@338-362"]
+      "evidence_refs": ["BV1SwdfBHEx5@51-94", "BV1SwdfBHEx5@202-250", "BV1SwdfBHEx5@338-362", "BV1h1keYbEMd@1159-1189"]
     },
     {
       "knowledge_id": "knowledge:p7:palette-ramp",
@@ -186,6 +188,38 @@
       "source_bvids": ["BV1MA7Bz2EE1"],
       "classification": "inference",
       "evidence_refs": ["BV1MA7Bz2EE1@431-599", "BV1MA7Bz2EE1@605-966"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:roof-orientation-massing-fit",
+      "design_layers": ["massing", "roof"],
+      "intent": "Choose roof ridge orientation by comparing the resulting roof height and silhouette across candidate building axes; do not automatically apply the same orientation to every long edge, while preserving intentional exceptions.",
+      "source_bvids": ["BV1h1keYbEMd"],
+      "classification": "inference",
+      "evidence_refs": ["BV1h1keYbEMd@6-78"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:compound-roof-seam-cleanup",
+      "design_layers": ["massing", "roof"],
+      "intent": "Compose L-, T- or cross-plan roofs from connected components, fill their junction, remove duplicated overlaps, and align secondary roofs or dormers with the underlying volume or opening.",
+      "source_bvids": ["BV1h1keYbEMd"],
+      "classification": "inference",
+      "evidence_refs": ["BV1h1keYbEMd@277-316", "BV1h1keYbEMd@341-425", "BV1h1keYbEMd@427-488"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:adaptive-roof-profile",
+      "design_layers": ["roof"],
+      "intent": "Budget border, ridge and stacked decoration into final roof height; express curved variants with slope phases that may steepen or flatten, choose block forms for scale, and avoid treating one demonstrated curve as a fixed template.",
+      "source_bvids": ["BV1h1keYbEMd"],
+      "classification": "inference",
+      "evidence_refs": ["BV1h1keYbEMd@78-221", "BV1h1keYbEMd@575-830"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:even-span-roof-closure",
+      "design_layers": ["structure", "roof"],
+      "intent": "On even-width spans, close the roof by deliberately offsetting the ridge, changing one or both slope rhythms, or capping the top with a short flat or secondary structure; verify the silhouette instead of forcing a rigid peak.",
+      "source_bvids": ["BV1h1keYbEMd"],
+      "classification": "inference",
+      "evidence_refs": ["BV1h1keYbEMd@852-970"]
     }
   ]
 }
