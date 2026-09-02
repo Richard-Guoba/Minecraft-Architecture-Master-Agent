@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
 import { loadP7AdvisoryOverlay } from '../src/playbook/knowledge/p7AdvisoryOverlay.js';
+import { prepareConstructionDesign } from '../src/construction/designStages.js';
 import {
+  applyArchitectureLanguageV02,
   classifyP7ArchitectureLanguage,
   compileArchitectureLanguageV02
 } from '../src/playbook/runtime/architectureLanguageV02.js';
@@ -78,4 +82,89 @@ test('rejects non-canonical advisory input instead of compiling guessed knowledg
     () => compileArchitectureLanguageV02({ prompt: 'Build a house', overlay }),
     { code: 'ARCHITECTURE_LANGUAGE_INVALID' }
   );
+});
+
+test('applies the residential slice through existing semantic planner fields and records each applied operation', async () => {
+  const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
+  const plan = compileArchitectureLanguageV02({
+    prompt: 'Build a modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, and functional interior.',
+    overlay
+  });
+  const architecture = {
+    roof_rules: { skylights: false },
+    facade_rules: { front_side: 'east' },
+    site_rules: { boundary: 'open' },
+    design_directives: { interior: { color_story: 'quiet' } },
+    generation_hints: {
+      template_composition_strategy: { active: true, directives: { keep_existing: true } }
+    }
+  };
+  const buildSpec = { roof_style: 'gabled', site: { preserve: true } };
+
+  const applied = applyArchitectureLanguageV02({ plan, architecture, buildSpec });
+
+  assert.equal(applied.architecture.roof_rules.style, 'flat');
+  assert.equal(applied.architecture.roof_rules.profile, 'thin-parapet-terrace');
+  assert.equal(applied.buildSpec.roof_style, 'flat');
+  assert.equal(applied.architecture.generation_hints.template_composition_strategy.directives.preferred_massing_variant,
+    'waterfront-stepped-estate');
+  assert.equal(applied.architecture.generation_hints.template_composition_strategy.directives.lock_preferred_massing_variant, true);
+  assert.equal(applied.architecture.generation_hints.template_composition_strategy.directives.keep_existing, true);
+  assert.equal(applied.architecture.facade_rules.front_side, 'east');
+  assert.equal(applied.architecture.facade_rules.awnings, true);
+  assert.equal(applied.architecture.facade_rules.large_glass, true);
+  assert.equal(applied.architecture.facade_rules.entry_detail_variant, 'offset-frame');
+  assert.equal(applied.architecture.site_rules.route_strategy, 'route-first-grounding');
+  assert.equal(applied.architecture.design_directives.interior.color_story, 'quiet');
+  assert.equal(applied.architecture.design_directives.interior.space_planning, 'function-before-furnishing');
+  assert.equal(applied.architecture.design_directives.interior.furnishing_sequence, 'large-to-small');
+  assert.deepEqual(applied.trace.applied_operations.map((row) => row.operation_id), [
+    'language:roof:flat-parapet',
+    'language:facade:sheltered-entry',
+    'language:site:route-first-grounding',
+    'language:interior:function-first-zoning',
+    'language:interior:large-to-small-pass',
+    'language:facade:daylit-window-wall',
+    'language:massing:waterfront-stepped-estate',
+    'language:facade:private-entry-openness'
+  ]);
+  assert.equal(applied.trace.applied_operations.every((row) =>
+    plan.selected_knowledge_ids.includes(row.knowledge_id)), true);
+  assert.doesNotMatch(JSON.stringify(applied.trace), /\b(?:x|y|z|coordinate|block_id|command|repair_operation_id)\b/iu);
+  assert.equal(architecture.roof_rules.style, undefined);
+  assert.equal(buildSpec.roof_style, 'gabled');
+});
+
+test('does not select a flat-roof mapping when the user explicitly requires a pitched roof', async () => {
+  const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
+
+  const plan = compileArchitectureLanguageV02({
+    prompt: 'Build a modern villa with a pitched roof and a small roof terrace.',
+    overlay
+  });
+
+  assert.equal(plan.selected_knowledge_ids.includes('knowledge:p7:modern-flat-roof-option'), false);
+});
+
+test('feeds Architecture Language preferences through the existing semantic agents before deterministic compilation', async (t) => {
+  const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), 'architecture-language-design-'));
+  t.after(() => fs.rm(outputDir, { recursive: true, force: true }));
+  const prompt = 'Build a modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, and functional interior.';
+  const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
+  const architectureLanguage = compileArchitectureLanguageV02({ prompt, overlay });
+
+  const prepared = await prepareConstructionDesign({
+    prompt,
+    mode: 'mock',
+    outputDir,
+    cwd: ROOT,
+    seed: 7101,
+    architectureLanguage
+  });
+
+  assert.equal(prepared.architecture.roof_rules.style, 'flat');
+  assert.equal(prepared.buildSpec.roof_style, 'flat');
+  assert.equal(prepared.creativeDesign.design_axes.massing_variant, 'waterfront-stepped-estate');
+  assert.equal(prepared.architecture.generation_hints.architecture_language.plan.language_version, '0.2.0');
+  assert.equal(prepared.architecture.generation_hints.architecture_language.trace.applied_operations.length, 8);
 });

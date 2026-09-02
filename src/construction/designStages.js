@@ -21,6 +21,7 @@ import { executeError, validateFrozenGeneratorContext, validateResolvedPatch } f
 import { DESIGN_LAYER_ORDER } from '../playbook/execute/constants.js';
 import { deriveBuildSpec } from './buildSpec.js';
 import { applyLayerEffects } from '../playbook/execute/repairTransaction.js';
+import { applyArchitectureLanguageV02 } from '../playbook/runtime/architectureLanguageV02.js';
 
 export async function prepareConstructionDesign({
   prompt,
@@ -41,6 +42,7 @@ export async function prepareConstructionDesign({
   candidateId,
   frozenDesignSha256,
   frozenDesign,
+  architectureLanguage,
   llmClient: injectedLlmClient
 } = {}) {
   if (!prompt || !prompt.trim()) throw new Error('Prompt is required.');
@@ -75,6 +77,15 @@ export async function prepareConstructionDesign({
     materialPalette.roles = Object.keys(materialPalette.materials || {}).sort();
   }
   buildSpec = applyTemplateKnowledgeToBuildSpec(buildSpec, templateKnowledge);
+  if (architectureLanguage !== undefined) {
+    const appliedLanguage = applyArchitectureLanguageV02({
+      plan: architectureLanguage,
+      architecture,
+      buildSpec
+    });
+    architecture = appliedLanguage.architecture;
+    buildSpec = appliedLanguage.buildSpec;
+  }
   let topology = await new ConstructionPlannerAgent({ llmClient, mode }).run(designPrompt, architecture, buildSpec);
   const conceptStudio = await runConceptStudio({
     prompt: designPrompt,

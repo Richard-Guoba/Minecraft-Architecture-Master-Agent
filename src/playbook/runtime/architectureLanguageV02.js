@@ -85,7 +85,11 @@ export function classifyP7ArchitectureLanguage(overlay) {
 export function compileArchitectureLanguageV02({ prompt, overlay } = {}) {
   if (typeof prompt !== 'string' || !prompt.trim()) invalid();
   const catalog = classifyP7ArchitectureLanguage(overlay);
-  const selected = catalog.concepts.filter((row) => SELECTORS.get(row.knowledge_id)?.test(prompt));
+  const pitchedRoofRequired = /pitched roof|gabled roof|坡屋顶|人字顶/iu.test(prompt);
+  const selected = catalog.concepts.filter((row) => {
+    if (row.knowledge_id === 'knowledge:p7:modern-flat-roof-option' && pitchedRoofRequired) return false;
+    return SELECTORS.get(row.knowledge_id)?.test(prompt);
+  });
   return deepFreeze({
     schema_version: 1,
     language_version: LANGUAGE_VERSION,
@@ -100,6 +104,125 @@ export function compileArchitectureLanguageV02({ prompt, overlay } = {}) {
       operation_id: row.operation_id,
       parameters: PARAMETERS.get(row.knowledge_id) || {}
     }))
+  });
+}
+
+export function applyArchitectureLanguageV02({ plan, architecture, buildSpec } = {}) {
+  validatePlan(plan);
+  if (!isPlainObject(architecture) || !isPlainObject(buildSpec)) invalid();
+  const nextArchitecture = structuredClone(architecture);
+  const nextBuildSpec = structuredClone(buildSpec);
+  const appliedOperations = [];
+  for (const instruction of plan.instructions) {
+    const applied = applyInstruction(instruction, nextArchitecture, nextBuildSpec);
+    if (!applied) continue;
+    appliedOperations.push({
+      knowledge_id: instruction.knowledge_id,
+      workflow_stage: instruction.workflow_stage,
+      operation_id: instruction.operation_id,
+      status: 'applied'
+    });
+  }
+  const trace = {
+    schema_version: 1,
+    language_version: LANGUAGE_VERSION,
+    overlay_sha256: plan.overlay_sha256,
+    selected_knowledge_ids: [...plan.selected_knowledge_ids],
+    applied_operations: appliedOperations
+  };
+  nextArchitecture.generation_hints = {
+    ...(nextArchitecture.generation_hints || {}),
+    architecture_language: { plan, trace }
+  };
+  return deepFreeze({ architecture: nextArchitecture, buildSpec: nextBuildSpec, trace });
+}
+
+function applyInstruction(instruction, architecture, buildSpec) {
+  switch (instruction.operation_id) {
+    case 'language:roof:flat-parapet':
+      architecture.roof_rules = {
+        ...(architecture.roof_rules || {}),
+        style: 'flat',
+        profile: 'thin-parapet-terrace'
+      };
+      buildSpec.roof_style = 'flat';
+      return true;
+    case 'language:facade:sheltered-entry':
+      architecture.facade_rules = {
+        ...(architecture.facade_rules || {}), awnings: true, porch: true
+      };
+      return true;
+    case 'language:site:route-first-grounding':
+      architecture.site_rules = {
+        ...(architecture.site_rules || {}), route_strategy: 'route-first-grounding'
+      };
+      buildSpec.site = { ...(buildSpec.site || {}), route_strategy: 'route-first-grounding' };
+      return true;
+    case 'language:interior:function-first-zoning':
+      setInteriorDirective(architecture, 'space_planning', 'function-before-furnishing');
+      return true;
+    case 'language:interior:large-to-small-pass':
+      setInteriorDirective(architecture, 'furnishing_sequence', 'large-to-small');
+      return true;
+    case 'language:facade:daylit-window-wall':
+      architecture.facade_rules = {
+        ...(architecture.facade_rules || {}), large_glass: true, glazing_ratio: 'high'
+      };
+      return true;
+    case 'language:massing:waterfront-stepped-estate':
+      setCompositionDirectives(architecture, {
+        preferred_massing_variant: 'waterfront-stepped-estate',
+        lock_preferred_massing_variant: true,
+        massing_intent: 'modern-waterfront'
+      });
+      return true;
+    case 'language:facade:private-entry-openness':
+      architecture.facade_rules = {
+        ...(architecture.facade_rules || {}), entry_detail_variant: 'offset-frame'
+      };
+      return true;
+    case null:
+      return false;
+    default:
+      invalid();
+  }
+}
+
+function setInteriorDirective(architecture, key, value) {
+  architecture.design_directives = {
+    ...(architecture.design_directives || {}),
+    interior: { ...(architecture.design_directives?.interior || {}), [key]: value }
+  };
+}
+
+function setCompositionDirectives(architecture, directives) {
+  const strategy = architecture.generation_hints?.template_composition_strategy || {};
+  const nextStrategy = {
+    ...strategy,
+    active: true,
+    directives: { ...(strategy.directives || {}), ...directives }
+  };
+  architecture.generation_hints = {
+    ...(architecture.generation_hints || {}), template_composition_strategy: nextStrategy
+  };
+  architecture.roof_rules = {
+    ...(architecture.roof_rules || {}), template_composition_strategy: nextStrategy
+  };
+}
+
+function validatePlan(plan) {
+  if (!isPlainObject(plan) || plan.schema_version !== 1
+    || plan.language_version !== LANGUAGE_VERSION
+    || plan.school_id !== 'heihui-jileniao'
+    || plan.authority !== 'subtitle-derived-advisory-semantic-only'
+    || !/^[a-f0-9]{64}$/u.test(plan.overlay_sha256)
+    || !Array.isArray(plan.selected_knowledge_ids)
+    || !Array.isArray(plan.instructions)
+    || plan.instructions.length !== plan.selected_knowledge_ids.length) invalid();
+  plan.instructions.forEach((row, index) => {
+    if (!isPlainObject(row) || row.knowledge_id !== plan.selected_knowledge_ids[index]
+      || !CAPABILITIES.has(row.knowledge_id)
+      || CAPABILITIES.get(row.knowledge_id).operation_id !== row.operation_id) invalid();
   });
 }
 
@@ -121,6 +244,11 @@ function defaultStage(layers) {
   if (layers.includes('structure')) return 'structure';
   if (layers.includes('massing')) return 'massing';
   return 'brief';
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+    && Object.getPrototypeOf(value) === Object.prototype;
 }
 
 function invalid() {
