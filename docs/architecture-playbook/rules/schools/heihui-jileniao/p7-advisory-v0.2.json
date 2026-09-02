@@ -10,7 +10,8 @@
     "complete-walls-facades",
     "landscaping-terrain",
     "interiors",
-    "advanced-architecture"
+    "advanced-architecture",
+    "style-specialist-cases"
   ],
   "source_bvids": [
     "BV1aBV1zwELe",
@@ -49,7 +50,13 @@
     "BV1yHEtz2EJh",
     "BV1SNdSBtErf",
     "BV1LxjEzKEH7",
-    "BV17QjvzpEuA"
+    "BV17QjvzpEuA",
+    "BV1K1oXYGEm2",
+    "BV1bWX6YPEsG",
+    "BV1JT5ez2EjF",
+    "BV1267wzyErC",
+    "BV1ifomBqEJJ",
+    "BV1SN9xBWEmF"
   ],
   "entries": [
     {
@@ -891,6 +898,150 @@
       "source_bvids": ["BV17QjvzpEuA"],
       "classification": "inference",
       "evidence_refs": ["BV17QjvzpEuA@205-259", "BV17QjvzpEuA@333-348", "BV17QjvzpEuA@421-540", "BV17QjvzpEuA@900-1019"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:advisory-not-universal-style-truth",
+      "design_layers": ["brief"],
+      "intent": "Treat the course vocabulary as method guidance for making a chosen design, not as a universal historical definition, aesthetic ranking or authority for judging other work.",
+      "source_bvids": ["BV1K1oXYGEm2"],
+      "classification": "author_claim",
+      "evidence_refs": ["BV1K1oXYGEm2@62-120"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:broad-medieval-physical-language",
+      "design_layers": ["brief", "massing", "structure", "roof", "facade"],
+      "intent": "For this course's broad Minecraft-medieval brief, combine selected old Western forms and traditional-looking materials with basic physical plausibility, then work through structure, roof, wall and finish.",
+      "source_bvids": ["BV1K1oXYGEm2"],
+      "classification": "author_claim",
+      "evidence_refs": ["BV1K1oXYGEm2@180-301", "BV1K1oXYGEm2@301-330"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:defensive-site-and-terraces",
+      "design_layers": ["brief", "massing"],
+      "intent": "Site a fortress where height, visibility, difficult approach and water fit its defensive brief; reshape uneven terrain into several connected terraces instead of one fully flattened platform.",
+      "source_bvids": ["BV1bWX6YPEsG"],
+      "classification": "inference",
+      "evidence_refs": ["BV1bWX6YPEsG@61-180", "BV1bWX6YPEsG@180-240"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:castle-defensive-component-network",
+      "design_layers": ["brief", "massing", "structure"],
+      "intent": "Connect gatehouse, curtain wall, watchtowers, keep and approach route as one defensive network; use layered gates and flanking positions to make circulation explain the layout.",
+      "source_bvids": ["BV1bWX6YPEsG"],
+      "classification": "inference",
+      "evidence_refs": ["BV1bWX6YPEsG@240-422", "BV1bWX6YPEsG@541-661"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:layered-castle-view-hierarchy",
+      "design_layers": ["brief", "massing"],
+      "intent": "From the primary castle view, keep front gate towers lower and the rear keep higher, or use a center-high arrangement when all-round viewing is required and the larger effort is accepted.",
+      "source_bvids": ["BV1bWX6YPEsG"],
+      "classification": "inference",
+      "evidence_refs": ["BV1bWX6YPEsG@300-380"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:castle-courtyard-reserve",
+      "design_layers": ["brief", "massing"],
+      "intent": "Reserve open interior ground during castle massing for training and equipment functions; place service buildings and narrow circulation against terraces without filling the enclosure completely.",
+      "source_bvids": ["BV1bWX6YPEsG"],
+      "classification": "inference",
+      "evidence_refs": ["BV1bWX6YPEsG@600-661", "BV1bWX6YPEsG@721-778"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:alternating-conical-roof-rise",
+      "design_layers": ["structure", "roof"],
+      "intent": "Build a conical tower roof from a circular base by placing four projecting profile faces and raising each successive inset ring above the previous ring's highest point.",
+      "source_bvids": ["BV1JT5ez2EjF"],
+      "classification": "inference",
+      "evidence_refs": ["BV1JT5ez2EjF@61-241"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:functional-tower-layer",
+      "design_layers": ["brief", "structure", "roof", "facade"],
+      "intent": "Insert a readable observation or firing level between tower shaft and roof, transition the roof base into the shaft, and limit the palette so detail does not erase the tower's function.",
+      "source_bvids": ["BV1JT5ez2EjF"],
+      "classification": "inference",
+      "evidence_refs": ["BV1JT5ez2EjF@300-540"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:reinforced-curtain-wall",
+      "design_layers": ["structure", "facade"],
+      "intent": "Give a curtain wall usable thickness, repeat exterior buttresses, provide a crenellated or firing edge, and vary lower reinforcement height with terrain while retaining one wall vocabulary.",
+      "source_bvids": ["BV1JT5ez2EjF"],
+      "classification": "inference",
+      "evidence_refs": ["BV1JT5ez2EjF@578-721", "BV1JT5ez2EjF@721-780"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:castle-component-variation",
+      "design_layers": ["massing", "structure", "roof", "facade"],
+      "intent": "Reuse a coherent castle component vocabulary while preparing two or three tower variants with different width, roof or open-top treatment; bend wall instances to the enclosure path.",
+      "source_bvids": ["BV1JT5ez2EjF"],
+      "classification": "inference",
+      "evidence_refs": ["BV1JT5ez2EjF@780-932"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:modern-interlocking-volume",
+      "design_layers": ["brief", "massing", "structure"],
+      "intent": "Compose a modern villa from unequal horizontal and vertical volumes, interlock or nest them instead of merely stacking, and use subtraction to open selected lower or facade zones.",
+      "source_bvids": ["BV1267wzyErC"],
+      "classification": "inference",
+      "evidence_refs": ["BV1267wzyErC@25-120", "BV1267wzyErC@220-360"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:expressed-tension-compression-support",
+      "design_layers": ["massing", "structure"],
+      "intent": "When a modern volume projects or lifts, show both a pushing support and a pulling connection where the composition needs them so the separated masses read as one assembly.",
+      "source_bvids": ["BV1267wzyErC"],
+      "classification": "inference",
+      "evidence_refs": ["BV1267wzyErC@120-182", "BV1267wzyErC@240-302"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:modern-value-weight-hierarchy",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Use darker masses for greater visual weight and lighter masses for visual expansion, compensating their sizes so the primary and subordinate modern volumes remain balanced.",
+      "source_bvids": ["BV1267wzyErC"],
+      "classification": "author_claim",
+      "evidence_refs": ["BV1267wzyErC@165-240"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:modern-program-entry-openness",
+      "design_layers": ["brief", "massing", "facade"],
+      "intent": "Choose entry openness from program: offset and screen a private villa approach, while giving a school or public building more directions of access; integrate recessed and corner glazing with that choice.",
+      "source_bvids": ["BV1267wzyErC"],
+      "classification": "inference",
+      "evidence_refs": ["BV1267wzyErC@360-482", "BV1267wzyErC@725-840"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:slope-sequence-curve",
+      "design_layers": ["massing", "structure", "roof", "facade"],
+      "intent": "Approximate a pixel curve by joining straight runs whose discrete slope changes progressively; tune run lengths by viewing the whole curve instead of memorizing one fixed circle table.",
+      "source_bvids": ["BV1ifomBqEJJ"],
+      "classification": "inference",
+      "evidence_refs": ["BV1ifomBqEJJ@62-182", "BV1ifomBqEJJ@240-420"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:quarter-profile-circle",
+      "design_layers": ["massing", "structure", "roof", "facade"],
+      "intent": "Resolve one quarter of a circle as a changing-slope profile, check its endpoint spacing and smoothness, then reflect the profile to complete the bounded relative-coordinate outline.",
+      "source_bvids": ["BV1ifomBqEJJ"],
+      "classification": "inference",
+      "evidence_refs": ["BV1ifomBqEJJ@182-362"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:revolved-pointed-roof-frame",
+      "design_layers": ["structure", "roof"],
+      "intent": "Treat a pointed roof as a sloped profile revolved around a circular perimeter: establish four projecting profile faces, then build each inset ring inward before raising it.",
+      "source_bvids": ["BV1SN9xBWEmF"],
+      "classification": "inference",
+      "evidence_refs": ["BV1SN9xBWEmF@120-240", "BV1SN9xBWEmF@420-601"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:pointed-roof-rise-profile",
+      "design_layers": ["structure", "roof"],
+      "intent": "Control a pointed roof profile through the rise added at successive inset rings: increasing rise sharpens the top, while decreasing rise produces a rounder dome-like curve; refine only after the full-block frame reads.",
+      "source_bvids": ["BV1SN9xBWEmF"],
+      "classification": "inference",
+      "evidence_refs": ["BV1SN9xBWEmF@240-420", "BV1SN9xBWEmF@480-661"]
     }
   ]
 }

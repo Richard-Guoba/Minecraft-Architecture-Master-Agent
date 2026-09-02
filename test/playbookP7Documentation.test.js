@@ -116,12 +116,30 @@ test('P7 Chapter 7 report records subtitle completion without claiming human rev
   ]);
 
   assert.match(readme, /order 37–42[^\n]*2,426[^\n]*105 条/u);
-  assert.match(readme, /已处理课次聚合为 105 条 `subtitle-derived-advisory`/u);
+  assert.match(readme, /第七章 order 37–42[^\n]*105 条有界意图/u);
   assert.match(report, /6 个课次[\s\S]*2,426 个字幕段/u);
   assert.match(report, /7 个章节、37 个有效来源和 105 条有界意图/u);
   assert.match(report, /3838f55384a6c23ea4eb946a5b26b77e43ac83e6e604b994826fb677420fb0b3/u);
   assert.match(report, /未声称完成人工视觉证据或规则晋级/u);
   assert.match(report, /正式 `events-indexed` 需要人工审核/u);
   assert.match(report, /npm run playbook:evidence -- media --bvid BV1K1oXYGEm2/u);
+  assert.doesNotMatch(report, /visual-reviewed.*(?:已完成|complete)/iu);
+});
+
+test('P7 Chapter 8 report records full subtitle coverage without claiming human review', async () => {
+  const [readme, report] = await Promise.all([
+    read('docs/architecture-playbook/README.md'),
+    read('docs/architecture-playbook/reports/p7-chapter-8-subtitle-expansion.md')
+  ]);
+
+  assert.match(readme, /order 43–50[^\n]*2,301[^\n]*123 条/u);
+  assert.match(readme, /已处理课次聚合为 123 条 `subtitle-derived-advisory`/u);
+  assert.match(report, /8 个课次[\s\S]*2,301 个字幕段/u);
+  assert.match(report, /6 个新课次[\s\S]*1,885 个字幕段/u);
+  assert.match(report, /8 个章节、43 个有效来源和 123 条有界意图/u);
+  assert.match(report, /98a09b14c5a29fc76b93f61be016b82edb4a9a8c94cdcf76777533f0c1631c35/u);
+  assert.match(report, /未声称完成人工视觉证据或规则晋级/u);
+  assert.match(report, /正式 `events-indexed` 需要人工审核/u);
+  assert.match(report, /50 集[\s\S]*字幕优先/u);
   assert.doesNotMatch(report, /visual-reviewed.*(?:已完成|complete)/iu);
 });

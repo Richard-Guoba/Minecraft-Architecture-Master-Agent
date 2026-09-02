@@ -26,18 +26,20 @@ const EXPECTED_SOURCES = Object.freeze([
   'BV1DkPVexESz', 'BV1ux2sBvECk', 'BV1VULRzAE3x',
   'BV1Rf7nz5Eic', 'BV1tepJz3EuZ', 'BV1TUHHz1ECZ', 'BV1YNLnzeEx3',
   'BV1JcQ3YYEg5', 'BV1j7QSYKEHA', 'BV1yHEtz2EJh',
-  'BV1SNdSBtErf', 'BV1LxjEzKEH7', 'BV17QjvzpEuA'
+  'BV1SNdSBtErf', 'BV1LxjEzKEH7', 'BV17QjvzpEuA',
+  'BV1K1oXYGEm2', 'BV1bWX6YPEsG', 'BV1JT5ez2EjF',
+  'BV1267wzyErC', 'BV1ifomBqEJJ', 'BV1SN9xBWEmF'
 ]);
 const EXPECTED_CHAPTERS = Object.freeze([
   'foundations-tools-blocks-modularity-color', 'complete-structure',
   'complete-roofs', 'complete-walls-facades', 'landscaping-terrain',
-  'interiors', 'advanced-architecture'
+  'interiors', 'advanced-architecture', 'style-specialist-cases'
 ]);
 const LAYERS = new Set(['brief', 'massing', 'structure', 'roof', 'facade']);
 const ID = /^knowledge:p7:[a-z0-9][a-z0-9-]*$/u;
 const EVIDENCE_REF = /^(BV[0-9A-Za-z]+)@[0-9]+-[0-9]+$/u;
 const CLASSIFICATIONS = new Set(['author_claim', 'inference', 'contrast']);
-const EXPECTED_OVERLAY_SHA256 = '3838f55384a6c23ea4eb946a5b26b77e43ac83e6e604b994826fb677420fb0b3';
+const EXPECTED_OVERLAY_SHA256 = '98a09b14c5a29fc76b93f61be016b82edb4a9a8c94cdcf76777533f0c1631c35';
 
 export async function loadP7AdvisoryOverlay({ projectRoot, readFile } = {}) {
   try {
@@ -105,7 +107,7 @@ function validateOverlay(value) {
     || value.status !== 'subtitle-derived-advisory'
     || !sameStrings(value.chapter_ids, EXPECTED_CHAPTERS)
     || !sameStrings(value.source_bvids, EXPECTED_SOURCES)
-    || !Array.isArray(value.entries) || value.entries.length !== 105) throw invalid();
+    || !Array.isArray(value.entries) || value.entries.length !== 123) throw invalid();
   const ids = new Set();
   for (const entry of value.entries) {
     exactObject(entry, ENTRY_FIELDS);

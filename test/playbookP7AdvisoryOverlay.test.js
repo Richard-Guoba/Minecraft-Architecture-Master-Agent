@@ -32,9 +32,10 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     'complete-walls-facades',
     'landscaping-terrain',
     'interiors',
-    'advanced-architecture'
+    'advanced-architecture',
+    'style-specialist-cases'
   ]);
-  assert.equal(overlay.source_bvids.length, 37);
+  assert.equal(overlay.source_bvids.length, 43);
   for (const bvid of [
     'BV1DkPVexESz', 'BV1ux2sBvECk', 'BV1VULRzAE3x', 'BV1Rf7nz5Eic',
     'BV1tepJz3EuZ', 'BV1TUHHz1ECZ', 'BV1YNLnzeEx3'
@@ -43,7 +44,11 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     'BV1JcQ3YYEg5', 'BV1j7QSYKEHA', 'BV1yHEtz2EJh',
     'BV1SNdSBtErf', 'BV1LxjEzKEH7', 'BV17QjvzpEuA'
   ]) assert.ok(overlay.source_bvids.includes(bvid));
-  assert.equal(overlay.entries.length, 105);
+  for (const bvid of [
+    'BV1K1oXYGEm2', 'BV1bWX6YPEsG', 'BV1JT5ez2EjF',
+    'BV1267wzyErC', 'BV1ifomBqEJJ', 'BV1SN9xBWEmF'
+  ]) assert.ok(overlay.source_bvids.includes(bvid));
+  assert.equal(overlay.entries.length, 123);
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
@@ -126,6 +131,31 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     ['BV17QjvzpEuA@205-259', 'BV17QjvzpEuA@333-348',
       'BV17QjvzpEuA@421-540', 'BV17QjvzpEuA@900-1019']);
   assert.match(diagonal.intent, /diagonal/iu);
+  const castleSite = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:defensive-site-and-terraces');
+  assert.deepEqual(castleSite.evidence_refs,
+    ['BV1bWX6YPEsG@61-180', 'BV1bWX6YPEsG@180-240']);
+  assert.match(castleSite.intent, /terrace/iu);
+  const curtainWall = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:reinforced-curtain-wall');
+  assert.deepEqual(curtainWall.evidence_refs,
+    ['BV1JT5ez2EjF@578-721', 'BV1JT5ez2EjF@721-780']);
+  assert.match(curtainWall.intent, /buttress/iu);
+  const modern = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:modern-interlocking-volume');
+  assert.deepEqual(modern.evidence_refs,
+    ['BV1267wzyErC@25-120', 'BV1267wzyErC@220-360']);
+  assert.match(modern.intent, /interlock/iu);
+  const circle = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:slope-sequence-curve');
+  assert.deepEqual(circle.evidence_refs,
+    ['BV1ifomBqEJJ@62-182', 'BV1ifomBqEJJ@240-420']);
+  assert.match(circle.intent, /slope/iu);
+  const pointedRoof = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:revolved-pointed-roof-frame');
+  assert.deepEqual(pointedRoof.evidence_refs,
+    ['BV1SN9xBWEmF@120-240', 'BV1SN9xBWEmF@420-601']);
+  assert.match(pointedRoof.intent, /perimeter/iu);
   assert.deepEqual(
     overlay.entries.find(({ knowledge_id }) =>
       knowledge_id === 'knowledge:p7:purposeful-volume-subtraction').evidence_refs,

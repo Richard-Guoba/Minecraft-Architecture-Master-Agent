@@ -448,12 +448,62 @@
 - 动作：以一致阶梯节奏画局部矩形，先做屋顶边框与屋脊再填面；使用足够宽的单位墙承载开口和支撑，并把斜向段嵌入稳定正向主体。
 - 约束：数格检查窄边奇偶；示例斜率和模组旋转不成为编译依赖。
 
+## 第八章：风格与专项案例
+
+### 把风格课程作为方法边界
+
+- 来源：`BV1K1oXYGEm2`，约 62–330 秒
+- 建筑语言：`style_scope`、`method_advisory`、`physical_plausibility`
+- 动作：声明采用课程的广义 MC 中世纪范围，以西方古代形式、传统感材料和基本物理可信为语气，再按结构、屋顶、墙面和美化推进。
+- 约束：这些概念不是严谨历史定义、审美等级或评价其他作品的唯一真理。
+
+### 先搭城堡防御网络和台地
+
+- 来源：`BV1bWX6YPEsG`，约 61–778 秒
+- 建筑语言：`defensive_site`、`terrain_terrace`、`gate_sequence`、`courtyard_reserve`
+- 动作：选择高地、视野、接近难度和水体合适的地点，把地形整理成多个相连台地；用门楼、城墙、塔楼、主堡和坡道形成路线网络，并保留庭院空地。
+- 观察：单面主视角可前低后高；全向观看可中心高四周低，但工程量更大。
+
+### 用有限变体完成塔楼与城墙
+
+- 来源：`BV1JT5ez2EjF`，约 61–932 秒
+- 建筑语言：`tower_roof_ring`、`functional_tower_layer`、`curtain_buttress`、`castle_variant_set`
+- 动作：圆锥顶用四向凸起与逐圈交替抬升收分；塔身保留观察层；城墙以厚度、扶壁、垛口和随地形改变的底部加固表达功能。准备两到三种塔楼变体。
+- 约束：构件尺寸和间距从当前尺度派生，不照抄示例常量。
+
+### 以穿插、支撑和开放度构建现代别墅
+
+- 来源：`BV1267wzyErC`，约 25–840 秒
+- 建筑语言：`interlocking_volume`、`push_pull_support`、`value_weight`、`entry_openness`
+- 动作：组合不等长横竖体块，以穿插、嵌套、加减法和可见推拉关系连接；平衡深浅色视觉重量，内退或转角布置玻璃，并按住宅或公共功能调整入口开放度。
+- 失败：等大方盒松散堆叠，或每处采用不同小构件而失去简洁统一。
+
+### 用变化斜率拟合圆形
+
+- 来源：`BV1ifomBqEJJ`，约 62–420 秒
+- 建筑语言：`slope_sequence`、`quarter_profile`、`endpoint_spacing`
+- 动作：把四分之一圆拆成斜率逐渐变化的直线段，整体检查端点距离和突点，再用相对坐标镜像/旋转完成闭合轮廓。
+- 约束：尺度改变时重新调整线段长度，不背诵单一圆表。
+
+### 逐圈内收并抬升尖顶
+
+- 来源：`BV1SN9xBWEmF`，约 120–826 秒
+- 建筑语言：`revolved_roof_profile`、`inset_ring`、`rise_sequence`
+- 动作：在圆周四个最长方向建立剖面，每圈先内收再升高；升高量递增形成更尖轮廓，递减形成更圆轮廓。整砖框架成立后才加入有限细化并处理相邻屋面。
+- 约束：大型工具旋转只是制作便利，不进入便携运行时。
+
 ## 当前进入构建 Agent 的含义
 
 这些条目扩展的是规划和编译词汇，不是新的审美评分。Agent 可以用模块、变换、mask、重复和 terrain pass 组织蓝图；固定编译器仍把结果输出为相对坐标 `architect_datapack/`。未进入现有白名单的操作保持建议状态，不能绕过硬 QA、方块白名单或一次修复预算。
 
 ## 来源讲义
 
+- [尖顶：旋转轮廓、逐圈内收与升高](../course/notes/heihui-jileniao/BV1SN9xBWEmF.md)
+- [圆形：变化斜率与四分之一轮廓](../course/notes/heihui-jileniao/BV1ifomBqEJJ.md)
+- [现代 1.1 现代别墅：穿插体块、支撑与开放度](../course/notes/heihui-jileniao/BV1267wzyErC.md)
+- [中世纪 2.2 城堡下：塔楼、城墙与构件变体](../course/notes/heihui-jileniao/BV1JT5ez2EjF.md)
+- [中世纪 2.1 城堡上：选址、防御网络与庭院](../course/notes/heihui-jileniao/BV1bWX6YPEsG.md)
+- [中世纪 0 导论：方法边界与广义风格](../course/notes/heihui-jileniao/BV1K1oXYGEm2.md)
 - [进阶 5 斜向建筑：局部坐标、屋顶框架与有限点缀](../course/notes/heihui-jileniao/BV17QjvzpEuA.md)
 - [进阶 4 降低重复感：分区、留白与编排](../course/notes/heihui-jileniao/BV1LxjEzKEH7.md)
 - [进阶 3.1 前景：观察路径与有限遮挡](../course/notes/heihui-jileniao/BV1SNdSBtErf.md)

@@ -27,8 +27,9 @@
 - P7 第五章 order 21–29 均已到 `asr-complete`：共 3,584 个草稿段已经归纳为景观路径、道路磨损、树木、桥梁、水体、地形/房屋衔接、山谷与海滩知识。第五章字幕优先知识扩展已完成，正式人工视觉阶段仍未完成。
 - P7 第六章 order 30–36 均已到 `asr-complete`：共 4,094 个草稿段已经归纳为室内功能与动线、通透分区、楼梯/挑高、表面与采光、灯、椅、桌及洞穴住宅知识。聚合 advisory 现有 87 条有界意图；正式人工视觉阶段仍未完成。
 - P7 第七章 order 37–42 均已到 `asr-complete`：共 2,426 个草稿段已经归纳为做旧、大型建筑、建筑群、前景、重复编排和斜向建筑知识。聚合 advisory 现有 105 条有界意图；正式人工视觉阶段仍未完成。
-- 已处理课次聚合为 105 条 `subtitle-derived-advisory` 建造意图，并接入 opt-in 的 execute 设计提示。它们不能进入冻结的 21 条 v0.1 审阅规则权限，不能改变 `playbook=off`，也不能改变相对坐标数据包编译器。
-- 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[P7 知识扩展 v0.2](manual/p7-expansion-v0.2.md)、[P7 第一章字幕知识扩展报告](reports/p7-chapter-1-subtitle-expansion.md)、[P7 第二章字幕知识扩展检查点](reports/p7-chapter-2-subtitle-expansion.md)、[P7 第三章字幕知识扩展检查点](reports/p7-chapter-3-subtitle-expansion.md)、[P7 第四章字幕知识扩展检查点](reports/p7-chapter-4-subtitle-expansion.md)、[P7 第五章字幕知识扩展检查点](reports/p7-chapter-5-subtitle-expansion.md)、[P7 第六章字幕知识扩展检查点](reports/p7-chapter-6-subtitle-expansion.md)、[P7 第七章字幕知识扩展检查点](reports/p7-chapter-7-subtitle-expansion.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[P4 影子指导报告](reports/p4-shadow-guidance.md)、[P5 可执行设计层报告](reports/p5-executable-design-layer.md)和 [P7 知识扩展基础报告](reports/p7-knowledge-expansion-foundation.md)。
+- P7 第八章 order 43–50 均已到 `asr-complete`：共 2,301 个草稿段；其中 order 44、45 复用冻结六集黄金产物，6 个新课次归纳为风格边界、城堡、现代别墅、圆形与尖顶知识。聚合 advisory 现有 123 条有界意图；正式人工视觉阶段仍未完成。
+- 已处理课次聚合为 123 条 `subtitle-derived-advisory` 建造意图，并接入 opt-in 的 execute 设计提示。它们不能进入冻结的 21 条 v0.1 审阅规则权限，不能改变 `playbook=off`，也不能改变相对坐标数据包编译器。
+- 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[P7 知识扩展 v0.2](manual/p7-expansion-v0.2.md)、[P7 第一章字幕知识扩展报告](reports/p7-chapter-1-subtitle-expansion.md)、[P7 第二章字幕知识扩展检查点](reports/p7-chapter-2-subtitle-expansion.md)、[P7 第三章字幕知识扩展检查点](reports/p7-chapter-3-subtitle-expansion.md)、[P7 第四章字幕知识扩展检查点](reports/p7-chapter-4-subtitle-expansion.md)、[P7 第五章字幕知识扩展检查点](reports/p7-chapter-5-subtitle-expansion.md)、[P7 第六章字幕知识扩展检查点](reports/p7-chapter-6-subtitle-expansion.md)、[P7 第七章字幕知识扩展检查点](reports/p7-chapter-7-subtitle-expansion.md)、[P7 第八章字幕知识扩展报告](reports/p7-chapter-8-subtitle-expansion.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[P4 影子指导报告](reports/p4-shadow-guidance.md)、[P5 可执行设计层报告](reports/p5-executable-design-layer.md)和 [P7 知识扩展基础报告](reports/p7-knowledge-expansion-foundation.md)。
 
 ## P7 轻量章节工作流
 
@@ -77,6 +78,8 @@ npm run playbook:evidence -- media --bvid BV1guoPYkExk
 第六章七个课次的媒体/字幕哈希、原创笔记、内饰建造意图和后续命令见 [P7 第六章字幕知识扩展检查点](reports/p7-chapter-6-subtitle-expansion.md)。
 
 第七章六个课次的媒体/字幕哈希、原创笔记、进阶建造意图和后续命令见 [P7 第七章字幕知识扩展检查点](reports/p7-chapter-7-subtitle-expansion.md)。
+
+第八章及全 50 集字幕优先覆盖、黄金语料复用、最终知识边界和证据哈希见 [P7 第八章字幕知识扩展报告](reports/p7-chapter-8-subtitle-expansion.md)。
 
 生成产品本身保持简单：普通请求产生使用相对坐标的便携 `architect_datapack/`。用户把它复制到自己选择的世界，进入游戏并站在所选建造原点，依次运行 `/reload` 和 `/function architect:run`；知识扩展不选择世界或坐标。
 
