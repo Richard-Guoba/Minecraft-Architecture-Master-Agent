@@ -21,7 +21,8 @@
     "BV1MA7Bz2EE1",
     "BV1h1keYbEMd",
     "BV1unj9z4EnW",
-    "BV1ZJTLzgEdm"
+    "BV1ZJTLzgEdm",
+    "BV1XtGvzPEFR"
   ],
   "entries": [
     {
@@ -76,9 +77,9 @@
       "knowledge_id": "knowledge:p7:visual-material-role",
       "design_layers": ["structure", "roof", "facade"],
       "intent": "Assign frame, support, infill, surface and accent materials by per-face texture direction, continuity, border strength and visual weight rather than rarity or game name.",
-      "source_bvids": ["BV1iVLbzcEfG"],
+      "source_bvids": ["BV1iVLbzcEfG", "BV1XtGvzPEFR"],
       "classification": "inference",
-      "evidence_refs": ["BV1iVLbzcEfG@17-53", "BV1iVLbzcEfG@321-540"]
+      "evidence_refs": ["BV1iVLbzcEfG@17-53", "BV1iVLbzcEfG@321-540", "BV1XtGvzPEFR@1126-1137"]
     },
     {
       "knowledge_id": "knowledge:p7:scale-sensitive-material",
@@ -108,9 +109,9 @@
       "knowledge_id": "knowledge:p7:structural-value-hierarchy",
       "design_layers": ["structure", "roof", "facade"],
       "intent": "Give roof, frame, infill, base and accent explicit palette roles; use coordinated value contrast so structural lines remain readable without unrelated high-contrast noise.",
-      "source_bvids": ["BV14XMtzFEzb"],
+      "source_bvids": ["BV14XMtzFEzb", "BV1XtGvzPEFR"],
       "classification": "inference",
-      "evidence_refs": ["BV14XMtzFEzb@79-124", "BV14XMtzFEzb@127-179"]
+      "evidence_refs": ["BV14XMtzFEzb@79-124", "BV14XMtzFEzb@127-179", "BV1XtGvzPEFR@513-564"]
     },
     {
       "knowledge_id": "knowledge:p7:context-and-accent-echo",
@@ -268,9 +269,33 @@
       "knowledge_id": "knowledge:p7:integrated-facade-bay-layering",
       "design_layers": ["structure", "facade"],
       "intent": "Divide long walls into supported vertical bays, subdivide oversized bays with compatible partial components, and connect horizontal layers so they read as one facade rather than stacked unrelated walls.",
-      "source_bvids": ["BV1ZJTLzgEdm"],
+      "source_bvids": ["BV1ZJTLzgEdm", "BV1XtGvzPEFR"],
       "classification": "inference",
-      "evidence_refs": ["BV1ZJTLzgEdm@1183-1310"]
+      "evidence_refs": ["BV1ZJTLzgEdm@1183-1310", "BV1XtGvzPEFR@1043-1122"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:facade-opening-assembly",
+      "design_layers": ["structure", "facade"],
+      "intent": "Compose a window from an opening plus optional top weather hood, bottom sill or display ledge, and connected tension or compression supports; omit unneeded parts and integrate it with the wall frame.",
+      "source_bvids": ["BV1XtGvzPEFR"],
+      "classification": "inference",
+      "evidence_refs": ["BV1XtGvzPEFR@276-411", "BV1XtGvzPEFR@467-503"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:scale-matched-column-articulation",
+      "design_layers": ["structure", "facade"],
+      "intent": "Treat column base, shaft and capital as distinct optional zones; size their partial-block articulation to the column, and remove or simplify ornament when it becomes more prominent than the shaft.",
+      "source_bvids": ["BV1XtGvzPEFR"],
+      "classification": "inference",
+      "evidence_refs": ["BV1XtGvzPEFR@565-754"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:constrained-depth-facade-relief",
+      "design_layers": ["facade"],
+      "intent": "When a facade cannot be recessed, use bounded partial-block relief within one block of depth; select attachment length and placement by building scale and junction role, and keep its palette coherent.",
+      "source_bvids": ["BV1XtGvzPEFR"],
+      "classification": "inference",
+      "evidence_refs": ["BV1XtGvzPEFR@885-1023"]
     }
   ]
 }

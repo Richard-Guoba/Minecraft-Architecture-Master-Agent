@@ -31,9 +31,9 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     'complete-roofs',
     'complete-walls-facades'
   ]);
-  assert.equal(overlay.source_bvids.length, 12);
-  assert.equal(overlay.source_bvids.at(-1), 'BV1ZJTLzgEdm');
-  assert.equal(overlay.entries.length, 31);
+  assert.equal(overlay.source_bvids.length, 13);
+  assert.equal(overlay.source_bvids.at(-1), 'BV1XtGvzPEFR');
+  assert.equal(overlay.entries.length, 34);
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
@@ -43,9 +43,9 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
   assert.deepEqual(
     overlay.entries.slice(-3).map(({ knowledge_id }) => knowledge_id),
     [
-      'knowledge:p7:facade-depth-hierarchy',
-      'knowledge:p7:support-led-facade-ornament',
-      'knowledge:p7:integrated-facade-bay-layering'
+      'knowledge:p7:facade-opening-assembly',
+      'knowledge:p7:scale-matched-column-articulation',
+      'knowledge:p7:constrained-depth-facade-relief'
     ]
   );
   assert.deepEqual(
@@ -129,10 +129,41 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
   ]);
   assert.match(supportLedOrnament.intent, /support/iu);
   assert.match(supportLedOrnament.intent, /blank/iu);
+  const visualMaterialRole = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:visual-material-role');
+  assert.deepEqual(visualMaterialRole.source_bvids,
+    ['BV1iVLbzcEfG', 'BV1XtGvzPEFR']);
+  assert.deepEqual(visualMaterialRole.evidence_refs,
+    ['BV1iVLbzcEfG@17-53', 'BV1iVLbzcEfG@321-540', 'BV1XtGvzPEFR@1126-1137']);
+  const structuralValue = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:structural-value-hierarchy');
+  assert.deepEqual(structuralValue.source_bvids,
+    ['BV14XMtzFEzb', 'BV1XtGvzPEFR']);
+  assert.deepEqual(structuralValue.evidence_refs,
+    ['BV14XMtzFEzb@79-124', 'BV14XMtzFEzb@127-179', 'BV1XtGvzPEFR@513-564']);
+  const integratedBays = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:integrated-facade-bay-layering');
+  assert.deepEqual(integratedBays.source_bvids,
+    ['BV1ZJTLzgEdm', 'BV1XtGvzPEFR']);
+  assert.deepEqual(integratedBays.evidence_refs,
+    ['BV1ZJTLzgEdm@1183-1310', 'BV1XtGvzPEFR@1043-1122']);
+  assert.match(integratedBays.intent, /vertical bays/iu);
+  assert.match(integratedBays.intent, /horizontal layers/iu);
+  const openingAssembly = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:facade-opening-assembly');
+  assert.deepEqual(openingAssembly.evidence_refs,
+    ['BV1XtGvzPEFR@276-411', 'BV1XtGvzPEFR@467-503']);
+  assert.match(openingAssembly.intent, /weather hood/iu);
+  assert.match(openingAssembly.intent, /sill/iu);
+  const columnArticulation = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:scale-matched-column-articulation');
+  assert.deepEqual(columnArticulation.evidence_refs, ['BV1XtGvzPEFR@565-754']);
+  assert.match(columnArticulation.intent, /base, shaft and capital/iu);
+  assert.match(columnArticulation.intent, /simplify ornament/iu);
   assert.deepEqual(overlay.entries.at(-1).evidence_refs,
-    ['BV1ZJTLzgEdm@1183-1310']);
-  assert.match(overlay.entries.at(-1).intent, /vertical bays/iu);
-  assert.match(overlay.entries.at(-1).intent, /horizontal layers/iu);
+    ['BV1XtGvzPEFR@885-1023']);
+  assert.match(overlay.entries.at(-1).intent, /one block of depth/iu);
+  assert.match(overlay.entries.at(-1).intent, /building scale/iu);
   assert.ok(Object.isFrozen(overlay));
   assert.ok(Object.isFrozen(overlay.entries));
 });

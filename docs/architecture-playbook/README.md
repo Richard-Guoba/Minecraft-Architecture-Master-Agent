@@ -23,8 +23,8 @@
 - P7 第一章的字幕优先内容扩展已经完成：7 集均到 `asr-complete`；首集没有可用教学叙述，其余 6 集共 2,539 个草稿段已经逐集归纳为原创笔记并补充 Architecture Bible v0.2。正式人工视觉阶段没有被自动标记完成。
 - P7 第二章跳过原六集中的 order 8、9 后，新课次 order 10–12 均已到 `asr-complete`：共 1,369 个草稿段已经归纳为结构加法、结构减法和支撑结构笔记。第二章字幕优先知识扩展已完成，正式人工视觉阶段仍未完成。
 - P7 第三章跳过原六集中的 order 13 后，新课次 order 14、15 均已到 `asr-complete`：共 1,377 个草稿段已经归纳为屋顶朝向、组合接缝、坡度阶段、整砖主坡面、细节密度和现代平顶知识。第三章字幕优先知识扩展已完成，正式人工视觉阶段仍未完成。
-- P7 第四章跳过原六集中的 order 16 后，新课次 order 17 已到 `asr-complete`：726 个草稿段已经归纳为墙面进深、细节尺度、承托优先、留白及横纵分区知识。正式人工视觉阶段仍未完成。
-- 已处理课次聚合为 31 条 `subtitle-derived-advisory` 建造意图，并接入 opt-in 的 execute 设计提示。它们不能进入冻结的 21 条 v0.1 审阅规则权限，不能改变 `playbook=off`，也不能改变相对坐标数据包编译器。
+- P7 第四章跳过原六集中的 order 16 后，新课次 order 17、18 已到 `asr-complete`：共 1,209 个草稿段已经归纳为墙面进深、承托、横纵分区、窗构件、柱分段和受限进深浮雕知识。正式人工视觉阶段仍未完成。
+- 已处理课次聚合为 34 条 `subtitle-derived-advisory` 建造意图，并接入 opt-in 的 execute 设计提示。它们不能进入冻结的 21 条 v0.1 审阅规则权限，不能改变 `playbook=off`，也不能改变相对坐标数据包编译器。
 - 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[P7 知识扩展 v0.2](manual/p7-expansion-v0.2.md)、[P7 第一章字幕知识扩展报告](reports/p7-chapter-1-subtitle-expansion.md)、[P7 第二章字幕知识扩展检查点](reports/p7-chapter-2-subtitle-expansion.md)、[P7 第三章字幕知识扩展检查点](reports/p7-chapter-3-subtitle-expansion.md)、[P7 第四章字幕知识扩展检查点](reports/p7-chapter-4-subtitle-expansion.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[P4 影子指导报告](reports/p4-shadow-guidance.md)、[P5 可执行设计层报告](reports/p5-executable-design-layer.md)和 [P7 知识扩展基础报告](reports/p7-knowledge-expansion-foundation.md)。
 
 ## P7 轻量章节工作流
@@ -67,7 +67,7 @@ npm run playbook:evidence -- media --bvid BV1guoPYkExk
 
 第三章两个新课次的媒体/字幕哈希、原创笔记、屋顶建造意图和后续命令见 [P7 第三章字幕知识扩展检查点](reports/p7-chapter-3-subtitle-expansion.md)。
 
-第四章首个新课次的媒体/字幕哈希、原创笔记、墙面建造意图和后续命令见 [P7 第四章字幕知识扩展检查点](reports/p7-chapter-4-subtitle-expansion.md)。
+第四章前两个新课次的媒体/字幕哈希、原创笔记、墙面建造意图和后续命令见 [P7 第四章字幕知识扩展检查点](reports/p7-chapter-4-subtitle-expansion.md)。
 
 生成产品本身保持简单：普通请求产生使用相对坐标的便携 `architect_datapack/`。用户把它复制到自己选择的世界，进入游戏并站在所选建造原点，依次运行 `/reload` 和 `/function architect:run`；知识扩展不选择世界或坐标。
 

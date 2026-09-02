@@ -176,6 +176,27 @@
 - 动作：用可读竖柱把过长墙面分成开间，再以同色系、相容的部分构件细分过大的开间；通过柱、框架或承托跨越横带，让上下层保持连续关系。
 - 失败：长横梁没有中间承托；上下层被横带切成互不相关的墙片；机械复制固定柱距而不检查整体比例。
 
+### 把窗组织成可删减的语义构件
+
+- 来源：`BV1XtGvzPEFR`，约 276–411 秒及 467–503 秒
+- 建筑语言：`facade_opening_assembly`、`weather_hood`、`sill_or_display_ledge`、`opening_frame_integration_check`
+- 动作：以实际开口为核心，按用途选择上部遮雨、下部窗台或展示面，以及连接到柱梁的拉结或支撑；不需要的部分可以删除。
+- 失败：把所有窗固定成同一三段模板；新材料只贴在开口周围而不连接墙体、柱或梁；装饰遮住开口功能。
+
+### 按尺度划分柱基、柱身和柱头
+
+- 来源：`BV1XtGvzPEFR`，约 565–754 秒
+- 建筑语言：`column_articulation_zones`、`column_ornament_scale_check`
+- 动作：把柱基、柱身和柱头作为可选语义区，以部分方块进行细化；装饰压过柱身时删减，或在设计允许时放大柱和开间。
+- 约束：三段是构图分析语言，不是每根柱都必须使用的模板；字幕没有给出各段高度或外扩比例。
+
+### 在受限进深内建立有限浮雕
+
+- 来源：`BV1XtGvzPEFR`，约 885–1,023 秒
+- 建筑语言：`constrained_depth_relief`、`attachment_scale_and_junction`
+- 动作：没有空间继续内退时，在一格进深内用允许的部分方块建立有限凹凸；外挂构件的长度、挂点和墙柱交接位置服从建筑尺度。
+- 失败：把受限进深变成无界表面噪声；小建筑挂载过长构件；附件悬空或与墙柱连接关系不明。
+
 ### 复用带语义和状态的施工组件
 
 - 来源：`BV1SG6GY9ETe`，约 47–167 秒及 236–299 秒
@@ -260,6 +281,7 @@
 
 ## 来源讲义
 
+- [3.3 墙面装饰：窗构件、柱分段与受限进深](../course/notes/heihui-jileniao/BV1XtGvzPEFR.md)
 - [3.2 墙面雕花：进深、承托与横纵分区](../course/notes/heihui-jileniao/BV1ZJTLzgEdm.md)
 - [2.3 屋顶优化：整砖坡面、细节密度与平顶选择](../course/notes/heihui-jileniao/BV1unj9z4EnW.md)
 - [2.2 屋顶变例：朝向、组合屋面与偶数跨度收口](../course/notes/heihui-jileniao/BV1h1keYbEMd.md)
