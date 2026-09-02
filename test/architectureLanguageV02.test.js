@@ -108,7 +108,7 @@ test('applies the residential slice through existing semantic planner fields and
   assert.equal(applied.architecture.roof_rules.profile, 'thin-parapet-terrace');
   assert.equal(applied.buildSpec.roof_style, 'flat');
   assert.equal(applied.architecture.generation_hints.template_composition_strategy.directives.preferred_massing_variant,
-    'waterfront-stepped-estate');
+    'east-offset-glass-wing');
   assert.equal(applied.architecture.generation_hints.template_composition_strategy.directives.lock_preferred_massing_variant, true);
   assert.equal(applied.architecture.generation_hints.template_composition_strategy.directives.keep_existing, true);
   assert.equal(applied.architecture.facade_rules.front_side, 'east');
@@ -126,7 +126,7 @@ test('applies the residential slice through existing semantic planner fields and
     'language:interior:function-first-zoning',
     'language:interior:large-to-small-pass',
     'language:facade:daylit-window-wall',
-    'language:massing:waterfront-stepped-estate',
+    'language:massing:three-volume-interlock',
     'language:facade:private-entry-openness'
   ]);
   assert.equal(applied.trace.applied_operations.every((row) =>
@@ -165,7 +165,9 @@ test('feeds Architecture Language preferences through the existing semantic agen
 
   assert.equal(prepared.architecture.roof_rules.style, 'flat');
   assert.equal(prepared.buildSpec.roof_style, 'flat');
-  assert.equal(prepared.creativeDesign.design_axes.massing_variant, 'waterfront-stepped-estate');
+  assert.equal(prepared.creativeDesign.design_axes.massing_variant, 'east-offset-glass-wing');
+  assert.deepEqual(prepared.architecture.volumes.map((volume) => volume.id),
+    ['main', 'glass-wing', 'view-terrace']);
   assert.equal(prepared.architecture.generation_hints.architecture_language.plan.language_version, '0.2.0');
   assert.equal(prepared.architecture.generation_hints.architecture_language.trace.applied_operations.length, 8);
 });

@@ -19,7 +19,7 @@ const CAPABILITIES = new Map([
   capability('knowledge:p7:modern-flat-roof-option', CLASSIFICATIONS.FEASIBLE, 'roof', 'language:roof:flat-parapet'),
   capability('knowledge:p7:weather-sheltered-entrance-transition', CLASSIFICATIONS.FEASIBLE, 'facade', 'language:facade:sheltered-entry'),
   capability('knowledge:p7:daylit-window-wall-integration', CLASSIFICATIONS.FEASIBLE, 'facade', 'language:facade:daylit-window-wall'),
-  capability('knowledge:p7:modern-interlocking-volume', CLASSIFICATIONS.FEASIBLE, 'massing', 'language:massing:waterfront-stepped-estate'),
+  capability('knowledge:p7:modern-interlocking-volume', CLASSIFICATIONS.FEASIBLE, 'massing', 'language:massing:three-volume-interlock'),
   capability('knowledge:p7:landscape-route-and-grounding', CLASSIFICATIONS.PREFERENCE, 'site', 'language:site:route-first-grounding'),
   capability('knowledge:p7:function-led-interior-zoning', CLASSIFICATIONS.PREFERENCE, 'interior', 'language:interior:function-first-zoning'),
   capability('knowledge:p7:large-to-small-furnishing-pass', CLASSIFICATIONS.PREFERENCE, 'interior', 'language:interior:large-to-small-pass'),
@@ -59,7 +59,7 @@ const PARAMETERS = new Map([
   ['knowledge:p7:function-led-interior-zoning', { space_planning: 'function-before-furnishing' }],
   ['knowledge:p7:large-to-small-furnishing-pass', { furnishing_sequence: 'large-to-small' }],
   ['knowledge:p7:daylit-window-wall-integration', { facade_opening_strategy: 'daylit-window-wall' }],
-  ['knowledge:p7:modern-interlocking-volume', { massing_variant: 'waterfront-stepped-estate' }],
+  ['knowledge:p7:modern-interlocking-volume', { massing_variant: 'east-offset-glass-wing' }],
   ['knowledge:p7:modern-program-entry-openness', { entry_openness: 'private-offset-screened' }]
 ]);
 
@@ -137,6 +137,24 @@ export function applyArchitectureLanguageV02({ plan, architecture, buildSpec } =
   return deepFreeze({ architecture: nextArchitecture, buildSpec: nextBuildSpec, trace });
 }
 
+export function finalizeArchitectureLanguageV02({ plan, architecture, creativeDesign } = {}) {
+  validatePlan(plan);
+  if (!isPlainObject(architecture) || !isPlainObject(creativeDesign)) invalid();
+  const nextArchitecture = structuredClone(architecture);
+  const nextCreativeDesign = structuredClone(creativeDesign);
+  const needsThreeVolumeInterlock = plan.instructions.some((row) =>
+    row.operation_id === 'language:massing:three-volume-interlock');
+  if (needsThreeVolumeInterlock) {
+    const byId = new Map((nextArchitecture.volumes || []).map((volume) => [volume.id, volume]));
+    const requiredIds = ['main', 'glass-wing', 'view-terrace'];
+    if (requiredIds.some((id) => !byId.has(id))) invalid();
+    nextArchitecture.volumes = requiredIds.map((id) => byId.get(id));
+    nextCreativeDesign.volume_directives = (nextCreativeDesign.volume_directives || [])
+      .filter((row) => requiredIds.includes(row.id) || requiredIds.includes(row.target_id));
+  }
+  return deepFreeze({ architecture: nextArchitecture, creativeDesign: nextCreativeDesign });
+}
+
 function applyInstruction(instruction, architecture, buildSpec) {
   switch (instruction.operation_id) {
     case 'language:roof:flat-parapet':
@@ -169,9 +187,9 @@ function applyInstruction(instruction, architecture, buildSpec) {
         ...(architecture.facade_rules || {}), large_glass: true, glazing_ratio: 'high'
       };
       return true;
-    case 'language:massing:waterfront-stepped-estate':
+    case 'language:massing:three-volume-interlock':
       setCompositionDirectives(architecture, {
-        preferred_massing_variant: 'waterfront-stepped-estate',
+        preferred_massing_variant: 'east-offset-glass-wing',
         lock_preferred_massing_variant: true,
         massing_intent: 'modern-waterfront'
       });

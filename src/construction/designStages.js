@@ -21,7 +21,10 @@ import { executeError, validateFrozenGeneratorContext, validateResolvedPatch } f
 import { DESIGN_LAYER_ORDER } from '../playbook/execute/constants.js';
 import { deriveBuildSpec } from './buildSpec.js';
 import { applyLayerEffects } from '../playbook/execute/repairTransaction.js';
-import { applyArchitectureLanguageV02 } from '../playbook/runtime/architectureLanguageV02.js';
+import {
+  applyArchitectureLanguageV02,
+  finalizeArchitectureLanguageV02
+} from '../playbook/runtime/architectureLanguageV02.js';
 
 export async function prepareConstructionDesign({
   prompt,
@@ -109,6 +112,15 @@ export async function prepareConstructionDesign({
   ({ architecture, buildSpec, topology, creativeDesign } = applyCreativeDesign({
     architecture, buildSpec, topology, creativeDesign, prompt: designPrompt
   }));
+  if (architectureLanguage !== undefined) {
+    const finalizedLanguage = finalizeArchitectureLanguageV02({
+      plan: architectureLanguage,
+      architecture,
+      creativeDesign
+    });
+    architecture = finalizedLanguage.architecture;
+    creativeDesign = finalizedLanguage.creativeDesign;
+  }
   const stage7Shadow = await runCoarseSemanticVoxelShadow({
     mode: coarseVoxelMode,
     provider: coarseVoxelProvider,
