@@ -28,11 +28,12 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
   assert.deepEqual(overlay.chapter_ids, [
     'foundations-tools-blocks-modularity-color',
     'complete-structure',
-    'complete-roofs'
+    'complete-roofs',
+    'complete-walls-facades'
   ]);
-  assert.equal(overlay.source_bvids.length, 11);
-  assert.equal(overlay.source_bvids.at(-1), 'BV1unj9z4EnW');
-  assert.equal(overlay.entries.length, 28);
+  assert.equal(overlay.source_bvids.length, 12);
+  assert.equal(overlay.source_bvids.at(-1), 'BV1ZJTLzgEdm');
+  assert.equal(overlay.entries.length, 31);
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
@@ -42,9 +43,9 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
   assert.deepEqual(
     overlay.entries.slice(-3).map(({ knowledge_id }) => knowledge_id),
     [
-      'knowledge:p7:large-roof-full-block-surface',
-      'knowledge:p7:roof-detail-density-contrast',
-      'knowledge:p7:modern-flat-roof-option'
+      'knowledge:p7:facade-depth-hierarchy',
+      'knowledge:p7:support-led-facade-ornament',
+      'knowledge:p7:integrated-facade-bay-layering'
     ]
   );
   assert.deepEqual(
@@ -96,10 +97,42 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     ['BV1unj9z4EnW@91-228', 'BV1unj9z4EnW@262-410']);
   assert.match(largeRoofSurface.intent, /full blocks/iu);
   assert.match(largeRoofSurface.intent, /distance/iu);
+  const flatRoof = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:modern-flat-roof-option');
+  assert.deepEqual(flatRoof.evidence_refs, ['BV1unj9z4EnW@1200-1334']);
+  assert.match(flatRoof.intent, /flat or terrace roof/iu);
+  assert.match(flatRoof.intent, /instead of forcing a pitched profile/iu);
+  const scaleSensitiveMaterial = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:scale-sensitive-material');
+  assert.deepEqual(scaleSensitiveMaterial.source_bvids,
+    ['BV1iVLbzcEfG', 'BV14XMtzFEzb', 'BV1ZJTLzgEdm']);
+  assert.deepEqual(scaleSensitiveMaterial.evidence_refs, [
+    'BV1iVLbzcEfG@597-629',
+    'BV14XMtzFEzb@390-464',
+    'BV14XMtzFEzb@917-974',
+    'BV1ZJTLzgEdm@90-177',
+    'BV1ZJTLzgEdm@255-327'
+  ]);
+  const facadeDepth = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:facade-depth-hierarchy');
+  assert.deepEqual(facadeDepth.evidence_refs,
+    ['BV1ZJTLzgEdm@0-37', 'BV1ZJTLzgEdm@329-411']);
+  assert.match(facadeDepth.intent, /recess/iu);
+  assert.match(facadeDepth.intent, /depth layers/iu);
+  const supportLedOrnament = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:support-led-facade-ornament');
+  assert.deepEqual(supportLedOrnament.evidence_refs, [
+    'BV1ZJTLzgEdm@133-165',
+    'BV1ZJTLzgEdm@414-468',
+    'BV1ZJTLzgEdm@565-583',
+    'BV1ZJTLzgEdm@645-685'
+  ]);
+  assert.match(supportLedOrnament.intent, /support/iu);
+  assert.match(supportLedOrnament.intent, /blank/iu);
   assert.deepEqual(overlay.entries.at(-1).evidence_refs,
-    ['BV1unj9z4EnW@1200-1334']);
-  assert.match(overlay.entries.at(-1).intent, /flat or terrace roof/iu);
-  assert.match(overlay.entries.at(-1).intent, /instead of forcing a pitched profile/iu);
+    ['BV1ZJTLzgEdm@1183-1310']);
+  assert.match(overlay.entries.at(-1).intent, /vertical bays/iu);
+  assert.match(overlay.entries.at(-1).intent, /horizontal layers/iu);
   assert.ok(Object.isFrozen(overlay));
   assert.ok(Object.isFrozen(overlay.entries));
 });

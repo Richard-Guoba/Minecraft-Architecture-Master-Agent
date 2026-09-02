@@ -18,17 +18,18 @@ const ENTRY_FIELDS = Object.freeze([
 const EXPECTED_SOURCES = Object.freeze([
   'BV1aBV1zwELe', 'BV1SwdfBHEx5', 'BV1SG6GY9ETe',
   'BV1iVLbzcEfG', 'BV1cLJtz1ELx', 'BV14XMtzFEzb', 'BV1ecj4zsE27',
-  'BV1Mp7UzyE3P', 'BV1MA7Bz2EE1', 'BV1h1keYbEMd', 'BV1unj9z4EnW'
+  'BV1Mp7UzyE3P', 'BV1MA7Bz2EE1', 'BV1h1keYbEMd', 'BV1unj9z4EnW',
+  'BV1ZJTLzgEdm'
 ]);
 const EXPECTED_CHAPTERS = Object.freeze([
   'foundations-tools-blocks-modularity-color', 'complete-structure',
-  'complete-roofs'
+  'complete-roofs', 'complete-walls-facades'
 ]);
 const LAYERS = new Set(['brief', 'massing', 'structure', 'roof', 'facade']);
 const ID = /^knowledge:p7:[a-z0-9][a-z0-9-]*$/u;
 const EVIDENCE_REF = /^(BV[0-9A-Za-z]+)@[0-9]+-[0-9]+$/u;
 const CLASSIFICATIONS = new Set(['author_claim', 'inference', 'contrast']);
-const EXPECTED_OVERLAY_SHA256 = '74a2c75c39237b3aeafdabeb6d52f49f6d49fdc9e50a2192a74370c0e112536e';
+const EXPECTED_OVERLAY_SHA256 = 'fb9a577f434effbe513b32392459b1e61bfa02af28cc36a45092698c67b319d2';
 
 export async function loadP7AdvisoryOverlay({ projectRoot, readFile } = {}) {
   try {
@@ -96,7 +97,7 @@ function validateOverlay(value) {
     || value.status !== 'subtitle-derived-advisory'
     || !sameStrings(value.chapter_ids, EXPECTED_CHAPTERS)
     || !sameStrings(value.source_bvids, EXPECTED_SOURCES)
-    || !Array.isArray(value.entries) || value.entries.length !== 28) throw invalid();
+    || !Array.isArray(value.entries) || value.entries.length !== 31) throw invalid();
   const ids = new Set();
   for (const entry of value.entries) {
     exactObject(entry, ENTRY_FIELDS);

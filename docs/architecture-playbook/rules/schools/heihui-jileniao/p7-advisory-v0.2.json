@@ -6,7 +6,8 @@
   "chapter_ids": [
     "foundations-tools-blocks-modularity-color",
     "complete-structure",
-    "complete-roofs"
+    "complete-roofs",
+    "complete-walls-facades"
   ],
   "source_bvids": [
     "BV1aBV1zwELe",
@@ -19,7 +20,8 @@
     "BV1Mp7UzyE3P",
     "BV1MA7Bz2EE1",
     "BV1h1keYbEMd",
-    "BV1unj9z4EnW"
+    "BV1unj9z4EnW",
+    "BV1ZJTLzgEdm"
   ],
   "entries": [
     {
@@ -82,9 +84,9 @@
       "knowledge_id": "knowledge:p7:scale-sensitive-material",
       "design_layers": ["massing", "roof", "facade"],
       "intent": "At small scale prioritize individual texture joins and available stair, slab and wall shapes; at large scale and distance prioritize the composition of major color fields.",
-      "source_bvids": ["BV1iVLbzcEfG", "BV14XMtzFEzb"],
+      "source_bvids": ["BV1iVLbzcEfG", "BV14XMtzFEzb", "BV1ZJTLzgEdm"],
       "classification": "inference",
-      "evidence_refs": ["BV1iVLbzcEfG@597-629", "BV14XMtzFEzb@390-464", "BV14XMtzFEzb@917-974"]
+      "evidence_refs": ["BV1iVLbzcEfG@597-629", "BV14XMtzFEzb@390-464", "BV14XMtzFEzb@917-974", "BV1ZJTLzgEdm@90-177", "BV1ZJTLzgEdm@255-327"]
     },
     {
       "knowledge_id": "knowledge:p7:validated-source-module",
@@ -245,6 +247,30 @@
       "source_bvids": ["BV1unj9z4EnW"],
       "classification": "inference",
       "evidence_refs": ["BV1unj9z4EnW@1200-1334"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:facade-depth-hierarchy",
+      "design_layers": ["structure", "facade"],
+      "intent": "Recess facade infill behind its frame and, on larger walls, use additional bounded depth layers to create perspective and smaller readable regions before applying surface detail.",
+      "source_bvids": ["BV1ZJTLzgEdm"],
+      "classification": "inference",
+      "evidence_refs": ["BV1ZJTLzgEdm@0-37", "BV1ZJTLzgEdm@329-411"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:support-led-facade-ornament",
+      "design_layers": ["structure", "facade"],
+      "intent": "Establish readable base, beam and bracket support paths before optional facade ornament; preserve deliberate blank areas and reject detail that obscures the primary column or lacks a structural role.",
+      "source_bvids": ["BV1ZJTLzgEdm"],
+      "classification": "inference",
+      "evidence_refs": ["BV1ZJTLzgEdm@133-165", "BV1ZJTLzgEdm@414-468", "BV1ZJTLzgEdm@565-583", "BV1ZJTLzgEdm@645-685"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:integrated-facade-bay-layering",
+      "design_layers": ["structure", "facade"],
+      "intent": "Divide long walls into supported vertical bays, subdivide oversized bays with compatible partial components, and connect horizontal layers so they read as one facade rather than stacked unrelated walls.",
+      "source_bvids": ["BV1ZJTLzgEdm"],
+      "classification": "inference",
+      "evidence_refs": ["BV1ZJTLzgEdm@1183-1310"]
     }
   ]
 }
