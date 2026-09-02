@@ -334,6 +334,12 @@ export async function compilePreparedConstruction({
 }
 
 function buildBlueprint({ prompt, architecture, topology, creativeDesign, conceptStudio, stage7Shadow, stylePreset, materialPalette, templateKnowledge, structure, facade, roof, site, opening, interior, repair, templateLawAutoRepair, templateInteriorDensityRepair, interiorClearanceRepair, buildSpec, shell, layout, paths, decorator, exporter, operations, bounds, llmProvider, llmUsage, seedSource, seed }) {
+  const architectureLanguage = architecture.generation_hints?.architecture_language;
+  const blueprintArchitecture = architectureLanguage ? {
+    ...architecture,
+    generation_hints: Object.fromEntries(Object.entries(architecture.generation_hints)
+      .filter(([key]) => key !== 'architecture_language'))
+  } : architecture;
   return {
     version: 4,
     workflow: 'construction_method_v1',
@@ -345,10 +351,8 @@ function buildBlueprint({ prompt, architecture, topology, creativeDesign, concep
     llmUsage,
     philosophy: architecture.philosophy,
     buildSpec,
-    architecture,
-    ...(architecture.generation_hints?.architecture_language
-      ? { architectureLanguage: architecture.generation_hints.architecture_language }
-      : {}),
+    architecture: blueprintArchitecture,
+    ...(architectureLanguage ? { architectureLanguage } : {}),
     topology,
     creativeDesign,
     ...(conceptStudio?.active ? { conceptStudio: compactConceptStudio(conceptStudio) } : {}),

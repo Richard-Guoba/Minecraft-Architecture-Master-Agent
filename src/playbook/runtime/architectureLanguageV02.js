@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { projectP7AdvisoryKnowledge } from '../knowledge/p7AdvisoryOverlay.js';
 import { deepFreeze } from '../shadow/canonical.js';
 
@@ -44,11 +45,11 @@ const CAPABILITIES = new Map([
 
 const SELECTORS = new Map([
   ['knowledge:p7:modern-flat-roof-option', (prompt) =>
-    /(?:flat|terrace) roof|roof terrace|平屋顶|屋顶露台/iu.test(prompt)
-      && !/(?:without|no|avoid|do not use).*?(?:flat|terrace) roof|不要.*?(?:平屋顶|屋顶露台)/iu.test(prompt)],
+    matchesUnnegated(prompt, /(?:flat|terrace) roof|roof terrace|平屋顶|屋顶露台/iu,
+      '(?:flat roof|terrace roof|roof terrace|平屋顶|屋顶露台)')],
   ['knowledge:p7:weather-sheltered-entrance-transition', (prompt) =>
-    /sheltered entry|porch|canopy|门廊|雨棚|入口过渡/iu.test(prompt)
-      && !/(?:without|no|avoid|do not use).*?(?:porch|canopy|sheltered entry)|不要.*?(?:门廊|雨棚)/iu.test(prompt)],
+    matchesUnnegated(prompt, /sheltered entry|porch|canopy|门廊|雨棚|入口过渡/iu,
+      '(?:sheltered entry|porch|canopy|门廊|雨棚|入口过渡)')],
   ['knowledge:p7:landscape-route-and-grounding', (prompt) =>
     /lake|lakeside|waterfront|garden|path|湖|水边|花园|路径/iu.test(prompt)],
   ['knowledge:p7:function-led-interior-zoning', (prompt) =>
@@ -56,11 +57,11 @@ const SELECTORS = new Map([
   ['knowledge:p7:large-to-small-furnishing-pass', (prompt) =>
     /large-to-small furnish|largest.*furni(?:ture|shing).*first|由大到小.*家具/iu.test(prompt)],
   ['knowledge:p7:daylit-window-wall-integration', (prompt) =>
-    /glass|window|daylight|玻璃|窗|采光/iu.test(prompt)
-      && !/(?:without|no|avoid|do not use).*?(?:glass|windows?)|不要.*?(?:玻璃|窗)/iu.test(prompt)],
+    matchesUnnegated(prompt, /large glass|glass window wall|window wall|panoramic windows?|大面积玻璃|玻璃窗墙/iu,
+      '(?:large glass|glass|window wall|windows?|玻璃|窗墙)')],
   ['knowledge:p7:modern-interlocking-volume', (prompt) =>
     /interlocking volumes?|交错体块|咬合体块/iu.test(prompt)
-      && !/single[- ]volume|garage wing|单体块|车库侧翼|traditional.*not (?:a )?modern/iu.test(prompt)],
+      && !/single[- ]volume|garage wing|guest wing|tower|单体块|车库侧翼|塔楼|traditional.*not (?:a )?modern|(?:one|two|four|five|six|1|2|4|5|6)\s+interlocking volumes?/iu.test(prompt)],
   ['knowledge:p7:modern-program-entry-openness', (prompt) =>
     /private(?:\s+\w+){0,4}\s+(?:villa|residence|home)|private entry|screened entry|offset entry|私宅|偏移入口/iu.test(prompt)]
 ]);
@@ -108,6 +109,7 @@ export function compileArchitectureLanguageV02({ prompt, overlay } = {}) {
     language_version: LANGUAGE_VERSION,
     school_id: catalog.school_id,
     overlay_sha256: catalog.overlay_sha256,
+    prompt_sha256: sha256(prompt),
     authority: 'subtitle-derived-advisory-semantic-only',
     selected_knowledge_ids: selected.map((row) => row.knowledge_id),
     instructions: selected.map((row) => ({
@@ -120,11 +122,11 @@ export function compileArchitectureLanguageV02({ prompt, overlay } = {}) {
   });
 }
 
-export function applyArchitectureLanguageV02({ plan, architecture, buildSpec } = {}) {
-  validatePlan(plan);
+export function applyArchitectureLanguageV02({ prompt, plan, architecture, buildSpec } = {}) {
+  plan = validatePlan(plan, prompt);
   if (!isPlainObject(architecture) || !isPlainObject(buildSpec)) invalid();
-  const nextArchitecture = canonicalClone(architecture);
-  const nextBuildSpec = canonicalClone(buildSpec);
+  const nextArchitecture = canonicalClone(architecture, new Set(), true);
+  const nextBuildSpec = canonicalClone(buildSpec, new Set(), true);
   const appliedOperations = [];
   for (const instruction of plan.instructions) {
     const applied = applyInstruction(instruction, nextArchitecture, nextBuildSpec);
@@ -150,11 +152,12 @@ export function applyArchitectureLanguageV02({ plan, architecture, buildSpec } =
   return deepFreeze({ architecture: nextArchitecture, buildSpec: nextBuildSpec, trace });
 }
 
-export function finalizeArchitectureLanguageV02({ plan, architecture, creativeDesign } = {}) {
-  validatePlan(plan);
-  if (!isPlainObject(architecture) || !isPlainObject(creativeDesign)) invalid();
-  const nextArchitecture = canonicalClone(architecture);
-  const nextCreativeDesign = canonicalClone(creativeDesign);
+export function finalizeArchitectureLanguageV02({ prompt, plan, architecture, buildSpec, creativeDesign } = {}) {
+  plan = validatePlan(plan, prompt);
+  if (!isPlainObject(architecture) || !isPlainObject(buildSpec) || !isPlainObject(creativeDesign)) invalid();
+  const nextArchitecture = canonicalClone(architecture, new Set(), true);
+  const nextBuildSpec = canonicalClone(buildSpec, new Set(), true);
+  const nextCreativeDesign = canonicalClone(creativeDesign, new Set(), true);
   const needsThreeVolumeInterlock = plan.instructions.some((row) =>
     row.operation_id === 'language:massing:three-volume-interlock');
   if (needsThreeVolumeInterlock) {
@@ -167,10 +170,10 @@ export function finalizeArchitectureLanguageV02({ plan, architecture, creativeDe
   }
   for (const instruction of plan.instructions) {
     if (instruction.operation_id !== 'language:massing:three-volume-interlock') {
-      applyInstruction(instruction, nextArchitecture, {});
+      applyInstruction(instruction, nextArchitecture, nextBuildSpec);
     }
   }
-  return deepFreeze({ architecture: nextArchitecture, creativeDesign: nextCreativeDesign });
+  return deepFreeze({ architecture: nextArchitecture, buildSpec: nextBuildSpec, creativeDesign: nextCreativeDesign });
 }
 
 function applyInstruction(instruction, architecture, buildSpec) {
@@ -181,6 +184,7 @@ function applyInstruction(instruction, architecture, buildSpec) {
         style: 'flat',
         profile: 'thin-parapet-terrace'
       };
+      setDesignDirective(architecture, 'roof', { style: 'flat', profile: 'thin-parapet-terrace' });
       buildSpec.roof_style = 'flat';
       return true;
     case 'language:facade:sheltered-entry':
@@ -204,6 +208,7 @@ function applyInstruction(instruction, architecture, buildSpec) {
       architecture.facade_rules = {
         ...(architecture.facade_rules || {}), large_glass: true, glazing_ratio: 'high'
       };
+      setDesignDirective(architecture, 'facade', { glazing_ratio: 'high' });
       return true;
     case 'language:massing:three-volume-interlock':
       setCompositionDirectives(architecture, {
@@ -216,6 +221,7 @@ function applyInstruction(instruction, architecture, buildSpec) {
       architecture.facade_rules = {
         ...(architecture.facade_rules || {}), entry_detail_variant: 'offset-frame'
       };
+      setDesignDirective(architecture, 'facade', { entry_detail_style: 'offset-frame' });
       return true;
     case null:
       return false;
@@ -228,6 +234,13 @@ function setInteriorDirective(architecture, key, value) {
   architecture.design_directives = {
     ...(architecture.design_directives || {}),
     interior: { ...(architecture.design_directives?.interior || {}), [key]: value }
+  };
+}
+
+function setDesignDirective(architecture, layer, values) {
+  architecture.design_directives = {
+    ...(architecture.design_directives || {}),
+    [layer]: { ...(architecture.design_directives?.[layer] || {}), ...values }
   };
 }
 
@@ -246,18 +259,21 @@ function setCompositionDirectives(architecture, directives) {
   };
 }
 
-function validatePlan(plan) {
+function validatePlan(input, prompt) {
+  if (typeof prompt !== 'string' || !prompt.trim()) invalid();
+  const plan = canonicalClone(input);
   if (!isPlainObject(plan) || plan.schema_version !== 1
     || plan.language_version !== LANGUAGE_VERSION
     || plan.school_id !== 'heihui-jileniao'
     || plan.authority !== 'subtitle-derived-advisory-semantic-only'
     || plan.overlay_sha256 !== CANONICAL_OVERLAY_SHA256
+    || plan.prompt_sha256 !== sha256(prompt)
     || !Array.isArray(plan.selected_knowledge_ids)
     || !Array.isArray(plan.instructions)
     || plan.instructions.length !== plan.selected_knowledge_ids.length
     || !hasExactKeys(plan, [
       'schema_version', 'language_version', 'school_id', 'overlay_sha256', 'authority',
-      'selected_knowledge_ids', 'instructions'
+      'prompt_sha256', 'selected_knowledge_ids', 'instructions'
     ])) invalid();
   const selectorOrder = [...SELECTORS.keys()];
   let previousIndex = -1;
@@ -275,6 +291,7 @@ function validatePlan(plan) {
       || !sameFlatObject(row.parameters, PARAMETERS.get(row.knowledge_id))) invalid();
     previousIndex = selectorIndex;
   });
+  return plan;
 }
 
 function validatedAdvisory(overlay) {
@@ -307,6 +324,19 @@ function hasExactKeys(value, expected) {
   return keys.length === expected.length && expected.every((key) => keys.includes(key));
 }
 
+function matchesUnnegated(prompt, positive, subjectPattern) {
+  return prompt.split(/[.;,\n]/u).some((clause) => {
+    if (!positive.test(clause)) return false;
+    const before = new RegExp(`\\b(?:no|without|avoid|forbid|do not use)\\b[^.;,]{0,32}${subjectPattern}`, 'iu');
+    const after = new RegExp(`${subjectPattern}[^.;,]{0,20}\\b(?:forbidden|not allowed)\\b`, 'iu');
+    return !before.test(clause) && !after.test(clause) && !/不要.*?(?:平屋顶|屋顶露台|门廊|雨棚|玻璃|窗墙)/iu.test(clause);
+  });
+}
+
+function sha256(value) {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
 function sameFlatObject(left, right) {
   if (!isPlainObject(left) || !isPlainObject(right)) return false;
   const expectedKeys = Object.keys(right);
@@ -316,8 +346,9 @@ function sameFlatObject(left, right) {
     && descriptors[key].enumerable && descriptors[key].value === right[key]);
 }
 
-function canonicalClone(value, ancestors = new Set()) {
-  if (value === null || ['string', 'boolean', 'undefined'].includes(typeof value)) return value;
+function canonicalClone(value, ancestors = new Set(), allowUndefined = false) {
+  if (value === undefined && allowUndefined) return value;
+  if (value === null || ['string', 'boolean'].includes(typeof value)) return value;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value !== 'object' || ancestors.has(value)) invalid();
   if (!Array.isArray(value) && !isPlainObject(value)) invalid();
@@ -326,8 +357,11 @@ function canonicalClone(value, ancestors = new Set()) {
     const expected = [...value.keys()].map(String);
     if (keys.length !== expected.length + 1 || !keys.includes('length')
       || expected.some((key) => !keys.includes(key))) invalid();
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (expected.some((key) => descriptors[key].get || descriptors[key].set
+      || !descriptors[key].enumerable)) invalid();
     ancestors.add(value);
-    const copy = value.map((item) => canonicalClone(item, ancestors));
+    const copy = value.map((item) => canonicalClone(item, ancestors, allowUndefined));
     ancestors.delete(value);
     return copy;
   }
@@ -336,7 +370,7 @@ function canonicalClone(value, ancestors = new Set()) {
     || descriptors[key].get || descriptors[key].set || !descriptors[key].enumerable)) invalid();
   ancestors.add(value);
   const copy = Object.fromEntries(Object.entries(value).map(([key, item]) =>
-    [key, canonicalClone(item, ancestors)]));
+    [key, canonicalClone(item, ancestors, allowUndefined)]));
   ancestors.delete(value);
   return copy;
 }

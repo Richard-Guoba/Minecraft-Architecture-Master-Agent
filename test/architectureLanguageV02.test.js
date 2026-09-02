@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { loadP7AdvisoryOverlay } from '../src/playbook/knowledge/p7AdvisoryOverlay.js';
-import { prepareConstructionDesign } from '../src/construction/designStages.js';
+import { compileDesignLayers, prepareConstructionDesign } from '../src/construction/designStages.js';
 import { runConstructionWorkflow } from '../src/construction/workflow.js';
 import {
   applyArchitectureLanguageV02,
@@ -58,6 +58,7 @@ test('selects a bounded residential slice in canonical overlay order with semant
   assert.equal(plan.schema_version, 1);
   assert.equal(plan.language_version, '0.2.0');
   assert.equal(plan.school_id, 'heihui-jileniao');
+  assert.match(plan.prompt_sha256, /^[a-f0-9]{64}$/u);
   assert.deepEqual(plan.selected_knowledge_ids, [
     'knowledge:p7:modern-flat-roof-option',
     'knowledge:p7:weather-sheltered-entrance-transition',
@@ -87,8 +88,9 @@ test('rejects non-canonical advisory input instead of compiling guessed knowledg
 
 test('applies the residential slice through existing semantic planner fields and records each applied operation', async () => {
   const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
+  const prompt = 'Build a private modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, functional interior, and a large-to-small furnishing pass.';
   const plan = compileArchitectureLanguageV02({
-    prompt: 'Build a private modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, functional interior, and a large-to-small furnishing pass.',
+    prompt,
     overlay
   });
   const architecture = {
@@ -102,7 +104,7 @@ test('applies the residential slice through existing semantic planner fields and
   };
   const buildSpec = { roof_style: 'gabled', site: { preserve: true } };
 
-  const applied = applyArchitectureLanguageV02({ plan, architecture, buildSpec });
+  const applied = applyArchitectureLanguageV02({ prompt, plan, architecture, buildSpec });
 
   assert.equal(applied.architecture.roof_rules.style, 'flat');
   assert.equal(applied.architecture.roof_rules.profile, 'thin-parapet-terrace');
@@ -151,14 +153,45 @@ test('does not select semantics that explicit user constraints reject', async ()
   const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
   const cases = [
     ['Build a modern villa without glass.', 'knowledge:p7:daylit-window-wall-integration'],
+    ['Build a modern villa with small narrow windows for privacy.', 'knowledge:p7:daylit-window-wall-integration'],
     ['Build a modern villa with no porch or canopy.', 'knowledge:p7:weather-sheltered-entrance-transition'],
+    ['Build a modern villa where the porch is forbidden.', 'knowledge:p7:weather-sheltered-entrance-transition'],
+    ['Build a modern villa without a roof terrace.', 'knowledge:p7:modern-flat-roof-option'],
     ['Build a modern single-volume villa with a garage wing.', 'knowledge:p7:modern-interlocking-volume'],
+    ['Build four interlocking volumes.', 'knowledge:p7:modern-interlocking-volume'],
+    ['Build interlocking volumes with a tower.', 'knowledge:p7:modern-interlocking-volume'],
     ['Build a traditional villa, not a modern villa.', 'knowledge:p7:modern-interlocking-volume']
   ];
   for (const [prompt, rejectedId] of cases) {
     const plan = compileArchitectureLanguageV02({ prompt, overlay });
     assert.equal(plan.selected_knowledge_ids.includes(rejectedId), false, prompt);
   }
+});
+
+test('keeps positive clauses independent from unrelated negations and word substrings', async () => {
+  const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
+  const cases = [
+    ['Build an innovative villa with a flat roof.', 'knowledge:p7:modern-flat-roof-option'],
+    ['No garden; add a large glass window wall.', 'knowledge:p7:daylit-window-wall-integration'],
+    ['Add a panoramic window wall.', 'knowledge:p7:daylit-window-wall-integration']
+  ];
+  for (const [prompt, selectedId] of cases) {
+    const plan = compileArchitectureLanguageV02({ prompt, overlay });
+    assert.equal(plan.selected_knowledge_ids.includes(selectedId), true, prompt);
+  }
+});
+
+test('binds a compiled plan to the exact prompt that selected it', async () => {
+  const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
+  const prompt = 'Build a flat roof house.';
+  const plan = compileArchitectureLanguageV02({ prompt, overlay });
+
+  assert.throws(() => applyArchitectureLanguageV02({
+    prompt: 'Build a pitched roof single-volume house.', plan, architecture: {}, buildSpec: {}
+  }), { code: 'ARCHITECTURE_LANGUAGE_INVALID' });
+  assert.doesNotThrow(() => applyArchitectureLanguageV02({
+    prompt, plan, architecture: {}, buildSpec: {}
+  }));
 });
 
 test('rejects forged plan provenance, trace fields, parameters, duplicates, and extra fields', async () => {
@@ -175,7 +208,7 @@ test('rejects forged plan provenance, trace fields, parameters, duplicates, and 
   for (const mutate of mutations) {
     const plan = structuredClone(valid);
     mutate(plan);
-    assert.throws(() => applyArchitectureLanguageV02({ plan, architecture: {}, buildSpec: {} }),
+    assert.throws(() => applyArchitectureLanguageV02({ prompt: 'Build a flat roof house.', plan, architecture: {}, buildSpec: {} }),
       { code: 'ARCHITECTURE_LANGUAGE_INVALID' });
   }
 });
@@ -206,6 +239,10 @@ test('feeds Architecture Language preferences through the existing semantic agen
   assert.equal(prepared.architecture.design_directives.interior.space_planning, 'function-before-furnishing');
   assert.equal(prepared.architecture.design_directives.interior.furnishing_sequence, 'large-to-small');
   assert.equal(prepared.architecture.facade_rules.entry_detail_variant, 'offset-frame');
+  const compiled = compileDesignLayers({ prepared });
+  assert.equal(compiled.runtime.roof.style, 'flat');
+  assert.equal(compiled.runtime.roof.profile, 'thin-parapet-terrace');
+  assert.equal(compiled.runtime.facade.entry_detail_style, 'offset-frame');
 });
 
 test('exports deterministic knowledge-to-operation traceability beside a portable relative datapack', async (t) => {
@@ -231,6 +268,7 @@ test('exports deterministic knowledge-to-operation traceability beside a portabl
 
   assert.deepEqual(results[0].blueprint.architectureLanguage,
     results[1].blueprint.architectureLanguage);
+  assert.equal(results[0].blueprint.architecture.generation_hints.architecture_language, undefined);
   assert.deepEqual(results[0].blueprint.operations, results[1].blueprint.operations);
   assert.equal(Object.hasOwn(results[0].artifacts, 'architectureLanguage'), false);
   const artifact = JSON.parse(await fs.readFile(results[0].artifacts.blueprint, 'utf8'));

@@ -4,7 +4,7 @@ Date: 2026-09-02
 
 ## Product boundary
 
-Architecture Language v0.2 is a versioned, bounded semantic plan between the canonical P7 advisory overlay and the existing `construction_method_v1` workflow. It contains the overlay hash, school, selected knowledge IDs, classified instructions, semantic parameters, workflow stages, and applied-operation trace. It contains no arbitrary world coordinates, Minecraft commands, block IDs, JSON patches, or P5 repair requests.
+Architecture Language v0.2 is a versioned, bounded semantic plan between the canonical P7 advisory overlay and the existing `construction_method_v1` workflow. It contains the overlay hash, an exact prompt hash, school, selected knowledge IDs, classified instructions, semantic parameters, workflow stages, and applied-operation trace. The prompt binding prevents reuse against a different user brief. It contains no arbitrary world coordinates, Minecraft commands, block IDs, JSON patches, or P5 repair requests.
 
 The runtime validates the canonical heihui-jileniao overlay before selection. Both mock and LLM execute use it. LLM mode still uses the existing bounded design envelope; mock mode keeps that frozen envelope unchanged and receives Architecture Language through a separate local deterministic channel.
 
@@ -48,7 +48,7 @@ Each selected run writes:
 - `run_report.md`: human-readable knowledge → stage → operation rows;
 - `architect_datapack/`: unchanged format-48 relative-coordinate output.
 
-Two seed-7101 execute mock runs selected `candidate-02` with identical chain SHA-256 `0910686edca6878188f6c5569833a3f7a1c6e9aa272ed7e8f68b99e91f24d4ba`. Their blueprint SHA-256 was `1936a22021cea1b29fb4cb4be20750a1dd340fda35c9e521dddc5949808586ca`; a sorted compact projection of `blueprint.json#architectureLanguage` hashed to `c0782010ca35c5fb5a0f46dc02d0869c249ec571442e41813f698dcd970d69d8`; and all four datapack files were byte-identical. Keeping the trace inside the validated blueprint avoids a second writable artifact that could drift from construction authority.
+Two seed-7101 execute mock runs selected `candidate-02` with identical chain SHA-256 `8f4d6b0fc680a9ff1d731f14a3738366f3a743a3a1b193721589c19414c9d523`. Their blueprint SHA-256 was `162a5a7615c0851cb88d6c4559cc52f00c2b1876e31446bfd7788f5003eb0076`; a sorted compact projection of `blueprint.json#architectureLanguage` hashed to `7b5cab6f56075a18de6b4c6f17adc65036d2df4a7387e97c498174307f518b40`; and all four datapack files were byte-identical. Keeping one trace at the blueprint's top-level authority avoids both a second writable artifact and an ambiguous nested copy.
 
 The compared off-mode seed-7101 run contains no `architectureLanguage` field and retains the ordinary template-driven six-volume result for the same brief. The on-mode result contains the bounded three-volume interlock. Explicit negations and incompatible constraints suppress mappings instead of overriding the user brief. This is an explainable opt-in difference, not a claim of aesthetic superiority.
 

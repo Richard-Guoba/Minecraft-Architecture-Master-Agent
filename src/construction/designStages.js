@@ -82,6 +82,7 @@ export async function prepareConstructionDesign({
   buildSpec = applyTemplateKnowledgeToBuildSpec(buildSpec, templateKnowledge);
   if (architectureLanguage !== undefined) {
     const appliedLanguage = applyArchitectureLanguageV02({
+      prompt,
       plan: architectureLanguage,
       architecture,
       buildSpec
@@ -114,11 +115,14 @@ export async function prepareConstructionDesign({
   }));
   if (architectureLanguage !== undefined) {
     const finalizedLanguage = finalizeArchitectureLanguageV02({
+      prompt,
       plan: architectureLanguage,
       architecture,
+      buildSpec,
       creativeDesign
     });
     architecture = finalizedLanguage.architecture;
+    buildSpec = finalizedLanguage.buildSpec;
     creativeDesign = finalizedLanguage.creativeDesign;
   }
   const stage7Shadow = await runCoarseSemanticVoxelShadow({
