@@ -16,6 +16,7 @@ export class SiteLandscapeAgent {
     const pool = Boolean(rules.pool || /泳池|游泳池|pool/i.test(prompt));
     const mailbox = Boolean(rules.mailbox || /信箱|门牌|mailbox|address/i.test(prompt));
     const accessible = Boolean(rules.accessible_route || /无障碍|坡道|轮椅|老人友好|accessible|wheelchair|ramp/i.test(prompt));
+    const routeStrategy = String(rules.route_strategy || buildSpec.site?.route_strategy || 'direct-entry-path');
     const rolePalettes = materialPalette.role_palettes || {};
     const templateRecommendations = architecture.template_knowledge?.recommendations || {};
     const compositionStrategy = rules.template_composition_strategy ||
@@ -81,6 +82,7 @@ export class SiteLandscapeAgent {
       mood: design.mood || rules.template_site_mood || compositionDirectives.preferred_site_mood || rules.landscape_mood || buildSpec.site?.landscape_mood || stylePreset.site || 'simple',
       creative_signature: architecture.design_directives?.signature || buildSpec.creative_design_signature || 'none',
       entry_sequence: {
+        strategy: routeStrategy,
         side: buildSpec.door_side || architecture.facade_rules?.front_side || 'south',
         path_width: accessible ? Math.max(3, buildSpec.scale === 'large' ? 3 : 2) : buildSpec.scale === 'large' ? 3 : 2,
         lighting: family === 'cyberpunk' || /灯|霓虹|夜景/i.test(prompt) ? 'lit' : 'subtle',
@@ -131,6 +133,7 @@ export class SiteLandscapeAgent {
       },
       engine_hints: {
         render_entry_path: true,
+        render_entry_threshold: routeStrategy === 'route-first-grounding',
         render_path_lights: family === 'cyberpunk' || /灯|夜景|霓虹/i.test(prompt),
         render_boundary: enclosed || ['classical', 'gothic', 'japanese', 'chinese-courtyard'].includes(family),
         render_tree_clusters: templateTrees || ['treehouse', 'rustic', 'alpine', 'japanese', 'chinese-courtyard'].includes(family),

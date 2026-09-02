@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
 
+import { ConstructionDecoratorAgent } from '../src/construction/agents/decoratorAgent.js';
+import { SiteLandscapeAgent } from '../src/construction/agents/siteLandscapeAgent.js';
+import { buildFallbackStructure } from '../src/construction/agents/structureAgent.js';
+import { BSPPartitioner } from '../src/construction/engine/bspPartitioner.js';
+import { CSGBuilder } from '../src/construction/engine/csgBuilder.js';
 import { loadP7AdvisoryOverlay } from '../src/playbook/knowledge/p7AdvisoryOverlay.js';
 import {
   applyArchitectureLanguageV02,
@@ -78,3 +83,75 @@ test('explicit negation suppresses new construction operations without suppressi
   assert.equal(plan.selected_knowledge_ids.includes('knowledge:p7:porous-interior-partition'), false);
   assert.equal(plan.selected_knowledge_ids.includes('knowledge:p7:facade-opening-assembly'), true);
 });
+
+test('structure, BSP, site, and decorator consume v0.3 semantic handoffs as construction behavior', () => {
+  const spec = {
+    width: 19, depth: 15, wall_height: 5, total_height: 8, floors: 1,
+    floor_height: 5, roof_height: 3, roof_overhang: 1, shell_thickness: 1,
+    roof_style: 'gabled', door_side: 'south', door_width: 2, door_height: 3,
+    garden_depth: 4, scale: 'compact', facade: {}, structural: {}, site: {}
+  };
+  const architecture = {
+    style_family: 'general',
+    volumes: [],
+    materials: {
+      wall: 'minecraft:stone_bricks', roof: 'minecraft:dark_oak_planks',
+      floor: 'minecraft:oak_planks', foundation: 'minecraft:cobblestone',
+      interior_wall: 'minecraft:birch_planks', path: 'minecraft:gravel',
+      furniture: 'minecraft:barrel', lamp: 'minecraft:lantern'
+    },
+    structural_rules: { visible_bay_grid: true },
+    roof_rules: { style: 'gabled', axis_strategy: 'volume-proportion' },
+    facade_rules: { pattern_vocabulary: 'bounded-restrained' },
+    site_rules: { route_strategy: 'route-first-grounding' },
+    design_directives: {
+      interior: {
+        space_planning: 'function-before-furnishing',
+        partition_strategy: 'porous-public-solid-private',
+        furnishing_sequence: 'large-to-small'
+      }
+    }
+  };
+  const topology = {
+    nodes: [
+      { id: 'entry', type: 'entry', floor: 0, weight: 1, access: 'main-door' },
+      { id: 'living', type: 'living', floor: 0, weight: 2 },
+      { id: 'dining', type: 'dining', floor: 0, weight: 1 }
+    ],
+    edges: [{ from: 'entry', to: 'living' }, { from: 'living', to: 'dining' }],
+    bsp_hints: { split_strategy: 'weighted' }
+  };
+  const structure = buildFallbackStructure(architecture, spec, topology);
+  assert.equal(structure.engine_hints.render_column_grid, true);
+  assert.ok(structure.support_elements.some((item) => item.kind === 'column-grid'));
+
+  const site = new SiteLandscapeAgent().run('', architecture, spec, topology);
+  assert.equal(site.entry_sequence.strategy, 'route-first-grounding');
+  assert.equal(site.engine_hints.render_entry_threshold, true);
+  const shell = new CSGBuilder(spec, architecture.materials).generateShell(architecture, { structure, site });
+  const modules = moduleCounts(shell.grid);
+  assert.ok(modules.structural_frame > 0);
+  assert.ok(modules.entry_threshold > 0);
+
+  const layout = new BSPPartitioner(spec, architecture.materials).fitRooms(shell, topology, architecture);
+  assert.equal(layout.bsp.semanticSpacePlanning, 'function-before-furnishing');
+  assert.equal(layout.bsp.splitStrategy, 'function-first-weighted');
+  assert.ok(layout.bsp.openPlanSoftBoundaries > 0);
+
+  const decorator = new ConstructionDecoratorAgent().run(layout.rooms, architecture.materials, {
+    grid: shell.grid, buildSpec: spec, architecture, topology, interior: { room_details: [] }
+  });
+  assert.equal(decorator.furnishing_sequence, 'large-to-small');
+  assert.deepEqual(decorator.placement_passes, [
+    'function-bearing-large', 'secondary-storage-and-work', 'lighting-and-small-accents'
+  ]);
+  const firstFurniture = decorator.placements.findIndex((item) => item.module === 'decor_furniture');
+  const firstLight = decorator.placements.findIndex((item) => item.module === 'decor_light');
+  assert.ok(firstFurniture >= 0 && (firstLight < 0 || firstFurniture < firstLight));
+});
+
+function moduleCounts(grid) {
+  const counts = {};
+  for (const cell of grid.values()) counts[cell.module] = (counts[cell.module] || 0) + 1;
+  return counts;
+}

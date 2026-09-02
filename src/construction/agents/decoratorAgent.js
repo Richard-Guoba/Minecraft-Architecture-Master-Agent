@@ -56,6 +56,7 @@ export class ConstructionDecoratorAgent {
     const architecture = context.architecture || {};
     const styleFamily = architecture.style_family || buildSpec.style_family || 'general';
     const interior = context.interior || {};
+    const furnishingSequence = architecture.design_directives?.interior?.furnishing_sequence || 'standard';
     const detailByRoom = new Map((interior.room_details || []).map((detail) => [detail.room_id, detail]));
     const specialistAgents = interiorSpecialistCapabilities();
     const activeSpecialists = [];
@@ -83,7 +84,8 @@ export class ConstructionDecoratorAgent {
         blocks: plan.blocks.map(({ at, module, ...item }) => item)
       });
 
-      for (const item of plan.blocks) {
+      const orderedBlocks = orderFurnishingBlocks(plan.blocks, furnishingSequence);
+      for (const item of orderedBlocks) {
         if (placeBlock(grid, item, room)) placements.push(item);
       }
     }
@@ -96,6 +98,10 @@ export class ConstructionDecoratorAgent {
         : 'DecoratorAgent generated room-scale furnishing suggestions without mutating a grid.',
       style_family: styleFamily,
       interior_source: interior.source || 'none',
+      furnishing_sequence: furnishingSequence,
+      placement_passes: furnishingSequence === 'large-to-small'
+        ? ['function-bearing-large', 'secondary-storage-and-work', 'lighting-and-small-accents']
+        : ['standard-room-plan'],
       specialist_agents: specialistAgents,
       activeSpecialists,
       placementCount: placements.length,
@@ -106,6 +112,18 @@ export class ConstructionDecoratorAgent {
       suggestions
     };
   }
+}
+
+function orderFurnishingBlocks(blocks, sequence) {
+  if (sequence !== 'large-to-small') return blocks;
+  const priority = (item) => {
+    if (item.module === 'decor_furniture') return 0;
+    if (['decor_storage', 'decor_utility'].includes(item.module)) return 1;
+    return 2;
+  };
+  return blocks.map((item, index) => ({ item, index }))
+    .sort((left, right) => priority(left.item) - priority(right.item) || left.index - right.index)
+    .map(({ item }) => item);
 }
 
 function furnishRoom(room, materials, context) {

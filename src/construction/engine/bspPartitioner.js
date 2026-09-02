@@ -6,7 +6,8 @@ export class BSPPartitioner {
     this.materials = materials;
   }
 
-  fitRooms(shell, plannerJson = {}) {
+  fitRooms(shell, plannerJson = {}, architecture = {}) {
+    plannerJson = applySemanticBspHints(plannerJson, architecture);
     const rooms = [];
     const interiorDoors = [];
     const floorOpenings = [];
@@ -51,6 +52,8 @@ export class BSPPartitioner {
         openPlanSoftBoundaries: interiorDoors.filter((door) => door.kind === 'open-plan-threshold').length,
         unassignedPlannerNodes,
         splitStrategy: plannerJson.bsp_hints?.split_strategy || 'weighted',
+        semanticSpacePlanning: plannerJson.bsp_hints?.semantic_space_planning || 'default',
+        semanticPartitionStrategy: plannerJson.bsp_hints?.semantic_partition_strategy || 'default',
         templateSpacePlanning: plannerJson.bsp_hints?.template_space_planning_active ? {
           active: true,
           viewSide: plannerJson.bsp_hints.template_view_side,
@@ -352,7 +355,7 @@ function nodeOrderScore(node, strategy, publicCore, spec, floor) {
   if (node.type === 'stairs') return floor === 0 ? 2 : 8;
   if (node.type === 'corridor') return 2;
   if (strategy === 'courtyard-ring' && ['tatami', 'tea_room'].includes(node.type)) return 3;
-  if (strategy === 'open-plan-weighted' && ['living', 'dining', 'kitchen'].includes(node.type)) return 3;
+  if (['open-plan-weighted', 'function-first-weighted'].includes(strategy) && ['living', 'dining', 'kitchen'].includes(node.type)) return 3;
   if (strategy === 'front-back-bands' && ['living', 'dining'].includes(node.type)) return 3;
   if (strategy === 'side-bands' && ['kitchen', 'bathroom', 'storage', 'utility'].includes(node.type)) return 3;
   if (strategy === 'view-side-cluster' && ['living', 'sunroom', 'greenhouse', 'lounge'].includes(node.type)) return 3;
@@ -364,10 +367,25 @@ function nodeOrderScore(node, strategy, publicCore, spec, floor) {
 }
 
 function shouldUseSoftBoundary(leftNodes, rightNodes, hints = {}) {
-  if (!['open-plan-weighted', 'view-side-cluster', 'front-back-bands'].includes(String(hints.split_strategy || ''))) return false;
+  if (!['open-plan-weighted', 'function-first-weighted', 'view-side-cluster', 'front-back-bands'].includes(String(hints.split_strategy || ''))) return false;
   if (String(hints.soft_boundary_bias || '') === 'low') return false;
   const openTypes = new Set(['living', 'dining', 'kitchen', 'lounge', 'sunroom']);
   return leftNodes.some((node) => openTypes.has(node.type)) && rightNodes.some((node) => openTypes.has(node.type));
+}
+
+function applySemanticBspHints(plannerJson = {}, architecture = {}) {
+  const interior = architecture.design_directives?.interior || {};
+  if (!interior.space_planning && !interior.partition_strategy) return plannerJson;
+  const hints = { ...(plannerJson.bsp_hints || {}) };
+  if (interior.space_planning === 'function-before-furnishing') {
+    hints.split_strategy = 'function-first-weighted';
+    hints.semantic_space_planning = interior.space_planning;
+  }
+  if (interior.partition_strategy === 'porous-public-solid-private') {
+    hints.soft_boundary_bias = 'high';
+    hints.semantic_partition_strategy = interior.partition_strategy;
+  }
+  return { ...plannerJson, bsp_hints: hints };
 }
 
 function explicitRoomOrder(value = {}, floor = 0) {

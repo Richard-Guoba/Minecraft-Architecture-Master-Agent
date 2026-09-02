@@ -1548,6 +1548,13 @@ export class CSGBuilder {
         module: 'landscape_path'
       });
     }
+    if (sitePlan.engine_hints.render_entry_threshold) {
+      this.addEntryThreshold(grid, {
+        side: sitePlan.entry_sequence?.side || this.spec.door_side || 'south',
+        width: Math.max(Number(this.spec.door_width || 1), Number(sitePlan.entry_sequence?.path_width || 2)),
+        block: sitePlan.materials?.path_secondary || this.materials.foundation || 'minecraft:stone_bricks'
+      });
+    }
     if (sitePlan.engine_hints.render_path_lights) this.addPathLights(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_layered_terrain) this.addLayeredTerrain(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_terrain_retaining) this.addTerrainRetaining(grid, center, zStart, zEnd, sitePlan);
@@ -1566,6 +1573,22 @@ export class CSGBuilder {
     if (sitePlan.engine_hints.render_template_approach_sequence) this.addTemplateApproachSequence(grid, center, zStart, zEnd, sitePlan);
     if (sitePlan.engine_hints.render_template_view_frame) this.addTemplateViewFrame(grid, center, zStart, sitePlan);
     if (sitePlan.engine_hints.render_outdoor_seating) this.addOutdoorSeating(grid, center, zStart, zEnd, sitePlan);
+  }
+
+  addEntryThreshold(grid, { side = 'south', width = 2, block } = {}) {
+    const halfWidth = Math.max(1, Math.ceil(Number(width || 1) / 2));
+    const centerX = Math.floor(this.spec.width / 2);
+    const centerZ = Math.floor(this.spec.depth / 2);
+    const material = block || this.materials.foundation || 'minecraft:stone_bricks';
+    if (side === 'north') {
+      fillBox(grid, centerX - halfWidth, 0, -1, centerX + halfWidth, 0, 0, material, 'entry_threshold');
+    } else if (side === 'east') {
+      fillBox(grid, this.spec.width - 1, 0, centerZ - halfWidth, this.spec.width, 0, centerZ + halfWidth, material, 'entry_threshold');
+    } else if (side === 'west') {
+      fillBox(grid, -1, 0, centerZ - halfWidth, 0, 0, centerZ + halfWidth, material, 'entry_threshold');
+    } else {
+      fillBox(grid, centerX - halfWidth, 0, this.spec.depth - 1, centerX + halfWidth, 0, this.spec.depth, material, 'entry_threshold');
+    }
   }
 
   addLayeredTerrain(grid, center, zStart, zEnd, sitePlan = {}) {

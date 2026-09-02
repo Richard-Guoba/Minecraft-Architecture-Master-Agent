@@ -72,7 +72,7 @@ export async function compilePreparedConstruction({
   } = compiledLayers.runtime;
   const site = new SiteLandscapeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
   const shell = new CSGBuilder(buildSpec, architecture.materials).generateShell(architecture, { structure, facade, roof, site });
-  const layout = new BSPPartitioner(buildSpec, architecture.materials).fitRooms(shell, topology);
+  const layout = new BSPPartitioner(buildSpec, architecture.materials).fitRooms(shell, topology, architecture);
   const opening = new OpeningConnectivityAgent().run(prompt, architecture, buildSpec, topology, shell, layout, facade);
   const paths = new AStarPathfinder(buildSpec, architecture.materials).connect(shell, layout, topology, opening);
   const interior = new InteriorDetailAgent().run(layout.rooms, architecture, buildSpec, topology, materialPalette, stylePreset);

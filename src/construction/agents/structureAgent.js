@@ -26,6 +26,7 @@ export function buildFallbackStructure(architecture = {}, buildSpec = {}, topolo
   const width = Math.max(1, Number(buildSpec.width || 19));
   const depth = Math.max(1, Number(buildSpec.depth || 15));
   const shellThickness = Math.max(1, Number(buildSpec.shell_thickness || 1));
+  const visibleBayGrid = architecture.structural_rules?.visible_bay_grid === true;
 
   const signals = {
     long_span: /long-span|open|mega-frame|large-openings/i.test(`${spanStrategy} ${system}`) || Boolean(buildSpec.facade?.large_glass),
@@ -51,11 +52,11 @@ export function buildFallbackStructure(architecture = {}, buildSpec = {}, topolo
   const bracingElements = [];
   const roofElements = [];
 
-  if (signals.long_span || floors > 1 || ['classical', 'industrial', 'modern', 'cyberpunk', 'greenhouse-house'].includes(family)) {
+  if (visibleBayGrid || signals.long_span || floors > 1 || ['classical', 'industrial', 'modern', 'cyberpunk', 'greenhouse-house'].includes(family)) {
     supportElements.push(support('main-column-grid', 'column-grid', 'main', {
       module: 'structural_frame',
       spacing: chooseColumnSpacing(width, depth, family),
-      priority: signals.long_span ? 'primary' : 'secondary'
+      priority: visibleBayGrid || signals.long_span ? 'primary' : 'secondary'
     }));
   }
 
