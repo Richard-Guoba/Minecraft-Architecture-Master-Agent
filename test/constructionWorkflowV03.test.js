@@ -283,6 +283,30 @@ test('construction workflow QA cannot be disabled by clearing every language row
   assert.equal(qa.checks.find((item) => item.name === 'construction-workflow')?.ok, false);
 });
 
+test('construction workflow QA accepts a canonical empty language handoff when the prompt selects nothing', async () => {
+  const prompt = 'Build a plain house.';
+  const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
+  const plan = compileArchitectureLanguageV02({ prompt, overlay });
+  const applied = applyArchitectureLanguageV02({
+    prompt,
+    plan,
+    architecture: {},
+    buildSpec: {}
+  });
+  assert.deepEqual(plan.selected_knowledge_ids, []);
+  assert.deepEqual(applied.trace.applied_operations, []);
+
+  const qa = new BlueprintQAAgent().run({
+    prompt,
+    architectureLanguage: { plan, trace: applied.trace },
+    operations: [], bounds: {}, modules: {}, shell: { volumeBoxes: [], interiorSpaces: [] }, layout: {}, paths: {}
+  });
+  const check = qa.checks.find((item) => item.name === 'construction-workflow');
+  assert.equal(check?.ok, true);
+  assert.equal(check?.details.active, false);
+  assert.equal(qa.stats.constructionWorkflow.active, false);
+});
+
 test('construction workflow QA rejects language accessors without invoking them', () => {
   let invoked = false;
   const architectureLanguage = { plan: {} };

@@ -66,12 +66,20 @@ export class BlueprintQAAgent {
 }
 
 function validateConstructionWorkflow(blueprint, errors, checks) {
-  const workflow = blueprint.constructionWorkflow || {};
-  const rows = Array.isArray(workflow.rows) ? workflow.rows : [];
+  const workflowPresent = blueprint.constructionWorkflow !== undefined;
+  const workflow = workflowPresent ? blueprint.constructionWorkflow : {};
   const languageContractOk = languagePlanMatchesTrace(blueprint.architectureLanguage, blueprint.prompt);
   const applied = languageContractOk ? blueprint.architectureLanguage.trace.applied_operations : [];
   const contractIssues = [];
   if (!languageContractOk) contractIssues.push('language-plan-trace-mismatch');
+  if (languageContractOk && applied.length === 0) {
+    if (workflowPresent) contractIssues.push('unexpected-empty-language-sidecar');
+    const ok = contractIssues.length === 0;
+    if (!ok) errors.push(`Construction Workflow v0.3 结果校验失败: ${contractIssues.join(', ')}`);
+    checks.push(check('construction-workflow', ok, { active: false, checked: 0, failed: [], contractIssues }));
+    return { active: false, checked: 0, failed: [], contractIssues };
+  }
+  const rows = Array.isArray(workflow.rows) ? workflow.rows : [];
   if (workflow.schema_version !== 1) contractIssues.push('schema-version-mismatch');
   if (workflow.authority !== 'derived-from-validated-plan-and-grid') contractIssues.push('authority-mismatch');
   if (rows.length !== applied.length) contractIssues.push('row-count-mismatch');
@@ -111,7 +119,7 @@ function languagePlanMatchesTrace(language = {}, prompt = '') {
   if (![planIds, instructions, traceIds, applied].every(Array.isArray)) return false;
   if (trace.schema_version !== 1 || trace.language_version !== plan.language_version ||
     trace.overlay_sha256 !== plan.overlay_sha256) return false;
-  if (planIds.length === 0 || instructions.length !== planIds.length || traceIds.length !== planIds.length || applied.length !== planIds.length) return false;
+  if (instructions.length !== planIds.length || traceIds.length !== planIds.length || applied.length !== planIds.length) return false;
   for (let index = 0; index < planIds.length; index += 1) {
     const id = planIds[index];
     const instruction = instructions[index] || {};
