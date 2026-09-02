@@ -370,8 +370,11 @@ function isExplicitlyRejected(prompt, subjectPattern) {
 
 function requestsCompatibleThreeVolumeInterlock(prompt) {
   if (/single[- ]volume|garage wing|guest wing|tower|pavilion|annex|outbuilding|单体块|车库侧翼|塔楼|亭|附楼|traditional.*not (?:a )?modern/iu.test(prompt)) return false;
-  const count = prompt.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|dozen|hundred)\s+interlocking volumes?/iu)?.[1];
-  if (count && !/^(?:3|three)$/iu.test(count)) return false;
+  const cardinal = '(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|trillion|dozen|and)';
+  const englishCount = prompt.match(new RegExp(`\\b((?:\\d+|${cardinal}(?:[ -]${cardinal})*))\\s+interlocking volumes?`, 'iu'))?.[1];
+  if (englishCount && !/^(?:3|three)$/iu.test(englishCount)) return false;
+  const chineseCount = prompt.match(/([零〇一二两三四五六七八九十百千万亿\d]+)个?\s*(?:交错体块|咬合体块)/u)?.[1];
+  if (chineseCount && !/^(?:3|三)$/u.test(chineseCount)) return false;
   return !/interlocking volumes?\s+(?:with|plus|including)\b/iu.test(prompt);
 }
 
