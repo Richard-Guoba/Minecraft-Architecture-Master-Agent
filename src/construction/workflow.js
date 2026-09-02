@@ -72,10 +72,18 @@ export async function compilePreparedConstruction({
     roof
   } = compiledLayers.runtime;
   const site = new SiteLandscapeAgent().run(prompt, architecture, buildSpec, topology, materialPalette, stylePreset);
-  const shell = new CSGBuilder(buildSpec, architecture.materials).generateShell(architecture, { structure, facade, roof, site });
+  const csgBuilder = new CSGBuilder(buildSpec, architecture.materials);
+  const shell = csgBuilder.generateShell(architecture, { structure, facade, roof, site });
   const layout = new BSPPartitioner(buildSpec, architecture.materials).fitRooms(shell, topology, architecture);
   const opening = new OpeningConnectivityAgent().run(prompt, architecture, buildSpec, topology, shell, layout, facade);
   const paths = new AStarPathfinder(buildSpec, architecture.materials).connect(shell, layout, topology, opening);
+  if (site.engine_hints?.render_entry_threshold && paths.mainDoor) {
+    paths.entryThreshold = csgBuilder.addEntryThreshold(shell.grid, {
+      mainDoor: paths.mainDoor,
+      width: Math.max(Number(paths.mainDoor.width || 1), Number(site.entry_sequence?.path_width || 1)),
+      block: site.materials?.path_secondary || architecture.materials?.foundation
+    });
+  }
   const interior = new InteriorDetailAgent().run(layout.rooms, architecture, buildSpec, topology, materialPalette, stylePreset);
   const decorator = new ConstructionDecoratorAgent().run(layout.rooms, architecture.materials, {
     grid: shell.grid,
@@ -411,6 +419,7 @@ function buildBlueprint({ prompt, architecture, topology, creativeDesign, concep
     },
     paths: {
       mainDoor: paths.mainDoor,
+      ...(paths.entryThreshold ? { entryThreshold: paths.entryThreshold } : {}),
       openedEdges: paths.openedEdges,
       stairs: paths.stairs
     },

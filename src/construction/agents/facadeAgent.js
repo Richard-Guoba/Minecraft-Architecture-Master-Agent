@@ -133,6 +133,8 @@ export class FacadeAgent {
         render_privacy_fins: privacyFins,
         render_wall_relief: wallRelief && ornamentBudget.relief_density !== 'none',
         render_window_surrounds: windowSurrounds,
+        ...(rules.bay_layering === 'integrated-supported' ? { render_integrated_bays: true } : {}),
+        ...(rules.opening_assembly === 'sill-lintel-frame' ? { render_opening_assemblies: true } : {}),
         render_entry_detail: entryDetail
       }
     };

@@ -14,7 +14,8 @@ The audited metadata-only handoffs are now executable:
 - route-first grounding creates a door/path-width-derived stone threshold joined to the existing entrance path;
 - a visible structural-bay request changes dimension-derived column spacing and therefore actual frame cells;
 - roof orientation uses each volume's proportions to choose the long ridge axis and changes gabled roof cells;
-- facade bay/opening/bounded-vocabulary semantics activate existing relief, sill/lintel/frame, and restrained-density builders;
+- connected additions receive bounded role-volume joints, while facade bay/opening/foundation semantics emit dedicated geometry modules instead of relying on ambient cells;
+- bounded-vocabulary semantics activate the existing restrained-density builder;
 - an explicit compact single-volume constraint survives CreativeDesign and removes unrelated template additions.
 
 ## Capability matrix result
@@ -32,6 +33,19 @@ All 123 canonical P7 concepts remain classified exactly once. The v0.3 counts ar
 
 The newly bound concepts are connected mass additions, scaled column-beam grids, volume-proportion roof orientation, integrated facade bays, opening assemblies, bounded facade vocabulary, foundation continuity, and porous partitions. Connected-mass and bounded-vocabulary decisions remain preferences around existing compilers; they are not arbitrary-coordinate operations.
 
+### Stage handoff matrix
+
+| Architecture Language concept | Current agent/builder | Previous effect | Audited missing handoff | v0.3 deterministic operation | QA condition | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `modern-interlocking-volume`, `connected-mass-addition` | Architect / CreativeDesign / CSG | modern three-volume lock already built; generic connected addition was advisory | compact/single-volume intent could be overwritten by template additions | preserve selected role volumes, add dimension-derived joints, and finalize an explicit compact single-volume constraint before CSG | required IDs and dedicated `volume_joint` cells; general spatial QA still rejects detached boxes | implemented |
+| `scaled-column-beam-grid` | StructureAgent / CSG structural details | grids appeared only from style, floors, or long spans | selected language could not request or size visible bays | dimension-derived visible spacing and existing column/ring/roof-frame modules | column-grid hint plus `structural_frame` cells | implemented |
+| `roof-orientation-massing-fit` | RoofAgent / CSG roof builder | every gable used the same fixed axis | volume proportions were ignored | choose long ridge axis independently for each eligible volume and voxelize on that axis | component-axis row plus roof cells | implemented |
+| `integrated-facade-bay-layering`, `facade-opening-assembly`, `bounded-facade-pattern-vocabulary` | FacadeAgent / CSG facade details | depth and surrounds existed but were not language-selectable | selected bay/vocabulary intent stopped at advisory text | derive supported bay piers and sill/lintel/jamb assemblies from facade dimensions; apply low bounded density | facade hints plus dedicated `facade_bay` / `opening_assembly` cells and windows | implemented |
+| `function-led-interior-zoning`, `porous-interior-partition` | Planner / BSP | fields were stored only in architecture directives | BSP read only planner hints | merge validated semantic hints into function-first ordering and public soft-boundary decisions | BSP semantic values, room geometry, open-plan threshold count, connectivity QA | implemented |
+| `large-to-small-furnishing-pass` | DecoratorAgent | fixed lighting/accent-first planning order | semantic sequence was ignored | stable pass ordering reserves function-bearing furniture before secondary and small layers | pass order plus actual placed furniture | implemented |
+| `landscape-route-and-grounding`, `building-foundation-material-continuity` | SiteLandscapeAgent / CSG site | generic path existed; route strategy was metadata-only | no explicit door-to-path threshold/grounding result | derive threshold from the actual main-door coordinate and derive a material-continuous perimeter from footprint/shell thickness | adjacent path plus `entry_threshold`; dedicated `foundation_transition` cells | implemented; bounded fallback repair |
+| six QA-only concepts | BlueprintQAAgent / ConstraintRepairAgent | existing general geometry checks remain active | QA-only concepts must not become repair authority | keep them classified as QA only; validate selected executable result rows as an exact derived sidecar | hard `construction-workflow` check | unchanged QA authority; no P5 repair |
+
 The eight unsupported geometry concepts remain unchanged: diagonal envelope/frame, diagonal unit wall, bounded diagonal accent, alternating conical rise, slope-sequence curve, quarter-circle profile, revolved pointed frame, and pointed rise profile. P7 QA/advisory rows still cannot enter the frozen P5 repair registry.
 
 ## Result trace and QA
@@ -44,9 +58,9 @@ For example:
 
 `knowledge:p7:scaled-column-beam-grid -> language:structure:derived-bay-grid -> structure -> module-and-agent-result -> structural_frame > 0`
 
-`BlueprintQAAgent` recomputes satisfaction from blueprint modules, volume IDs, BSP results, roof component axes, and decorator passes. It does not trust a stored `satisfied: true`; a forged row with no frame modules fails the new hard `construction-workflow` check.
+`BlueprintQAAgent` rebuilds the complete sidecar from the prompt-bound applied-operation trace and final blueprint, then requires exact schema, authority, ordering, provenance, evidence, counts, and satisfaction. It does not trust a stored `satisfied: true`, and deleting or forging the sidecar fails the hard `construction-workflow` check.
 
-The only new repair is `workflow-v0.3-entry-threshold`. It runs only when route-first grounding and a main door exist but the threshold is absent. Its cells derive from building footprint, door side, and door/path width. It is idempotent and local, and never calls the P5 registry.
+The only new repair is `workflow-v0.3-entry-threshold`. It runs only when route-first grounding and a main door exist but the threshold is absent. Its cells derive from the actual main-door coordinate, door side, and door/path width; its record includes before/after module counts. It is idempotent and local, and never calls the P5 registry.
 
 ## Deterministic scenario evidence
 
@@ -54,9 +68,9 @@ All scenarios use mock mode, seed 7101, and no Minecraft world path.
 
 | Scenario | Selected rows | Volumes | Grid cells | Operations | Notable modules | Blueprint SHA-256 |
 | --- | ---: | --- | ---: | ---: | --- | --- |
-| Modern lakeside villa | 9 | `main`, `glass-wing`, `view-terrace` | 9260 | 1258 | frame 578; roof 1158; roof detail 205; windows 516; threshold 5 | `850582e87a29e387748449fe1fb0f9801fd56a16ee2a969aaaf74982295aceaf` |
-| Medieval multi-volume residence | 7 | 8 connected role volumes | 9428 | 1343 | frame 421; roof 3330; windows 512; facade detail 201; threshold 3 | `90129ba5be0affd1669cd01c03779a69e5873022a56aa496b3e2d959f28b4543` |
-| Compact residential building | 4 | `main` only | 3731 | 612 | frame 121; roof 641; windows 126; facade detail 76; threshold 3 | `39eac4be953ca2dab11a250d6d63ebf659bef135a2accca37488f8024495c506` |
+| Modern lakeside villa | 9 | `main`, `glass-wing`, `view-terrace` | 9260 | 1258 | frame 578; roof 1158; windows 516; threshold 10 | `bacb40a508ba6598fb8066fbe505a2b233c1ab73523795a9496b1c3ada5ce520` |
+| Medieval multi-volume residence | 8 | 8 connected role volumes | 9552 | 1352 | frame 419; roof 3324; bay 29; opening 269; joint 11; foundation transition 77; threshold 8 | `0dd0320dabddd6c8480a02da2129c7ca6fd8bf716d99d1817b97f580b5ac7c87` |
+| Compact residential building | 4 | `main` only | 3731 | 612 | frame 121; roof 641; windows 126; facade detail 76; threshold 8 | `a2c614a3aa3acbe126c38f547f2e981a9bb658e5595500aa2168099306e19eb5` |
 
 Each scenario test generates the v0.3 form twice and compares blueprint bytes, operations, and result rows. It also generates the same prompt/seed without Architecture Language and proves the operation stream differs: modern mass roles are locked to three volumes; medieval frame density and roof axes change; compact template additions collapse to the requested main volume.
 
@@ -67,3 +81,10 @@ Every generated `pack.mcmeta` is format 48. Every coordinate operand in `build.m
 The v0.3 blueprint fields, semantic agent fields, roof axes, and QA stats are emitted only when their language semantics are active. Architecture Language absent/playbook-off runs therefore retain the frozen pre-P5 bytes. Mock mode remains API-key-free, the existing function directory stays `data/architect/function/`, and P5 rules, repair compilers, registry, eligibility, and transaction code are unchanged.
 
 Visual or historical-quality claims remain outside automatic authority. The workflow verifies deterministic spatial/geometry consequences, not a fabricated human visual review.
+
+## Verification record
+
+- Focused v0.3: `npm test -- test/constructionWorkflowV03.test.js --test-reporter=spec` — 12 passed, 0 failed.
+- Directly affected units: `npm test -- test/architectureLanguageV02.test.js test/structureAgent.test.js test/bspPartitioner.test.js test/decoratorAgent.test.js test/blueprintQaAgent.test.js --test-reporter=spec` — 43 passed, 0 failed.
+- Related workflow, compatibility, P5-boundary, documentation regression: the 14-file focused command recorded in the implementation session — 119 passed, 0 failed.
+- All Node test commands used `scripts/runNodeTests.js` through `npm test` and the required Linux systemd hard-memory scope. No soft fallback was enabled.

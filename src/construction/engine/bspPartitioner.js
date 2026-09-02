@@ -371,8 +371,10 @@ function nodeOrderScore(node, strategy, publicCore, spec, floor) {
 }
 
 function shouldUseSoftBoundary(leftNodes, rightNodes, hints = {}) {
-  if (!['open-plan-weighted', 'function-first-weighted', 'view-side-cluster', 'front-back-bands'].includes(String(hints.split_strategy || ''))) return false;
+  const strategy = String(hints.split_strategy || '');
+  if (!['open-plan-weighted', 'function-first-weighted', 'view-side-cluster', 'front-back-bands'].includes(strategy)) return false;
   if (String(hints.soft_boundary_bias || '') === 'low') return false;
+  if (strategy === 'function-first-weighted' && String(hints.soft_boundary_bias || '') !== 'high') return false;
   const openTypes = new Set(['living', 'dining', 'kitchen', 'lounge', 'sunroom']);
   return leftNodes.some((node) => openTypes.has(node.type)) && rightNodes.some((node) => openTypes.has(node.type));
 }

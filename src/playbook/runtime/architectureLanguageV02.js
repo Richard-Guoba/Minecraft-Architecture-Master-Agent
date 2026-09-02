@@ -66,30 +66,33 @@ const SELECTORS = new Map([
     matchesUnnegated(prompt, /(?:flat|terrace) roof|roof terrace|平屋顶|屋顶露台/iu,
       '(?:flat roof|terrace roof|roof terrace|平屋顶|屋顶露台)')
       && !isExplicitlyRejected(prompt, '(?:terrace roof|roof terrace|屋顶露台)')],
-  ['knowledge:p7:weather-sheltered-entrance-transition', (prompt) =>
-    matchesUnnegated(prompt, /sheltered entry|porch|canopy|门廊|雨棚|入口过渡/iu,
-      '(?:sheltered entry|porch|canopy|门廊|雨棚|入口过渡)')],
   ['knowledge:p7:integrated-facade-bay-layering', (prompt) =>
     matchesUnnegated(prompt, /facade bays?|vertical bays?|立面开间|立面分格/iu,
       '(?:facade bays?|vertical bays?|立面开间|立面分格)')],
   ['knowledge:p7:facade-opening-assembly', (prompt) =>
     matchesUnnegated(prompt, /(?:coherent )?(?:window|opening) assemblies|window frames?|门窗组件|窗框组件/iu,
       '(?:(?:coherent )?(?:window|opening) assemblies|window frames?|门窗组件|窗框组件)')],
+  ['knowledge:p7:weather-sheltered-entrance-transition', (prompt) =>
+    matchesUnnegated(prompt, /sheltered (?:entry|entrance)|porch|canopy|门廊|雨棚|入口过渡/iu,
+      '(?:sheltered (?:entry|entrance)|porch|canopy|门廊|雨棚|入口过渡)')],
   ['knowledge:p7:bounded-facade-pattern-vocabulary', (prompt) =>
     matchesUnnegated(prompt, /bounded pattern vocabulary|restrained facade detail|有限(?:立面)?构件词汇|克制的立面细节/iu,
       '(?:bounded pattern vocabulary|restrained facade detail|有限(?:立面)?构件词汇|克制的立面细节)')],
   ['knowledge:p7:landscape-route-and-grounding', (prompt) =>
-    /lake|lakeside|waterfront|garden|path|route|湖|水边|花园|路径|动线/iu.test(prompt)],
+    matchesUnnegated(prompt, /lake|lakeside|waterfront|garden|path|route|湖|水边|花园|路径|动线/iu,
+      '(?:lake|lakeside|waterfront|garden|path|route|湖|水边|花园|路径|动线)')],
   ['knowledge:p7:building-foundation-material-continuity', (prompt) =>
     matchesUnnegated(prompt, /foundation material continuity|continuous (?:base|foundation)|基础材料连续|建筑基础连续/iu,
       '(?:foundation material continuity|continuous (?:base|foundation)|基础材料连续|建筑基础连续)')],
   ['knowledge:p7:function-led-interior-zoning', (prompt) =>
-    /functional interior|function-led|functional (?:room )?zoning|功能.*(?:室内|分区)|功能分区/iu.test(prompt)],
+    matchesUnnegated(prompt, /functional interior|function-led|functional (?:room )?zoning|功能.*(?:室内|分区)|功能分区/iu,
+      '(?:functional interior|function-led|functional (?:room )?zoning|功能.*(?:室内|分区)|功能分区)')],
   ['knowledge:p7:porous-interior-partition', (prompt) =>
     matchesUnnegated(prompt, /porous (?:public )?partitions?|open-frame partitions?|通透隔断|开放式隔断/iu,
       '(?:porous (?:public )?partitions?|open-frame partitions?|通透隔断|开放式隔断)')],
   ['knowledge:p7:large-to-small-furnishing-pass', (prompt) =>
-    /large-to-small furnish|largest.*furni(?:ture|shing).*first|由大到小.*家具/iu.test(prompt)],
+    matchesUnnegated(prompt, /large-to-small furnish|largest.*furni(?:ture|shing).*first|由大到小.*家具/iu,
+      '(?:large-to-small furnish|largest.*furni(?:ture|shing).*first|由大到小.*家具)')],
   ['knowledge:p7:daylit-window-wall-integration', (prompt) =>
     matchesUnnegated(prompt, /large glass|glass window wall|window wall|panoramic windows?|大面积玻璃|玻璃窗墙/iu,
       '(?:large glass|glass|window wall|windows?|玻璃|窗墙)')],

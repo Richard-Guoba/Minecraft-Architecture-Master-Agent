@@ -1,5 +1,5 @@
 import { isKnownMinecraft121Block } from './minecraftBlockCatalog.js';
-import { isConstructionOperationSatisfied } from '../constructionWorkflowV03.js';
+import { buildConstructionWorkflowV03, isConstructionOperationSatisfied } from '../constructionWorkflowV03.js';
 
 const BLOCK_PATTERN = /^minecraft:[a-z0-9_]+(?:\[[a-z0-9_=,]+\])?$/;
 const MAX_FILL_VOLUME = 32768;
@@ -31,7 +31,8 @@ export class BlueprintQAAgent {
     const circulationStats = validateCirculation(blueprint, errors, warnings, checks);
     const semanticStats = validateSemanticCompleteness(blueprint, errors, warnings, checks);
     const agentContractStats = validateAgentContracts(blueprint, errors, warnings, checks);
-    const constructionWorkflowStats = blueprint.constructionWorkflow
+    const expectsConstructionWorkflow = (blueprint.architectureLanguage?.trace?.applied_operations || []).length > 0;
+    const constructionWorkflowStats = blueprint.constructionWorkflow || expectsConstructionWorkflow
       ? validateConstructionWorkflow(blueprint, errors, checks)
       : undefined;
 
@@ -64,16 +65,34 @@ export class BlueprintQAAgent {
 }
 
 function validateConstructionWorkflow(blueprint, errors, checks) {
-  const workflow = blueprint.constructionWorkflow;
+  const workflow = blueprint.constructionWorkflow || {};
   const rows = Array.isArray(workflow.rows) ? workflow.rows : [];
+  const applied = blueprint.architectureLanguage?.trace?.applied_operations || [];
+  const contractIssues = [];
+  if (workflow.schema_version !== 1) contractIssues.push('schema-version-mismatch');
+  if (workflow.authority !== 'derived-from-validated-plan-and-grid') contractIssues.push('authority-mismatch');
+  if (rows.length !== applied.length) contractIssues.push('row-count-mismatch');
+  const comparable = Math.min(rows.length, applied.length);
+  for (let index = 0; index < comparable; index += 1) {
+    const row = rows[index];
+    const source = applied[index];
+    if (row.knowledge_id !== source.knowledge_id || row.operation_id !== source.operation_id || row.workflow_stage !== source.workflow_stage) {
+      contractIssues.push(`row-${index}-provenance-mismatch`);
+    }
+  }
   const failed = rows.filter((row) => !isConstructionOperationSatisfied(blueprint, row))
     .map((row) => row.operation_id);
-  if (workflow.workflow_version !== '0.3.0' || !rows.length || failed.length) {
-    errors.push(`Construction Workflow v0.3 结果校验失败: ${failed.join(', ') || 'invalid-or-empty-trace'}`);
+  const satisfactionMismatches = rows.filter((row) => row.satisfied !== isConstructionOperationSatisfied(blueprint, row))
+    .map((row) => row.operation_id);
+  if (satisfactionMismatches.length) contractIssues.push('stored-satisfaction-mismatch');
+  const expectedWorkflow = buildConstructionWorkflowV03(blueprint);
+  if (JSON.stringify(workflow) !== JSON.stringify(expectedWorkflow)) contractIssues.push('derived-trace-mismatch');
+  if (workflow.workflow_version !== '0.3.0' || !rows.length || failed.length || contractIssues.length) {
+    errors.push(`Construction Workflow v0.3 结果校验失败: ${[...contractIssues, ...failed].join(', ') || 'invalid-or-empty-trace'}`);
   }
-  const ok = workflow.workflow_version === '0.3.0' && rows.length > 0 && failed.length === 0;
-  checks.push(check('construction-workflow', ok, { active: true, checked: rows.length, failed }));
-  return { active: true, checked: rows.length, failed };
+  const ok = workflow.workflow_version === '0.3.0' && rows.length > 0 && failed.length === 0 && contractIssues.length === 0;
+  checks.push(check('construction-workflow', ok, { active: true, checked: rows.length, failed, contractIssues }));
+  return { active: true, checked: rows.length, failed, contractIssues };
 }
 
 function validateOperations(operations, errors, checks) {

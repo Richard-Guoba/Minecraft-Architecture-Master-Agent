@@ -134,6 +134,7 @@ export class SiteLandscapeAgent {
       engine_hints: {
         render_entry_path: true,
         ...(routeStrategy === 'route-first-grounding' ? { render_entry_threshold: true } : {}),
+        ...(rules.foundation_transition === 'material-continuous' ? { render_foundation_transition: true } : {}),
         render_path_lights: family === 'cyberpunk' || /灯|夜景|霓虹/i.test(prompt),
         render_boundary: enclosed || ['classical', 'gothic', 'japanese', 'chinese-courtyard'].includes(family),
         render_tree_clusters: templateTrees || ['treehouse', 'rustic', 'alpine', 'japanese', 'chinese-courtyard'].includes(family),

@@ -88,6 +88,15 @@ test('explicit negation suppresses new construction operations without suppressi
   assert.equal(plan.selected_knowledge_ids.includes('knowledge:p7:integrated-facade-bay-layering'), false);
   assert.equal(plan.selected_knowledge_ids.includes('knowledge:p7:porous-interior-partition'), false);
   assert.equal(plan.selected_knowledge_ids.includes('knowledge:p7:facade-opening-assembly'), true);
+
+  const rejected = [
+    ['Build a house with no entrance path.', 'knowledge:p7:landscape-route-and-grounding'],
+    ['Build a house but avoid functional zoning.', 'knowledge:p7:function-led-interior-zoning'],
+    ['Build a house; do not furnish large-to-small.', 'knowledge:p7:large-to-small-furnishing-pass']
+  ];
+  for (const [prompt, id] of rejected) {
+    assert.equal(compileArchitectureLanguageV02({ prompt, overlay }).selected_knowledge_ids.includes(id), false, prompt);
+  }
 });
 
 test('structure, BSP, site, and decorator consume v0.3 semantic handoffs as construction behavior', () => {
@@ -137,12 +146,17 @@ test('structure, BSP, site, and decorator consume v0.3 semantic handoffs as cons
   const shell = new CSGBuilder(spec, architecture.materials).generateShell(architecture, { structure, site });
   const modules = moduleCounts(shell.grid);
   assert.ok(modules.structural_frame > 0);
-  assert.ok(modules.entry_threshold > 0);
+  assert.equal(modules.entry_threshold || 0, 0);
 
   const layout = new BSPPartitioner(spec, architecture.materials).fitRooms(shell, topology, architecture);
   assert.equal(layout.bsp.semanticSpacePlanning, 'function-before-furnishing');
   assert.equal(layout.bsp.splitStrategy, 'function-first-weighted');
   assert.ok(layout.bsp.openPlanSoftBoundaries > 0);
+  const solidLayout = new BSPPartitioner(spec, architecture.materials).fitRooms(shell, topology, {
+    ...architecture,
+    design_directives: { interior: { space_planning: 'function-before-furnishing' } }
+  });
+  assert.equal(solidLayout.bsp.openPlanSoftBoundaries, 0);
 
   const decorator = new ConstructionDecoratorAgent().run(layout.rooms, architecture.materials, {
     grid: shell.grid, buildSpec: spec, architecture, topology, interior: { room_details: [] }
@@ -195,6 +209,43 @@ test('construction workflow QA rejects a forged satisfied result when geometry e
   assert.match(qa.errors.join('\n'), /Construction Workflow/u);
 });
 
+test('construction workflow QA requires an exact ordered language-to-result handoff', () => {
+  const blueprint = {
+    operations: [], bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: 1 },
+    modules: { structural_frame: 2 }, structure: { engine_hints: { render_column_grid: true } },
+    shell: { volumeBoxes: [], interiorSpaces: [] }, layout: { rooms: [] }, paths: {},
+    architectureLanguage: {
+      trace: { applied_operations: [
+        { knowledge_id: 'knowledge:p7:scaled-column-beam-grid', operation_id: 'language:structure:derived-bay-grid', workflow_stage: 'structure' },
+        { knowledge_id: 'knowledge:p7:function-led-interior-zoning', operation_id: 'language:interior:function-first-zoning', workflow_stage: 'interior' }
+      ] }
+    },
+    constructionWorkflow: {
+      schema_version: 1, workflow_version: '0.3.0', authority: 'derived-from-validated-plan-and-grid',
+      rows: [{
+        knowledge_id: 'knowledge:p7:scaled-column-beam-grid', operation_id: 'language:structure:derived-bay-grid',
+        workflow_stage: 'structure', result_kind: 'module-and-agent-result', evidence: {}, satisfied: true
+      }]
+    }
+  };
+  const qa = new BlueprintQAAgent().run(blueprint);
+  const check = qa.checks.find((item) => item.name === 'construction-workflow');
+  assert.equal(check.ok, false);
+  assert.ok(check.details.contractIssues.includes('row-count-mismatch'));
+});
+
+test('construction workflow QA rejects deleting the required result sidecar', () => {
+  const blueprint = {
+    operations: [], bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: 1 },
+    modules: {}, shell: { volumeBoxes: [], interiorSpaces: [] }, layout: { rooms: [] }, paths: {},
+    architectureLanguage: { trace: { applied_operations: [
+      { knowledge_id: 'knowledge:p7:function-led-interior-zoning', operation_id: 'language:interior:function-first-zoning', workflow_stage: 'interior' }
+    ] } }
+  };
+  const qa = new BlueprintQAAgent().run(blueprint);
+  assert.equal(qa.checks.find((item) => item.name === 'construction-workflow')?.ok, false);
+});
+
 test('route-first missing-threshold repair is bounded and idempotent', () => {
   const grid = new Map();
   const context = {
@@ -205,7 +256,7 @@ test('route-first missing-threshold repair is bounded and idempotent', () => {
       entry_sequence: { strategy: 'route-first-grounding', side: 'south', path_width: 2 },
       materials: { path_secondary: 'minecraft:stone_bricks' }
     },
-    paths: { mainDoor: { side: 'south' }, pathfinder: { failedEdgeCount: 0 } }
+    paths: { mainDoor: { side: 'south', x: 2, z: 8, width: 2 }, pathfinder: { failedEdgeCount: 0 } }
   };
   const first = new ConstraintRepairAgent().run(context);
   const sizeAfterFirst = grid.size;
@@ -216,6 +267,10 @@ test('route-first missing-threshold repair is bounded and idempotent', () => {
   assert.equal(second.repairs.length, 0);
   assert.equal(grid.size, sizeAfterFirst);
   assert.ok([...grid.values()].every((cell) => cell.module === 'entry_threshold'));
+  assert.deepEqual(first.repairs[0].before, { entry_threshold: 0 });
+  assert.deepEqual(first.repairs[0].after, { entry_threshold: sizeAfterFirst });
+  assert.equal(grid.has('2,0,9'), true);
+  assert.equal(grid.has('5,0,9'), false);
 });
 
 function moduleCounts(grid) {
@@ -241,12 +296,16 @@ const WORKFLOW_SCENARIOS = [
   {
     id: 'medieval-multi-volume',
     prompt: MEDIEVAL_PROMPT,
-    required: ['knowledge:p7:connected-mass-addition', 'knowledge:p7:scaled-column-beam-grid', 'knowledge:p7:roof-orientation-massing-fit', 'knowledge:p7:integrated-facade-bay-layering'],
+    required: ['knowledge:p7:connected-mass-addition', 'knowledge:p7:scaled-column-beam-grid', 'knowledge:p7:roof-orientation-massing-fit', 'knowledge:p7:integrated-facade-bay-layering', 'knowledge:p7:facade-opening-assembly', 'knowledge:p7:weather-sheltered-entrance-transition', 'knowledge:p7:building-foundation-material-continuity'],
     verify(blueprint) {
       assert.ok(blueprint.shell.volumeBoxes.length > 1);
       assert.ok(blueprint.modules.structural_frame > 0);
       assert.ok(blueprint.geometry.roof.componentAxes.length > 0);
       assert.ok((blueprint.modules.facade_detail || 0) + (blueprint.modules.facade_relief || 0) > 0);
+      assert.ok(blueprint.modules.volume_joint > 0);
+      assert.ok(blueprint.modules.facade_bay > 0);
+      assert.ok(blueprint.modules.opening_assembly > 0);
+      assert.ok(blueprint.modules.foundation_transition > 0);
     },
     verifyDifference(after, before) {
       assert.ok(after.modules.structural_frame > before.modules.structural_frame);
@@ -306,7 +365,7 @@ for (const scenario of WORKFLOW_SCENARIOS) {
     for (const name of ['build.mcfunction', 'clear.mcfunction']) {
       const body = await fs.readFile(path.join(first.artifacts.datapackDir, 'data/architect/function', name), 'utf8');
       const commands = body.split('\n').filter((line) => line && !line.startsWith('#'));
-      assert.ok(commands.every((line) => /(?:^| )~-?\d*(?: |$)/u.test(line)));
+      for (const line of commands) assertAllCommandCoordinatesRelative(line);
     }
     const report = await fs.readFile(first.artifacts.report, 'utf8');
     assert.match(report, /Construction Workflow v0\.3 results/u);
@@ -315,4 +374,11 @@ for (const scenario of WORKFLOW_SCENARIOS) {
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function assertAllCommandCoordinatesRelative(line) {
+  const tokens = line.trim().split(/\s+/u);
+  const coordinateCount = tokens[0] === 'fill' ? 6 : tokens[0] === 'setblock' ? 3 : 0;
+  assert.ok(coordinateCount > 0, `unexpected command: ${line}`);
+  assert.ok(tokens.slice(1, coordinateCount + 1).every((token) => /^~-?\d*$/u.test(token)), line);
 }

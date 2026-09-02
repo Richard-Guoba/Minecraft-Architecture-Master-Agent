@@ -27,7 +27,7 @@ export function isConstructionOperationSatisfied(blueprint = {}, row = {}) {
   const volumeIds = (blueprint.shell?.volumeBoxes || []).map((box) => box.id);
   switch (row.operation_id) {
     case 'language:massing:connected-role-volumes':
-      return volumeIds.length > 1;
+      return volumeIds.length > 1 && Number(modules.volume_joint || 0) >= volumeIds.length - 1;
     case 'language:structure:derived-bay-grid':
       return Number(modules.structural_frame || 0) > 0 && blueprint.structure?.engine_hints?.render_column_grid === true;
     case 'language:roof:volume-proportion-axis':
@@ -38,16 +38,19 @@ export function isConstructionOperationSatisfied(blueprint = {}, row = {}) {
     case 'language:facade:sheltered-entry':
       return Number(modules.awning || 0) + Number(modules.porch || 0) + Number(modules.entry_detail || 0) > 0;
     case 'language:facade:integrated-bays':
-      return Number(modules.facade_relief || 0) > 0;
+      return blueprint.facade?.engine_hints?.render_integrated_bays === true && Number(modules.facade_bay || 0) > 0;
     case 'language:facade:opening-assembly':
-      return Number(modules.facade_detail || 0) > 0 && Number(modules.windows || 0) > 0;
+      return blueprint.facade?.engine_hints?.render_opening_assemblies === true &&
+        Number(modules.opening_assembly || 0) > 0 && Number(modules.windows || 0) > 0;
     case 'language:facade:bounded-pattern-vocabulary':
       return blueprint.facade?.relief_density === 'low' && Number(modules.facade_relief || 0) > 0;
     case 'language:site:route-first-grounding':
       return Number(modules.entry_threshold || 0) > 0 &&
-        Number(modules.landscape_path || 0) + Number(modules.entry_path || 0) > 0;
+        Number(modules.landscape_path || 0) + Number(modules.entry_path || 0) > 0 &&
+        thresholdTouchesMainDoor(blueprint.paths?.entryThreshold, blueprint.paths?.mainDoor);
     case 'language:site:foundation-continuity':
-      return Number(modules.foundation || 0) + Number(modules.foundation_anchor || 0) + Number(modules.entry_threshold || 0) > 0;
+      return blueprint.site?.engine_hints?.render_foundation_transition === true &&
+        Number(modules.foundation_transition || 0) > 0;
     case 'language:interior:function-first-zoning':
       return blueprint.geometry?.bsp?.semanticSpacePlanning === 'function-before-furnishing';
     case 'language:interior:porous-public-partitions':
@@ -87,6 +90,22 @@ function operationEvidence(blueprint, operationId) {
 function relevantModuleCounts(modules) {
   return Object.fromEntries([
     'structural_frame', 'roof', 'roof_detail', 'windows', 'facade_detail', 'facade_relief',
-    'entry_detail', 'awning', 'porch', 'landscape_path', 'entry_path', 'entry_threshold', 'foundation'
+    'facade_bay', 'opening_assembly', 'volume_joint', 'entry_detail', 'awning', 'porch',
+    'landscape_path', 'entry_path', 'entry_threshold', 'foundation', 'foundation_transition'
   ].map((key) => [key, Number(modules[key] || 0)]));
+}
+
+function thresholdTouchesMainDoor(threshold = {}, door = {}) {
+  if (!door || !Array.isArray(threshold?.points) || threshold.points.length === 0) return false;
+  const side = String(door.side || threshold.side || 'south');
+  const width = Math.max(1, Number(door.width || 1));
+  const start = ['north', 'south'].includes(side) ? Number(door.x) : Number(door.z);
+  const boundary = ['north', 'south'].includes(side) ? Number(door.z) : Number(door.x);
+  if (!Number.isFinite(start) || !Number.isFinite(boundary)) return false;
+  return threshold.points.some((point) => {
+    const along = ['north', 'south'].includes(side) ? Number(point.x) : Number(point.z);
+    const across = ['north', 'south'].includes(side) ? Number(point.z) : Number(point.x);
+    const expectedAcross = side === 'north' || side === 'west' ? boundary - 1 : boundary + 1;
+    return along >= start && along < start + width && across === expectedAcross;
+  });
 }

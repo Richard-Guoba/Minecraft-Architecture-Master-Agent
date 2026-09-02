@@ -41,8 +41,8 @@
 
 ### Task 5: Review and final verification
 
-- [ ] Request independent specification review.
-- [ ] Request independent quality/security review.
+- [x] Request independent specification review.
+- [x] Request independent quality/security review.
 - [ ] Resolve every valid critical/important finding with a failing test first.
 - [ ] Run the full test suite, final scenario checks, and clean-worktree verification.
 - [ ] Commit all scoped work and report exact evidence and next command; do not push without a new explicit request.

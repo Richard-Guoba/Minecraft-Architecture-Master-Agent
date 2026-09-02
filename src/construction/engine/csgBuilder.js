@@ -43,6 +43,9 @@ export class CSGBuilder {
 
     this.clearInteriorFloorHeadroom(grid, volumeBoxes, solid);
     this.addFloorsAndFoundations(grid, volumeBoxes);
+    if (architectureJson.generation_hints?.template_composition_strategy?.directives?.preserve_connected_role_volumes) {
+      this.addConnectedVolumeJoints(grid, volumeBoxes);
+    }
     this.addStructuralDetails(grid, volumeBoxes, architectureJson.structural_rules || {}, this.structure);
     this.addRoofs(grid, volumeBoxes, architectureJson.roof_rules || {}, this.roofPlan);
     this.addWindows(grid, volumeBoxes, architectureJson.facade_rules || {}, this.facadePlan);
@@ -238,6 +241,18 @@ export class CSGBuilder {
         if (y > box.max_y) continue;
         fillBox(grid, box.min_x + thickness, y, box.min_z + thickness, box.max_x - thickness, y, box.max_z - thickness, this.materials.floor || 'minecraft:spruce_planks', 'floors');
       }
+    }
+  }
+
+  addConnectedVolumeJoints(grid, boxes) {
+    const main = boxes.find((box) => box.id === 'main') || boxes[0];
+    if (!main) return;
+    const block = this.materials.foundation || this.materials.wall || 'minecraft:stone_bricks';
+    for (const box of boxes) {
+      if (box === main || box.boolean_mode === 'subtract') continue;
+      const joint = closestHorizontalJoint(main, box);
+      const maxY = Math.max(1, Math.min(main.max_y, box.max_y, Number(this.spec.floor_height || 4) - 1));
+      fillBox(grid, joint.minX, 1, joint.minZ, joint.maxX, maxY, joint.maxZ, block, 'volume_joint');
     }
   }
 
@@ -724,6 +739,7 @@ export class CSGBuilder {
     if (facadeRules.balcony || this.spec.facade?.balcony) this.addBalcony(grid, mainBox, facadePlan);
     if (facadeRules.bay_windows) this.addBayWindow(grid, mainBox);
     if (hints.render_window_trim ?? true) this.addWindowTrimBands(grid, mainBox, facadePlan);
+    if (hints.render_integrated_bays) this.addIntegratedFacadeBays(grid, mainBox, facadePlan);
     if (hints.render_window_surrounds ?? true) this.addWindowSurrounds(grid, mainBox, facadePlan);
     if (hints.render_shutters) this.addShutters(grid, mainBox, facadePlan);
     if (hints.render_neon_trim) this.addNeonTrim(grid, mainBox, facadePlan);
@@ -736,6 +752,21 @@ export class CSGBuilder {
     if (hints.render_address_marker) this.addAddressMarker(grid, mainBox, facadePlan);
     if (hints.render_privacy_fins) this.addPrivacyFins(grid, mainBox, facadePlan);
     if (facadeRules.screen || this.spec.facade?.screens) this.addScreenFacade(grid, mainBox, facadePlan);
+  }
+
+  addIntegratedFacadeBays(grid, box, facadePlan = {}) {
+    const side = String(facadePlan.front_side || this.architecture?.facade_rules?.front_side || this.spec.door_side || 'south');
+    const block = facadePlan.window_system?.trim || this.materials.trim || this.materials.accent || 'minecraft:stone_bricks';
+    const span = ['north', 'south'].includes(side) ? box.max_x - box.min_x + 1 : box.max_z - box.min_z + 1;
+    const spacing = clampInt(facadePlan.window_system?.spacing || Math.round(span / 4), 3, 10, 5);
+    const positions = windowPositions(0, span - 1, 1, spacing);
+    const maxY = Math.max(1, box.max_y - 1);
+    for (const offset of positions) {
+      if (side === 'north') fillBox(grid, box.min_x + offset, 1, box.min_z - 1, box.min_x + offset, maxY, box.min_z - 1, block, 'facade_bay');
+      else if (side === 'east') fillBox(grid, box.max_x + 1, 1, box.min_z + offset, box.max_x + 1, maxY, box.min_z + offset, block, 'facade_bay');
+      else if (side === 'west') fillBox(grid, box.min_x - 1, 1, box.min_z + offset, box.min_x - 1, maxY, box.min_z + offset, block, 'facade_bay');
+      else fillBox(grid, box.min_x + offset, 1, box.max_z + 1, box.min_x + offset, maxY, box.max_z + 1, block, 'facade_bay');
+    }
   }
 
   addWallReliefPanels(grid, box, facadePlan = {}) {
@@ -820,11 +851,13 @@ export class CSGBuilder {
     const zs = windowPositions(box.min_z, box.max_z, windowWidth, spacing);
     const clearGap = Math.max(0, spacing - windowWidth);
     const pattern = String(facadePlan.window_surround_pattern || facadePlan.composition_strategy?.window_surround_policy?.pattern || 'sill-lintel-with-optional-jambs');
+    const openingAssembly = facadePlan.engine_hints?.render_opening_assemblies === true;
     const frameOptions = {
-      sideJambs: clearGap >= 4 && !/minimal/.test(pattern),
+      sideJambs: openingAssembly || (clearGap >= 4 && !/minimal/.test(pattern)),
       grille: narrow || /tracery|protected/.test(pattern),
       shutters: false,
-      hardware: false
+      hardware: false,
+      module: openingAssembly ? 'opening_assembly' : 'facade_detail'
     };
 
     for (let level = 0; level < Math.max(1, box.floors); level += 1) {
@@ -850,14 +883,15 @@ export class CSGBuilder {
     const bar = blockAt(blocks, 3, fallbackBlock);
     const shutter = blockAt(blocks, 4, fallbackBlock);
     const hardware = blockAt(blocks, 5, fallbackBlock);
+    const module = options.module || 'facade_detail';
     for (let x = x1; x <= x2; x += 1) {
-      this.placeFacadeCell(grid, x, baseY - 1, z, sill, 'facade_detail');
-      this.placeFacadeCell(grid, x, baseY + height, z, lintel, 'facade_detail');
+      this.placeFacadeCell(grid, x, baseY - 1, z, sill, module);
+      this.placeFacadeCell(grid, x, baseY + height, z, lintel, module);
     }
     if (options.sideJambs) {
       for (let y = baseY; y <= baseY + height - 1; y += 1) {
-        this.placeFacadeCell(grid, x1 - 1, y, z, jamb, 'facade_detail');
-        this.placeFacadeCell(grid, x2 + 1, y, z, jamb, 'facade_detail');
+        this.placeFacadeCell(grid, x1 - 1, y, z, jamb, module);
+        this.placeFacadeCell(grid, x2 + 1, y, z, jamb, module);
       }
     }
     if (options.shutters) {
@@ -868,7 +902,7 @@ export class CSGBuilder {
     }
     if (options.grille && height >= 3) {
       const midY = baseY + Math.floor(Math.max(1, height) / 2);
-      for (let x = x1; x <= x2; x += 2) this.placeFacadeCell(grid, x, midY, z, bar, 'facade_detail');
+      for (let x = x1; x <= x2; x += 2) this.placeFacadeCell(grid, x, midY, z, bar, module);
     }
     if (options.hardware) {
       this.placeFacadeCell(grid, x1 - 2, baseY - 1, z, hardware, 'facade_detail');
@@ -883,14 +917,15 @@ export class CSGBuilder {
     const bar = blockAt(blocks, 3, fallbackBlock);
     const shutter = blockAt(blocks, 4, fallbackBlock);
     const hardware = blockAt(blocks, 5, fallbackBlock);
+    const module = options.module || 'facade_detail';
     for (let z = z1; z <= z2; z += 1) {
-      this.placeFacadeCell(grid, x, baseY - 1, z, sill, 'facade_detail');
-      this.placeFacadeCell(grid, x, baseY + height, z, lintel, 'facade_detail');
+      this.placeFacadeCell(grid, x, baseY - 1, z, sill, module);
+      this.placeFacadeCell(grid, x, baseY + height, z, lintel, module);
     }
     if (options.sideJambs) {
       for (let y = baseY; y <= baseY + height - 1; y += 1) {
-        this.placeFacadeCell(grid, x, y, z1 - 1, jamb, 'facade_detail');
-        this.placeFacadeCell(grid, x, y, z2 + 1, jamb, 'facade_detail');
+        this.placeFacadeCell(grid, x, y, z1 - 1, jamb, module);
+        this.placeFacadeCell(grid, x, y, z2 + 1, jamb, module);
       }
     }
     if (options.shutters) {
@@ -901,7 +936,7 @@ export class CSGBuilder {
     }
     if (options.grille && height >= 3) {
       const midY = baseY + Math.floor(Math.max(1, height) / 2);
-      for (let z = z1; z <= z2; z += 2) this.placeFacadeCell(grid, x, midY, z, bar, 'facade_detail');
+      for (let z = z1; z <= z2; z += 2) this.placeFacadeCell(grid, x, midY, z, bar, module);
     }
     if (options.hardware) {
       this.placeFacadeCell(grid, x, baseY - 1, z1 - 2, hardware, 'facade_detail');
@@ -1560,6 +1595,7 @@ export class CSGBuilder {
     const gardenDepth = Math.max(3, Number(this.spec.garden_depth || 6));
     const zStart = this.spec.depth + 1;
     const zEnd = this.spec.depth + gardenDepth;
+    if (sitePlan.engine_hints.render_foundation_transition) this.addFoundationTransition(grid, sitePlan);
     if (sitePlan.engine_hints.render_entry_path) {
       const width = Math.max(1, Number(sitePlan.entry_sequence?.path_width || 2));
       this.addEntryPath(grid, {
@@ -1568,13 +1604,6 @@ export class CSGBuilder {
         length: gardenDepth,
         block: sitePlan.materials?.path || this.materials.path || 'minecraft:gravel',
         module: 'landscape_path'
-      });
-    }
-    if (sitePlan.engine_hints.render_entry_threshold) {
-      this.addEntryThreshold(grid, {
-        side: sitePlan.entry_sequence?.side || this.spec.door_side || 'south',
-        width: Math.max(Number(this.spec.door_width || 1), Number(sitePlan.entry_sequence?.path_width || 2)),
-        block: sitePlan.materials?.path_secondary || this.materials.foundation || 'minecraft:stone_bricks'
       });
     }
     if (sitePlan.engine_hints.render_path_lights) this.addPathLights(grid, center, zStart, zEnd, sitePlan);
@@ -1597,20 +1626,45 @@ export class CSGBuilder {
     if (sitePlan.engine_hints.render_outdoor_seating) this.addOutdoorSeating(grid, center, zStart, zEnd, sitePlan);
   }
 
-  addEntryThreshold(grid, { side = 'south', width = 2, block } = {}) {
-    const halfWidth = Math.max(1, Math.ceil(Number(width || 1) / 2));
-    const centerX = Math.floor(this.spec.width / 2);
-    const centerZ = Math.floor(this.spec.depth / 2);
+  addFoundationTransition(grid, sitePlan = {}) {
+    const inset = this.shellThickness();
+    const block = sitePlan.materials?.path_secondary || this.materials.foundation || 'minecraft:stone_bricks';
+    const minX = -inset;
+    const maxX = this.spec.width - 1 + inset;
+    const minZ = -inset;
+    const maxZ = this.spec.depth - 1 + inset;
+    fillBox(grid, minX, 0, minZ, maxX, 0, minZ, block, 'foundation_transition');
+    fillBox(grid, minX, 0, maxZ, maxX, 0, maxZ, block, 'foundation_transition');
+    fillBox(grid, minX, 0, minZ + 1, minX, 0, maxZ - 1, block, 'foundation_transition');
+    fillBox(grid, maxX, 0, minZ + 1, maxX, 0, maxZ - 1, block, 'foundation_transition');
+  }
+
+  addEntryThreshold(grid, { mainDoor, side = mainDoor?.side || 'south', width = mainDoor?.width || 2, block } = {}) {
+    const thresholdWidth = clampInt(width, 1, 6, 2);
     const material = block || this.materials.foundation || 'minecraft:stone_bricks';
+    const points = [];
     if (side === 'north') {
-      fillBox(grid, centerX - halfWidth, 0, -1, centerX + halfWidth, 0, 0, material, 'entry_threshold');
+      const start = Number.isFinite(Number(mainDoor?.x)) ? Number(mainDoor.x) : Math.floor(this.spec.width / 2) - Math.floor(thresholdWidth / 2);
+      const boundary = Number(mainDoor?.z ?? 0);
+      fillBox(grid, start - 1, 0, boundary - 1, start + thresholdWidth, 0, boundary, material, 'entry_threshold');
+      points.push(...linePoints('x', start - 1, start + thresholdWidth, boundary - 1));
     } else if (side === 'east') {
-      fillBox(grid, this.spec.width - 1, 0, centerZ - halfWidth, this.spec.width, 0, centerZ + halfWidth, material, 'entry_threshold');
+      const start = Number.isFinite(Number(mainDoor?.z)) ? Number(mainDoor.z) : Math.floor(this.spec.depth / 2) - Math.floor(thresholdWidth / 2);
+      const boundary = Number(mainDoor?.x ?? this.spec.width - 1);
+      fillBox(grid, boundary, 0, start - 1, boundary + 1, 0, start + thresholdWidth, material, 'entry_threshold');
+      points.push(...linePoints('z', start - 1, start + thresholdWidth, boundary + 1));
     } else if (side === 'west') {
-      fillBox(grid, -1, 0, centerZ - halfWidth, 0, 0, centerZ + halfWidth, material, 'entry_threshold');
+      const start = Number.isFinite(Number(mainDoor?.z)) ? Number(mainDoor.z) : Math.floor(this.spec.depth / 2) - Math.floor(thresholdWidth / 2);
+      const boundary = Number(mainDoor?.x ?? 0);
+      fillBox(grid, boundary - 1, 0, start - 1, boundary, 0, start + thresholdWidth, material, 'entry_threshold');
+      points.push(...linePoints('z', start - 1, start + thresholdWidth, boundary - 1));
     } else {
-      fillBox(grid, centerX - halfWidth, 0, this.spec.depth - 1, centerX + halfWidth, 0, this.spec.depth, material, 'entry_threshold');
+      const start = Number.isFinite(Number(mainDoor?.x)) ? Number(mainDoor.x) : Math.floor(this.spec.width / 2) - Math.floor(thresholdWidth / 2);
+      const boundary = Number(mainDoor?.z ?? this.spec.depth - 1);
+      fillBox(grid, start - 1, 0, boundary, start + thresholdWidth, 0, boundary + 1, material, 'entry_threshold');
+      points.push(...linePoints('x', start - 1, start + thresholdWidth, boundary + 1));
     }
+    return { side, width: thresholdWidth + 2, points };
   }
 
   addLayeredTerrain(grid, center, zStart, zEnd, sitePlan = {}) {
@@ -2274,6 +2328,32 @@ function roofAxisForBox(box) {
   const width = box.max_x - box.min_x + 1;
   const depth = box.max_z - box.min_z + 1;
   return width >= depth ? 'x' : 'z';
+}
+
+function closestHorizontalJoint(a, b) {
+  const ax = clampInt((b.min_x + b.max_x) / 2, a.min_x, a.max_x, a.min_x);
+  const az = clampInt((b.min_z + b.max_z) / 2, a.min_z, a.max_z, a.min_z);
+  const bx = clampInt((a.min_x + a.max_x) / 2, b.min_x, b.max_x, b.min_x);
+  const bz = clampInt((a.min_z + a.max_z) / 2, b.min_z, b.max_z, b.min_z);
+  if (rangesTouchOrOverlap(a.min_x, a.max_x, b.min_x, b.max_x)) {
+    const x = Math.max(a.min_x, Math.min(a.max_x, Math.max(b.min_x, Math.min(b.max_x, ax))));
+    return { minX: x, maxX: x, minZ: Math.min(az, bz), maxZ: Math.max(az, bz) };
+  }
+  return { minX: Math.min(ax, bx), maxX: Math.max(ax, bx), minZ: az, maxZ: az };
+}
+
+function rangesTouchOrOverlap(aMin, aMax, bMin, bMax) {
+  return aMin <= bMax + 1 && bMin <= aMax + 1;
+}
+
+function linePoints(axis, start, end, fixed) {
+  const points = [];
+  for (let value = start; value <= end; value += 1) {
+    points.push(axis === 'x'
+      ? { x: value, y: 0, z: fixed }
+      : { x: fixed, y: 0, z: value });
+  }
+  return points;
 }
 
 function exteriorKitBlocks(id, facadePlan = {}, family = 'general', materials = {}) {
