@@ -1,4 +1,5 @@
 import { isKnownMinecraft121Block } from './minecraftBlockCatalog.js';
+import { isConstructionOperationSatisfied } from '../constructionWorkflowV03.js';
 
 const BLOCK_PATTERN = /^minecraft:[a-z0-9_]+(?:\[[a-z0-9_=,]+\])?$/;
 const MAX_FILL_VOLUME = 32768;
@@ -30,6 +31,7 @@ export class BlueprintQAAgent {
     const circulationStats = validateCirculation(blueprint, errors, warnings, checks);
     const semanticStats = validateSemanticCompleteness(blueprint, errors, warnings, checks);
     const agentContractStats = validateAgentContracts(blueprint, errors, warnings, checks);
+    const constructionWorkflowStats = validateConstructionWorkflow(blueprint, errors, checks);
 
     if ((blueprint.operations || []).length > 8000) warnings.push('函数命令数量接近 Minecraft 单次执行压力上限。');
 
@@ -52,10 +54,28 @@ export class BlueprintQAAgent {
         groundFloorFlatness: groundFloorFlatnessStats,
         circulation: circulationStats,
         semantic: semanticStats,
-        agentContracts: agentContractStats
+        agentContracts: agentContractStats,
+        constructionWorkflow: constructionWorkflowStats
       }
     };
   }
+}
+
+function validateConstructionWorkflow(blueprint, errors, checks) {
+  const workflow = blueprint.constructionWorkflow;
+  if (!workflow) {
+    checks.push(check('construction-workflow', true, { active: false }));
+    return { active: false, checked: 0, failed: [] };
+  }
+  const rows = Array.isArray(workflow.rows) ? workflow.rows : [];
+  const failed = rows.filter((row) => !isConstructionOperationSatisfied(blueprint, row))
+    .map((row) => row.operation_id);
+  if (workflow.workflow_version !== '0.3.0' || !rows.length || failed.length) {
+    errors.push(`Construction Workflow v0.3 结果校验失败: ${failed.join(', ') || 'invalid-or-empty-trace'}`);
+  }
+  const ok = workflow.workflow_version === '0.3.0' && rows.length > 0 && failed.length === 0;
+  checks.push(check('construction-workflow', ok, { active: true, checked: rows.length, failed }));
+  return { active: true, checked: rows.length, failed };
 }
 
 function validateOperations(operations, errors, checks) {

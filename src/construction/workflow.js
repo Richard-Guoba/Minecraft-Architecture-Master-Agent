@@ -23,6 +23,7 @@ import { AStarPathfinder } from './engine/pathfinder.js';
 import { ensureDir, writeJson } from '../lib/fs.js';
 import { resolveWorldDir } from '../lib/minecraftWorlds.js';
 import { compileDesignLayers, prepareConstructionDesign } from './designStages.js';
+import { buildConstructionWorkflowV03 } from './constructionWorkflowV03.js';
 export { deriveBuildSpec } from './buildSpec.js';
 
 export async function runConstructionWorkflow(options) {
@@ -237,6 +238,9 @@ export async function compilePreparedConstruction({
     seedSource,
     seed
   });
+  if (blueprint.architectureLanguage?.trace?.applied_operations?.length) {
+    blueprint.constructionWorkflow = buildConstructionWorkflowV03(blueprint);
+  }
   blueprint.templateLawCoverage = new TemplateLawCoverageAgent().run(blueprint);
   if (blueprint.templateLawAutoRepair) {
     blueprint.templateLawAutoRepair.coverage_after = compactTemplateLawCoverage(blueprint.templateLawCoverage);
@@ -757,7 +761,7 @@ function renderReport({ prompt, blueprint, architectureScorecard, validation, mc
   const conceptStudioSection = renderConceptStudioSection(blueprint);
   const stage7ShadowSection = blueprint.stage7?.active ? `## Stage 7 Milestone 1 Shadow\n\n- Mode: ${blueprint.stage7.mode}\n- Provider: ${blueprint.stage7.provider}\n- Status: ${blueprint.stage7.status}\n- Condition hash: ${blueprint.stage7.condition_hash}\n- Primary geometry changed: no\n\n` : '';
   const criticCouncilSection = renderCriticCouncilSection(blueprint);
-  const architectureLanguageSection = renderArchitectureLanguageSection(blueprint.architectureLanguage);
+  const architectureLanguageSection = renderArchitectureLanguageSection(blueprint.architectureLanguage, blueprint.constructionWorkflow);
 
   return `# Minecraft 建筑智能体运行报告
 
@@ -899,13 +903,15 @@ ${usage}
 `;
 }
 
-function renderArchitectureLanguageSection(value) {
+function renderArchitectureLanguageSection(value, constructionWorkflow) {
   const plan = value?.plan;
   const trace = value?.trace;
   if (!plan || !trace) return '';
   const selected = plan.selected_knowledge_ids?.map((id) => `- ${id}`).join('\n') || '- none';
   const applied = trace.applied_operations?.map((row) =>
     `- ${row.knowledge_id} → ${row.workflow_stage} → ${row.operation_id} (${row.status})`).join('\n') || '- none';
+  const results = constructionWorkflow?.rows?.map((row) =>
+    `- ${row.knowledge_id} → Architecture Language v0.2 → ${row.workflow_stage} → ${row.operation_id} → ${row.result_kind} (${row.satisfied ? 'satisfied' : 'missing'})`).join('\n') || '- none';
   return `## Architecture Language v0.2
 
 - School: ${plan.school_id}
@@ -917,6 +923,9 @@ ${selected}
 
 Applied deterministic operations and planner preferences:
 ${applied}
+
+Construction Workflow v0.3 results:
+${results}
 
 `;
 }

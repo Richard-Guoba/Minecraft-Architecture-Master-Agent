@@ -54,7 +54,10 @@ export class CSGBuilder {
 
     const structureSummary = summarizeStructurePlan(this.structure);
     const facadeSummary = summarizeFacadePlan(this.facadePlan);
-    const roofSummary = summarizeRoofPlan(this.roofPlan);
+    const roofSummary = {
+      ...summarizeRoofPlan(this.roofPlan),
+      componentAxes: this.roofComponentAxes || []
+    };
     const siteSummary = summarizeSitePlan(this.sitePlan);
 
     return {
@@ -255,6 +258,7 @@ export class CSGBuilder {
   addRoofs(grid, boxes, roofRules, roofPlan = {}) {
     const roofStyle = String(roofRules.style || this.spec.roof_style || 'gabled');
     const overhang = Number(roofRules.overhang ?? this.spec.roof_overhang ?? 1);
+    this.roofComponentAxes = [];
     for (const box of boxes) {
       const boxRoofStyle = box.roof_policy || roofStyle;
       if (box.module === 'porch') {
@@ -270,7 +274,11 @@ export class CSGBuilder {
       } else if (boxRoofStyle === 'domed') {
         this.addDomedRoof(grid, box, this.spec.roof_height, Math.max(0, overhang));
       } else {
-        this.addGabledRoof(grid, box, this.spec.roof_height, overhang);
+        const axis = roofRules.axis_strategy === 'volume-proportion'
+          ? roofAxisForBox(box)
+          : 'z';
+        this.roofComponentAxes.push({ volume_id: box.id, axis });
+        this.addGabledRoof(grid, box, this.spec.roof_height, overhang, axis);
       }
       if (box.module !== 'porch' && Number(roofRules.dormers || 0) > 0) this.addDormers(grid, box, Number(roofRules.dormers));
       if (box.module !== 'porch' && (roofRules.skylights || roofPlan.engine_hints?.render_skylight_grid || box.module === 'sunroom')) this.addSkylights(grid, box);
@@ -294,7 +302,19 @@ export class CSGBuilder {
     }
   }
 
-  addGabledRoof(grid, box, roofHeight, overhang) {
+  addGabledRoof(grid, box, roofHeight, overhang, axis = 'z') {
+    if (axis === 'x') {
+      for (let layer = 0; layer < Math.max(1, roofHeight); layer += 1) {
+        const z1 = box.min_z - overhang + layer;
+        const z2 = box.max_z + overhang - layer;
+        if (z1 > z2) break;
+        fillBox(grid, box.min_x - overhang, box.max_y + 1 + layer, z1, box.max_x + overhang, box.max_y + 1 + layer, z2, this.materials.roof || 'minecraft:dark_oak_planks', 'roof');
+      }
+      const ridgeZ = Math.floor((box.min_z + box.max_z) / 2);
+      const ridgeY = box.max_y + Math.max(1, roofHeight) + 1;
+      fillBox(grid, box.min_x - overhang, ridgeY, ridgeZ, box.max_x + overhang, ridgeY, ridgeZ, this.materials.trim || 'minecraft:smooth_quartz', 'roof_detail');
+      return;
+    }
     for (let layer = 0; layer < Math.max(1, roofHeight); layer += 1) {
       const x1 = box.min_x - overhang + layer;
       const x2 = box.max_x + overhang - layer;
@@ -2246,6 +2266,12 @@ function windowPositions(min, max, width, spacing) {
   for (let value = min + 3; value <= max - width - 2; value += spacing) positions.push(value);
   if (!positions.length && max - min + 1 >= width + 2) positions.push(Math.floor((min + max - width) / 2));
   return positions;
+}
+
+function roofAxisForBox(box) {
+  const width = box.max_x - box.min_x + 1;
+  const depth = box.max_z - box.min_z + 1;
+  return width >= depth ? 'x' : 'z';
 }
 
 function exteriorKitBlocks(id, facadePlan = {}, family = 'general', materials = {}) {

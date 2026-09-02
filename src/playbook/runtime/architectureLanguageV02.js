@@ -85,11 +85,11 @@ const SELECTORS = new Map([
       '(?:foundation material continuity|continuous (?:base|foundation)|基础材料连续|建筑基础连续)')],
   ['knowledge:p7:function-led-interior-zoning', (prompt) =>
     /functional interior|function-led|functional (?:room )?zoning|功能.*(?:室内|分区)|功能分区/iu.test(prompt)],
-  ['knowledge:p7:large-to-small-furnishing-pass', (prompt) =>
-    /large-to-small furnish|largest.*furni(?:ture|shing).*first|由大到小.*家具/iu.test(prompt)],
   ['knowledge:p7:porous-interior-partition', (prompt) =>
     matchesUnnegated(prompt, /porous (?:public )?partitions?|open-frame partitions?|通透隔断|开放式隔断/iu,
       '(?:porous (?:public )?partitions?|open-frame partitions?|通透隔断|开放式隔断)')],
+  ['knowledge:p7:large-to-small-furnishing-pass', (prompt) =>
+    /large-to-small furnish|largest.*furni(?:ture|shing).*first|由大到小.*家具/iu.test(prompt)],
   ['knowledge:p7:daylit-window-wall-integration', (prompt) =>
     matchesUnnegated(prompt, /large glass|glass window wall|window wall|panoramic windows?|大面积玻璃|玻璃窗墙/iu,
       '(?:large glass|glass|window wall|windows?|玻璃|窗墙)')],
@@ -214,6 +214,12 @@ export function finalizeArchitectureLanguageV02({ prompt, plan, architecture, bu
     nextCreativeDesign.volume_directives = (nextCreativeDesign.volume_directives || [])
       .filter((row) => requiredIds.includes(row.id) || requiredIds.includes(row.target_id));
   }
+  if (/compact[^.;,]{0,40}single[- ]volume|single[- ]volume[^.;,]{0,40}(?:compact|residential)|紧凑[^。；，]{0,20}单体块/iu.test(prompt)) {
+    const main = (nextArchitecture.volumes || []).find((volume) => volume.id === 'main') || nextArchitecture.volumes?.[0];
+    if (main) nextArchitecture.volumes = [main];
+    nextCreativeDesign.volume_directives = (nextCreativeDesign.volume_directives || [])
+      .filter((row) => row.id === main?.id || row.target_id === main?.id);
+  }
   for (const instruction of plan.instructions) {
     if (instruction.operation_id !== 'language:massing:three-volume-interlock') {
       applyInstruction(instruction, nextArchitecture, nextBuildSpec);
@@ -235,9 +241,10 @@ function applyInstruction(instruction, architecture, buildSpec) {
       return true;
     case 'language:roof:volume-proportion-axis':
       architecture.roof_rules = {
-        ...(architecture.roof_rules || {}), axis_strategy: 'volume-proportion'
+        ...(architecture.roof_rules || {}), style: 'gabled', axis_strategy: 'volume-proportion'
       };
-      setDesignDirective(architecture, 'roof', { axis_strategy: 'volume-proportion' });
+      setDesignDirective(architecture, 'roof', { style: 'gabled', axis_strategy: 'volume-proportion' });
+      buildSpec.roof_style = 'gabled';
       return true;
     case 'language:roof:flat-parapet':
       architecture.roof_rules = {

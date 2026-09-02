@@ -1,11 +1,14 @@
 export class ConstraintRepairAgent {
   run(context = {}) {
     const grid = context.grid;
-    const modules = moduleCounts(grid);
+    let modules = moduleCounts(grid);
     const buildSpec = context.buildSpec || {};
     const checks = [];
     const repairs = [];
     const suggestions = [];
+
+    repairRouteFirstThreshold(context, modules, repairs);
+    if (repairs.length) modules = moduleCounts(grid);
 
     checks.push(check('has-shell', (modules.walls || 0) + (modules.tower || 0) + (modules.sunroom || 0) > 0));
     checks.push(check('has-roof', (modules.roof || 0) + (modules.roof_detail || 0) + (modules.roof_frame || 0) > 0));
@@ -43,6 +46,37 @@ export class ConstraintRepairAgent {
       }
     };
   }
+}
+
+function repairRouteFirstThreshold(context, modules, repairs) {
+  const grid = context.grid;
+  const strategy = context.site?.entry_sequence?.strategy || context.architecture?.site_rules?.route_strategy;
+  if (!grid || strategy !== 'route-first-grounding' || !context.paths?.mainDoor || Number(modules.entry_threshold || 0) > 0) return;
+  const spec = context.buildSpec || {};
+  const side = String(context.site?.entry_sequence?.side || spec.door_side || context.paths.mainDoor.side || 'south');
+  const halfWidth = Math.max(1, Math.ceil(Math.max(Number(spec.door_width || 1), Number(context.site?.entry_sequence?.path_width || 1)) / 2));
+  const centerX = Math.floor(Number(spec.width || 1) / 2);
+  const centerZ = Math.floor(Number(spec.depth || 1) / 2);
+  const block = context.site?.materials?.path_secondary || context.architecture?.materials?.foundation || 'minecraft:stone_bricks';
+  const points = [];
+  if (side === 'north' || side === 'south') {
+    const zValues = side === 'north' ? [-1, 0] : [Number(spec.depth || 1) - 1, Number(spec.depth || 1)];
+    for (let x = centerX - halfWidth; x <= centerX + halfWidth; x += 1) {
+      for (const z of zValues) points.push({ x, y: 0, z });
+    }
+  } else {
+    const xValues = side === 'west' ? [-1, 0] : [Number(spec.width || 1) - 1, Number(spec.width || 1)];
+    for (let z = centerZ - halfWidth; z <= centerZ + halfWidth; z += 1) {
+      for (const x of xValues) points.push({ x, y: 0, z });
+    }
+  }
+  for (const point of points) grid.set(`${point.x},${point.y},${point.z}`, { block, module: 'entry_threshold' });
+  repairs.push({
+    id: 'workflow-v0.3-entry-threshold',
+    operation: 'derived-entry-threshold',
+    placement_count: points.length,
+    basis: ['door-side', 'door-or-path-width', 'building-footprint']
+  });
 }
 
 function moduleCounts(grid) {
