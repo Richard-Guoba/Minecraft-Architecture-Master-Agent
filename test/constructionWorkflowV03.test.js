@@ -12,12 +12,13 @@ import { ConstraintRepairAgent } from '../src/construction/agents/constraintRepa
 import { buildFallbackStructure } from '../src/construction/agents/structureAgent.js';
 import { BSPPartitioner } from '../src/construction/engine/bspPartitioner.js';
 import { CSGBuilder } from '../src/construction/engine/csgBuilder.js';
-import { runConstructionWorkflow } from '../src/construction/workflow.js';
+import { mergeConstraintRepairResults, runConstructionWorkflow } from '../src/construction/workflow.js';
 import { loadP7AdvisoryOverlay } from '../src/playbook/knowledge/p7AdvisoryOverlay.js';
 import {
   applyArchitectureLanguageV02,
   compileArchitectureLanguageV02
 } from '../src/playbook/runtime/architectureLanguageV02.js';
+import { isConstructionOperationSatisfied } from '../src/construction/constructionWorkflowV03.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const MEDIEVAL_PROMPT = 'Build a broad medieval multi-volume residence with connected wings, a visible column beam structural grid, compound pitched roofs aligned to each mass, facade bays and coherent window assemblies, a sheltered entrance route, connected interior circulation, and foundation material continuity.';
@@ -246,6 +247,58 @@ test('construction workflow QA rejects deleting the required result sidecar', ()
   assert.equal(qa.checks.find((item) => item.name === 'construction-workflow')?.ok, false);
 });
 
+test('construction workflow QA binds plan, trace, and sidecar as one contract', () => {
+  const blueprint = {
+    operations: [], bounds: { minX: 0, maxX: 1, minY: 0, maxY: 1, minZ: 0, maxZ: 1 },
+    modules: {}, shell: { volumeBoxes: [], interiorSpaces: [] }, layout: { rooms: [] }, paths: {},
+    architectureLanguage: {
+      plan: {
+        selected_knowledge_ids: ['knowledge:p7:function-led-interior-zoning'],
+        instructions: [{
+          knowledge_id: 'knowledge:p7:function-led-interior-zoning',
+          operation_id: 'language:interior:function-first-zoning',
+          workflow_stage: 'interior'
+        }]
+      },
+      trace: { selected_knowledge_ids: [], applied_operations: [] }
+    }
+  };
+  const qa = new BlueprintQAAgent().run(blueprint);
+  const check = qa.checks.find((item) => item.name === 'construction-workflow');
+  assert.equal(check?.ok, false);
+  assert.ok(check.details.contractIssues.includes('language-plan-trace-mismatch'));
+});
+
+test('constraint repair merge preserves first-pass before/after evidence', () => {
+  const pre = {
+    source: 'local-constraint-repair-agent', ok: true, checks: [], suggestions: [], stats: { gridCellCount: 8 },
+    repairs: [{ id: 'workflow-v0.3-entry-threshold', before: { entry_threshold: 0 }, after: { entry_threshold: 8 } }]
+  };
+  const post = {
+    source: 'local-constraint-repair-agent', ok: true, checks: [{ name: 'has-shell', ok: true }], suggestions: [],
+    stats: { gridCellCount: 99 }, repairs: []
+  };
+  const merged = mergeConstraintRepairResults(pre, post);
+  assert.deepEqual(merged.repairs, pre.repairs);
+  assert.deepEqual(merged.checks, post.checks);
+  assert.equal(merged.stats.gridCellCount, 99);
+});
+
+test('route satisfaction requires exported operations at the recorded threshold points', () => {
+  const blueprint = {
+    modules: { entry_threshold: 4, landscape_path: 3 },
+    paths: {
+      mainDoor: { side: 'south', x: 2, z: 8, width: 2 },
+      entryThreshold: {
+        side: 'south', block: 'minecraft:stone_bricks',
+        points: [{ x: 2, y: 0, z: 9 }, { x: 3, y: 0, z: 9 }]
+      }
+    },
+    operations: []
+  };
+  assert.equal(isConstructionOperationSatisfied(blueprint, { operation_id: 'language:site:route-first-grounding' }), false);
+});
+
 test('route-first missing-threshold repair is bounded and idempotent', () => {
   const grid = new Map();
   const context = {
@@ -271,6 +324,28 @@ test('route-first missing-threshold repair is bounded and idempotent', () => {
   assert.deepEqual(first.repairs[0].after, { entry_threshold: sizeAfterFirst });
   assert.equal(grid.has('2,0,9'), true);
   assert.equal(grid.has('5,0,9'), false);
+});
+
+test('route-first repair replaces a stale threshold that does not touch the main door', () => {
+  const grid = new Map([
+    ['5,0,9', { block: 'minecraft:cobblestone', module: 'entry_threshold' }],
+    ['6,0,9', { block: 'minecraft:cobblestone', module: 'entry_threshold' }]
+  ]);
+  const context = {
+    grid,
+    buildSpec: { width: 11, depth: 9, door_side: 'south', constraints: {} },
+    architecture: { materials: { foundation: 'minecraft:cobblestone' } },
+    site: { entry_sequence: { strategy: 'route-first-grounding', path_width: 2 } },
+    paths: {
+      mainDoor: { side: 'south', x: 2, z: 8, width: 2 },
+      entryThreshold: { side: 'south', points: [{ x: 5, y: 0, z: 9 }] },
+      pathfinder: { failedEdgeCount: 0 }
+    }
+  };
+  const result = new ConstraintRepairAgent().run(context);
+  assert.equal(result.repairs[0].operation, 'relocated-entry-threshold');
+  assert.equal(grid.has('5,0,9'), false);
+  assert.equal(grid.has('2,0,9'), true);
 });
 
 function moduleCounts(grid) {
@@ -306,6 +381,17 @@ const WORKFLOW_SCENARIOS = [
       assert.ok(blueprint.modules.facade_bay > 0);
       assert.ok(blueprint.modules.opening_assembly > 0);
       assert.ok(blueprint.modules.foundation_transition > 0);
+      const expectedJointIds = blueprint.shell.volumeBoxes.slice(1).map((box) => box.id).sort();
+      assert.deepEqual(blueprint.geometry.csg.volumeJoints.map((joint) => joint.volumeId).sort(), expectedJointIds);
+      for (const joint of blueprint.geometry.csg.volumeJoints) {
+        const target = blueprint.shell.volumeBoxes.find((box) => box.id === joint.volumeId);
+        assert.equal(pointInBox(joint.from, blueprint.shell.volumeBoxes[0].bounds), true);
+        assert.equal(pointInBox(joint.to, target.bounds), true);
+      }
+      assert.deepEqual(
+        [...blueprint.geometry.site.foundationTransitionVolumeIds].sort(),
+        blueprint.shell.volumeBoxes.map((box) => box.id).sort()
+      );
     },
     verifyDifference(after, before) {
       assert.ok(after.modules.structural_frame > before.modules.structural_frame);
@@ -381,4 +467,10 @@ function assertAllCommandCoordinatesRelative(line) {
   const coordinateCount = tokens[0] === 'fill' ? 6 : tokens[0] === 'setblock' ? 3 : 0;
   assert.ok(coordinateCount > 0, `unexpected command: ${line}`);
   assert.ok(tokens.slice(1, coordinateCount + 1).every((token) => /^~-?\d*$/u.test(token)), line);
+}
+
+function pointInBox(point, box) {
+  return point.x >= box.minX && point.x <= box.maxX &&
+    point.y >= box.minY && point.y <= box.maxY &&
+    point.z >= box.minZ && point.z <= box.maxZ;
 }

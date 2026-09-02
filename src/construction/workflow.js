@@ -190,7 +190,7 @@ export async function compilePreparedConstruction({
     templateInteriorDensityRepair,
     postClearanceInteriorDensityRepair
   );
-  const repair = new ConstraintRepairAgent().run({
+  const postRepair = new ConstraintRepairAgent().run({
     grid: shell.grid,
     buildSpec,
     architecture,
@@ -208,6 +208,7 @@ export async function compilePreparedConstruction({
     templateInteriorDensityRepair,
     interiorClearanceRepair
   });
+  const repair = mergeConstraintRepairResults(preRepair, postRepair);
   const bounds = computeBounds(shell.grid);
   const exportPlan = new BlueprintOptimizerAgent().run(shell.grid, {
     maxFillVolume: buildSpec.constraints?.minecraft_fill_limit
@@ -342,6 +343,13 @@ export async function compilePreparedConstruction({
     blueprint,
     validation,
     artifacts
+  };
+}
+
+export function mergeConstraintRepairResults(preRepair = {}, postRepair = {}) {
+  return {
+    ...postRepair,
+    repairs: [...(preRepair.repairs || []), ...(postRepair.repairs || [])]
   };
 }
 

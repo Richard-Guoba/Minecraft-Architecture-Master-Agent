@@ -52,7 +52,7 @@ export class CSGBuilder {
     this.addFacadeDetails(grid, volumeBoxes, architectureJson.facade_rules || {}, this.facadePlan);
     this.addRoofPlanDetails(grid, volumeBoxes, this.roofPlan);
     this.addSite(grid, architectureJson.site_rules || {});
-    this.addSiteLandscape(grid, this.sitePlan);
+    this.addSiteLandscape(grid, this.sitePlan, volumeBoxes);
     this.refreshPostSurfaceResilience(grid, volumeBoxes);
 
     const structureSummary = summarizeStructurePlan(this.structure);
@@ -63,7 +63,12 @@ export class CSGBuilder {
         ? { componentAxes: this.roofComponentAxes || [] }
         : {})
     };
-    const siteSummary = summarizeSitePlan(this.sitePlan);
+    const siteSummary = {
+      ...summarizeSitePlan(this.sitePlan),
+      ...(this.foundationTransitionVolumeIds?.length
+        ? { foundationTransitionVolumeIds: this.foundationTransitionVolumeIds }
+        : {})
+    };
 
     return {
       grid,
@@ -84,6 +89,7 @@ export class CSGBuilder {
         site: siteSummary,
         roofPlan: roofSummary,
         sitePlan: siteSummary,
+        ...(this.volumeJoints?.length ? { volumeJoints: this.volumeJoints } : {}),
         philosophy: architectureJson.philosophy || '先造壳，后填瓤。'
       }
     };
@@ -248,11 +254,14 @@ export class CSGBuilder {
     const main = boxes.find((box) => box.id === 'main') || boxes[0];
     if (!main) return;
     const block = this.materials.foundation || this.materials.wall || 'minecraft:stone_bricks';
+    this.volumeJoints = [];
     for (const box of boxes) {
       if (box === main || box.boolean_mode === 'subtract') continue;
       const joint = closestHorizontalJoint(main, box);
       const maxY = Math.max(1, Math.min(main.max_y, box.max_y, Number(this.spec.floor_height || 4) - 1));
-      fillBox(grid, joint.minX, 1, joint.minZ, joint.maxX, maxY, joint.maxZ, block, 'volume_joint');
+      fillBox(grid, Math.min(joint.from.x, joint.to.x), 1, joint.from.z, Math.max(joint.from.x, joint.to.x), maxY, joint.from.z, block, 'volume_joint');
+      fillBox(grid, joint.to.x, 1, Math.min(joint.from.z, joint.to.z), joint.to.x, maxY, Math.max(joint.from.z, joint.to.z), block, 'volume_joint');
+      this.volumeJoints.push({ volumeId: box.id, from: joint.from, to: joint.to });
     }
   }
 
@@ -1589,13 +1598,13 @@ export class CSGBuilder {
     fillBox(grid, center - 5, 0, z1, center + 5, 0, z2, this.materials.foundation || 'minecraft:stone_bricks', 'patio');
   }
 
-  addSiteLandscape(grid, sitePlan = {}) {
+  addSiteLandscape(grid, sitePlan = {}, boxes = []) {
     if (!sitePlan || !sitePlan.engine_hints) return;
     const center = Math.floor(this.spec.width / 2);
     const gardenDepth = Math.max(3, Number(this.spec.garden_depth || 6));
     const zStart = this.spec.depth + 1;
     const zEnd = this.spec.depth + gardenDepth;
-    if (sitePlan.engine_hints.render_foundation_transition) this.addFoundationTransition(grid, sitePlan);
+    if (sitePlan.engine_hints.render_foundation_transition) this.addFoundationTransition(grid, sitePlan, boxes);
     if (sitePlan.engine_hints.render_entry_path) {
       const width = Math.max(1, Number(sitePlan.entry_sequence?.path_width || 2));
       this.addEntryPath(grid, {
@@ -1626,17 +1635,16 @@ export class CSGBuilder {
     if (sitePlan.engine_hints.render_outdoor_seating) this.addOutdoorSeating(grid, center, zStart, zEnd, sitePlan);
   }
 
-  addFoundationTransition(grid, sitePlan = {}) {
-    const inset = this.shellThickness();
-    const block = sitePlan.materials?.path_secondary || this.materials.foundation || 'minecraft:stone_bricks';
-    const minX = -inset;
-    const maxX = this.spec.width - 1 + inset;
-    const minZ = -inset;
-    const maxZ = this.spec.depth - 1 + inset;
-    fillBox(grid, minX, 0, minZ, maxX, 0, minZ, block, 'foundation_transition');
-    fillBox(grid, minX, 0, maxZ, maxX, 0, maxZ, block, 'foundation_transition');
-    fillBox(grid, minX, 0, minZ + 1, minX, 0, maxZ - 1, block, 'foundation_transition');
-    fillBox(grid, maxX, 0, minZ + 1, maxX, 0, maxZ - 1, block, 'foundation_transition');
+  addFoundationTransition(grid, sitePlan = {}, boxes = []) {
+    const block = this.materials.foundation || 'minecraft:stone_bricks';
+    const eligible = boxes.filter((box) => box.boolean_mode !== 'subtract');
+    this.foundationTransitionVolumeIds = eligible.map((box) => box.id);
+    for (const box of eligible) {
+      fillBox(grid, box.min_x, 0, box.min_z, box.max_x, 0, box.min_z, block, 'foundation_transition');
+      fillBox(grid, box.min_x, 0, box.max_z, box.max_x, 0, box.max_z, block, 'foundation_transition');
+      fillBox(grid, box.min_x, 0, box.min_z + 1, box.min_x, 0, box.max_z - 1, block, 'foundation_transition');
+      fillBox(grid, box.max_x, 0, box.min_z + 1, box.max_x, 0, box.max_z - 1, block, 'foundation_transition');
+    }
   }
 
   addEntryThreshold(grid, { mainDoor, side = mainDoor?.side || 'south', width = mainDoor?.width || 2, block } = {}) {
@@ -1664,7 +1672,7 @@ export class CSGBuilder {
       fillBox(grid, start - 1, 0, boundary, start + thresholdWidth, 0, boundary + 1, material, 'entry_threshold');
       points.push(...linePoints('x', start - 1, start + thresholdWidth, boundary + 1));
     }
-    return { side, width: thresholdWidth + 2, points };
+    return { side, width: thresholdWidth + 2, block: material, points };
   }
 
   addLayeredTerrain(grid, center, zStart, zEnd, sitePlan = {}) {
@@ -2331,19 +2339,16 @@ function roofAxisForBox(box) {
 }
 
 function closestHorizontalJoint(a, b) {
-  const ax = clampInt((b.min_x + b.max_x) / 2, a.min_x, a.max_x, a.min_x);
-  const az = clampInt((b.min_z + b.max_z) / 2, a.min_z, a.max_z, a.min_z);
-  const bx = clampInt((a.min_x + a.max_x) / 2, b.min_x, b.max_x, b.min_x);
-  const bz = clampInt((a.min_z + a.max_z) / 2, b.min_z, b.max_z, b.min_z);
-  if (rangesTouchOrOverlap(a.min_x, a.max_x, b.min_x, b.max_x)) {
-    const x = Math.max(a.min_x, Math.min(a.max_x, Math.max(b.min_x, Math.min(b.max_x, ax))));
-    return { minX: x, maxX: x, minZ: Math.min(az, bz), maxZ: Math.max(az, bz) };
-  }
-  return { minX: Math.min(ax, bx), maxX: Math.max(ax, bx), minZ: az, maxZ: az };
+  const [ax, bx] = closestAxisPoints(a.min_x, a.max_x, b.min_x, b.max_x);
+  const [az, bz] = closestAxisPoints(a.min_z, a.max_z, b.min_z, b.max_z);
+  return { from: { x: ax, y: 1, z: az }, to: { x: bx, y: 1, z: bz } };
 }
 
-function rangesTouchOrOverlap(aMin, aMax, bMin, bMax) {
-  return aMin <= bMax + 1 && bMin <= aMax + 1;
+function closestAxisPoints(aMin, aMax, bMin, bMax) {
+  if (bMin > aMax) return [aMax, bMin];
+  if (aMin > bMax) return [aMin, bMax];
+  const shared = Math.floor((Math.max(aMin, bMin) + Math.min(aMax, bMax)) / 2);
+  return [shared, shared];
 }
 
 function linePoints(axis, start, end, fixed) {

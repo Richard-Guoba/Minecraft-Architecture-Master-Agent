@@ -1,4 +1,4 @@
-# Construction Workflow v0.3 Design
+# Architecture Playbook: Construction Workflow v0.3 Design
 
 **Date:** 2026-09-02
 

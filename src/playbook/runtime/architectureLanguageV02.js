@@ -147,12 +147,7 @@ export function classifyP7ArchitectureLanguage(overlay) {
 export function compileArchitectureLanguageV02({ prompt, overlay } = {}) {
   if (typeof prompt !== 'string' || !prompt.trim()) invalid();
   const catalog = classifyP7ArchitectureLanguage(overlay);
-  const pitchedRoofRequired = matchesUnnegated(prompt, /pitched roof|gabled roof|坡屋顶|人字顶/iu,
-    '(?:pitched roof|gabled roof|坡屋顶|人字顶)');
-  const selected = catalog.concepts.filter((row) => {
-    if (row.knowledge_id === 'knowledge:p7:modern-flat-roof-option' && pitchedRoofRequired) return false;
-    return SELECTORS.get(row.knowledge_id)?.(prompt);
-  });
+  const selected = catalog.concepts.filter((row) => selectorApplies(row.knowledge_id, prompt));
   return deepFreeze({
     schema_version: 1,
     language_version: LANGUAGE_VERSION,
@@ -169,6 +164,15 @@ export function compileArchitectureLanguageV02({ prompt, overlay } = {}) {
       parameters: PARAMETERS.get(row.knowledge_id) || {}
     }))
   });
+}
+
+export function isValidArchitectureLanguageV02Plan(plan, prompt) {
+  try {
+    validatePlan(plan, prompt);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function applyArchitectureLanguageV02({ prompt, plan, architecture, buildSpec } = {}) {
@@ -394,6 +398,9 @@ function validatePlan(input, prompt) {
       'schema_version', 'language_version', 'school_id', 'overlay_sha256', 'authority',
       'prompt_sha256', 'selected_knowledge_ids', 'instructions'
     ])) invalid();
+  const expectedIds = [...SELECTORS.keys()].filter((id) => selectorApplies(id, prompt));
+  if (expectedIds.length !== plan.selected_knowledge_ids.length ||
+    expectedIds.some((id) => !plan.selected_knowledge_ids.includes(id))) invalid();
   const selectorOrder = [...SELECTORS.keys()];
   let previousIndex = -1;
   plan.instructions.forEach((row, index) => {
@@ -411,6 +418,13 @@ function validatePlan(input, prompt) {
     previousIndex = selectorIndex;
   });
   return plan;
+}
+
+function selectorApplies(knowledgeId, prompt) {
+  if (knowledgeId === 'knowledge:p7:modern-flat-roof-option' &&
+    matchesUnnegated(prompt, /pitched roof|gabled roof|坡屋顶|人字顶/iu,
+      '(?:pitched roof|gabled roof|坡屋顶|人字顶)')) return false;
+  return Boolean(SELECTORS.get(knowledgeId)?.(prompt));
 }
 
 function validatedAdvisory(overlay) {

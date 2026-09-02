@@ -27,7 +27,7 @@ export function isConstructionOperationSatisfied(blueprint = {}, row = {}) {
   const volumeIds = (blueprint.shell?.volumeBoxes || []).map((box) => box.id);
   switch (row.operation_id) {
     case 'language:massing:connected-role-volumes':
-      return volumeIds.length > 1 && Number(modules.volume_joint || 0) >= volumeIds.length - 1;
+      return connectedVolumeJointsCoverRoles(blueprint) && Number(modules.volume_joint || 0) > 0;
     case 'language:structure:derived-bay-grid':
       return Number(modules.structural_frame || 0) > 0 && blueprint.structure?.engine_hints?.render_column_grid === true;
     case 'language:roof:volume-proportion-axis':
@@ -47,10 +47,12 @@ export function isConstructionOperationSatisfied(blueprint = {}, row = {}) {
     case 'language:site:route-first-grounding':
       return Number(modules.entry_threshold || 0) > 0 &&
         Number(modules.landscape_path || 0) + Number(modules.entry_path || 0) > 0 &&
-        thresholdTouchesMainDoor(blueprint.paths?.entryThreshold, blueprint.paths?.mainDoor);
+        thresholdTouchesMainDoor(blueprint.paths?.entryThreshold, blueprint.paths?.mainDoor) &&
+        thresholdIsExported(blueprint.paths?.entryThreshold, blueprint.operations);
     case 'language:site:foundation-continuity':
       return blueprint.site?.engine_hints?.render_foundation_transition === true &&
-        Number(modules.foundation_transition || 0) > 0;
+        Number(modules.foundation_transition || 0) > 0 &&
+        sameStringSet(blueprint.geometry?.site?.foundationTransitionVolumeIds, volumeIds);
     case 'language:interior:function-first-zoning':
       return blueprint.geometry?.bsp?.semanticSpacePlanning === 'function-before-furnishing';
     case 'language:interior:porous-public-partitions':
@@ -108,4 +110,39 @@ function thresholdTouchesMainDoor(threshold = {}, door = {}) {
     const expectedAcross = side === 'north' || side === 'west' ? boundary - 1 : boundary + 1;
     return along >= start && along < start + width && across === expectedAcross;
   });
+}
+
+function thresholdIsExported(threshold = {}, operations = []) {
+  if (!threshold.block || !Array.isArray(threshold.points) || !Array.isArray(operations)) return false;
+  return threshold.points.every((point) => operations.some((operation) => operation.block === threshold.block &&
+    pointInOperation(point, operation)));
+}
+
+function pointInOperation(point, operation = {}) {
+  const from = operation.from || operation.at;
+  const to = operation.to || operation.at;
+  if (!from || !to) return false;
+  return ['x', 'y', 'z'].every((axis) => Number(point[axis]) >= Math.min(Number(from[axis]), Number(to[axis])) &&
+    Number(point[axis]) <= Math.max(Number(from[axis]), Number(to[axis])));
+}
+
+function connectedVolumeJointsCoverRoles(blueprint = {}) {
+  const boxes = blueprint.shell?.volumeBoxes || [];
+  const main = boxes.find((box) => box.id === 'main') || boxes[0];
+  const targets = boxes.filter((box) => box !== main);
+  const joints = blueprint.geometry?.csg?.volumeJoints;
+  if (!main || targets.length === 0 || !Array.isArray(joints) || joints.length !== targets.length) return false;
+  return targets.every((target) => joints.some((joint) => joint.volumeId === target.id &&
+    pointInBounds(joint.from, main.bounds) && pointInBounds(joint.to, target.bounds)));
+}
+
+function pointInBounds(point = {}, bounds = {}) {
+  return Number(point.x) >= Number(bounds.minX) && Number(point.x) <= Number(bounds.maxX) &&
+    Number(point.y) >= Number(bounds.minY) && Number(point.y) <= Number(bounds.maxY) &&
+    Number(point.z) >= Number(bounds.minZ) && Number(point.z) <= Number(bounds.maxZ);
+}
+
+function sameStringSet(actual, expected) {
+  if (!Array.isArray(actual) || !Array.isArray(expected) || actual.length !== expected.length) return false;
+  return [...new Set(actual)].length === actual.length && [...actual].sort().every((value, index) => value === [...expected].sort()[index]);
 }

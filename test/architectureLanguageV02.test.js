@@ -213,6 +213,7 @@ test('rejects forged plan provenance, trace fields, parameters, duplicates, and 
     (plan) => { plan.instructions[0].classification = 'unsupported'; },
     (plan) => { plan.instructions[0].workflow_stage = 'fake\nstage'; },
     (plan) => { plan.instructions[0].parameters.command = 'say forged'; },
+    (plan) => { plan.instructions = []; plan.selected_knowledge_ids = []; },
     (plan) => { plan.instructions.push(structuredClone(plan.instructions[0])); plan.selected_knowledge_ids.push(plan.selected_knowledge_ids[0]); },
     (plan) => { plan.extra = true; }
   ];

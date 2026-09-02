@@ -1,8 +1,8 @@
-# Construction Workflow v0.3 Implementation Plan
+# Architecture Playbook: Construction Workflow v0.3 Implementation Plan
 
 **Goal:** Make Architecture Language v0.2 materially affect massing, structure, roof, facade, interior, and site geometry, with deterministic result traceability, hard QA, and one bounded local repair.
 
-**Spec:** `docs/superpowers/specs/2026-09-02-construction-workflow-v0-3-design.md`
+**Spec:** `docs/superpowers/specs/2026-09-02-architecture-playbook-construction-workflow-v0-3-design.md`
 
 ## Constraints
 
@@ -43,6 +43,6 @@
 
 - [x] Request independent specification review.
 - [x] Request independent quality/security review.
-- [ ] Resolve every valid critical/important finding with a failing test first.
+- [x] Resolve every valid critical/important finding with a failing test first.
 - [ ] Run the full test suite, final scenario checks, and clean-worktree verification.
 - [ ] Commit all scoped work and report exact evidence and next command; do not push without a new explicit request.

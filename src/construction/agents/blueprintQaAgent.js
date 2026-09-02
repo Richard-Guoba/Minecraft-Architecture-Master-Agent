@@ -1,5 +1,6 @@
 import { isKnownMinecraft121Block } from './minecraftBlockCatalog.js';
 import { buildConstructionWorkflowV03, isConstructionOperationSatisfied } from '../constructionWorkflowV03.js';
+import { isValidArchitectureLanguageV02Plan } from '../../playbook/runtime/architectureLanguageV02.js';
 
 const BLOCK_PATTERN = /^minecraft:[a-z0-9_]+(?:\[[a-z0-9_=,]+\])?$/;
 const MAX_FILL_VOLUME = 32768;
@@ -31,7 +32,8 @@ export class BlueprintQAAgent {
     const circulationStats = validateCirculation(blueprint, errors, warnings, checks);
     const semanticStats = validateSemanticCompleteness(blueprint, errors, warnings, checks);
     const agentContractStats = validateAgentContracts(blueprint, errors, warnings, checks);
-    const expectsConstructionWorkflow = (blueprint.architectureLanguage?.trace?.applied_operations || []).length > 0;
+    const expectsConstructionWorkflow = (blueprint.architectureLanguage?.plan?.selected_knowledge_ids || []).length > 0 ||
+      (blueprint.architectureLanguage?.trace?.applied_operations || []).length > 0;
     const constructionWorkflowStats = blueprint.constructionWorkflow || expectsConstructionWorkflow
       ? validateConstructionWorkflow(blueprint, errors, checks)
       : undefined;
@@ -69,6 +71,7 @@ function validateConstructionWorkflow(blueprint, errors, checks) {
   const rows = Array.isArray(workflow.rows) ? workflow.rows : [];
   const applied = blueprint.architectureLanguage?.trace?.applied_operations || [];
   const contractIssues = [];
+  if (!languagePlanMatchesTrace(blueprint.architectureLanguage, blueprint.prompt)) contractIssues.push('language-plan-trace-mismatch');
   if (workflow.schema_version !== 1) contractIssues.push('schema-version-mismatch');
   if (workflow.authority !== 'derived-from-validated-plan-and-grid') contractIssues.push('authority-mismatch');
   if (rows.length !== applied.length) contractIssues.push('row-count-mismatch');
@@ -93,6 +96,25 @@ function validateConstructionWorkflow(blueprint, errors, checks) {
   const ok = workflow.workflow_version === '0.3.0' && rows.length > 0 && failed.length === 0 && contractIssues.length === 0;
   checks.push(check('construction-workflow', ok, { active: true, checked: rows.length, failed, contractIssues }));
   return { active: true, checked: rows.length, failed, contractIssues };
+}
+
+function languagePlanMatchesTrace(language = {}, prompt = '') {
+  const planIds = language?.plan?.selected_knowledge_ids;
+  const instructions = language?.plan?.instructions;
+  const traceIds = language?.trace?.selected_knowledge_ids;
+  const applied = language?.trace?.applied_operations;
+  if (!isValidArchitectureLanguageV02Plan(language?.plan, prompt)) return false;
+  if (![planIds, instructions, traceIds, applied].every(Array.isArray)) return false;
+  if (planIds.length === 0 || instructions.length !== planIds.length || traceIds.length !== planIds.length || applied.length !== planIds.length) return false;
+  for (let index = 0; index < planIds.length; index += 1) {
+    const id = planIds[index];
+    const instruction = instructions[index] || {};
+    const operation = applied[index] || {};
+    if (traceIds[index] !== id || instruction.knowledge_id !== id || operation.knowledge_id !== id ||
+      operation.operation_id !== instruction.operation_id || operation.workflow_stage !== instruction.workflow_stage ||
+      operation.status !== 'applied') return false;
+  }
+  return true;
 }
 
 function validateOperations(operations, errors, checks) {
