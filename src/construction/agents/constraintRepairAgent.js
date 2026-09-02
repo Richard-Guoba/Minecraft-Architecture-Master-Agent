@@ -1,4 +1,4 @@
-import { CSGBuilder } from '../engine/csgBuilder.js';
+import { CSGBuilder, deriveEntryThresholdGeometry } from '../engine/csgBuilder.js';
 
 export class ConstraintRepairAgent {
   run(context = {}) {
@@ -54,9 +54,10 @@ function repairRouteFirstThreshold(context, modules, repairs) {
   const grid = context.grid;
   const strategy = context.site?.entry_sequence?.strategy || context.architecture?.site_rules?.route_strategy;
   if (!grid || strategy !== 'route-first-grounding' || !context.paths?.mainDoor) return;
-  if (thresholdIsAligned(grid, context.paths.entryThreshold, context.paths.mainDoor)) return;
   const spec = context.buildSpec || {};
   const block = context.site?.materials?.path_secondary || context.architecture?.materials?.foundation || 'minecraft:stone_bricks';
+  const width = Math.max(Number(context.paths.mainDoor.width || 1), Number(context.site?.entry_sequence?.path_width || 1));
+  if (thresholdIsAligned(grid, context.paths.entryThreshold, context.paths.mainDoor, spec, width, block)) return;
   const before = { entry_threshold: Number(modules.entry_threshold || 0) };
   if (before.entry_threshold > 0) {
     for (const [key, value] of grid) {
@@ -65,7 +66,7 @@ function repairRouteFirstThreshold(context, modules, repairs) {
   }
   const result = new CSGBuilder(spec, context.architecture?.materials || {}).addEntryThreshold(grid, {
     mainDoor: context.paths.mainDoor,
-    width: Math.max(Number(context.paths.mainDoor.width || 1), Number(context.site?.entry_sequence?.path_width || 1)),
+    width,
     block
   });
   context.paths.entryThreshold = result;
@@ -73,27 +74,17 @@ function repairRouteFirstThreshold(context, modules, repairs) {
   repairs.push({
     id: 'workflow-v0.3-entry-threshold',
     operation: before.entry_threshold > 0 ? 'relocated-entry-threshold' : 'derived-entry-threshold',
-    placement_count: afterCount - before.entry_threshold,
+    placement_count: afterCount,
     basis: ['main-door-coordinate', 'door-or-path-width', 'building-footprint'],
     before,
     after: { entry_threshold: afterCount }
   });
 }
 
-function thresholdIsAligned(grid, threshold = {}, door = {}) {
-  if (!Array.isArray(threshold?.points) || threshold.points.length === 0) return false;
-  const side = String(door.side || threshold.side || 'south');
-  const width = Math.max(1, Number(door.width || 1));
-  const start = ['north', 'south'].includes(side) ? Number(door.x) : Number(door.z);
-  const boundary = ['north', 'south'].includes(side) ? Number(door.z) : Number(door.x);
-  const expectedAcross = side === 'north' || side === 'west' ? boundary - 1 : boundary + 1;
-  if (!Number.isFinite(start) || !Number.isFinite(boundary)) return false;
-  return threshold.points.some((point) => {
-    const along = ['north', 'south'].includes(side) ? Number(point.x) : Number(point.z);
-    const across = ['north', 'south'].includes(side) ? Number(point.z) : Number(point.x);
-    return along >= start && along < start + width && across === expectedAcross &&
-      grid.get(`${point.x},${point.y},${point.z}`)?.module === 'entry_threshold';
-  });
+function thresholdIsAligned(grid, threshold = {}, door = {}, spec = {}, width = 1, block) {
+  const expected = deriveEntryThresholdGeometry(spec, { mainDoor: door, width, block }).evidence;
+  return JSON.stringify(threshold) === JSON.stringify(expected) && expected.points.every((point) =>
+    grid.get(`${point.x},${point.y},${point.z}`)?.module === 'entry_threshold');
 }
 
 function moduleCounts(grid) {

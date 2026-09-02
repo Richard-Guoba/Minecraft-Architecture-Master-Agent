@@ -259,9 +259,11 @@ export class CSGBuilder {
       if (box === main || box.boolean_mode === 'subtract') continue;
       const joint = closestHorizontalJoint(main, box);
       const maxY = Math.max(1, Math.min(main.max_y, box.max_y, Number(this.spec.floor_height || 4) - 1));
+      joint.from.y = maxY;
+      joint.to.y = maxY;
       fillBox(grid, Math.min(joint.from.x, joint.to.x), 1, joint.from.z, Math.max(joint.from.x, joint.to.x), maxY, joint.from.z, block, 'volume_joint');
       fillBox(grid, joint.to.x, 1, Math.min(joint.from.z, joint.to.z), joint.to.x, maxY, Math.max(joint.from.z, joint.to.z), block, 'volume_joint');
-      this.volumeJoints.push({ volumeId: box.id, from: joint.from, to: joint.to });
+      this.volumeJoints.push({ volumeId: box.id, block, from: joint.from, to: joint.to });
     }
   }
 
@@ -1648,31 +1650,10 @@ export class CSGBuilder {
   }
 
   addEntryThreshold(grid, { mainDoor, side = mainDoor?.side || 'south', width = mainDoor?.width || 2, block } = {}) {
-    const thresholdWidth = clampInt(width, 1, 6, 2);
     const material = block || this.materials.foundation || 'minecraft:stone_bricks';
-    const points = [];
-    if (side === 'north') {
-      const start = Number.isFinite(Number(mainDoor?.x)) ? Number(mainDoor.x) : Math.floor(this.spec.width / 2) - Math.floor(thresholdWidth / 2);
-      const boundary = Number(mainDoor?.z ?? 0);
-      fillBox(grid, start - 1, 0, boundary - 1, start + thresholdWidth, 0, boundary, material, 'entry_threshold');
-      points.push(...linePoints('x', start - 1, start + thresholdWidth, boundary - 1));
-    } else if (side === 'east') {
-      const start = Number.isFinite(Number(mainDoor?.z)) ? Number(mainDoor.z) : Math.floor(this.spec.depth / 2) - Math.floor(thresholdWidth / 2);
-      const boundary = Number(mainDoor?.x ?? this.spec.width - 1);
-      fillBox(grid, boundary, 0, start - 1, boundary + 1, 0, start + thresholdWidth, material, 'entry_threshold');
-      points.push(...linePoints('z', start - 1, start + thresholdWidth, boundary + 1));
-    } else if (side === 'west') {
-      const start = Number.isFinite(Number(mainDoor?.z)) ? Number(mainDoor.z) : Math.floor(this.spec.depth / 2) - Math.floor(thresholdWidth / 2);
-      const boundary = Number(mainDoor?.x ?? 0);
-      fillBox(grid, boundary - 1, 0, start - 1, boundary, 0, start + thresholdWidth, material, 'entry_threshold');
-      points.push(...linePoints('z', start - 1, start + thresholdWidth, boundary - 1));
-    } else {
-      const start = Number.isFinite(Number(mainDoor?.x)) ? Number(mainDoor.x) : Math.floor(this.spec.width / 2) - Math.floor(thresholdWidth / 2);
-      const boundary = Number(mainDoor?.z ?? this.spec.depth - 1);
-      fillBox(grid, start - 1, 0, boundary, start + thresholdWidth, 0, boundary + 1, material, 'entry_threshold');
-      points.push(...linePoints('x', start - 1, start + thresholdWidth, boundary + 1));
-    }
-    return { side, width: thresholdWidth + 2, block: material, points };
+    const geometry = deriveEntryThresholdGeometry(this.spec, { mainDoor, side, width, block: material });
+    fillBox(grid, geometry.fill.minX, 0, geometry.fill.minZ, geometry.fill.maxX, 0, geometry.fill.maxZ, material, 'entry_threshold');
+    return geometry.evidence;
   }
 
   addLayeredTerrain(grid, center, zStart, zEnd, sitePlan = {}) {
@@ -2342,6 +2323,31 @@ function closestHorizontalJoint(a, b) {
   const [ax, bx] = closestAxisPoints(a.min_x, a.max_x, b.min_x, b.max_x);
   const [az, bz] = closestAxisPoints(a.min_z, a.max_z, b.min_z, b.max_z);
   return { from: { x: ax, y: 1, z: az }, to: { x: bx, y: 1, z: bz } };
+}
+
+export function deriveEntryThresholdGeometry(spec = {}, { mainDoor, side = mainDoor?.side || 'south', width = mainDoor?.width || 2, block = 'minecraft:stone_bricks' } = {}) {
+  const thresholdWidth = clampInt(width, 1, 6, 2);
+  let start;
+  let boundary;
+  let fill;
+  let points;
+  if (side === 'north' || side === 'south') {
+    start = Number.isFinite(Number(mainDoor?.x)) ? Number(mainDoor.x) : Math.floor(Number(spec.width || 1) / 2) - Math.floor(thresholdWidth / 2);
+    boundary = Number(mainDoor?.z ?? (side === 'north' ? 0 : Number(spec.depth || 1) - 1));
+    const outside = side === 'north' ? boundary - 1 : boundary + 1;
+    fill = { minX: start - 1, maxX: start + thresholdWidth, minZ: Math.min(boundary, outside), maxZ: Math.max(boundary, outside) };
+    points = linePoints('x', start - 1, start + thresholdWidth, outside);
+  } else {
+    start = Number.isFinite(Number(mainDoor?.z)) ? Number(mainDoor.z) : Math.floor(Number(spec.depth || 1) / 2) - Math.floor(thresholdWidth / 2);
+    boundary = Number(mainDoor?.x ?? (side === 'west' ? 0 : Number(spec.width || 1) - 1));
+    const outside = side === 'west' ? boundary - 1 : boundary + 1;
+    fill = { minX: Math.min(boundary, outside), maxX: Math.max(boundary, outside), minZ: start - 1, maxZ: start + thresholdWidth };
+    points = linePoints('z', start - 1, start + thresholdWidth, outside);
+  }
+  return {
+    evidence: { side, width: thresholdWidth + 2, block, points },
+    fill
+  };
 }
 
 function closestAxisPoints(aMin, aMax, bMin, bMax) {

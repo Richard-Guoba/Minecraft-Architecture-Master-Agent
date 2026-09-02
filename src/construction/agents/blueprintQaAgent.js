@@ -105,16 +105,26 @@ function languagePlanMatchesTrace(language = {}, prompt = '') {
   const applied = language?.trace?.applied_operations;
   if (!isValidArchitectureLanguageV02Plan(language?.plan, prompt)) return false;
   if (![planIds, instructions, traceIds, applied].every(Array.isArray)) return false;
+  if (!hasExactObjectKeys(language.trace, ['schema_version', 'language_version', 'overlay_sha256', 'selected_knowledge_ids', 'applied_operations']) ||
+    language.trace.schema_version !== 1 || language.trace.language_version !== language.plan.language_version ||
+    language.trace.overlay_sha256 !== language.plan.overlay_sha256) return false;
   if (planIds.length === 0 || instructions.length !== planIds.length || traceIds.length !== planIds.length || applied.length !== planIds.length) return false;
   for (let index = 0; index < planIds.length; index += 1) {
     const id = planIds[index];
     const instruction = instructions[index] || {};
     const operation = applied[index] || {};
+    if (!hasExactObjectKeys(operation, ['knowledge_id', 'workflow_stage', 'operation_id', 'status'])) return false;
     if (traceIds[index] !== id || instruction.knowledge_id !== id || operation.knowledge_id !== id ||
       operation.operation_id !== instruction.operation_id || operation.workflow_stage !== instruction.workflow_stage ||
       operation.status !== 'applied') return false;
   }
   return true;
+}
+
+function hasExactObjectKeys(value, expected) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length === expected.length && expected.every((key) => keys.includes(key));
 }
 
 function validateOperations(operations, errors, checks) {

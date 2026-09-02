@@ -291,12 +291,27 @@ test('route satisfaction requires exported operations at the recorded threshold 
       mainDoor: { side: 'south', x: 2, z: 8, width: 2 },
       entryThreshold: {
         side: 'south', block: 'minecraft:stone_bricks',
-        points: [{ x: 2, y: 0, z: 9 }, { x: 3, y: 0, z: 9 }]
+        width: 1, points: [{ x: 2, y: 0, z: 9 }]
       }
     },
-    operations: []
+    operations: [{
+      kind: 'fill', from: { x: 2, y: 0, z: 9 }, to: { x: 2, y: 0, z: 9 }, block: 'minecraft:stone_bricks'
+    }]
   };
   assert.equal(isConstructionOperationSatisfied(blueprint, { operation_id: 'language:site:route-first-grounding' }), false);
+});
+
+test('subtract volumes are excluded from connected-role and foundation obligations', () => {
+  const boxes = [
+    { id: 'main', booleanMode: 'union', bounds: { minX: 0, maxX: 4, minY: 1, maxY: 4, minZ: 0, maxZ: 4 } },
+    { id: 'courtyard-void', booleanMode: 'subtract', bounds: { minX: 1, maxX: 2, minY: 1, maxY: 4, minZ: 1, maxZ: 2 } }
+  ];
+  const blueprint = {
+    modules: { foundation_transition: 12 }, shell: { volumeBoxes: boxes },
+    site: { engine_hints: { render_foundation_transition: true } },
+    geometry: { site: { foundationTransitionVolumeIds: ['main'] } }
+  };
+  assert.equal(isConstructionOperationSatisfied(blueprint, { operation_id: 'language:site:foundation-continuity' }), true);
 });
 
 test('route-first missing-threshold repair is bounded and idempotent', () => {
@@ -346,6 +361,28 @@ test('route-first repair replaces a stale threshold that does not touch the main
   assert.equal(result.repairs[0].operation, 'relocated-entry-threshold');
   assert.equal(grid.has('5,0,9'), false);
   assert.equal(grid.has('2,0,9'), true);
+});
+
+test('route-first repair rejects a threshold record containing only one correctly aligned point', () => {
+  const grid = new Map([
+    ['2,0,9', { block: 'minecraft:cobblestone', module: 'entry_threshold' }],
+    ['20,0,20', { block: 'minecraft:cobblestone', module: 'entry_threshold' }]
+  ]);
+  const context = {
+    grid,
+    buildSpec: { width: 11, depth: 9, constraints: {} },
+    architecture: { materials: { foundation: 'minecraft:cobblestone' } },
+    site: { entry_sequence: { strategy: 'route-first-grounding', path_width: 2 } },
+    paths: {
+      mainDoor: { side: 'south', x: 2, z: 8, width: 2 },
+      entryThreshold: { side: 'south', width: 4, block: 'minecraft:cobblestone', points: [{ x: 2, y: 0, z: 9 }] },
+      pathfinder: { failedEdgeCount: 0 }
+    }
+  };
+  const result = new ConstraintRepairAgent().run(context);
+  assert.equal(result.repairs[0].operation, 'relocated-entry-threshold');
+  assert.ok(result.repairs[0].placement_count >= 0);
+  assert.equal(grid.has('20,0,20'), false);
 });
 
 function moduleCounts(grid) {
@@ -438,6 +475,13 @@ for (const scenario of WORKFLOW_SCENARIOS) {
     assert.deepEqual(first.blueprint.constructionWorkflow, second.blueprint.constructionWorkflow);
     assert.equal(first.blueprint.constructionWorkflow.rows.every((row) => row.satisfied), true);
     assert.equal(first.validation.checks.find((row) => row.name === 'construction-workflow')?.ok, true);
+    if (scenario.id === 'modern-lakeside') {
+      const drifted = structuredClone(first.blueprint);
+      drifted.architectureLanguage.trace.extra = true;
+      const driftedQa = new BlueprintQAAgent().run(drifted);
+      assert.ok(driftedQa.checks.find((row) => row.name === 'construction-workflow')?.details.contractIssues
+        .includes('language-plan-trace-mismatch'));
+    }
     for (const id of scenario.required) assert.ok(first.blueprint.architectureLanguage.plan.selected_knowledge_ids.includes(id), id);
     assert.ok(first.blueprint.modules.entry_threshold > 0);
     scenario.verify(first.blueprint);

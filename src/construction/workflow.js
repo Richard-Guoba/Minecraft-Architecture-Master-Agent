@@ -410,6 +410,7 @@ function buildBlueprint({ prompt, architecture, topology, creativeDesign, concep
         role: box.role,
         shape: box.shape,
         module: box.module,
+        ...(architectureLanguage ? { booleanMode: box.boolean_mode } : {}),
         bounds: {
           minX: box.min_x,
           maxX: box.max_x,

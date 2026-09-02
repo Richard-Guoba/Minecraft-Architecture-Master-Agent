@@ -1,3 +1,5 @@
+import { deriveEntryThresholdGeometry } from './engine/csgBuilder.js';
+
 const WORKFLOW_VERSION = '0.3.0';
 
 export function buildConstructionWorkflowV03(blueprint = {}) {
@@ -24,7 +26,7 @@ export function buildConstructionWorkflowV03(blueprint = {}) {
 
 export function isConstructionOperationSatisfied(blueprint = {}, row = {}) {
   const modules = blueprint.modules || {};
-  const volumeIds = (blueprint.shell?.volumeBoxes || []).map((box) => box.id);
+  const volumeIds = eligibleVolumeBoxes(blueprint).map((box) => box.id);
   switch (row.operation_id) {
     case 'language:massing:connected-role-volumes':
       return connectedVolumeJointsCoverRoles(blueprint) && Number(modules.volume_joint || 0) > 0;
@@ -47,7 +49,7 @@ export function isConstructionOperationSatisfied(blueprint = {}, row = {}) {
     case 'language:site:route-first-grounding':
       return Number(modules.entry_threshold || 0) > 0 &&
         Number(modules.landscape_path || 0) + Number(modules.entry_path || 0) > 0 &&
-        thresholdTouchesMainDoor(blueprint.paths?.entryThreshold, blueprint.paths?.mainDoor) &&
+        thresholdMatchesMainDoor(blueprint) &&
         thresholdIsExported(blueprint.paths?.entryThreshold, blueprint.operations);
     case 'language:site:foundation-continuity':
       return blueprint.site?.engine_hints?.render_foundation_transition === true &&
@@ -97,19 +99,13 @@ function relevantModuleCounts(modules) {
   ].map((key) => [key, Number(modules[key] || 0)]));
 }
 
-function thresholdTouchesMainDoor(threshold = {}, door = {}) {
-  if (!door || !Array.isArray(threshold?.points) || threshold.points.length === 0) return false;
-  const side = String(door.side || threshold.side || 'south');
-  const width = Math.max(1, Number(door.width || 1));
-  const start = ['north', 'south'].includes(side) ? Number(door.x) : Number(door.z);
-  const boundary = ['north', 'south'].includes(side) ? Number(door.z) : Number(door.x);
-  if (!Number.isFinite(start) || !Number.isFinite(boundary)) return false;
-  return threshold.points.some((point) => {
-    const along = ['north', 'south'].includes(side) ? Number(point.x) : Number(point.z);
-    const across = ['north', 'south'].includes(side) ? Number(point.z) : Number(point.x);
-    const expectedAcross = side === 'north' || side === 'west' ? boundary - 1 : boundary + 1;
-    return along >= start && along < start + width && across === expectedAcross;
-  });
+function thresholdMatchesMainDoor(blueprint = {}) {
+  const door = blueprint.paths?.mainDoor;
+  if (!door) return false;
+  const width = Math.max(Number(door.width || 1), Number(blueprint.site?.entry_sequence?.path_width || 1));
+  const block = blueprint.site?.materials?.path_secondary || blueprint.architecture?.materials?.foundation || 'minecraft:stone_bricks';
+  const expected = deriveEntryThresholdGeometry(blueprint.buildSpec, { mainDoor: door, width, block }).evidence;
+  return JSON.stringify(blueprint.paths?.entryThreshold) === JSON.stringify(expected);
 }
 
 function thresholdIsExported(threshold = {}, operations = []) {
@@ -127,22 +123,50 @@ function pointInOperation(point, operation = {}) {
 }
 
 function connectedVolumeJointsCoverRoles(blueprint = {}) {
-  const boxes = blueprint.shell?.volumeBoxes || [];
+  const boxes = eligibleVolumeBoxes(blueprint);
   const main = boxes.find((box) => box.id === 'main') || boxes[0];
   const targets = boxes.filter((box) => box !== main);
   const joints = blueprint.geometry?.csg?.volumeJoints;
   if (!main || targets.length === 0 || !Array.isArray(joints) || joints.length !== targets.length) return false;
-  return targets.every((target) => joints.some((joint) => joint.volumeId === target.id &&
-    pointInBounds(joint.from, main.bounds) && pointInBounds(joint.to, target.bounds)));
-}
-
-function pointInBounds(point = {}, bounds = {}) {
-  return Number(point.x) >= Number(bounds.minX) && Number(point.x) <= Number(bounds.maxX) &&
-    Number(point.y) >= Number(bounds.minY) && Number(point.y) <= Number(bounds.maxY) &&
-    Number(point.z) >= Number(bounds.minZ) && Number(point.z) <= Number(bounds.maxZ);
+  const block = blueprint.architecture?.materials?.foundation || blueprint.architecture?.materials?.wall || 'minecraft:stone_bricks';
+  return targets.every((target) => {
+    const expected = expectedVolumeJoint(main.bounds, target.bounds, blueprint.buildSpec);
+    const joint = joints.find((candidate) => candidate.volumeId === target.id);
+    return joint?.block === block && JSON.stringify(joint.from) === JSON.stringify(expected.from) &&
+      JSON.stringify(joint.to) === JSON.stringify(expected.to) &&
+      jointLinePoints(expected).every((point) => blueprint.operations?.some((operation) =>
+        pointInOperation(point, operation)));
+  });
 }
 
 function sameStringSet(actual, expected) {
   if (!Array.isArray(actual) || !Array.isArray(expected) || actual.length !== expected.length) return false;
   return [...new Set(actual)].length === actual.length && [...actual].sort().every((value, index) => value === [...expected].sort()[index]);
+}
+
+function eligibleVolumeBoxes(blueprint = {}) {
+  return (blueprint.shell?.volumeBoxes || []).filter((box) => box.booleanMode !== 'subtract');
+}
+
+function expectedVolumeJoint(a, b, spec = {}) {
+  const [ax, bx] = closestAxisPoints(a.minX, a.maxX, b.minX, b.maxX);
+  const [az, bz] = closestAxisPoints(a.minZ, a.maxZ, b.minZ, b.maxZ);
+  const y = Math.max(1, Math.min(a.maxY, b.maxY, Number(spec.floor_height || 4) - 1));
+  return { from: { x: ax, y, z: az }, to: { x: bx, y, z: bz } };
+}
+
+function closestAxisPoints(aMin, aMax, bMin, bMax) {
+  if (bMin > aMax) return [aMax, bMin];
+  if (aMin > bMax) return [aMin, bMax];
+  const shared = Math.floor((Math.max(aMin, bMin) + Math.min(aMax, bMax)) / 2);
+  return [shared, shared];
+}
+
+function jointLinePoints(joint) {
+  const points = [];
+  const stepX = joint.to.x >= joint.from.x ? 1 : -1;
+  for (let x = joint.from.x; x !== joint.to.x + stepX; x += stepX) points.push({ x, y: joint.from.y, z: joint.from.z });
+  const stepZ = joint.to.z >= joint.from.z ? 1 : -1;
+  for (let z = joint.from.z; z !== joint.to.z + stepZ; z += stepZ) points.push({ x: joint.to.x, y: joint.from.y, z });
+  return points;
 }

@@ -58,7 +58,9 @@ For example:
 
 `knowledge:p7:scaled-column-beam-grid -> language:structure:derived-bay-grid -> structure -> module-and-agent-result -> structural_frame > 0`
 
-`BlueprintQAAgent` rebuilds the complete sidecar from the prompt-bound applied-operation trace and final blueprint, then requires exact schema, authority, ordering, provenance, evidence, counts, and satisfaction. It does not trust a stored `satisfied: true`, and deleting or forging the sidecar fails the hard `construction-workflow` check.
+`BlueprintQAAgent` rebuilds the complete sidecar from the prompt-bound applied-operation trace and final blueprint, then requires exact schema, authority, ordering, provenance, evidence, counts, and satisfaction. The plan is also revalidated against the original prompt's complete selector set, and the plan/trace rows use exact shapes. It does not trust a stored `satisfied: true`, and deleting or forging the sidecar fails the hard `construction-workflow` check.
+
+Geometry evidence is recomputed rather than accepted by count alone: every connected-role joint must match the bounds-derived endpoints and have a continuous exported line; subtract volumes are excluded consistently; foundation coverage must name every non-subtract volume; and the complete threshold record must match the actual door/path width with every recorded point present in final operations.
 
 The only new repair is `workflow-v0.3-entry-threshold`. It runs only when route-first grounding and a main door exist but the threshold is absent. Its cells derive from the actual main-door coordinate, door side, and door/path width; its record includes before/after module counts. It is idempotent and local, and never calls the P5 registry.
 
@@ -68,9 +70,9 @@ All scenarios use mock mode, seed 7101, and no Minecraft world path.
 
 | Scenario | Selected rows | Volumes | Grid cells | Operations | Notable modules | Blueprint SHA-256 |
 | --- | ---: | --- | ---: | ---: | --- | --- |
-| Modern lakeside villa | 9 | `main`, `glass-wing`, `view-terrace` | 9260 | 1258 | frame 578; roof 1158; windows 516; threshold 10 | `6ada469918ec40b639674153a5ffe66e853bc15539f2ce8a83921303abdf7e8c` |
-| Medieval multi-volume residence | 8 | 8 connected role volumes | 9509 | 1355 | frame 419; roof 3324; bay 29; opening 269; joint 7; foundation transition 184; threshold 8 | `6120b0e4faf139a73743e60b8b0d282805c8cad740a02fcf682cafcfe0b84a09` |
-| Compact residential building | 4 | `main` only | 3731 | 612 | frame 121; roof 641; windows 126; facade detail 76; threshold 8 | `675afcd79f682fcdd5960d0ca301b1c50b4d15488a29785f39daec28a083471f` |
+| Modern lakeside villa | 9 | `main`, `glass-wing`, `view-terrace` | 9260 | 1258 | frame 578; roof 1158; windows 516; threshold 10 | `7d7e81795ba5516a5ddf2e3f13d050f876fe6741d2f86843cee57a3e25de156b` |
+| Medieval multi-volume residence | 8 | 8 connected role volumes | 9509 | 1355 | frame 419; roof 3324; bay 29; opening 269; joint 7; foundation transition 184; threshold 8 | `3b55205eb3eb3db307efe74616589bfcae4b23e64f4e7c71c1469c0a09e8de72` |
+| Compact residential building | 4 | `main` only | 3731 | 612 | frame 121; roof 641; windows 126; facade detail 76; threshold 8 | `bd940b0974e20d22d6baa11c77d7bf74b9bcd0850595a39a44b319a04da4c61b` |
 
 Each scenario test generates the v0.3 form twice and compares blueprint bytes, operations, and result rows. It also generates the same prompt/seed without Architecture Language and proves the operation stream differs: modern mass roles are locked to three volumes; medieval frame density and roof axes change; compact template additions collapse to the requested main volume.
 
@@ -84,9 +86,9 @@ Visual or historical-quality claims remain outside automatic authority. The work
 
 ## Verification record
 
-- Focused v0.3: `npm test -- test/constructionWorkflowV03.test.js --test-reporter=spec` — 16 passed, 0 failed.
-- Language plus v0.3: `npm test -- test/architectureLanguageV02.test.js test/constructionWorkflowV03.test.js --test-reporter=spec` — 27 passed, 0 failed.
-- Related workflow, geometry, compatibility, P5-boundary, and documentation regression — 137 passed, 0 failed:
+- Focused v0.3: `npm test -- test/constructionWorkflowV03.test.js --test-reporter=spec` — 18 passed, 0 failed.
+- Language plus v0.3: `npm test -- test/architectureLanguageV02.test.js test/constructionWorkflowV03.test.js --test-reporter=spec` — 29 passed, 0 failed.
+- Related workflow, geometry, compatibility, P5-boundary, and documentation regression — 139 passed, 0 failed:
 
 ```text
 npm test -- test/architectureLanguageV02.test.js test/constructionWorkflowV03.test.js test/structureAgent.test.js test/bspPartitioner.test.js test/decoratorAgent.test.js test/blueprintQaAgent.test.js test/csgBuilder.test.js test/pipeline.test.js test/projectPolicy.test.js test/playbookExecuteOffCompatibility.test.js test/playbookP7Documentation.test.js test/playbookP7AdvisoryOverlay.test.js test/playbookExecuteRepairRegistry.test.js test/playbookExecuteRepairCompilers.test.js test/playbookExecuteRepairTransaction.test.js test/playbookExecuteContracts.test.js --test-reporter=spec
