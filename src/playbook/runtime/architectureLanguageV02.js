@@ -2,6 +2,7 @@ import { projectP7AdvisoryKnowledge } from '../knowledge/p7AdvisoryOverlay.js';
 import { deepFreeze } from '../shadow/canonical.js';
 
 const LANGUAGE_VERSION = '0.2.0';
+const CANONICAL_OVERLAY_SHA256 = '98a09b14c5a29fc76b93f61be016b82edb4a9a8c94cdcf76777533f0c1631c35';
 const CLASSIFICATIONS = Object.freeze({
   ALREADY: 'already-executable',
   FEASIBLE: 'feasible-deterministic-mapping',
@@ -42,14 +43,26 @@ const CAPABILITIES = new Map([
 ]);
 
 const SELECTORS = new Map([
-  ['knowledge:p7:modern-flat-roof-option', /(?:flat|terrace) roof|roof terrace|平屋顶|屋顶露台/iu],
-  ['knowledge:p7:weather-sheltered-entrance-transition', /sheltered entry|porch|canopy|门廊|雨棚|入口过渡/iu],
-  ['knowledge:p7:landscape-route-and-grounding', /lake|lakeside|waterfront|garden|path|湖|水边|花园|路径/iu],
-  ['knowledge:p7:function-led-interior-zoning', /villa|residen|house|home|interior|别墅|住宅|室内/iu],
-  ['knowledge:p7:large-to-small-furnishing-pass', /interior|furnish|家具|室内/iu],
-  ['knowledge:p7:daylit-window-wall-integration', /glass|window|daylight|玻璃|窗|采光/iu],
-  ['knowledge:p7:modern-interlocking-volume', /(?:modern|现代).*(?:villa|residen|house|building|别墅|住宅|建筑)|interlocking volume|交错体块/iu],
-  ['knowledge:p7:modern-program-entry-openness', /(?:modern|现代).*(?:villa|private|别墅|私宅)/iu]
+  ['knowledge:p7:modern-flat-roof-option', (prompt) =>
+    /(?:flat|terrace) roof|roof terrace|平屋顶|屋顶露台/iu.test(prompt)
+      && !/(?:without|no|avoid|do not use).*?(?:flat|terrace) roof|不要.*?(?:平屋顶|屋顶露台)/iu.test(prompt)],
+  ['knowledge:p7:weather-sheltered-entrance-transition', (prompt) =>
+    /sheltered entry|porch|canopy|门廊|雨棚|入口过渡/iu.test(prompt)
+      && !/(?:without|no|avoid|do not use).*?(?:porch|canopy|sheltered entry)|不要.*?(?:门廊|雨棚)/iu.test(prompt)],
+  ['knowledge:p7:landscape-route-and-grounding', (prompt) =>
+    /lake|lakeside|waterfront|garden|path|湖|水边|花园|路径/iu.test(prompt)],
+  ['knowledge:p7:function-led-interior-zoning', (prompt) =>
+    /functional interior|function-led|functional zoning|功能.*(?:室内|分区)|功能分区/iu.test(prompt)],
+  ['knowledge:p7:large-to-small-furnishing-pass', (prompt) =>
+    /large-to-small furnish|largest.*furni(?:ture|shing).*first|由大到小.*家具/iu.test(prompt)],
+  ['knowledge:p7:daylit-window-wall-integration', (prompt) =>
+    /glass|window|daylight|玻璃|窗|采光/iu.test(prompt)
+      && !/(?:without|no|avoid|do not use).*?(?:glass|windows?)|不要.*?(?:玻璃|窗)/iu.test(prompt)],
+  ['knowledge:p7:modern-interlocking-volume', (prompt) =>
+    /interlocking volumes?|交错体块|咬合体块/iu.test(prompt)
+      && !/single[- ]volume|garage wing|单体块|车库侧翼|traditional.*not (?:a )?modern/iu.test(prompt)],
+  ['knowledge:p7:modern-program-entry-openness', (prompt) =>
+    /private(?:\s+\w+){0,4}\s+(?:villa|residence|home)|private entry|screened entry|offset entry|私宅|偏移入口/iu.test(prompt)]
 ]);
 
 const PARAMETERS = new Map([
@@ -88,7 +101,7 @@ export function compileArchitectureLanguageV02({ prompt, overlay } = {}) {
   const pitchedRoofRequired = /pitched roof|gabled roof|坡屋顶|人字顶/iu.test(prompt);
   const selected = catalog.concepts.filter((row) => {
     if (row.knowledge_id === 'knowledge:p7:modern-flat-roof-option' && pitchedRoofRequired) return false;
-    return SELECTORS.get(row.knowledge_id)?.test(prompt);
+    return SELECTORS.get(row.knowledge_id)?.(prompt);
   });
   return deepFreeze({
     schema_version: 1,
@@ -110,8 +123,8 @@ export function compileArchitectureLanguageV02({ prompt, overlay } = {}) {
 export function applyArchitectureLanguageV02({ plan, architecture, buildSpec } = {}) {
   validatePlan(plan);
   if (!isPlainObject(architecture) || !isPlainObject(buildSpec)) invalid();
-  const nextArchitecture = structuredClone(architecture);
-  const nextBuildSpec = structuredClone(buildSpec);
+  const nextArchitecture = canonicalClone(architecture);
+  const nextBuildSpec = canonicalClone(buildSpec);
   const appliedOperations = [];
   for (const instruction of plan.instructions) {
     const applied = applyInstruction(instruction, nextArchitecture, nextBuildSpec);
@@ -140,8 +153,8 @@ export function applyArchitectureLanguageV02({ plan, architecture, buildSpec } =
 export function finalizeArchitectureLanguageV02({ plan, architecture, creativeDesign } = {}) {
   validatePlan(plan);
   if (!isPlainObject(architecture) || !isPlainObject(creativeDesign)) invalid();
-  const nextArchitecture = structuredClone(architecture);
-  const nextCreativeDesign = structuredClone(creativeDesign);
+  const nextArchitecture = canonicalClone(architecture);
+  const nextCreativeDesign = canonicalClone(creativeDesign);
   const needsThreeVolumeInterlock = plan.instructions.some((row) =>
     row.operation_id === 'language:massing:three-volume-interlock');
   if (needsThreeVolumeInterlock) {
@@ -151,6 +164,11 @@ export function finalizeArchitectureLanguageV02({ plan, architecture, creativeDe
     nextArchitecture.volumes = requiredIds.map((id) => byId.get(id));
     nextCreativeDesign.volume_directives = (nextCreativeDesign.volume_directives || [])
       .filter((row) => requiredIds.includes(row.id) || requiredIds.includes(row.target_id));
+  }
+  for (const instruction of plan.instructions) {
+    if (instruction.operation_id !== 'language:massing:three-volume-interlock') {
+      applyInstruction(instruction, nextArchitecture, {});
+    }
   }
   return deepFreeze({ architecture: nextArchitecture, creativeDesign: nextCreativeDesign });
 }
@@ -233,14 +251,29 @@ function validatePlan(plan) {
     || plan.language_version !== LANGUAGE_VERSION
     || plan.school_id !== 'heihui-jileniao'
     || plan.authority !== 'subtitle-derived-advisory-semantic-only'
-    || !/^[a-f0-9]{64}$/u.test(plan.overlay_sha256)
+    || plan.overlay_sha256 !== CANONICAL_OVERLAY_SHA256
     || !Array.isArray(plan.selected_knowledge_ids)
     || !Array.isArray(plan.instructions)
-    || plan.instructions.length !== plan.selected_knowledge_ids.length) invalid();
+    || plan.instructions.length !== plan.selected_knowledge_ids.length
+    || !hasExactKeys(plan, [
+      'schema_version', 'language_version', 'school_id', 'overlay_sha256', 'authority',
+      'selected_knowledge_ids', 'instructions'
+    ])) invalid();
+  const selectorOrder = [...SELECTORS.keys()];
+  let previousIndex = -1;
   plan.instructions.forEach((row, index) => {
+    const configured = CAPABILITIES.get(row?.knowledge_id);
+    const selectorIndex = selectorOrder.indexOf(row?.knowledge_id);
     if (!isPlainObject(row) || row.knowledge_id !== plan.selected_knowledge_ids[index]
-      || !CAPABILITIES.has(row.knowledge_id)
-      || CAPABILITIES.get(row.knowledge_id).operation_id !== row.operation_id) invalid();
+      || !hasExactKeys(row, [
+        'knowledge_id', 'classification', 'workflow_stage', 'operation_id', 'parameters'
+      ])
+      || !configured || selectorIndex <= previousIndex
+      || configured.operation_id !== row.operation_id
+      || configured.classification !== row.classification
+      || configured.workflow_stage !== row.workflow_stage
+      || !sameFlatObject(row.parameters, PARAMETERS.get(row.knowledge_id))) invalid();
+    previousIndex = selectorIndex;
   });
 }
 
@@ -267,6 +300,45 @@ function defaultStage(layers) {
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
     && Object.getPrototypeOf(value) === Object.prototype;
+}
+
+function hasExactKeys(value, expected) {
+  const keys = Reflect.ownKeys(value);
+  return keys.length === expected.length && expected.every((key) => keys.includes(key));
+}
+
+function sameFlatObject(left, right) {
+  if (!isPlainObject(left) || !isPlainObject(right)) return false;
+  const expectedKeys = Object.keys(right);
+  if (!hasExactKeys(left, expectedKeys)) return false;
+  const descriptors = Object.getOwnPropertyDescriptors(left);
+  return expectedKeys.every((key) => !descriptors[key].get && !descriptors[key].set
+    && descriptors[key].enumerable && descriptors[key].value === right[key]);
+}
+
+function canonicalClone(value, ancestors = new Set()) {
+  if (value === null || ['string', 'boolean', 'undefined'].includes(typeof value)) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'object' || ancestors.has(value)) invalid();
+  if (!Array.isArray(value) && !isPlainObject(value)) invalid();
+  if (Array.isArray(value)) {
+    const keys = Reflect.ownKeys(value);
+    const expected = [...value.keys()].map(String);
+    if (keys.length !== expected.length + 1 || !keys.includes('length')
+      || expected.some((key) => !keys.includes(key))) invalid();
+    ancestors.add(value);
+    const copy = value.map((item) => canonicalClone(item, ancestors));
+    ancestors.delete(value);
+    return copy;
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (Reflect.ownKeys(descriptors).some((key) => typeof key === 'symbol'
+    || descriptors[key].get || descriptors[key].set || !descriptors[key].enumerable)) invalid();
+  ancestors.add(value);
+  const copy = Object.fromEntries(Object.entries(value).map(([key, item]) =>
+    [key, canonicalClone(item, ancestors)]));
+  ancestors.delete(value);
+  return copy;
 }
 
 function invalid() {

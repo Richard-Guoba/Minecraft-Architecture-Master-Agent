@@ -550,9 +550,6 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shad
   const previewPath = path.join(outputDir, 'preview.html');
   const reportPath = path.join(outputDir, 'run_report.md');
   const architectureScorecardPath = path.join(outputDir, 'architecture_scorecard.json');
-  const architectureLanguagePath = blueprint.architectureLanguage
-    ? path.join(outputDir, 'architecture_language.json')
-    : undefined;
   const conceptStudioPath = conceptStudio?.active ? path.join(outputDir, 'concept_studio.json') : undefined;
   const conceptStudioReportPath = conceptStudio?.active ? path.join(outputDir, 'concept_studio_report.md') : undefined;
   const criticCouncilPath = criticCouncil?.active ? path.join(outputDir, 'critic_council.json') : undefined;
@@ -566,7 +563,6 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shad
 
   await writeJson(blueprintPath, blueprint);
   await writeJson(architectureScorecardPath, architectureScorecard);
-  if (architectureLanguagePath) await writeJson(architectureLanguagePath, blueprint.architectureLanguage);
   if (conceptStudioPath) await writeJson(conceptStudioPath, serializeConceptStudio(conceptStudio));
   if (conceptStudioReportPath) await fs.writeFile(conceptStudioReportPath, renderConceptStudioReport(conceptStudio), 'utf8');
   if (criticCouncilPath) await writeJson(criticCouncilPath, serializeCriticCouncil(criticCouncil));
@@ -613,7 +609,6 @@ async function exportArtifacts({ outputDir, blueprint, conceptStudio, stage7Shad
   return {
     blueprint: blueprintPath,
     architectureScorecard: architectureScorecardPath,
-    ...(architectureLanguagePath ? { architectureLanguage: architectureLanguagePath } : {}),
     datapackDir,
     buildFunction: buildPath,
     clearFunction: clearPath,

@@ -2,7 +2,7 @@
 
 **Goal:** Connect the P7 advisory overlay to `construction_method_v1` through a bounded, versioned semantic plan while preserving P5 authority, playbook-off bytes, and portable relative-coordinate export.
 
-**Architecture:** A pure runtime module validates and classifies all 123 P7 entries, selects only prompt-relevant residential knowledge, and emits semantic instructions with relative roles and constraints. A whitelist adapter applies supported instructions to existing architecture/build-spec planning seams before the current planner and deterministic compilers run. The resulting plan and applied-operation trace travel inside existing architecture semantics and are projected into `blueprint.json`, `architecture_language.json`, and `run_report.md`; advisory and QA-only rows never enter P5 repair compilation.
+**Architecture:** A pure runtime module validates and classifies all 123 P7 entries, selects only prompt-relevant residential knowledge, and emits semantic instructions with relative roles and constraints. A whitelist adapter applies supported instructions to existing architecture/build-spec planning seams before the current planner and deterministic compilers run. The resulting plan and applied-operation trace travel inside existing architecture semantics, are authoritative in `blueprint.json`, and are projected into `run_report.md`; advisory and QA-only rows never enter P5 repair compilation.
 
 **Spec:** `docs/superpowers/specs/2026-09-01-architecture-playbook-mini-program-knowledge-expansion-design.md`
 
@@ -33,7 +33,7 @@
 - Modify: `src/construction/designStages.js`
 - Test: `test/architectureLanguageV02.test.js`
 
-- [ ] Add failing behavior tests showing the selected modern waterfront slice locks the existing `waterfront-stepped-estate` massing preference, requests the existing flat/parapet roof semantics, preserves user constraints, contains no coordinate/block/command fields, and produces stable applied-operation rows.
+- [ ] Add failing behavior tests showing the selected modern waterfront slice locks the existing `east-offset-glass-wing` massing preference, requests the existing flat/parapet roof semantics, preserves user constraints, contains no coordinate/block/command fields, and produces stable applied-operation rows.
 - [ ] Apply only whitelisted semantic patches before the existing planner/creative-design stages; leave unimplemented concepts as preferences, QA-only, advisory-only, or unsupported.
 - [ ] Re-run the narrow tests and commit the adapter.
 
@@ -46,7 +46,7 @@
 - Test: `test/playbookExecuteOrchestrator.test.js`
 
 - [ ] Add failing integration tests proving execute mock loads the canonical overlay, the same prompt/seed yields identical language and blueprint semantics, the plan records knowledge-to-stage-to-operation traceability, and reports expose the exact selected IDs.
-- [ ] Build the language plan once per candidate, pass it through existing architecture semantics, project it into blueprint/report, and write `architecture_language.json` beside existing artifacts.
+- [ ] Build the language plan once per candidate, pass it through existing architecture semantics, keep its authoritative trace in the blueprint, and project a human-readable view into the report.
 - [ ] Ensure the datapack compiler consumes only the resulting validated semantic runtime and remains relative-coordinate only.
 - [ ] Re-run focused execute and export tests and commit the integration.
 
@@ -61,7 +61,7 @@
 
 - [ ] Run focused off-mode and six-episode golden regressions.
 - [ ] Run two identical playbook-on mock generations and one playbook-off generation for the representative residential brief.
-- [ ] Reopen blueprint, language, report, pack metadata, and function files; compare hashes and verify all commands are relative.
+- [ ] Reopen blueprint, its embedded language trace, report, pack metadata, and function files; compare hashes and verify all commands are relative.
 - [ ] Document the exact capability categories, executable mappings, evidence artifacts, compatibility boundary, and remaining unsupported work.
 - [ ] Commit documentation and evidence descriptions without committing `out/`.
 

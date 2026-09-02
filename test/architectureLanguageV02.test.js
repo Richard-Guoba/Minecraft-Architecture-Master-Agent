@@ -51,7 +51,7 @@ test('classifies every canonical P7 concept exactly once without promoting advis
 
 test('selects a bounded residential slice in canonical overlay order with semantic fields only', async () => {
   const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
-  const prompt = 'Build a modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, and functional interior.';
+  const prompt = 'Build a private modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, functional interior, and a large-to-small furnishing pass.';
 
   const plan = compileArchitectureLanguageV02({ prompt, overlay });
 
@@ -88,7 +88,7 @@ test('rejects non-canonical advisory input instead of compiling guessed knowledg
 test('applies the residential slice through existing semantic planner fields and records each applied operation', async () => {
   const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
   const plan = compileArchitectureLanguageV02({
-    prompt: 'Build a modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, and functional interior.',
+    prompt: 'Build a private modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, functional interior, and a large-to-small furnishing pass.',
     overlay
   });
   const architecture = {
@@ -147,10 +147,43 @@ test('does not select a flat-roof mapping when the user explicitly requires a pi
   assert.equal(plan.selected_knowledge_ids.includes('knowledge:p7:modern-flat-roof-option'), false);
 });
 
+test('does not select semantics that explicit user constraints reject', async () => {
+  const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
+  const cases = [
+    ['Build a modern villa without glass.', 'knowledge:p7:daylit-window-wall-integration'],
+    ['Build a modern villa with no porch or canopy.', 'knowledge:p7:weather-sheltered-entrance-transition'],
+    ['Build a modern single-volume villa with a garage wing.', 'knowledge:p7:modern-interlocking-volume'],
+    ['Build a traditional villa, not a modern villa.', 'knowledge:p7:modern-interlocking-volume']
+  ];
+  for (const [prompt, rejectedId] of cases) {
+    const plan = compileArchitectureLanguageV02({ prompt, overlay });
+    assert.equal(plan.selected_knowledge_ids.includes(rejectedId), false, prompt);
+  }
+});
+
+test('rejects forged plan provenance, trace fields, parameters, duplicates, and extra fields', async () => {
+  const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
+  const valid = compileArchitectureLanguageV02({ prompt: 'Build a flat roof house.', overlay });
+  const mutations = [
+    (plan) => { plan.overlay_sha256 = '0'.repeat(64); },
+    (plan) => { plan.instructions[0].classification = 'unsupported'; },
+    (plan) => { plan.instructions[0].workflow_stage = 'fake\nstage'; },
+    (plan) => { plan.instructions[0].parameters.command = 'say forged'; },
+    (plan) => { plan.instructions.push(structuredClone(plan.instructions[0])); plan.selected_knowledge_ids.push(plan.selected_knowledge_ids[0]); },
+    (plan) => { plan.extra = true; }
+  ];
+  for (const mutate of mutations) {
+    const plan = structuredClone(valid);
+    mutate(plan);
+    assert.throws(() => applyArchitectureLanguageV02({ plan, architecture: {}, buildSpec: {} }),
+      { code: 'ARCHITECTURE_LANGUAGE_INVALID' });
+  }
+});
+
 test('feeds Architecture Language preferences through the existing semantic agents before deterministic compilation', async (t) => {
   const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), 'architecture-language-design-'));
   t.after(() => fs.rm(outputDir, { recursive: true, force: true }));
-  const prompt = 'Build a modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, and functional interior.';
+  const prompt = 'Build a private modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, functional interior, and a large-to-small furnishing pass.';
   const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
   const architectureLanguage = compileArchitectureLanguageV02({ prompt, overlay });
 
@@ -170,13 +203,16 @@ test('feeds Architecture Language preferences through the existing semantic agen
     ['main', 'glass-wing', 'view-terrace']);
   assert.equal(prepared.architecture.generation_hints.architecture_language.plan.language_version, '0.2.0');
   assert.equal(prepared.architecture.generation_hints.architecture_language.trace.applied_operations.length, 8);
+  assert.equal(prepared.architecture.design_directives.interior.space_planning, 'function-before-furnishing');
+  assert.equal(prepared.architecture.design_directives.interior.furnishing_sequence, 'large-to-small');
+  assert.equal(prepared.architecture.facade_rules.entry_detail_variant, 'offset-frame');
 });
 
 test('exports deterministic knowledge-to-operation traceability beside a portable relative datapack', async (t) => {
   const roots = await Promise.all([0, 1].map(() =>
     fs.mkdtemp(path.join(os.tmpdir(), 'architecture-language-output-'))));
   t.after(() => Promise.all(roots.map((root) => fs.rm(root, { recursive: true, force: true }))));
-  const prompt = 'Build a modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, and functional interior.';
+  const prompt = 'Build a private modern lakeside villa with interlocking volumes, a flat roof terrace, large glass, a sheltered entry, a path, garden, functional interior, and a large-to-small furnishing pass.';
   const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
   const architectureLanguage = compileArchitectureLanguageV02({ prompt, overlay });
 
@@ -196,8 +232,9 @@ test('exports deterministic knowledge-to-operation traceability beside a portabl
   assert.deepEqual(results[0].blueprint.architectureLanguage,
     results[1].blueprint.architectureLanguage);
   assert.deepEqual(results[0].blueprint.operations, results[1].blueprint.operations);
-  const artifact = JSON.parse(await fs.readFile(results[0].artifacts.architectureLanguage, 'utf8'));
-  assert.deepEqual(artifact, results[0].blueprint.architectureLanguage);
+  assert.equal(Object.hasOwn(results[0].artifacts, 'architectureLanguage'), false);
+  const artifact = JSON.parse(await fs.readFile(results[0].artifacts.blueprint, 'utf8'));
+  assert.deepEqual(artifact.architectureLanguage, results[0].blueprint.architectureLanguage);
   const report = await fs.readFile(results[0].artifacts.report, 'utf8');
   assert.match(report, /Architecture Language v0\.2/u);
   assert.match(report, /knowledge:p7:modern-interlocking-volume/u);

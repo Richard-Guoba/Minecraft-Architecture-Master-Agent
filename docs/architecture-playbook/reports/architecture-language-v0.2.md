@@ -44,14 +44,13 @@ The applied plan modifies only existing architecture and build-spec semantic fie
 
 Each selected run writes:
 
-- `architecture_language.json`: exact selected plan and applied-operation trace;
-- `blueprint.json#architectureLanguage`: the same trace beside resulting semantics;
+- `blueprint.json#architectureLanguage`: the authoritative selected plan and applied-operation trace beside resulting semantics;
 - `run_report.md`: human-readable knowledge → stage → operation rows;
 - `architect_datapack/`: unchanged format-48 relative-coordinate output.
 
-Two seed-7101 execute mock runs selected `candidate-02` with identical chain SHA-256 `e8edcf7d609e2fda7749607099516c899123fee898d3ec49a76871ed8574979d`. Their language artifact SHA-256 was `5210c6aa50e1e02f95a27f58da8d0412c78f0f912b3a404af037a9f1fba927b5`; blueprint SHA-256 was `c6dd2e69d464a3b08c3909d9ba68299ad85c9a41f507db8b046fb3846c594abc`; and all four datapack files were byte-identical.
+Two seed-7101 execute mock runs selected `candidate-02` with identical chain SHA-256 `0910686edca6878188f6c5569833a3f7a1c6e9aa272ed7e8f68b99e91f24d4ba`. Their blueprint SHA-256 was `1936a22021cea1b29fb4cb4be20750a1dd340fda35c9e521dddc5949808586ca`; a sorted compact projection of `blueprint.json#architectureLanguage` hashed to `c0782010ca35c5fb5a0f46dc02d0869c249ec571442e41813f698dcd970d69d8`; and all four datapack files were byte-identical. Keeping the trace inside the validated blueprint avoids a second writable artifact that could drift from construction authority.
 
-The compared off-mode seed-7101 run contains no `architectureLanguage` field and retains the ordinary template-driven six-volume result for the same brief. The on-mode result contains the bounded three-volume interlock. This is an explainable opt-in difference, not a claim of aesthetic superiority.
+The compared off-mode seed-7101 run contains no `architectureLanguage` field and retains the ordinary template-driven six-volume result for the same brief. The on-mode result contains the bounded three-volume interlock. Explicit negations and incompatible constraints suppress mappings instead of overriding the user brief. This is an explainable opt-in difference, not a claim of aesthetic superiority.
 
 `pack.mcmeta` reports format 48. Automated and manual inspection confirms every coordinate operand in `build.mcfunction` and `clear.mcfunction` begins with `~`; `run.mcfunction` calls only `architect:clear`, `architect:build`, and the completion message. No world was opened or modified.
 
