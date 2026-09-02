@@ -22,6 +22,14 @@ const CAPABILITIES = new Map([
   capability('knowledge:p7:weather-sheltered-entrance-transition', CLASSIFICATIONS.FEASIBLE, 'facade', 'language:facade:sheltered-entry'),
   capability('knowledge:p7:daylit-window-wall-integration', CLASSIFICATIONS.FEASIBLE, 'facade', 'language:facade:daylit-window-wall'),
   capability('knowledge:p7:modern-interlocking-volume', CLASSIFICATIONS.FEASIBLE, 'massing', 'language:massing:three-volume-interlock'),
+  capability('knowledge:p7:connected-mass-addition', CLASSIFICATIONS.PREFERENCE, 'massing', 'language:massing:connected-role-volumes'),
+  capability('knowledge:p7:scaled-column-beam-grid', CLASSIFICATIONS.FEASIBLE, 'structure', 'language:structure:derived-bay-grid'),
+  capability('knowledge:p7:roof-orientation-massing-fit', CLASSIFICATIONS.FEASIBLE, 'roof', 'language:roof:volume-proportion-axis'),
+  capability('knowledge:p7:integrated-facade-bay-layering', CLASSIFICATIONS.FEASIBLE, 'facade', 'language:facade:integrated-bays'),
+  capability('knowledge:p7:facade-opening-assembly', CLASSIFICATIONS.FEASIBLE, 'facade', 'language:facade:opening-assembly'),
+  capability('knowledge:p7:bounded-facade-pattern-vocabulary', CLASSIFICATIONS.PREFERENCE, 'facade', 'language:facade:bounded-pattern-vocabulary'),
+  capability('knowledge:p7:building-foundation-material-continuity', CLASSIFICATIONS.FEASIBLE, 'site', 'language:site:foundation-continuity'),
+  capability('knowledge:p7:porous-interior-partition', CLASSIFICATIONS.PREFERENCE, 'interior', 'language:interior:porous-public-partitions'),
   capability('knowledge:p7:landscape-route-and-grounding', CLASSIFICATIONS.PREFERENCE, 'site', 'language:site:route-first-grounding'),
   capability('knowledge:p7:function-led-interior-zoning', CLASSIFICATIONS.PREFERENCE, 'interior', 'language:interior:function-first-zoning'),
   capability('knowledge:p7:large-to-small-furnishing-pass', CLASSIFICATIONS.PREFERENCE, 'interior', 'language:interior:large-to-small-pass'),
@@ -44,6 +52,16 @@ const CAPABILITIES = new Map([
 ]);
 
 const SELECTORS = new Map([
+  ['knowledge:p7:connected-mass-addition', (prompt) =>
+    matchesUnnegated(prompt, /connected (?:wings?|masses|volumes)|multi-volume|相连(?:侧翼|体块)|多体块/iu,
+      '(?:connected (?:wings?|masses|volumes)|multi-volume|相连(?:侧翼|体块)|多体块)')
+      && !/single[- ]volume|单体块/iu.test(prompt)],
+  ['knowledge:p7:scaled-column-beam-grid', (prompt) =>
+    matchesUnnegated(prompt, /column[ -]beam (?:structural )?grid|structural bays?|visible (?:frame|structure)|柱梁网格|结构开间/iu,
+      '(?:column[ -]beam (?:structural )?grid|structural bays?|visible (?:frame|structure)|柱梁网格|结构开间)')],
+  ['knowledge:p7:roof-orientation-massing-fit', (prompt) =>
+    matchesUnnegated(prompt, /roofs? aligned to each mass|roof (?:axis|orientation)|屋顶轴向|屋脊方向/iu,
+      '(?:roofs? aligned to each mass|roof (?:axis|orientation)|屋顶轴向|屋脊方向)')],
   ['knowledge:p7:modern-flat-roof-option', (prompt) =>
     matchesUnnegated(prompt, /(?:flat|terrace) roof|roof terrace|平屋顶|屋顶露台/iu,
       '(?:flat roof|terrace roof|roof terrace|平屋顶|屋顶露台)')
@@ -51,12 +69,27 @@ const SELECTORS = new Map([
   ['knowledge:p7:weather-sheltered-entrance-transition', (prompt) =>
     matchesUnnegated(prompt, /sheltered entry|porch|canopy|门廊|雨棚|入口过渡/iu,
       '(?:sheltered entry|porch|canopy|门廊|雨棚|入口过渡)')],
+  ['knowledge:p7:integrated-facade-bay-layering', (prompt) =>
+    matchesUnnegated(prompt, /facade bays?|vertical bays?|立面开间|立面分格/iu,
+      '(?:facade bays?|vertical bays?|立面开间|立面分格)')],
+  ['knowledge:p7:facade-opening-assembly', (prompt) =>
+    matchesUnnegated(prompt, /(?:coherent )?(?:window|opening) assemblies|window frames?|门窗组件|窗框组件/iu,
+      '(?:(?:coherent )?(?:window|opening) assemblies|window frames?|门窗组件|窗框组件)')],
+  ['knowledge:p7:bounded-facade-pattern-vocabulary', (prompt) =>
+    matchesUnnegated(prompt, /bounded pattern vocabulary|restrained facade detail|有限(?:立面)?构件词汇|克制的立面细节/iu,
+      '(?:bounded pattern vocabulary|restrained facade detail|有限(?:立面)?构件词汇|克制的立面细节)')],
   ['knowledge:p7:landscape-route-and-grounding', (prompt) =>
-    /lake|lakeside|waterfront|garden|path|湖|水边|花园|路径/iu.test(prompt)],
+    /lake|lakeside|waterfront|garden|path|route|湖|水边|花园|路径|动线/iu.test(prompt)],
+  ['knowledge:p7:building-foundation-material-continuity', (prompt) =>
+    matchesUnnegated(prompt, /foundation material continuity|continuous (?:base|foundation)|基础材料连续|建筑基础连续/iu,
+      '(?:foundation material continuity|continuous (?:base|foundation)|基础材料连续|建筑基础连续)')],
   ['knowledge:p7:function-led-interior-zoning', (prompt) =>
-    /functional interior|function-led|functional zoning|功能.*(?:室内|分区)|功能分区/iu.test(prompt)],
+    /functional interior|function-led|functional (?:room )?zoning|功能.*(?:室内|分区)|功能分区/iu.test(prompt)],
   ['knowledge:p7:large-to-small-furnishing-pass', (prompt) =>
     /large-to-small furnish|largest.*furni(?:ture|shing).*first|由大到小.*家具/iu.test(prompt)],
+  ['knowledge:p7:porous-interior-partition', (prompt) =>
+    matchesUnnegated(prompt, /porous (?:public )?partitions?|open-frame partitions?|通透隔断|开放式隔断/iu,
+      '(?:porous (?:public )?partitions?|open-frame partitions?|通透隔断|开放式隔断)')],
   ['knowledge:p7:daylit-window-wall-integration', (prompt) =>
     matchesUnnegated(prompt, /large glass|glass window wall|window wall|panoramic windows?|大面积玻璃|玻璃窗墙/iu,
       '(?:large glass|glass|window wall|windows?|玻璃|窗墙)')],
@@ -71,11 +104,19 @@ const SELECTORS = new Map([
 ]);
 
 const PARAMETERS = new Map([
+  ['knowledge:p7:connected-mass-addition', { massing_relationship: 'connected-role-volumes' }],
+  ['knowledge:p7:scaled-column-beam-grid', { structural_bays: 'dimension-derived-visible-grid' }],
+  ['knowledge:p7:roof-orientation-massing-fit', { roof_axis_strategy: 'volume-proportion' }],
   ['knowledge:p7:modern-flat-roof-option', { roof_style: 'flat', roof_profile: 'thin-parapet-terrace' }],
   ['knowledge:p7:weather-sheltered-entrance-transition', { entry_transition: 'supported-canopy' }],
+  ['knowledge:p7:integrated-facade-bay-layering', { facade_bays: 'integrated-supported' }],
+  ['knowledge:p7:facade-opening-assembly', { opening_assembly: 'sill-lintel-frame' }],
+  ['knowledge:p7:bounded-facade-pattern-vocabulary', { facade_pattern: 'bounded-restrained' }],
   ['knowledge:p7:landscape-route-and-grounding', { site_strategy: 'route-first-grounding' }],
+  ['knowledge:p7:building-foundation-material-continuity', { foundation_transition: 'material-continuous' }],
   ['knowledge:p7:function-led-interior-zoning', { space_planning: 'function-before-furnishing' }],
   ['knowledge:p7:large-to-small-furnishing-pass', { furnishing_sequence: 'large-to-small' }],
+  ['knowledge:p7:porous-interior-partition', { partition_strategy: 'porous-public-solid-private' }],
   ['knowledge:p7:daylit-window-wall-integration', { facade_opening_strategy: 'daylit-window-wall' }],
   ['knowledge:p7:modern-interlocking-volume', { massing_variant: 'east-offset-glass-wing' }],
   ['knowledge:p7:modern-program-entry-openness', { entry_openness: 'private-offset-screened' }]
@@ -184,6 +225,20 @@ export function finalizeArchitectureLanguageV02({ prompt, plan, architecture, bu
 
 function applyInstruction(instruction, architecture, buildSpec) {
   switch (instruction.operation_id) {
+    case 'language:massing:connected-role-volumes':
+      setCompositionDirectives(architecture, { preserve_connected_role_volumes: true });
+      return true;
+    case 'language:structure:derived-bay-grid':
+      architecture.structural_rules = {
+        ...(architecture.structural_rules || {}), visible_bay_grid: true
+      };
+      return true;
+    case 'language:roof:volume-proportion-axis':
+      architecture.roof_rules = {
+        ...(architecture.roof_rules || {}), axis_strategy: 'volume-proportion'
+      };
+      setDesignDirective(architecture, 'roof', { axis_strategy: 'volume-proportion' });
+      return true;
     case 'language:roof:flat-parapet':
       architecture.roof_rules = {
         ...(architecture.roof_rules || {}),
@@ -198,17 +253,42 @@ function applyInstruction(instruction, architecture, buildSpec) {
         ...(architecture.facade_rules || {}), awnings: true, porch: true
       };
       return true;
+    case 'language:facade:integrated-bays':
+      architecture.facade_rules = {
+        ...(architecture.facade_rules || {}), bay_layering: 'integrated-supported', wall_relief: true
+      };
+      return true;
+    case 'language:facade:opening-assembly':
+      architecture.facade_rules = {
+        ...(architecture.facade_rules || {}), opening_assembly: 'sill-lintel-frame', window_surrounds: true
+      };
+      return true;
+    case 'language:facade:bounded-pattern-vocabulary':
+      architecture.facade_rules = {
+        ...(architecture.facade_rules || {}), pattern_vocabulary: 'bounded-restrained', relief_density: 'low'
+      };
+      setDesignDirective(architecture, 'facade', { relief_density: 'low' });
+      return true;
     case 'language:site:route-first-grounding':
       architecture.site_rules = {
         ...(architecture.site_rules || {}), route_strategy: 'route-first-grounding'
       };
       buildSpec.site = { ...(buildSpec.site || {}), route_strategy: 'route-first-grounding' };
       return true;
+    case 'language:site:foundation-continuity':
+      architecture.site_rules = {
+        ...(architecture.site_rules || {}), foundation_transition: 'material-continuous'
+      };
+      buildSpec.site = { ...(buildSpec.site || {}), foundation_transition: 'material-continuous' };
+      return true;
     case 'language:interior:function-first-zoning':
       setInteriorDirective(architecture, 'space_planning', 'function-before-furnishing');
       return true;
     case 'language:interior:large-to-small-pass':
       setInteriorDirective(architecture, 'furnishing_sequence', 'large-to-small');
+      return true;
+    case 'language:interior:porous-public-partitions':
+      setInteriorDirective(architecture, 'partition_strategy', 'porous-public-solid-private');
       return true;
     case 'language:facade:daylit-window-wall':
       architecture.facade_rules = {
