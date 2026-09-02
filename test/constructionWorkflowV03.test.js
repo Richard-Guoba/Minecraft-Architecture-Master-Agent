@@ -283,6 +283,24 @@ test('construction workflow QA cannot be disabled by clearing every language row
   assert.equal(qa.checks.find((item) => item.name === 'construction-workflow')?.ok, false);
 });
 
+test('construction workflow QA rejects language accessors without invoking them', () => {
+  let invoked = false;
+  const architectureLanguage = { plan: {} };
+  Object.defineProperty(architectureLanguage, 'trace', {
+    enumerable: true,
+    get() {
+      invoked = true;
+      throw new Error('must not invoke language accessor');
+    }
+  });
+  const qa = new BlueprintQAAgent().run({
+    prompt: 'Build a house.', architectureLanguage,
+    operations: [], bounds: {}, modules: {}, shell: { volumeBoxes: [], interiorSpaces: [] }, layout: {}, paths: {}
+  });
+  assert.equal(invoked, false);
+  assert.equal(qa.checks.find((item) => item.name === 'construction-workflow')?.ok, false);
+});
+
 test('constraint repair merge preserves first-pass before/after evidence', () => {
   const pre = {
     source: 'local-constraint-repair-agent', ok: true, checks: [], suggestions: [], stats: { gridCellCount: 8 },

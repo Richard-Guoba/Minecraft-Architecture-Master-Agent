@@ -68,9 +68,10 @@ export class BlueprintQAAgent {
 function validateConstructionWorkflow(blueprint, errors, checks) {
   const workflow = blueprint.constructionWorkflow || {};
   const rows = Array.isArray(workflow.rows) ? workflow.rows : [];
-  const applied = blueprint.architectureLanguage?.trace?.applied_operations || [];
+  const languageContractOk = languagePlanMatchesTrace(blueprint.architectureLanguage, blueprint.prompt);
+  const applied = languageContractOk ? blueprint.architectureLanguage.trace.applied_operations : [];
   const contractIssues = [];
-  if (!languagePlanMatchesTrace(blueprint.architectureLanguage, blueprint.prompt)) contractIssues.push('language-plan-trace-mismatch');
+  if (!languageContractOk) contractIssues.push('language-plan-trace-mismatch');
   if (workflow.schema_version !== 1) contractIssues.push('schema-version-mismatch');
   if (workflow.authority !== 'derived-from-validated-plan-and-grid') contractIssues.push('authority-mismatch');
   if (rows.length !== applied.length) contractIssues.push('row-count-mismatch');
@@ -87,8 +88,9 @@ function validateConstructionWorkflow(blueprint, errors, checks) {
   const satisfactionMismatches = rows.filter((row) => row.satisfied !== isConstructionOperationSatisfied(blueprint, row))
     .map((row) => row.operation_id);
   if (satisfactionMismatches.length) contractIssues.push('stored-satisfaction-mismatch');
-  const expectedWorkflow = buildConstructionWorkflowV03(blueprint);
-  if (JSON.stringify(workflow) !== JSON.stringify(expectedWorkflow)) contractIssues.push('derived-trace-mismatch');
+  if (languageContractOk && JSON.stringify(workflow) !== JSON.stringify(buildConstructionWorkflowV03(blueprint))) {
+    contractIssues.push('derived-trace-mismatch');
+  }
   if (workflow.workflow_version !== '0.3.0' || !rows.length || failed.length || contractIssues.length) {
     errors.push(`Construction Workflow v0.3 结果校验失败: ${[...contractIssues, ...failed].join(', ') || 'invalid-or-empty-trace'}`);
   }
@@ -98,15 +100,17 @@ function validateConstructionWorkflow(blueprint, errors, checks) {
 }
 
 function languagePlanMatchesTrace(language = {}, prompt = '') {
-  const planIds = language?.plan?.selected_knowledge_ids;
-  const instructions = language?.plan?.instructions;
-  const traceIds = language?.trace?.selected_knowledge_ids;
-  const applied = language?.trace?.applied_operations;
-  if (!isValidArchitectureLanguageV02Plan(language?.plan, prompt)) return false;
+  if (!hasExactObjectKeys(language, ['plan', 'trace'])) return false;
+  const { plan, trace } = language;
+  if (!hasExactObjectKeys(trace, ['schema_version', 'language_version', 'overlay_sha256', 'selected_knowledge_ids', 'applied_operations'])) return false;
+  const planIds = plan?.selected_knowledge_ids;
+  const instructions = plan?.instructions;
+  const traceIds = trace.selected_knowledge_ids;
+  const applied = trace.applied_operations;
+  if (!isValidArchitectureLanguageV02Plan(plan, prompt)) return false;
   if (![planIds, instructions, traceIds, applied].every(Array.isArray)) return false;
-  if (!hasExactObjectKeys(language.trace, ['schema_version', 'language_version', 'overlay_sha256', 'selected_knowledge_ids', 'applied_operations']) ||
-    language.trace.schema_version !== 1 || language.trace.language_version !== language.plan.language_version ||
-    language.trace.overlay_sha256 !== language.plan.overlay_sha256) return false;
+  if (trace.schema_version !== 1 || trace.language_version !== plan.language_version ||
+    trace.overlay_sha256 !== plan.overlay_sha256) return false;
   if (planIds.length === 0 || instructions.length !== planIds.length || traceIds.length !== planIds.length || applied.length !== planIds.length) return false;
   for (let index = 0; index < planIds.length; index += 1) {
     const id = planIds[index];

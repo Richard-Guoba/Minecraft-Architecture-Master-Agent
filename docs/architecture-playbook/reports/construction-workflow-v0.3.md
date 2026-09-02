@@ -86,8 +86,8 @@ Visual or historical-quality claims remain outside automatic authority. The work
 
 ## Verification record
 
-- Focused v0.3: `npm test -- test/constructionWorkflowV03.test.js --test-reporter=spec` — 20 passed, 0 failed.
-- Language plus v0.3: `npm test -- test/architectureLanguageV02.test.js test/constructionWorkflowV03.test.js --test-reporter=spec` — 31 passed, 0 failed.
+- Focused v0.3: `npm test -- test/constructionWorkflowV03.test.js --test-reporter=spec` — 21 passed, 0 failed.
+- Language plus v0.3: `npm test -- test/architectureLanguageV02.test.js test/constructionWorkflowV03.test.js --test-reporter=spec` — 32 passed, 0 failed.
 - Related workflow, geometry, compatibility, P5-boundary, and documentation regression — 141 passed, 0 failed:
 
 ```text
