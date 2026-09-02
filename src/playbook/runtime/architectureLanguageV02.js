@@ -46,7 +46,8 @@ const CAPABILITIES = new Map([
 const SELECTORS = new Map([
   ['knowledge:p7:modern-flat-roof-option', (prompt) =>
     matchesUnnegated(prompt, /(?:flat|terrace) roof|roof terrace|平屋顶|屋顶露台/iu,
-      '(?:flat roof|terrace roof|roof terrace|平屋顶|屋顶露台)')],
+      '(?:flat roof|terrace roof|roof terrace|平屋顶|屋顶露台)')
+      && !isExplicitlyRejected(prompt, '(?:terrace roof|roof terrace|屋顶露台)')],
   ['knowledge:p7:weather-sheltered-entrance-transition', (prompt) =>
     matchesUnnegated(prompt, /sheltered entry|porch|canopy|门廊|雨棚|入口过渡/iu,
       '(?:sheltered entry|porch|canopy|门廊|雨棚|入口过渡)')],
@@ -60,10 +61,13 @@ const SELECTORS = new Map([
     matchesUnnegated(prompt, /large glass|glass window wall|window wall|panoramic windows?|大面积玻璃|玻璃窗墙/iu,
       '(?:large glass|glass|window wall|windows?|玻璃|窗墙)')],
   ['knowledge:p7:modern-interlocking-volume', (prompt) =>
-    /interlocking volumes?|交错体块|咬合体块/iu.test(prompt)
-      && !/single[- ]volume|garage wing|guest wing|tower|单体块|车库侧翼|塔楼|traditional.*not (?:a )?modern|(?:one|two|four|five|six|1|2|4|5|6)\s+interlocking volumes?/iu.test(prompt)],
+    matchesUnnegated(prompt, /interlocking volumes?|交错体块|咬合体块/iu,
+      '(?:interlocking volumes?|交错体块|咬合体块)')
+      && requestsCompatibleThreeVolumeInterlock(prompt)],
   ['knowledge:p7:modern-program-entry-openness', (prompt) =>
-    /private(?:\s+\w+){0,4}\s+(?:villa|residence|home)|private entry|screened entry|offset entry|私宅|偏移入口/iu.test(prompt)]
+    matchesUnnegated(prompt,
+      /private(?:\s+\w+){0,4}\s+(?:villa|residence|home)|private entry|screened entry|offset entry|私宅|偏移入口/iu,
+      '(?:private entry|screened entry|offset entry|私宅|偏移入口)')]
 ]);
 
 const PARAMETERS = new Map([
@@ -99,7 +103,8 @@ export function classifyP7ArchitectureLanguage(overlay) {
 export function compileArchitectureLanguageV02({ prompt, overlay } = {}) {
   if (typeof prompt !== 'string' || !prompt.trim()) invalid();
   const catalog = classifyP7ArchitectureLanguage(overlay);
-  const pitchedRoofRequired = /pitched roof|gabled roof|坡屋顶|人字顶/iu.test(prompt);
+  const pitchedRoofRequired = matchesUnnegated(prompt, /pitched roof|gabled roof|坡屋顶|人字顶/iu,
+    '(?:pitched roof|gabled roof|坡屋顶|人字顶)');
   const selected = catalog.concepts.filter((row) => {
     if (row.knowledge_id === 'knowledge:p7:modern-flat-roof-option' && pitchedRoofRequired) return false;
     return SELECTORS.get(row.knowledge_id)?.(prompt);
@@ -171,6 +176,7 @@ export function finalizeArchitectureLanguageV02({ prompt, plan, architecture, bu
   for (const instruction of plan.instructions) {
     if (instruction.operation_id !== 'language:massing:three-volume-interlock') {
       applyInstruction(instruction, nextArchitecture, nextBuildSpec);
+      applyCreativeInstruction(instruction, nextCreativeDesign);
     }
   }
   return deepFreeze({ architecture: nextArchitecture, buildSpec: nextBuildSpec, creativeDesign: nextCreativeDesign });
@@ -259,6 +265,29 @@ function setCompositionDirectives(architecture, directives) {
   };
 }
 
+function applyCreativeInstruction(instruction, creativeDesign) {
+  switch (instruction.operation_id) {
+    case 'language:roof:flat-parapet':
+      creativeDesign.roof = {
+        ...(creativeDesign.roof || {}), style: 'flat', profile: 'thin-parapet-terrace'
+      };
+      break;
+    case 'language:facade:sheltered-entry':
+      creativeDesign.facade = { ...(creativeDesign.facade || {}), awnings: true, porch: true };
+      break;
+    case 'language:facade:daylit-window-wall':
+      creativeDesign.facade = { ...(creativeDesign.facade || {}), glazing_ratio: 'high' };
+      break;
+    case 'language:facade:private-entry-openness':
+      creativeDesign.facade = {
+        ...(creativeDesign.facade || {}), entry_detail_style: 'offset-frame'
+      };
+      break;
+    default:
+      break;
+  }
+}
+
 function validatePlan(input, prompt) {
   if (typeof prompt !== 'string' || !prompt.trim()) invalid();
   const plan = canonicalClone(input);
@@ -327,10 +356,23 @@ function hasExactKeys(value, expected) {
 function matchesUnnegated(prompt, positive, subjectPattern) {
   return prompt.split(/[.;,\n]/u).some((clause) => {
     if (!positive.test(clause)) return false;
-    const before = new RegExp(`\\b(?:no|without|avoid|forbid|do not use)\\b[^.;,]{0,32}${subjectPattern}`, 'iu');
+    const before = new RegExp(`\\b(?:no|not|without|avoid|forbid|do not use)\\b[^.;,]{0,32}${subjectPattern}`, 'iu');
     const after = new RegExp(`${subjectPattern}[^.;,]{0,20}\\b(?:forbidden|not allowed)\\b`, 'iu');
     return !before.test(clause) && !after.test(clause) && !/不要.*?(?:平屋顶|屋顶露台|门廊|雨棚|玻璃|窗墙)/iu.test(clause);
   });
+}
+
+function isExplicitlyRejected(prompt, subjectPattern) {
+  const before = new RegExp(`\\b(?:no|not|without|avoid|forbid|do not use)\\b[^.;,]{0,32}${subjectPattern}`, 'iu');
+  const after = new RegExp(`${subjectPattern}[^.;,]{0,20}\\b(?:forbidden|not allowed)\\b`, 'iu');
+  return before.test(prompt) || after.test(prompt);
+}
+
+function requestsCompatibleThreeVolumeInterlock(prompt) {
+  if (/single[- ]volume|garage wing|guest wing|tower|pavilion|annex|outbuilding|单体块|车库侧翼|塔楼|亭|附楼|traditional.*not (?:a )?modern/iu.test(prompt)) return false;
+  const count = prompt.match(/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|dozen|hundred)\s+interlocking volumes?/iu)?.[1];
+  if (count && !/^(?:3|three)$/iu.test(count)) return false;
+  return !/interlocking volumes?\s+(?:with|plus|including)\b/iu.test(prompt);
 }
 
 function sha256(value) {

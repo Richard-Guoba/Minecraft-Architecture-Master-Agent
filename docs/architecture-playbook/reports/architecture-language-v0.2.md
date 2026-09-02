@@ -48,7 +48,7 @@ Each selected run writes:
 - `run_report.md`: human-readable knowledge → stage → operation rows;
 - `architect_datapack/`: unchanged format-48 relative-coordinate output.
 
-Two seed-7101 execute mock runs selected `candidate-02` with identical chain SHA-256 `8f4d6b0fc680a9ff1d731f14a3738366f3a743a3a1b193721589c19414c9d523`. Their blueprint SHA-256 was `162a5a7615c0851cb88d6c4559cc52f00c2b1876e31446bfd7788f5003eb0076`; a sorted compact projection of `blueprint.json#architectureLanguage` hashed to `7b5cab6f56075a18de6b4c6f17adc65036d2df4a7387e97c498174307f518b40`; and all four datapack files were byte-identical. Keeping one trace at the blueprint's top-level authority avoids both a second writable artifact and an ambiguous nested copy.
+Two seed-7101 execute mock runs selected `candidate-02` with identical chain SHA-256 `4153cc89b388f2cdc06d26641db0167c2e3e2b0ade50d2a148a23141481a70e1`. Their blueprint SHA-256 was `75d78b1450fbb8cf99c4f2c4cc545ea3aa8e2fecaba0f1afbff5549e5a96c1f8`; a sorted compact projection of `blueprint.json#architectureLanguage` hashed to `7b5cab6f56075a18de6b4c6f17adc65036d2df4a7387e97c498174307f518b40`; and all four datapack files were byte-identical. Keeping one trace at the blueprint's top-level authority avoids both a second writable artifact and an ambiguous nested copy.
 
 The compared off-mode seed-7101 run contains no `architectureLanguage` field and retains the ordinary template-driven six-volume result for the same brief. The on-mode result contains the bounded three-volume interlock. Explicit negations and incompatible constraints suppress mappings instead of overriding the user brief. This is an explainable opt-in difference, not a claim of aesthetic superiority.
 

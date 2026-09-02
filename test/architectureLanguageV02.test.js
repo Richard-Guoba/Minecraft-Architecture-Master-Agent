@@ -157,10 +157,18 @@ test('does not select semantics that explicit user constraints reject', async ()
     ['Build a modern villa with no porch or canopy.', 'knowledge:p7:weather-sheltered-entrance-transition'],
     ['Build a modern villa where the porch is forbidden.', 'knowledge:p7:weather-sheltered-entrance-transition'],
     ['Build a modern villa without a roof terrace.', 'knowledge:p7:modern-flat-roof-option'],
+    ['Build a flat roof, but no roof terrace.', 'knowledge:p7:modern-flat-roof-option'],
+    ['Do not use interlocking volumes.', 'knowledge:p7:modern-interlocking-volume'],
+    ['Interlocking volumes are forbidden.', 'knowledge:p7:modern-interlocking-volume'],
     ['Build a modern single-volume villa with a garage wing.', 'knowledge:p7:modern-interlocking-volume'],
     ['Build four interlocking volumes.', 'knowledge:p7:modern-interlocking-volume'],
+    ['Build seven interlocking volumes.', 'knowledge:p7:modern-interlocking-volume'],
+    ['Build 7 interlocking volumes.', 'knowledge:p7:modern-interlocking-volume'],
     ['Build interlocking volumes with a tower.', 'knowledge:p7:modern-interlocking-volume'],
-    ['Build a traditional villa, not a modern villa.', 'knowledge:p7:modern-interlocking-volume']
+    ['Build interlocking volumes with a detached pavilion.', 'knowledge:p7:modern-interlocking-volume'],
+    ['Build interlocking volumes plus an annex.', 'knowledge:p7:modern-interlocking-volume'],
+    ['Build a traditional villa, not a modern villa.', 'knowledge:p7:modern-interlocking-volume'],
+    ['Build a private villa without a private entry.', 'knowledge:p7:modern-program-entry-openness']
   ];
   for (const [prompt, rejectedId] of cases) {
     const plan = compileArchitectureLanguageV02({ prompt, overlay });
@@ -172,6 +180,7 @@ test('keeps positive clauses independent from unrelated negations and word subst
   const overlay = await loadP7AdvisoryOverlay({ projectRoot: ROOT });
   const cases = [
     ['Build an innovative villa with a flat roof.', 'knowledge:p7:modern-flat-roof-option'],
+    ['Use a flat roof, not a pitched roof.', 'knowledge:p7:modern-flat-roof-option'],
     ['No garden; add a large glass window wall.', 'knowledge:p7:daylit-window-wall-integration'],
     ['Add a panoramic window wall.', 'knowledge:p7:daylit-window-wall-integration']
   ];
@@ -239,6 +248,9 @@ test('feeds Architecture Language preferences through the existing semantic agen
   assert.equal(prepared.architecture.design_directives.interior.space_planning, 'function-before-furnishing');
   assert.equal(prepared.architecture.design_directives.interior.furnishing_sequence, 'large-to-small');
   assert.equal(prepared.architecture.facade_rules.entry_detail_variant, 'offset-frame');
+  assert.equal(prepared.creativeDesign.roof.style, 'flat');
+  assert.equal(prepared.creativeDesign.roof.profile, 'thin-parapet-terrace');
+  assert.equal(prepared.creativeDesign.facade.entry_detail_style, 'offset-frame');
   const compiled = compileDesignLayers({ prepared });
   assert.equal(compiled.runtime.roof.style, 'flat');
   assert.equal(compiled.runtime.roof.profile, 'thin-parapet-terrace');
