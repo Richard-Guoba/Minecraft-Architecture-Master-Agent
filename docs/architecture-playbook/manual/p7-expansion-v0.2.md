@@ -541,3 +541,11 @@
 - [0.3 认识方块：从名称转向视觉属性](../course/notes/heihui-jileniao/BV1iVLbzcEfG.md)
 - [0.4 模块化建筑：复用效率与整体设计](../course/notes/heihui-jileniao/BV1cLJtz1ELx.md)
 - [0.5 材质与配色：层级、呼应与尺度](../course/notes/heihui-jileniao/BV14XMtzFEzb.md)
+
+# Architecture Language v0.2 执行边界
+
+本知识章的 123 条 advisory 现在由 `src/playbook/runtime/architectureLanguageV02.js` 在运行时逐条归类。分类不改变字幕证据成熟度，也不把 `knowledge:p7:*` 提升成冻结的 P5 `rule:*` 权限。
+
+首个住宅执行切片只使用有现成确定性落点的语义：三体块现代交错组合、平顶女儿墙/露台屋顶、受庇护入口、采光窗墙、私宅偏移入口、路线优先场地、功能优先分区和由大到小的家具次序。它们先修改既有 architecture/build-spec 语义，再继续运行 Planner、CreativeDesign、Structure、Roof、Facade、Site、BSP、A*、Interior、QA、有限修复和数据包编译。用户明确要求坡屋顶时，平顶映射不被选择。
+
+圆形/斜向外壳、斜向单位墙、圆锥或旋转尖顶等当前没有安全编译器的概念保持 `unsupported`；其余未绑定概念保持 `advisory-only` 或显式 `qa-check-only`。完整分类、操作 ID 和验证证据见 [Architecture Language v0.2 实施报告](../reports/architecture-language-v0.2.md)。

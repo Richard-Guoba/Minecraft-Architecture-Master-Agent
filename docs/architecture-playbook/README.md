@@ -29,6 +29,7 @@
 - P7 第七章 order 37–42 均已到 `asr-complete`：共 2,426 个草稿段已经归纳为做旧、大型建筑、建筑群、前景、重复编排和斜向建筑知识。聚合 advisory 现有 105 条有界意图；正式人工视觉阶段仍未完成。
 - P7 第八章 order 43–50 均已到 `asr-complete`：共 2,301 个草稿段；其中 order 44、45 复用冻结六集黄金产物，6 个新课次归纳为风格边界、城堡、现代别墅、圆形与尖顶知识。聚合 advisory 现有 123 条有界意图；正式人工视觉阶段仍未完成。
 - 已处理课次聚合为 123 条 `subtitle-derived-advisory` 建造意图，并接入 opt-in 的 execute 设计提示。它们不能进入冻结的 21 条 v0.1 审阅规则权限，不能改变 `playbook=off`，也不能改变相对坐标数据包编译器。
+- Architecture Language v0.2 已把 123 条意图逐条归类，并为现代滨水住宅建立首个端到端语义桥：mock 与 LLM execute 都从规范 overlay 选择相关知识，经过白名单体块、屋顶、立面、场地与室内偏好进入原 `construction_method_v1`，再把知识 ID、阶段与实际操作写入 `architecture_language.json`、`blueprint.json` 和 `run_report.md`。P5 的规则与修复注册表未扩权，默认关闭路径不出现这些字段。
 - 当前入口：[人类秘籍 v0.1](manual/v0.1.md)、[P7 知识扩展 v0.2](manual/p7-expansion-v0.2.md)、[P7 第一章字幕知识扩展报告](reports/p7-chapter-1-subtitle-expansion.md)、[P7 第二章字幕知识扩展检查点](reports/p7-chapter-2-subtitle-expansion.md)、[P7 第三章字幕知识扩展检查点](reports/p7-chapter-3-subtitle-expansion.md)、[P7 第四章字幕知识扩展检查点](reports/p7-chapter-4-subtitle-expansion.md)、[P7 第五章字幕知识扩展检查点](reports/p7-chapter-5-subtitle-expansion.md)、[P7 第六章字幕知识扩展检查点](reports/p7-chapter-6-subtitle-expansion.md)、[P7 第七章字幕知识扩展检查点](reports/p7-chapter-7-subtitle-expansion.md)、[P7 第八章字幕知识扩展报告](reports/p7-chapter-8-subtitle-expansion.md)、[审阅规则卡](rules/schools/heihui-jileniao/reviewed-rules-v0.1.jsonl)、[P4 影子指导报告](reports/p4-shadow-guidance.md)、[P5 可执行设计层报告](reports/p5-executable-design-layer.md)和 [P7 知识扩展基础报告](reports/p7-knowledge-expansion-foundation.md)。
 
 ## P7 轻量章节工作流
@@ -165,3 +166,4 @@ P3 的秘籍、规则、覆盖、门禁和规范入口见：
 - [P3 建筑秘籍 v0.1 门禁报告](reports/p3-playbook-v0.1.md)
 - [建筑秘籍 v0.1 正式设计](../superpowers/specs/2026-08-25-architecture-playbook-v0-1-design.md)
 - [建筑秘籍 v0.1 实施计划](../superpowers/plans/2026-08-25-architecture-playbook-v0-1.md)
+- [Architecture Language v0.2 实施报告](reports/architecture-language-v0.2.md)
