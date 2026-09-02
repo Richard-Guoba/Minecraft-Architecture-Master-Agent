@@ -22,7 +22,9 @@
     "BV1h1keYbEMd",
     "BV1unj9z4EnW",
     "BV1ZJTLzgEdm",
-    "BV1XtGvzPEFR"
+    "BV1XtGvzPEFR",
+    "BV1nCJJzWEHH",
+    "BV1FrPazJEFD"
   ],
   "entries": [
     {
@@ -296,6 +298,70 @@
       "source_bvids": ["BV1XtGvzPEFR"],
       "classification": "inference",
       "evidence_refs": ["BV1XtGvzPEFR@885-1023"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:door-frame-material-continuity",
+      "design_layers": ["structure", "facade"],
+      "intent": "Choose door-panel, partial-block and frame materials by texture continuity and compatible connection states; use bounded head details to reduce a visually jagged gap between panel and frame.",
+      "source_bvids": ["BV1nCJJzWEHH"],
+      "classification": "inference",
+      "evidence_refs": ["BV1nCJJzWEHH@8-37", "BV1nCJJzWEHH@85-175", "BV1nCJJzWEHH@298-345"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:scale-appropriate-entry-opening",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Match entry detail to opening scale; for a large portal or small imprecise facade, permit a framed passable opening and omit a literal door panel, while using nested depth to retain hierarchy.",
+      "source_bvids": ["BV1nCJJzWEHH"],
+      "classification": "inference",
+      "evidence_refs": ["BV1nCJJzWEHH@258-297", "BV1nCJJzWEHH@399-463", "BV1nCJJzWEHH@631-653"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:weather-sheltered-entrance-transition",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Connect a raised entrance to grade with a threshold or bounded stair sequence, and add a supported porch or canopy when the entry needs a waiting area that diverts rain away from the opening.",
+      "source_bvids": ["BV1nCJJzWEHH"],
+      "classification": "inference",
+      "evidence_refs": ["BV1nCJJzWEHH@183-256", "BV1nCJJzWEHH@597-630"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:layered-entry-sequence",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "For a large open entry, compose exterior frame, vestibule or lobby, and inner threshold as a connected depth sequence; make the interior focal layer visible from outside without blocking circulation.",
+      "source_bvids": ["BV1nCJJzWEHH"],
+      "classification": "inference",
+      "evidence_refs": ["BV1nCJJzWEHH@749-843"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:facade-material-connectivity-scale",
+      "design_layers": ["structure", "facade"],
+      "intent": "Use visually connective materials for continuous fields, denser smooth or bordered materials for supports, and distinctive directional or face-like textures only where scale makes their marks subordinate.",
+      "source_bvids": ["BV1FrPazJEFD"],
+      "classification": "inference",
+      "evidence_refs": ["BV1FrPazJEFD@47-169", "BV1FrPazJEFD@227-335"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:bounded-facade-pattern-vocabulary",
+      "design_layers": ["facade"],
+      "intent": "Build a large facade from a limited vocabulary of small line and relief units; combine repeat rhythms through shared alignments, and reject a unique element at every bay.",
+      "source_bvids": ["BV1FrPazJEFD"],
+      "classification": "inference",
+      "evidence_refs": ["BV1FrPazJEFD@374-512"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:large-facade-depth-expansion",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "When shallow relief remains visually flat, increase facade volume to create deeper planes, then use their bounded shadow and value separation; surface-detail density cannot substitute for depth.",
+      "source_bvids": ["BV1FrPazJEFD"],
+      "classification": "inference",
+      "evidence_refs": ["BV1FrPazJEFD@512-578"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:iterative-facade-partition-hierarchy",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Develop a blank large wall through primary partition, role assignment, aligned secondary divisions and bounded detail; iterate proportions, remove unintended visual outliers, and preserve the planned solid-open hierarchy.",
+      "source_bvids": ["BV1FrPazJEFD"],
+      "classification": "inference",
+      "evidence_refs": ["BV1FrPazJEFD@664-911", "BV1FrPazJEFD@914-1046"]
     }
   ]
 }

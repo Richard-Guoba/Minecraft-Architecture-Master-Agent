@@ -197,6 +197,45 @@
 - 动作：没有空间继续内退时，在一格进深内用允许的部分方块建立有限凹凸；外挂构件的长度、挂点和墙柱交接位置服从建筑尺度。
 - 失败：把受限进深变成无界表面噪声；小建筑挂载过长构件；附件悬空或与墙柱连接关系不明。
 
+### 让门板材质和门框连续
+
+- 来源：`BV1nCJJzWEHH`，约 8–37 秒、85–175 秒及 298–345 秒
+- 建筑语言：`door_frame_material_continuity`、`door_head_seam`
+- 动作：按纹理连续性和连接状态选择门板、部分方块与门框；只在门头接缝处使用有界细构件，减少门板和框架之间的锯齿与割裂。
+
+### 让入口表达服从尺度
+
+- 来源：`BV1nCJJzWEHH`，约 258–297 秒、399–463 秒及 631–653 秒
+- 建筑语言：`entry_scale_check`、`door_panel: omitted`、`nested_portal_depth`
+- 动作：小入口限制细节，大型门洞可以分层；当实体门板不适合尺度时，保留可通行门洞与清晰门框即可。需要纵深时让外圈到内圈有序缩小。
+- 失败：小门硬塞大型雕花；为表现门扇堵塞通行；把示例中的随机纹样复制成固定模板。
+
+### 用门槛、台阶和雨棚连接入口
+
+- 来源：`BV1nCJJzWEHH`，约 183–256 秒及 597–630 秒
+- 建筑语言：`threshold_or_stair_transition`、`weather_sheltered_entry`
+- 动作：入口高于地面时用门槛或有界台阶连接通行；有等候或天气需求时加入受支撑门厅或雨棚，并让表面向开口两侧表达导水。
+- 约束：字幕不提供现实结构、防水或排水参数。
+
+### 让大型入口形成可见纵深序列
+
+- 来源：`BV1nCJJzWEHH`，约 749–843 秒
+- 建筑语言：`layered_entry_sequence`、`interior_focal_layer`
+- 动作：把外部门框、门厅或前台、内部门槛组织成连续纵深；从外部检查内部焦点是否可见，同时保留通行净空。
+
+### 用有限语汇和真实进深构筑大型墙面
+
+- 来源：`BV1FrPazJEFD`，约 47–578 秒
+- 建筑语言：`facade_material_profile`、`facade_pattern_vocabulary`、`facade_depth_expansion`
+- 动作：按连接性、视觉密度和特征强度分配大面、支撑与点缀材料；用少量线条和浮雕单元形成共享对齐的重复节奏。浅层细节仍显平时，增加有界墙面体量而不是继续堆噪声。
+
+### 通过主次分区迭代墙面
+
+- 来源：`BV1FrPazJEFD`，约 664–1,046 秒
+- 建筑语言：`primary_partition`、`secondary_alignment`、`solid_open_hierarchy`、`visual_outlier_check`
+- 动作：先分配门洞、实心与通透主区，再建立对齐的次分区；反复检查宽高规律、采光、焦点和比例，删除突兀元素，并用收束宽度表达构图结束。
+- 失败：每个开间使用独立技巧；在同一浅平面无序堆叠；装饰没有承托、开口或收束角色。
+
 ### 复用带语义和状态的施工组件
 
 - 来源：`BV1SG6GY9ETe`，约 47–167 秒及 236–299 秒
@@ -281,6 +320,8 @@
 
 ## 来源讲义
 
+- [3.5 构筑大型墙面：有限语汇、进深与迭代分区](../course/notes/heihui-jileniao/BV1FrPazJEFD.md)
+- [3.4 门：门框连续、入口过渡与可见纵深](../course/notes/heihui-jileniao/BV1nCJJzWEHH.md)
 - [3.3 墙面装饰：窗构件、柱分段与受限进深](../course/notes/heihui-jileniao/BV1XtGvzPEFR.md)
 - [3.2 墙面雕花：进深、承托与横纵分区](../course/notes/heihui-jileniao/BV1ZJTLzgEdm.md)
 - [2.3 屋顶优化：整砖坡面、细节密度与平顶选择](../course/notes/heihui-jileniao/BV1unj9z4EnW.md)

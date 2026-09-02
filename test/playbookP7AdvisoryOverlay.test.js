@@ -31,9 +31,9 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     'complete-roofs',
     'complete-walls-facades'
   ]);
-  assert.equal(overlay.source_bvids.length, 13);
-  assert.equal(overlay.source_bvids.at(-1), 'BV1XtGvzPEFR');
-  assert.equal(overlay.entries.length, 34);
+  assert.equal(overlay.source_bvids.length, 15);
+  assert.equal(overlay.source_bvids.at(-1), 'BV1FrPazJEFD');
+  assert.equal(overlay.entries.length, 42);
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
@@ -41,11 +41,12 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
   assert.ok(overlay.entries.every((entry) =>
     ['author_claim', 'inference', 'contrast'].includes(entry.classification)));
   assert.deepEqual(
-    overlay.entries.slice(-3).map(({ knowledge_id }) => knowledge_id),
+    overlay.entries.slice(-4).map(({ knowledge_id }) => knowledge_id),
     [
-      'knowledge:p7:facade-opening-assembly',
-      'knowledge:p7:scale-matched-column-articulation',
-      'knowledge:p7:constrained-depth-facade-relief'
+      'knowledge:p7:facade-material-connectivity-scale',
+      'knowledge:p7:bounded-facade-pattern-vocabulary',
+      'knowledge:p7:large-facade-depth-expansion',
+      'knowledge:p7:iterative-facade-partition-hierarchy'
     ]
   );
   assert.deepEqual(
@@ -160,10 +161,51 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
   assert.deepEqual(columnArticulation.evidence_refs, ['BV1XtGvzPEFR@565-754']);
   assert.match(columnArticulation.intent, /base, shaft and capital/iu);
   assert.match(columnArticulation.intent, /simplify ornament/iu);
+  const constrainedRelief = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:constrained-depth-facade-relief');
+  assert.deepEqual(constrainedRelief.evidence_refs, ['BV1XtGvzPEFR@885-1023']);
+  assert.match(constrainedRelief.intent, /one block of depth/iu);
+  assert.match(constrainedRelief.intent, /building scale/iu);
+  const doorContinuity = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:door-frame-material-continuity');
+  assert.deepEqual(doorContinuity.evidence_refs,
+    ['BV1nCJJzWEHH@8-37', 'BV1nCJJzWEHH@85-175', 'BV1nCJJzWEHH@298-345']);
+  assert.match(doorContinuity.intent, /texture continuity/iu);
+  assert.match(doorContinuity.intent, /connection states/iu);
+  const entryScale = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:scale-appropriate-entry-opening');
+  assert.deepEqual(entryScale.evidence_refs,
+    ['BV1nCJJzWEHH@258-297', 'BV1nCJJzWEHH@399-463', 'BV1nCJJzWEHH@631-653']);
+  assert.match(entryScale.intent, /omit a literal door panel/iu);
+  const weatherEntry = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:weather-sheltered-entrance-transition');
+  assert.deepEqual(weatherEntry.evidence_refs, ['BV1nCJJzWEHH@183-256', 'BV1nCJJzWEHH@597-630']);
+  assert.match(weatherEntry.intent, /threshold/iu);
+  assert.match(weatherEntry.intent, /rain/iu);
+  const layeredEntry = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:layered-entry-sequence');
+  assert.deepEqual(layeredEntry.evidence_refs, ['BV1nCJJzWEHH@749-843']);
+  assert.match(layeredEntry.intent, /vestibule/iu);
+  assert.match(layeredEntry.intent, /visible from outside/iu);
+  const materialConnectivity = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:facade-material-connectivity-scale');
+  assert.deepEqual(materialConnectivity.evidence_refs,
+    ['BV1FrPazJEFD@47-169', 'BV1FrPazJEFD@227-335']);
+  assert.match(materialConnectivity.intent, /continuous fields/iu);
+  assert.match(materialConnectivity.intent, /distinctive/iu);
+  const patternVocabulary = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:bounded-facade-pattern-vocabulary');
+  assert.deepEqual(patternVocabulary.evidence_refs, ['BV1FrPazJEFD@374-512']);
+  assert.match(patternVocabulary.intent, /limited vocabulary/iu);
+  assert.match(patternVocabulary.intent, /repeat rhythms/iu);
+  const depthExpansion = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:large-facade-depth-expansion');
+  assert.deepEqual(depthExpansion.evidence_refs, ['BV1FrPazJEFD@512-578']);
+  assert.match(depthExpansion.intent, /increase facade volume/iu);
   assert.deepEqual(overlay.entries.at(-1).evidence_refs,
-    ['BV1XtGvzPEFR@885-1023']);
-  assert.match(overlay.entries.at(-1).intent, /one block of depth/iu);
-  assert.match(overlay.entries.at(-1).intent, /building scale/iu);
+    ['BV1FrPazJEFD@664-911', 'BV1FrPazJEFD@914-1046']);
+  assert.match(overlay.entries.at(-1).intent, /primary partition/iu);
+  assert.match(overlay.entries.at(-1).intent, /outlier/iu);
   assert.ok(Object.isFrozen(overlay));
   assert.ok(Object.isFrozen(overlay.entries));
 });
