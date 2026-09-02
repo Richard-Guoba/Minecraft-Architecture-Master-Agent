@@ -236,6 +236,60 @@
 - 动作：先分配门洞、实心与通透主区，再建立对齐的次分区；反复检查宽高规律、采光、焦点和比例，删除突兀元素，并用收束宽度表达构图结束。
 - 失败：每个开间使用独立技巧；在同一浅平面无序堆叠；装饰没有承托、开口或收束角色。
 
+### 先建立景观路径和有界物件组
+
+- 来源：`BV1HRVnzVEFa`，约 199–317 秒及 497–689 秒
+- 建筑语言：`landscape_route_and_grounding`、`permeable_surface_transition`、`role_scaled_landscape_cluster`
+- 动作：先定义路径、庭院和种植区，再让硬地与土壤在有界边缘带互相进入；物件组以一个较大主体和较小从属构件组织，并保持通行净空。
+
+### 让道路磨损服从交通与坡度
+
+- 来源：`BV1rx6yYNEYr`，约 251–380 秒、1,143–1,214 秒及 1,430–1,668 秒
+- 建筑语言：`traffic_wear_zones`、`road_edge_gradient`、`terrain_responsive_path_profile`
+- 动作：道路中心、边缘和低使用区采用不同磨损逻辑；路面与地形短距离互相渗透，陡坡用楼梯、缓坡用台阶并保持连续可通行。
+
+### 从渐细枝架生成树冠
+
+- 来源：`BV1KN91Y1ELG`，约 60–328 秒、511–630 秒、925–1,027 秒及 1,385–1,410 秒
+- 建筑语言：`tapering_branch_structure`、`branch_supported_canopy`、`canopy_silhouette_variation`
+- 动作：从粗主干向交替、多方向的细侧枝展开，叶团附着于枝条并保留底部可见骨架；树族改变朝向、叶片密度和冠形而不退化为重复叶球。
+
+### 先满足桥梁净空、支撑和安全
+
+- 来源：`BV1xtXKYYEF2`，约 31–242 秒及 301–421 秒
+- 建筑语言：`bridge_clearance`、`span_adapted_curve`、`bridge_detail_budget`
+- 动作：先确定桥面、下方净空和护栏，在折点或薄弱跨设置近似等距支撑；拱度向中心逐渐延长步长，完成结构后才添加顶棚和点缀。
+
+### 按水层和岸线组织水体
+
+- 来源：`BV1Hy5pzQE5n`，约 32–272 秒及 512–660 秒
+- 建筑语言：`water_body_layers`、`inhabitant_compatibility`、`shoreline_gradient`
+- 动作：分别处理水底、水中、水面和开放水域，检查生物相容与逃逸；材料簇跨越水陆边界，有入水口时用沉积方向解释变化。
+
+### 用建筑体块派生非直角地基包络
+
+- 来源：`BV1oFJPzqE9k`，约 20–301 秒及 423–660 秒
+- 建筑语言：`nonrectilinear_terrain_envelope`、`footprint_derived_foundation`、`building_foundation_continuity`
+- 动作：从建筑主次足迹向地面延伸地基，并用更小体块打散轮廓；柱墙跨过接缝，建筑与地基共享做旧、材料或植被呼应，避免深直角切坑。
+
+### 分层连接相邻房屋
+
+- 来源：`BV1i2JBzPE8m`，约 60–180 秒、240–390 秒及 480–662 秒
+- 建筑语言：`interbuilding_depth_zones`、`porous_or_opaque_screen`、`supported_multilevel_connector`
+- 动作：先完成接地层，再选择前景、中景和远景；按是否保留后景选择通透或实体屏障，高架连桥必须统一材料并验证支撑、通行和净空。
+
+### 用视廊和道路地块编排山谷
+
+- 来源：`BV1Cm7VzzEXd`，约 20–60 秒、90–331 秒、390–510 秒及 540–631 秒
+- 建筑语言：`layered_valley_site`、`distance_scaled_material`、`route_first_parcels`
+- 动作：选址先平衡近中远景、包围感和开放视廊；远景按色块和覆盖面控制，先铺主次道路，再按生成地块的形状与大小放建筑、种植或水体。
+
+### 按功能和尺度组织海滩
+
+- 来源：`BV1a5TDzhE9M`，约 240–420 秒、541–600 秒及 662–812 秒
+- 建筑语言：`scale_matched_outdoor_fixture`、`beach_functional_zoning`、`contrasting_surface_patch`
+- 动作：先划分通行、遮阳、休息、游戏、垂钓或服务区；小构件使用薄层，大构件补骨架和纵深，并用有限石路、土壤或绿地反差区分功能。
+
 ### 复用带语义和状态的施工组件
 
 - 来源：`BV1SG6GY9ETe`，约 47–167 秒及 236–299 秒
@@ -320,6 +374,15 @@
 
 ## 来源讲义
 
+- [4.9 海滩设计：尺度构件、功能分区与表面反差](../course/notes/heihui-jileniao/BV1a5TDzhE9M.md)
+- [4.8 山谷设计：分层选址、尺度色块与道路地块](../course/notes/heihui-jileniao/BV1Cm7VzzEXd.md)
+- [4.7 房屋衔接：纵深分区、视线屏障与多层连接](../course/notes/heihui-jileniao/BV1i2JBzPE8m.md)
+- [4.6 地形衔接：非直角包络与体块派生地基](../course/notes/heihui-jileniao/BV1oFJPzqE9k.md)
+- [4.5 水体美化：水层、生态相容与岸线](../course/notes/heihui-jileniao/BV1Hy5pzQE5n.md)
+- [4.4 桥入门：净空、支撑与跨径曲线](../course/notes/heihui-jileniao/BV1xtXKYYEF2.md)
+- [4.3 树入门：渐细枝架与枝上树冠](../course/notes/heihui-jileniao/BV1KN91Y1ELG.md)
+- [4.2 铺路入门：交通磨损、边缘渐变与坡度](../course/notes/heihui-jileniao/BV1rx6yYNEYr.md)
+- [4.1 造景概述：路径、地表过渡与物件组](../course/notes/heihui-jileniao/BV1HRVnzVEFa.md)
 - [3.5 构筑大型墙面：有限语汇、进深与迭代分区](../course/notes/heihui-jileniao/BV1FrPazJEFD.md)
 - [3.4 门：门框连续、入口过渡与可见纵深](../course/notes/heihui-jileniao/BV1nCJJzWEHH.md)
 - [3.3 墙面装饰：窗构件、柱分段与受限进深](../course/notes/heihui-jileniao/BV1XtGvzPEFR.md)

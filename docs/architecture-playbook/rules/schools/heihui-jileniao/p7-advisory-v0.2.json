@@ -7,7 +7,8 @@
     "foundations-tools-blocks-modularity-color",
     "complete-structure",
     "complete-roofs",
-    "complete-walls-facades"
+    "complete-walls-facades",
+    "landscaping-terrain"
   ],
   "source_bvids": [
     "BV1aBV1zwELe",
@@ -24,7 +25,16 @@
     "BV1ZJTLzgEdm",
     "BV1XtGvzPEFR",
     "BV1nCJJzWEHH",
-    "BV1FrPazJEFD"
+    "BV1FrPazJEFD",
+    "BV1HRVnzVEFa",
+    "BV1rx6yYNEYr",
+    "BV1KN91Y1ELG",
+    "BV1xtXKYYEF2",
+    "BV1Hy5pzQE5n",
+    "BV1oFJPzqE9k",
+    "BV1i2JBzPE8m",
+    "BV1Cm7VzzEXd",
+    "BV1a5TDzhE9M"
   ],
   "entries": [
     {
@@ -362,6 +372,222 @@
       "source_bvids": ["BV1FrPazJEFD"],
       "classification": "inference",
       "evidence_refs": ["BV1FrPazJEFD@664-911", "BV1FrPazJEFD@914-1046"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:landscape-route-and-grounding",
+      "design_layers": ["brief", "massing", "facade"],
+      "intent": "Plan the path and courtyard relationship before filling open ground; give planted features a plausible soil pocket and connect the resulting route, hard surface and vegetation without blocking circulation.",
+      "source_bvids": ["BV1HRVnzVEFa"],
+      "classification": "inference",
+      "evidence_refs": ["BV1HRVnzVEFa@265-317", "BV1HRVnzVEFa@649-689"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:permeable-surface-transition",
+      "design_layers": ["massing", "facade"],
+      "intent": "Blend soil, planting and hardscape with bounded mutual penetration rather than a hard material seam; keep a legible planting pocket and route while scattering only a limited edge band.",
+      "source_bvids": ["BV1HRVnzVEFa"],
+      "classification": "inference",
+      "evidence_refs": ["BV1HRVnzVEFa@199-304"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:role-scaled-landscape-clusters",
+      "design_layers": ["brief", "massing", "facade"],
+      "intent": "Compose landscape props as coherent clusters with one larger anchor and smaller subordinate pieces; group materials and implied uses, vary height front-to-back, and preserve clear walking space.",
+      "source_bvids": ["BV1HRVnzVEFa"],
+      "classification": "inference",
+      "evidence_refs": ["BV1HRVnzVEFa@497-557", "BV1HRVnzVEFa@585-644"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:traffic-wear-road-zoning",
+      "design_layers": ["brief", "massing", "facade"],
+      "intent": "Derive road variation from traffic: concentrate fractured or worn material in traveled zones, retain less-damaged edges, and allow moss where movement is sparse instead of distributing noise uniformly.",
+      "source_bvids": ["BV1rx6yYNEYr"],
+      "classification": "inference",
+      "evidence_refs": ["BV1rx6yYNEYr@251-307"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:bounded-road-edge-gradient",
+      "design_layers": ["massing", "facade"],
+      "intent": "Join road palettes and adjacent terrain with short, bidirectional material incursions; combine clustered and sparse replacements, soften the edge only enough to read as a transition, and keep the route legible.",
+      "source_bvids": ["BV1rx6yYNEYr"],
+      "classification": "inference",
+      "evidence_refs": ["BV1rx6yYNEYr@319-380", "BV1rx6yYNEYr@1572-1668"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:terrain-responsive-path-profile",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Fit paths to terrain with a controlled vertical profile: use stairs for short steep rises, slabs for gentler grades, and partial blocks to smooth bends while maintaining a continuous passable route.",
+      "source_bvids": ["BV1rx6yYNEYr"],
+      "classification": "inference",
+      "evidence_refs": ["BV1rx6yYNEYr@1143-1214", "BV1rx6yYNEYr@1430-1510"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:tapering-tree-branch-structure",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Build a tree from roots and a dominant trunk into thinner, alternating branches that spread in multiple directions; avoid equal-thickness radial arms and tune upper-versus-lower branch length to the intended crown.",
+      "source_bvids": ["BV1KN91Y1ELG"],
+      "classification": "inference",
+      "evidence_refs": ["BV1KN91Y1ELG@60-240"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:branch-supported-canopy",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Attach leaf masses to branches rather than wrapping the trunk; keep parts of the lower branch structure visible, place fuller foliage toward light-exposed zones, and use only bounded trunk foliage.",
+      "source_bvids": ["BV1KN91Y1ELG"],
+      "classification": "inference",
+      "evidence_refs": ["BV1KN91Y1ELG@242-328"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:varied-canopy-silhouette",
+      "design_layers": ["massing", "facade"],
+      "intent": "Vary tree orientation, crown density and silhouette within a coherent family; keep major crowns from collapsing into one repeated ball or overlapping into an unreadable mass.",
+      "source_bvids": ["BV1KN91Y1ELG"],
+      "classification": "inference",
+      "evidence_refs": ["BV1KN91Y1ELG@181-211", "BV1KN91Y1ELG@511-630", "BV1KN91Y1ELG@925-1027", "BV1KN91Y1ELG@1385-1410"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:clearance-aware-bridge-supports",
+      "design_layers": ["brief", "massing", "structure"],
+      "intent": "Set bridge deck, navigation clearance and guard needs first; place supports at bends or visually weak spans with broadly regular spacing, without obstructing the required opening below.",
+      "source_bvids": ["BV1xtXKYYEF2"],
+      "classification": "inference",
+      "evidence_refs": ["BV1xtXKYYEF2@31-151"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:span-adapted-bridge-curve",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Shape an arched bridge with gradually lengthening horizontal runs toward the center; adapt the step sequence to span width and reject abrupt straight-up, flat, straight-down profiles.",
+      "source_bvids": ["BV1xtXKYYEF2"],
+      "classification": "inference",
+      "evidence_refs": ["BV1xtXKYYEF2@301-421"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:bridge-component-detail-budget",
+      "design_layers": ["structure", "facade"],
+      "intent": "Complete bridge hierarchy in order—deck, supports, guards, then optional cover and accent—and stop adding underside detail once structure and safety read clearly; vary repeated materials to avoid fatigue.",
+      "source_bvids": ["BV1xtXKYYEF2"],
+      "classification": "inference",
+      "evidence_refs": ["BV1xtXKYYEF2@120-242"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:layered-water-body-composition",
+      "design_layers": ["brief", "massing", "facade"],
+      "intent": "Compose a water feature as bed, water-column and surface layers; preserve open water between clustered plants, bound plant heights, and distribute lighting only where the night composition needs it.",
+      "source_bvids": ["BV1Hy5pzQE5n"],
+      "classification": "inference",
+      "evidence_refs": ["BV1Hy5pzQE5n@32-181"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:compatible-water-inhabitants",
+      "design_layers": ["brief", "massing"],
+      "intent": "Choose aquatic inhabitants as a compatible set and provide the containment their movement requires; do not combine predator and prey populations or assume growing animals remain inside an open bank.",
+      "source_bvids": ["BV1Hy5pzQE5n"],
+      "classification": "inference",
+      "evidence_refs": ["BV1Hy5pzQE5n@211-272"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:cross-boundary-shoreline-gradient",
+      "design_layers": ["massing", "facade"],
+      "intent": "Carry shoreline materials across both water and land in bounded clusters and sparse fragments; use a stream mouth or sediment path when present to explain the gradient instead of drawing a hard bank seam.",
+      "source_bvids": ["BV1Hy5pzQE5n"],
+      "classification": "inference",
+      "evidence_refs": ["BV1Hy5pzQE5n@512-660"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:nonrectilinear-terrain-envelope",
+      "design_layers": ["massing", "structure"],
+      "intent": "Fit terrain around a building with bounded cuts and fills that extend beyond its exact footprint; replace deep right-angle excavation seams with staggered or curved terrain volumes.",
+      "source_bvids": ["BV1oFJPzqE9k"],
+      "classification": "inference",
+      "evidence_refs": ["BV1oFJPzqE9k@20-210"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:footprint-derived-foundation-massing",
+      "design_layers": ["massing", "structure"],
+      "intent": "Derive foundation masses from the building's major and minor footprint volumes, extend each toward grade, then add subordinate terrain chunks to break a tower-like or cross-shaped base.",
+      "source_bvids": ["BV1oFJPzqE9k"],
+      "classification": "inference",
+      "evidence_refs": ["BV1oFJPzqE9k@210-301"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:building-foundation-material-continuity",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Make building and foundation read as one system by embedding posts or walls into the base, matching their weathering and detail density, and echoing selected materials or vegetation across the boundary.",
+      "source_bvids": ["BV1oFJPzqE9k"],
+      "classification": "inference",
+      "evidence_refs": ["BV1oFJPzqE9k@423-660"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:interbuilding-depth-zones",
+      "design_layers": ["brief", "massing", "facade"],
+      "intent": "Organize a gap between buildings into optional foreground, mandatory ground contact, middle layer and high or distant layer; keep a stepped view through the zones rather than filling every depth.",
+      "source_bvids": ["BV1i2JBzPE8m"],
+      "classification": "inference",
+      "evidence_refs": ["BV1i2JBzPE8m@60-180"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:porous-or-opaque-view-screen",
+      "design_layers": ["brief", "massing", "facade"],
+      "intent": "Choose a porous tree or lattice when the rear scene should remain legible, and an opaque hedge or wall only when an unwanted view must be hidden; preserve depth cues instead of sealing every gap.",
+      "source_bvids": ["BV1i2JBzPE8m"],
+      "classification": "inference",
+      "evidence_refs": ["BV1i2JBzPE8m@240-330"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:supported-multilevel-building-connector",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Connect neighboring buildings at ground, middle or upper level with a route, terrace or passable bridge that shares their material language; give elevated links visible support and usable clearance.",
+      "source_bvids": ["BV1i2JBzPE8m"],
+      "classification": "inference",
+      "evidence_refs": ["BV1i2JBzPE8m@330-390", "BV1i2JBzPE8m@480-662"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:layered-valley-site-selection",
+      "design_layers": ["brief", "massing"],
+      "intent": "Select a valley site with distinct near, middle and far landforms plus open sight passages; balance enclosure with visual breathing room before assigning buildings or detailed scenery.",
+      "source_bvids": ["BV1Cm7VzzEXd"],
+      "classification": "inference",
+      "evidence_refs": ["BV1Cm7VzzEXd@20-60"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:distance-scaled-landscape-material",
+      "design_layers": ["massing", "facade"],
+      "intent": "At large viewing distance, choose terrain materials primarily by color field and coverage; reserve texture-sensitive distinctions for closer layers and use continuous vegetation lines to interrupt exposed cliff bands.",
+      "source_bvids": ["BV1Cm7VzzEXd"],
+      "classification": "inference",
+      "evidence_refs": ["BV1Cm7VzzEXd@90-180", "BV1Cm7VzzEXd@240-331"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:route-first-landscape-parcels",
+      "design_layers": ["brief", "massing", "facade"],
+      "intent": "Lay out a route hierarchy with different widths before placing valley buildings; use the resulting parcel size and shape to assign structures, planting or water, and transition paths visibly into ground.",
+      "source_bvids": ["BV1Cm7VzzEXd"],
+      "classification": "inference",
+      "evidence_refs": ["BV1Cm7VzzEXd@390-510", "BV1Cm7VzzEXd@540-631"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:scale-matched-outdoor-fixtures",
+      "design_layers": ["massing", "structure", "facade"],
+      "intent": "Match outdoor seats, shade structures and stalls to the scene scale; use thinner assemblies for small fixtures and add support, thickness variation and deeper spans as their size increases.",
+      "source_bvids": ["BV1a5TDzhE9M"],
+      "classification": "inference",
+      "evidence_refs": ["BV1a5TDzhE9M@240-420", "BV1a5TDzhE9M@541-600"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:beach-functional-zoning",
+      "design_layers": ["brief", "massing", "facade"],
+      "intent": "Divide a beach into circulation, shade, rest, play, fishing or service zones before adding props; keep each cluster tied to its use and size decorative objects to the activity that produced them.",
+      "source_bvids": ["BV1a5TDzhE9M"],
+      "classification": "inference",
+      "evidence_refs": ["BV1a5TDzhE9M@541-600", "BV1a5TDzhE9M@691-812"]
+    },
+    {
+      "knowledge_id": "knowledge:p7:contrasting-beach-surface-patches",
+      "design_layers": ["massing", "facade"],
+      "intent": "Break a broad sand field with bounded contrasting path, soil and vegetation patches, then blend each patch with related tones; contrast should clarify beach zones rather than become uniform noise.",
+      "source_bvids": ["BV1a5TDzhE9M"],
+      "classification": "inference",
+      "evidence_refs": ["BV1a5TDzhE9M@662-750"]
     }
   ]
 }

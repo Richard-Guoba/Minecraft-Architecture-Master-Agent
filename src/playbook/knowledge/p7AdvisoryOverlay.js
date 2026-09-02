@@ -19,17 +19,20 @@ const EXPECTED_SOURCES = Object.freeze([
   'BV1aBV1zwELe', 'BV1SwdfBHEx5', 'BV1SG6GY9ETe',
   'BV1iVLbzcEfG', 'BV1cLJtz1ELx', 'BV14XMtzFEzb', 'BV1ecj4zsE27',
   'BV1Mp7UzyE3P', 'BV1MA7Bz2EE1', 'BV1h1keYbEMd', 'BV1unj9z4EnW',
-  'BV1ZJTLzgEdm', 'BV1XtGvzPEFR', 'BV1nCJJzWEHH', 'BV1FrPazJEFD'
+  'BV1ZJTLzgEdm', 'BV1XtGvzPEFR', 'BV1nCJJzWEHH', 'BV1FrPazJEFD',
+  'BV1HRVnzVEFa', 'BV1rx6yYNEYr', 'BV1KN91Y1ELG',
+  'BV1xtXKYYEF2', 'BV1Hy5pzQE5n', 'BV1oFJPzqE9k',
+  'BV1i2JBzPE8m', 'BV1Cm7VzzEXd', 'BV1a5TDzhE9M'
 ]);
 const EXPECTED_CHAPTERS = Object.freeze([
   'foundations-tools-blocks-modularity-color', 'complete-structure',
-  'complete-roofs', 'complete-walls-facades'
+  'complete-roofs', 'complete-walls-facades', 'landscaping-terrain'
 ]);
 const LAYERS = new Set(['brief', 'massing', 'structure', 'roof', 'facade']);
 const ID = /^knowledge:p7:[a-z0-9][a-z0-9-]*$/u;
 const EVIDENCE_REF = /^(BV[0-9A-Za-z]+)@[0-9]+-[0-9]+$/u;
 const CLASSIFICATIONS = new Set(['author_claim', 'inference', 'contrast']);
-const EXPECTED_OVERLAY_SHA256 = '4118a9e0f7000f1d5516c3e92668bfe63a46c38594a551a4d8283f295787d087';
+const EXPECTED_OVERLAY_SHA256 = 'b468c71273bac643f4a83425defe13391bbb7143b9a188e95d719c036b94082f';
 
 export async function loadP7AdvisoryOverlay({ projectRoot, readFile } = {}) {
   try {
@@ -97,7 +100,7 @@ function validateOverlay(value) {
     || value.status !== 'subtitle-derived-advisory'
     || !sameStrings(value.chapter_ids, EXPECTED_CHAPTERS)
     || !sameStrings(value.source_bvids, EXPECTED_SOURCES)
-    || !Array.isArray(value.entries) || value.entries.length !== 42) throw invalid();
+    || !Array.isArray(value.entries) || value.entries.length !== 69) throw invalid();
   const ids = new Set();
   for (const entry of value.entries) {
     exactObject(entry, ENTRY_FIELDS);

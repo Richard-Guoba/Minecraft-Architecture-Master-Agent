@@ -29,11 +29,12 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     'foundations-tools-blocks-modularity-color',
     'complete-structure',
     'complete-roofs',
-    'complete-walls-facades'
+    'complete-walls-facades',
+    'landscaping-terrain'
   ]);
-  assert.equal(overlay.source_bvids.length, 15);
-  assert.equal(overlay.source_bvids.at(-1), 'BV1FrPazJEFD');
-  assert.equal(overlay.entries.length, 42);
+  assert.equal(overlay.source_bvids.length, 24);
+  assert.equal(overlay.source_bvids.at(-1), 'BV1a5TDzhE9M');
+  assert.equal(overlay.entries.length, 69);
   assert.equal(overlay.overlay_sha256.length, 64);
   assert.ok(overlay.entries.every((entry) => !entry.knowledge_id.startsWith('rule:')));
   assert.ok(overlay.entries.every((entry) => entry.intent.length <= 240));
@@ -41,12 +42,11 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
   assert.ok(overlay.entries.every((entry) =>
     ['author_claim', 'inference', 'contrast'].includes(entry.classification)));
   assert.deepEqual(
-    overlay.entries.slice(-4).map(({ knowledge_id }) => knowledge_id),
+    overlay.entries.slice(-3).map(({ knowledge_id }) => knowledge_id),
     [
-      'knowledge:p7:facade-material-connectivity-scale',
-      'knowledge:p7:bounded-facade-pattern-vocabulary',
-      'knowledge:p7:large-facade-depth-expansion',
-      'knowledge:p7:iterative-facade-partition-hierarchy'
+      'knowledge:p7:scale-matched-outdoor-fixtures',
+      'knowledge:p7:beach-functional-zoning',
+      'knowledge:p7:contrasting-beach-surface-patches'
     ]
   );
   assert.deepEqual(
@@ -202,10 +202,54 @@ test('loads the bounded represented-chapter subtitle advisory without changing r
     knowledge_id === 'knowledge:p7:large-facade-depth-expansion');
   assert.deepEqual(depthExpansion.evidence_refs, ['BV1FrPazJEFD@512-578']);
   assert.match(depthExpansion.intent, /increase facade volume/iu);
-  assert.deepEqual(overlay.entries.at(-1).evidence_refs,
+  const facadePartition = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:iterative-facade-partition-hierarchy');
+  assert.deepEqual(facadePartition.evidence_refs,
     ['BV1FrPazJEFD@664-911', 'BV1FrPazJEFD@914-1046']);
-  assert.match(overlay.entries.at(-1).intent, /primary partition/iu);
-  assert.match(overlay.entries.at(-1).intent, /outlier/iu);
+  assert.match(facadePartition.intent, /primary partition/iu);
+  assert.match(facadePartition.intent, /outlier/iu);
+  const roadWear = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:traffic-wear-road-zoning');
+  assert.deepEqual(roadWear.evidence_refs, ['BV1rx6yYNEYr@251-307']);
+  assert.match(roadWear.intent, /traffic/iu);
+  const treeCanopy = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:branch-supported-canopy');
+  assert.deepEqual(treeCanopy.evidence_refs, ['BV1KN91Y1ELG@242-328']);
+  assert.match(treeCanopy.intent, /branches/iu);
+  const canopyVariation = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:varied-canopy-silhouette');
+  assert.deepEqual(canopyVariation.evidence_refs,
+    ['BV1KN91Y1ELG@181-211', 'BV1KN91Y1ELG@511-630',
+      'BV1KN91Y1ELG@925-1027', 'BV1KN91Y1ELG@1385-1410']);
+  assert.doesNotMatch(canopyVariation.intent, /height/iu);
+  const bridgeSupports = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:clearance-aware-bridge-supports');
+  assert.deepEqual(bridgeSupports.evidence_refs, ['BV1xtXKYYEF2@31-151']);
+  assert.match(bridgeSupports.intent, /clearance/iu);
+  const shoreline = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:cross-boundary-shoreline-gradient');
+  assert.deepEqual(shoreline.evidence_refs, ['BV1Hy5pzQE5n@512-660']);
+  assert.match(shoreline.intent, /water and land/iu);
+  const terrainEnvelope = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:nonrectilinear-terrain-envelope');
+  assert.deepEqual(terrainEnvelope.evidence_refs, ['BV1oFJPzqE9k@20-210']);
+  assert.match(terrainEnvelope.intent, /right-angle/iu);
+  const viewScreen = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:porous-or-opaque-view-screen');
+  assert.deepEqual(viewScreen.evidence_refs, ['BV1i2JBzPE8m@240-330']);
+  assert.match(viewScreen.intent, /porous/iu);
+  const valleyRoutes = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:route-first-landscape-parcels');
+  assert.deepEqual(valleyRoutes.evidence_refs,
+    ['BV1Cm7VzzEXd@390-510', 'BV1Cm7VzzEXd@540-631']);
+  assert.match(valleyRoutes.intent, /route hierarchy/iu);
+  const beachZoning = overlay.entries.find(({ knowledge_id }) =>
+    knowledge_id === 'knowledge:p7:beach-functional-zoning');
+  assert.deepEqual(beachZoning.evidence_refs,
+    ['BV1a5TDzhE9M@541-600', 'BV1a5TDzhE9M@691-812']);
+  assert.deepEqual(overlay.entries.at(-1).evidence_refs,
+    ['BV1a5TDzhE9M@662-750']);
+  assert.match(overlay.entries.at(-1).intent, /contrast/iu);
   assert.ok(Object.isFrozen(overlay));
   assert.ok(Object.isFrozen(overlay.entries));
 });
